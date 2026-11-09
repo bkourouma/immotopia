@@ -485,15 +485,64 @@ export async function createAsset(tenantId: string, input: CreateAssetInput, act
   return assetDtoById(tenantId, created.id);
 }
 
+function assetListWhere(tenantId: string, query: ListAssetsQuery): Prisma.AssetWhereInput {
+  return {
+    tenantId,
+    ...(query.assetClass ? { assetClass: query.assetClass } : {}),
+    ...(query.assetClasses
+      ? { assetClass: { in: query.assetClasses.split(',') as NonNullable<ListAssetsQuery['assetClass']>[] } }
+      : {}),
+    status: query.status ?? { not: 'ARCHIVED' as const },
+    ...(query.search
+      ? {
+          OR: [
+            { name: { contains: escapeLike(query.search), mode: 'insensitive' as const } },
+            { notes: { contains: escapeLike(query.search), mode: 'insensitive' as const } },
+            { property: { internalReference: { contains: escapeLike(query.search), mode: 'insensitive' as const } } },
+            { property: { title: { contains: escapeLike(query.search), mode: 'insensitive' as const } } }
+          ]
+        }
+      : {})
+  };
+}
+
+export async function listAssetsPage(tenantId: string, query: ListAssetsQuery) {
+  const where = assetListWhere(tenantId, query);
+  const page = query.page ?? 1;
+  const limit = query.limit ?? 25;
+  if (query.minValue !== undefined || query.maxValue !== undefined || query.stale !== undefined) {
+    const rows = await prisma.asset.findMany({
+      where,
+      include: ASSET_INCLUDE,
+      orderBy: [{ createdAt: 'desc' }, { id: 'asc' }]
+    });
+    const all = await toAssetDtos(tenantId, rows);
+    const filtered = all.filter(asset => {
+      const value =
+        asset.currentValue?.valueXof ?? (asset.currentValue?.currency === 'XOF' ? asset.currentValue.amount : null);
+      if (query.minValue !== undefined && (value === null || value < query.minValue)) return false;
+      if (query.maxValue !== undefined && (value === null || value > query.maxValue)) return false;
+      if (query.stale !== undefined && asset.stale !== (query.stale === 'true')) return false;
+      return true;
+    });
+    return { items: filtered.slice((page - 1) * limit, page * limit), total: filtered.length, page, limit };
+  }
+  const [rows, total] = await Promise.all([
+    prisma.asset.findMany({
+      where,
+      include: ASSET_INCLUDE,
+      orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+      skip: (page - 1) * limit,
+      take: limit
+    }),
+    prisma.asset.count({ where })
+  ]);
+  return { items: await toAssetDtos(tenantId, rows), total, page, limit };
+}
+
 export async function listAssets(tenantId: string, query: ListAssetsQuery): Promise<AssetDto[]> {
   const rows = await prisma.asset.findMany({
-    where: {
-      tenantId,
-      ...(query.assetClass ? { assetClass: query.assetClass } : {}),
-      // Sans filtre : tout sauf les actifs archivés.
-      status: query.status ?? { not: 'ARCHIVED' as const },
-      ...(query.search ? { name: { contains: escapeLike(query.search), mode: 'insensitive' as const } } : {})
-    },
+    where: assetListWhere(tenantId, query),
     include: ASSET_INCLUDE,
     orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
     take: LIST_ASSETS_HARD_LIMIT

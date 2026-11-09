@@ -11,7 +11,8 @@ import {
   listRetentions,
   releaseRetention
 } from '../../services/finance-retentions-service';
-import { listConstructionSites, listSuppliers, listSupplierInvoices } from '../../services/finance-lot2-service';
+import { listConstructionSites, listSupplierInvoices } from '../../services/finance-lot2-service';
+import { SupplierSelect } from '../../components/finance/SupplierSelect';
 import { listContractorContracts, listProgressStatements } from '../../services/finance-contractors-service';
 import type { RetentionGuarantee, RetentionSourceType } from '../../types/finance-retentions-types';
 import { RETENTION_SOURCE_TYPE_LABELS, RETENTION_STATUS_LABELS } from '../../types/finance-retentions-types';
@@ -274,13 +275,6 @@ export const RetenuesDeGarantie: React.FC = () => {
   // clics de plus, mais aucun identifiant à taper — l'écran ne montre jamais
   // un identifiant, et n'en fait pas saisir un non plus.
 
-  const { data: fournisseurs } = useQuery({
-    queryKey: queryKey('finance-fournisseurs-reference', tenantId, {}),
-    queryFn: () => listSuppliers(tenantId as string),
-    enabled: Boolean(tenantId) && modalOuvert && natureSource === 'SUPPLIER_INVOICE',
-    staleTime: STALE_TIME.reference
-  });
-
   const { data: factures } = useQuery({
     queryKey: queryKey('supplier-invoices', tenantId, { supplierId: fournisseurId }),
     queryFn: () => listSupplierInvoices(tenantId as string, fournisseurId as string),
@@ -301,12 +295,6 @@ export const RetenuesDeGarantie: React.FC = () => {
     enabled: Boolean(tenantId) && Boolean(marcheId) && natureSource === 'PROGRESS_STATEMENT',
     staleTime: STALE_TIME.list
   });
-
-  const optionsFournisseurs = useMemo(
-    () =>
-      (fournisseurs ?? []).map(f => ({ value: f.id, label: f.name })).sort((a, b) => a.label.localeCompare(b.label)),
-    [fournisseurs]
-  );
 
   // Seules les pièces VALIDÉES sont proposées : le serveur refuse les autres
   // (« une retenue ne se pose que sur une pièce validée »), et proposer une
@@ -659,18 +647,17 @@ export const RetenuesDeGarantie: React.FC = () => {
             <>
               <div>
                 <label htmlFor="retenue-fournisseur">{t('Fournisseur')}</label>
-                <Select
+                <SupplierSelect
                   id="retenue-fournisseur"
-                  style={{ width: '100%' }}
+                  tenantId={tenantId}
+                  activeOnly={false}
+                  enabled={modalOuvert && natureSource === 'SUPPLIER_INVOICE'}
                   placeholder={t('Choisir un fournisseur')}
-                  showSearch
-                  optionFilterProp="label"
                   value={fournisseurId}
                   onChange={valeur => {
-                    setFournisseurId(valeur as string);
+                    setFournisseurId(valeur);
                     setFactureId(undefined);
                   }}
-                  options={optionsFournisseurs}
                 />
               </div>
               <div>

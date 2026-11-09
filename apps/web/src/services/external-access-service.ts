@@ -36,6 +36,19 @@ export async function listExternalAccessGrants(tenantId: string): Promise<Extern
   return response.data.data.items;
 }
 
+export async function listExternalAccessGrantsPage(
+  tenantId: string,
+  filters: Record<string, unknown> & { page: number; limit: number }
+): Promise<{ items: ExternalAccessGrantSummary[]; total: number; page: number; limit: number }> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters))
+    if (value !== undefined && value !== '') params.set(key, String(value));
+  const response = await apiClient.get<
+    ApiResponse<{ items: ExternalAccessGrantSummary[]; total: number; page: number; limit: number }>
+  >(`${base(tenantId)}?${params}`);
+  return response.data.data;
+}
+
 export async function getExternalAccessScopeOptions(tenantId: string): Promise<ExternalAccessScopeOptions> {
   const response = await apiClient.get<ApiResponse<ExternalAccessScopeOptions>>(`${base(tenantId)}/scope-options`);
   return response.data.data;
@@ -107,6 +120,20 @@ export async function listExternalAccessLog(
     `${base(tenantId)}/${encodeURIComponent(grantId)}/access-log?limit=${limit}`
   );
   return response.data.data.items;
+}
+
+export async function listExternalAccessLogPage(
+  tenantId: string,
+  grantId: string,
+  filters: Record<string, unknown> & { page: number; limit: number }
+): Promise<{ items: ExternalAccessLogEntry[]; total: number; page: number; limit: number }> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters))
+    if (value !== undefined && value !== '') params.set(key, String(value));
+  const response = await apiClient.get<
+    ApiResponse<{ items: ExternalAccessLogEntry[]; total: number; page: number; limit: number }>
+  >(`${base(tenantId)}/${encodeURIComponent(grantId)}/access-log?${params}`);
+  return response.data.data;
 }
 
 // --- Public (sans compte) --------------------------------------------------------

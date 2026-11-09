@@ -7,7 +7,7 @@ import { App as AntApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Penalties } from '../../pages/rental/Penalties';
 
-/** Pénalités : recherche multicritères LOCALE (l'API rend toute la liste du bail). */
+/** Pénalités : critères transmis au service paginé. */
 
 const listPenalties = vi.hoisted(() => vi.fn());
 
@@ -75,16 +75,31 @@ const T = { timeout: 8000 };
 
 beforeEach(() => {
   listPenalties.mockReset();
-  listPenalties.mockResolvedValue({ success: true, data: [PEN_A, PEN_B] });
+  listPenalties.mockImplementation(async (_tenantId: string, filters: Record<string, unknown> = {}) => {
+    const rows = [PEN_A, PEN_B].filter(row => {
+      const date = row.calculated_at.slice(0, 10);
+      return (
+        (!filters.search ||
+          String(row.adjustment_reason ?? '')
+            .toLowerCase()
+            .includes(String(filters.search).toLowerCase())) &&
+        (filters.adjusted === undefined || Boolean(row.adjusted_amount) === (filters.adjusted === 'true')) &&
+        (!filters.from || date >= String(filters.from)) &&
+        (!filters.to || date <= String(filters.to)) &&
+        (filters.maxAmount === undefined || row.amount <= Number(filters.maxAmount))
+      );
+    });
+    return { success: true, data: rows, pagination: { total: rows.length, page: 1, limit: 50, totalPages: 1 } };
+  });
 });
 
-describe('Pénalités : recherche multicritères locale', () => {
-  it('affiche la barre et le compteur sans rien envoyer de plus au service', async () => {
+describe('Pénalités : recherche multicritères serveur', () => {
+  it('affiche la barre et le compteur avec une requête paginée', async () => {
     renderPage();
     expect(await screen.findByText('10 jours', undefined, T)).toBeInTheDocument();
     expect(screen.getByRole('search')).toBeInTheDocument();
     expect(screen.getByText('2 résultats')).toBeInTheDocument();
-    expect(listPenalties.mock.calls[0][1]).not.toHaveProperty('search');
+    expect(listPenalties.mock.calls[0][1]).toMatchObject({ page: 1, limit: 50 });
   });
 
   it('filtre les lignes sur la raison, sans casse ni accent', async () => {
@@ -120,7 +135,7 @@ describe('Pénalités : recherche multicritères locale', () => {
     await screen.findByText('3 jours', undefined, T);
     expect(screen.queryByText('10 jours')).not.toBeInTheDocument();
     expect(screen.getByRole('search', { name: 'Rechercher dans les pénalités' })).toBeInTheDocument();
-    expect(listPenalties).toHaveBeenCalledWith('agence-1', { leaseId: 'bail-9' });
+    expect(listPenalties).toHaveBeenCalledWith('agence-1', expect.objectContaining({ leaseId: 'bail-9', page: 1 }));
   });
 
   it('propose d’effacer les critères quand rien ne correspond', async () => {

@@ -192,11 +192,13 @@ describe('contrôleurs', () => {
     expect(claimService.transitionClaim).not.toHaveBeenCalled();
   });
 
-  it('liste des sinistres : limit > 500 refusée', async () => {
-    const res = await request(buildApp()).get(`${BASE}/insurance/claims?limit=501`);
+  it('liste des sinistres : page bornée à 100 et filtres transmis', async () => {
+    const res = await request(buildApp()).get(`${BASE}/insurance/claims?page=2&limit=101`);
     expect(res.status).toBeGreaterThanOrEqual(400);
-    expect((await request(buildApp()).get(`${BASE}/insurance/claims?limit=500&status=SETTLED`)).status).toBe(200);
-    expect(claimService.listClaims).toHaveBeenCalledWith('tenant-a', { limit: 500, status: 'SETTLED' });
+    expect((await request(buildApp()).get(`${BASE}/insurance/claims?page=2&limit=100&status=SETTLED`)).status).toBe(
+      200
+    );
+    expect(claimService.listClaims).toHaveBeenCalledWith('tenant-a', { page: 2, limit: 100, status: 'SETTLED' });
   });
 
   it('suppressions : 204 sans corps', async () => {

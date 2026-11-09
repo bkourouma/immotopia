@@ -108,11 +108,20 @@ type Run = { face: UnicodeFace | null; text: string };
  */
 export class TextFace {
   private runsCache = new Map<string, Run[]>();
+  private alternateDirection?: TextFace;
 
   constructor(
     private readonly standard: PDFFont,
-    private readonly unicode: UnicodeFace | null
+    private readonly unicode: UnicodeFace | null,
+    private readonly direction: 'ltr' | 'rtl' = 'ltr'
   ) {}
+
+  /** Une cellule numerique reste LTR, meme avec des separateurs Unicode non WinAnsi. */
+  withDirection(direction: 'ltr' | 'rtl'): TextFace {
+    if (direction === this.direction) return this;
+    this.alternateDirection ??= new TextFace(this.standard, this.unicode, direction);
+    return this.alternateDirection;
+  }
 
   /** Texte sur une ligne, sans caractère que ni l'une ni l'autre police ne sait écrire. */
   clean(text: string): string {
@@ -135,7 +144,7 @@ export class TextFace {
     if (!this.unicode || isEncodable(this.standard, text)) {
       runs = text ? [{ face: null, text }] : [];
     } else {
-      runs = visualRuns(text).map(chunk => ({ face: this.unicode, text: chunk }));
+      runs = visualRuns(text, this.direction).map(chunk => ({ face: this.unicode, text: chunk }));
     }
     this.runsCache.set(text, runs);
     return runs;
@@ -198,10 +207,10 @@ function drawShaped(
  * visuel. Chaque segment est rendu dans son ordre logique (fontkit inverse
  * lui-même les glyphes d'un segment arabe) et les parenthèses sont miroitées.
  */
-export function visualRuns(text: string): string[] {
+export function visualRuns(text: string, direction: 'ltr' | 'rtl' = 'ltr'): string[] {
   bidi ??= bidiFactory();
   // Mise en page toujours gauche-à-droite (étiquettes françaises ou anglaises, texte aligné à gauche).
-  const result = bidi.getEmbeddingLevels(text, 'ltr');
+  const result = bidi.getEmbeddingLevels(text, direction);
   const levels = result.levels;
   const mirrored = bidi.getMirroredCharactersMap(text, levels);
   const visual = bidi.getReorderedIndices(text, result);

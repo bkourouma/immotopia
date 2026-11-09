@@ -3,9 +3,10 @@
  * côté service (prisma mocké) et validation Zod de la requête (400 si invalide).
  */
 const findMany = jest.fn();
+const count = jest.fn();
 
 jest.mock('../../src/utils/database', () => ({
-  prisma: { insuranceClaim: { findMany: (...a: unknown[]) => findMany(...a) } }
+  prisma: { insuranceClaim: { findMany: (...a: unknown[]) => findMany(...a), count: (...a: unknown[]) => count(...a) } }
 }));
 jest.mock('../../src/utils/property-tenant-guard', () => ({ getPropertyForTenant: jest.fn() }));
 jest.mock('../../src/services/audit-service', () => ({ logAuditEvent: jest.fn() }));
@@ -16,6 +17,7 @@ import { listClaimsQuerySchema } from '../../src/lib/patrimoine/insurance/schema
 describe('listClaims : where', () => {
   beforeEach(() => {
     findMany.mockReset().mockResolvedValue([]);
+    count.mockReset().mockResolvedValue(0);
   });
   const whereOf = () => findMany.mock.calls[0][0].where;
 
@@ -44,12 +46,13 @@ describe('listClaims : where', () => {
     });
   });
 
-  it('la recherche se combine avec le statut et reste plafonnée à 500', async () => {
-    await listClaims('T1', { search: 'nsia', status: 'DECLARED', limit: 9999 });
+  it('la recherche se combine avec le statut et pagine après filtrage', async () => {
+    await listClaims('T1', { search: 'nsia', status: 'DECLARED', page: 2, limit: 100 });
     expect(whereOf().tenantId).toBe('T1');
     expect(whereOf().status).toBe('DECLARED');
     expect(whereOf().OR).toHaveLength(5);
-    expect(findMany.mock.calls[0][0].take).toBe(500);
+    expect(findMany.mock.calls[0][0]).toMatchObject({ skip: 100, take: 100 });
+    expect(count).toHaveBeenCalledWith({ where: whereOf() });
   });
 });
 

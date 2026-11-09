@@ -1,33 +1,21 @@
 import React, { useState } from 'react';
 import { Alert, Button, Card, Descriptions, List, Pagination, Space, Tag, Typography } from 'antd';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { ListSearch, SkeletonList, StateBlock } from '../../components/primitives';
 import { t } from '../../i18n/t';
 import {
-  listMyMeetings,
+  listMyMeetingsPage,
   requestLiveAccess,
   type CoOwnerMeeting,
   type CoOwnerResolution
 } from '../../services/coowner-portal-service';
 import { majorityRuleLabel, meetingStatusLabel, meetingTypeLabel, ResolutionResultTag, voteLabel } from './labels';
 import { portalErrorMessage } from './portal-error';
-import { useLocalListSearch } from '../../utils/list-search';
+import { useListSearch } from '../../hooks/useListSearch';
 import type { SearchCriterion } from '../../utils/list-search';
 
 const { Title, Text, Paragraph } = Typography;
-
-// Champ libre : type d'assemblée, copropriété, lieu et ordre du jour. Constantes de module : filtrage mémoïsé.
-const TEXTE_RECHERCHE = [
-  (meeting: CoOwnerMeeting) => meetingTypeLabel(meeting.type),
-  (meeting: CoOwnerMeeting) => meeting.syndicate,
-  (meeting: CoOwnerMeeting) => meeting.location,
-  (meeting: CoOwnerMeeting) => meeting.agenda.map(item => item.title)
-];
-const ACCESSEURS = {
-  status: (meeting: CoOwnerMeeting) => meeting.status,
-  date: (meeting: CoOwnerMeeting) => meeting.scheduledAt
-};
 
 /**
  * Assemblées générales des copropriétés du copropriétaire : date, lieu,
@@ -163,46 +151,41 @@ function MeetingCard({ meeting }: { meeting: CoOwnerMeeting }) {
 }
 
 export default function CoOwnerMeetings() {
-  const {
-    data: meetings,
-    isPending,
-    error,
-    refetch
-  } = useQuery({
-    queryKey: ['coowner-portal', 'meetings'],
-    staleTime: 30_000,
-    queryFn: () => listMyMeetings()
-  });
-
   // Déclarés dans le corps : les libellés se retraduisent au changement de langue.
   const criteria: SearchCriterion[] = [
     {
       key: 'q',
       type: 'text',
       label: t('Rechercher'),
-      placeholder: t('Type, copropriété, lieu, ordre du jour…')
+      placeholder: t('Copropriété, lieu, ordre du jour…')
     },
     {
       key: 'status',
       type: 'multiSelect',
       label: t('Statut'),
       primary: true,
+      api: 'statuses',
       options: (['PLANNED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'] as const).map(status => ({
         value: status,
         label: meetingStatusLabel(status)
       }))
     },
-    { key: 'date', type: 'dateRange', label: t('Date'), primary: true }
+    { key: 'date', type: 'dateRange', label: t('Date'), primary: true, api: ['dateFrom', 'dateTo'] }
   ];
-  const local = useLocalListSearch<CoOwnerMeeting>(meetings, {
-    criteria,
-    text: TEXTE_RECHERCHE,
-    accessors: ACCESSEURS
+  const search = useListSearch({ criteria, apiNames: { sort: false } });
+  const { data, isPending, error, refetch } = useQuery({
+    queryKey: ['coowner-portal', 'meetings', search.apiParams],
+    staleTime: 30_000,
+    queryFn: () =>
+      listMyMeetingsPage({ ...search.apiParams, page: search.page, limit: Math.min(search.pageSize, 100) }),
+    placeholderData: keepPreviousData
   });
+  const meetings = data?.items ?? [];
+  const total = data?.pagination.total ?? 0;
 
   if (isPending) return <SkeletonList rows={3} />;
 
-  if (error || !meetings) {
+  if (error) {
     return (
       <StateBlock
         variant="error"
@@ -218,27 +201,27 @@ export default function CoOwnerMeetings() {
         <Title level={2}>{t('Assemblées générales')}</Title>
         <Text type="secondary">{t('Convocations, ordre du jour et résultats des votes de vos copropriétés.')}</Text>
       </div>
-      {meetings.length === 0 ? (
+      {total === 0 && !search.isFiltered ? (
         <StateBlock variant="empty" description={t("Aucune assemblée générale n'est programmée.")} />
       ) : (
         <>
-          <ListSearch {...local.searchProps} />
-          {local.total === 0 ? (
+          <ListSearch {...search.searchProps} resultCount={total} />
+          {total === 0 ? (
             <StateBlock
               variant="no-results"
               description={t('Aucun élément ne correspond aux filtres appliqués.')}
-              actions={[{ label: t('Effacer les critères'), onClick: local.clear, primary: true }]}
+              actions={[{ label: t('Effacer les critères'), onClick: search.clear, primary: true }]}
             />
           ) : (
-            local.pageItems.map(meeting => <MeetingCard key={meeting.id} meeting={meeting} />)
+            meetings.map(meeting => <MeetingCard key={meeting.id} meeting={meeting} />)
           )}
-          {local.total > local.pageSize ? (
+          {total > search.pageSize ? (
             <Pagination
-              current={local.page}
-              pageSize={local.pageSize}
-              total={local.total}
+              current={search.page}
+              pageSize={search.pageSize}
+              total={total}
               showSizeChanger={false}
-              onChange={(nextPage, nextSize) => local.dataViewProps.onPageChange(nextPage, nextSize)}
+              onChange={(nextPage, nextSize) => search.dataViewProps.onPageChange(nextPage, nextSize)}
               style={{ alignSelf: 'center' }}
             />
           ) : null}

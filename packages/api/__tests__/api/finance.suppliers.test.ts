@@ -65,6 +65,8 @@ jest.mock('../../src/lib/finance/accounting', () => ({
 }));
 
 const supplierFindMany = jest.fn();
+const supplierCount = jest.fn();
+const queryRaw = jest.fn();
 const supplierFindFirst = jest.fn();
 const supplierInvoiceFindMany = jest.fn();
 // La liste des factures resout le NOM des chantiers vises, en une requete pour
@@ -104,6 +106,7 @@ function fakePrismaClient() {
   return {
     supplier: {
       findMany: (...args: any[]) => supplierFindMany(...args),
+      count: (...args: any[]) => supplierCount(...args),
       findFirst: (...args: any[]) => supplierFindFirst(...args)
     },
     supplierInvoice: {
@@ -145,6 +148,7 @@ function fakePrismaClient() {
 jest.mock('../../src/utils/database', () => ({
   prisma: {
     $transaction: (callback: any) => callback(fakePrismaClient()),
+    $queryRaw: (...args: any[]) => queryRaw(...args),
     ...fakePrismaClient()
   }
 }));
@@ -251,6 +255,7 @@ function paymentRecord(overrides: Partial<Record<string, unknown>> = {}) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  supplierCount.mockResolvedValue(0);
   // Par defaut, aucun chantier a nommer : chaque cas qui en attend un le dit
   // lui-meme. `clearAllMocks` remet la doublure a `undefined`, ce qui ferait
   // echouer le `.map` du gestionnaire.
@@ -269,6 +274,7 @@ beforeEach(() => {
 describe('GET /tenants/:tenantId/finance/suppliers', () => {
   it('liste les fournisseurs du tenant demandé (cas nominal)', async () => {
     supplierFindMany.mockResolvedValue([supplierRow()]);
+    supplierCount.mockResolvedValue(1);
 
     const response = await request(app).get(`/api/tenants/${TENANT_A}/finance/suppliers`);
 
@@ -279,6 +285,38 @@ describe('GET /tenants/:tenantId/finance/suppliers', () => {
     expect(supplierFindMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ tenantId: TENANT_A }) })
     );
+    expect(response.body.pagination).toEqual({ page: 1, limit: 20, total: 1, totalPages: 1 });
+  });
+
+  it('pagine la recherche littérale dans le tenant', async () => {
+    supplierFindMany.mockResolvedValue([supplierRow()]);
+    queryRaw.mockResolvedValueOnce([{ total: BigInt(53) }]).mockResolvedValueOnce([{ id: SUPPLIER_A }]);
+    const res = await request(app).get(
+      `/api/tenants/${TENANT_A}/finance/suppliers?search=100%25&kind=MATERIALS&page=2&limit=20`
+    );
+    expect(res.status).toBe(200);
+    expect(supplierFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ tenantId: TENANT_A, kind: { in: ['MATERIALS'] }, id: { in: [SUPPLIER_A] } })
+      })
+    );
+    expect(queryRaw).toHaveBeenCalledTimes(2);
+    const sql = queryRaw.mock.calls.map(([query]) => String(query.sql)).join(' ');
+    expect(sql).toContain('tenant_id');
+    expect(sql).toContain('normalize');
+    expect(queryRaw.mock.calls.flatMap(([query]) => query.values)).toContain('%100\\%%');
+    expect(res.body.pagination.totalPages).toBe(3);
+  });
+
+  it('cherche aussi la nature affichée, même sans accent', async () => {
+    queryRaw.mockResolvedValueOnce([{ total: BigInt(0) }]).mockResolvedValueOnce([]);
+    const res = await request(app).get(`/api/tenants/${TENANT_A}/finance/suppliers?search=materiaux`);
+    expect(res.status).toBe(200);
+    expect(supplierFindMany).not.toHaveBeenCalled();
+    const values = queryRaw.mock.calls.flatMap(([query]) => query.values);
+    expect(values).toContain('MATERIALS');
+    expect(values).toContain('MIXED');
+    expect(res.body.pagination.total).toBe(0);
   });
 });
 

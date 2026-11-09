@@ -333,6 +333,64 @@ describe('ListSearch — puces, effacement et compteur', () => {
 });
 
 describe('ListSearch — select distant', () => {
+  it('charge la page suivante au défilement et repart à la première page après une recherche', async () => {
+    const user = userEvent.setup();
+    const loadOptionsPage = vi.fn(async (term: string, page: number) => {
+      if (term) return { items: [{ value: 'match', label: 'Résultat distant' }], total: 1 };
+      return page === 1
+        ? { items: [{ value: 'p1', label: 'Premier fournisseur' }], total: 2 }
+        : { items: [{ value: 'p2', label: 'Second fournisseur' }], total: 2 };
+    });
+    setup({ criteria: [{ key: 'supplier', type: 'select', label: 'Fournisseur', primary: true, loadOptionsPage }] });
+    const combo = screen.getByRole('combobox', { name: 'Fournisseur' });
+    await user.click(combo);
+    await waitFor(() => expect(loadOptionsPage).toHaveBeenCalledWith('', 1));
+    expect(
+      await screen.findByText('Premier fournisseur', { selector: '.ant-select-item-option-content' })
+    ).toBeInTheDocument();
+    const holder = document.querySelector('.ant-select-dropdown [class$="-holder"]') as HTMLElement;
+    expect(holder).not.toBeNull();
+    fireEvent.scroll(holder);
+    await waitFor(() => expect(loadOptionsPage).toHaveBeenCalledWith('', 2));
+    expect(
+      await screen.findByText('Second fournisseur', { selector: '.ant-select-item-option-content' })
+    ).toBeInTheDocument();
+
+    await user.type(combo, 'dist');
+    await waitFor(() => expect(loadOptionsPage).toHaveBeenCalledWith('dist', 1), { timeout: 2000 });
+    expect(
+      await screen.findByText('Résultat distant', { selector: '.ant-select-item-option-content' })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('Second fournisseur', { selector: '.ant-select-item-option-content' })
+    ).not.toBeInTheDocument();
+  });
+
+  it('ignore une ancienne réponse arrivée après le nouveau terme', async () => {
+    const user = userEvent.setup();
+    let finishOld: ((result: { items: { value: string; label: string }[]; total: number }) => void) | undefined;
+    const loadOptionsPage = vi.fn((term: string) =>
+      term === ''
+        ? new Promise<{ items: { value: string; label: string }[]; total: number }>(resolve => {
+            finishOld = resolve;
+          })
+        : Promise.resolve({ items: [{ value: 'new', label: 'Résultat récent' }], total: 1 })
+    );
+    setup({ criteria: [{ key: 'supplier', type: 'select', label: 'Fournisseur', primary: true, loadOptionsPage }] });
+    const combo = screen.getByRole('combobox', { name: 'Fournisseur' });
+    await user.click(combo);
+    await waitFor(() => expect(loadOptionsPage).toHaveBeenCalledWith('', 1));
+    await user.type(combo, 'récent');
+    await waitFor(() => expect(loadOptionsPage).toHaveBeenCalledWith('récent', 1), { timeout: 2000 });
+    expect(
+      await screen.findByText('Résultat récent', { selector: '.ant-select-item-option-content' })
+    ).toBeInTheDocument();
+    await act(async () => finishOld?.({ items: [{ value: 'old', label: 'Résultat ancien' }], total: 1 }));
+    expect(
+      screen.queryByText('Résultat ancien', { selector: '.ant-select-item-option-content' })
+    ).not.toBeInTheDocument();
+  });
+
   it("charge les options à l'ouverture, retrouve le libellé de la valeur de l'URL et le garde dans la puce", async () => {
     const user = userEvent.setup();
     const loadOptions = vi.fn(async (search: string) =>

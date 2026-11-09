@@ -36,6 +36,7 @@
  */
 
 import { PDFDocument, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
+import { currentLanguage, t } from '../../i18n';
 
 import { ErrorCode, NotFoundError } from '../../middleware/error-middleware';
 import { prisma } from '../../utils/database';
@@ -47,6 +48,7 @@ import {
   type DocumentBranding
 } from '../documents/document-branding';
 import { sanitizeForPdf } from '../documents/pdf-text';
+import { arabicFaces, drawArabicFooters, drawArabicText } from '../documents/pdf-arabic';
 import { roundMoneyXof, roundQuantity } from './money';
 import { formatSlipNumber } from './stock-bons';
 import { buildStockMeta, entryLagDays, loadBlindLocationIds, maskMovementView, stockError } from './stock-controles';
@@ -82,7 +84,9 @@ export function formatPdfDate(date: Date): string {
 
 /** `04/10/2026 à 14:05` — heure serveur, UTC. */
 export function formatPdfDateTime(date: Date): string {
-  return `${formatPdfDate(date)} à ${pad2(date.getUTCHours())}:${pad2(date.getUTCMinutes())}`;
+  return currentLanguage() === 'ar'
+    ? `${formatPdfDate(date)} ${pad2(date.getUTCHours())}:${pad2(date.getUTCMinutes())}`
+    : `${formatPdfDate(date)} à ${pad2(date.getUTCHours())}:${pad2(date.getUTCMinutes())}`;
 }
 
 /** Quantité : jusqu'à 4 décimales, virgule décimale, groupes de trois chiffres. */
@@ -156,16 +160,18 @@ export interface StockPdfModel {
 }
 
 function reprintMention(printedAt: Date): string {
-  return `Exemplaire réimprimé le ${formatPdfDateTime(printedAt)}`;
+  return t('Exemplaire réimprimé le {{date}}', { date: formatPdfDateTime(printedAt) });
 }
 
 /** Empreintes des bons papier signés joints (B5-R4) : imprimées sur le bon. */
 function signedSlipNotices(attachments: AttachmentView[]): string[] {
   return attachments
     .filter(attachment => attachment.purpose === 'SIGNED_SLIP' && !attachment.removed)
-    .map(
-      attachment =>
-        `Bon signé joint le ${formatPdfDateTime(attachment.createdAt)} - empreinte SHA-256 : ${attachment.sha256}`
+    .map(attachment =>
+      t('Bon signé joint le {{date}} - empreinte SHA-256 : {{hash}}', {
+        date: formatPdfDateTime(attachment.createdAt),
+        hash: attachment.sha256
+      })
     );
 }
 
@@ -242,34 +248,34 @@ export function buildSlipPdfModel(input: SlipPdfInput): StockPdfModel {
   const currency = movements[0]?.currency ?? DEFAULT_CURRENCY;
 
   const info: StockPdfModel['info'] = [
-    { label: 'Date du document', value: formatPdfDate(slip.documentDate) },
-    { label: 'Enregistré le', value: formatPdfDateTime(slip.createdAt) },
-    { label: 'Lieu', value: snapshot.location || MASKED }
+    { label: t('Date du document'), value: formatPdfDate(slip.documentDate) },
+    { label: t('Enregistré le'), value: formatPdfDateTime(slip.createdAt) },
+    { label: t('Lieu'), value: snapshot.location || MASKED }
   ];
-  if (snapshot.site) info.push({ label: 'Chantier', value: snapshot.site });
+  if (snapshot.site) info.push({ label: t('Chantier'), value: snapshot.site });
   if (isReceipt) {
     if (snapshot.invoice) {
       info.push({
-        label: 'Facture',
+        label: t('Facture'),
         value: [snapshot.invoice.reference, snapshot.invoice.supplierName].filter(Boolean).join(' - ')
       });
     }
   } else if (snapshot.taker) {
-    info.push({ label: 'Preneur', value: snapshot.taker });
+    info.push({ label: t('Preneur'), value: snapshot.taker });
   } else if (snapshot.requestedBy) {
-    info.push({ label: 'Demandeur', value: snapshot.requestedBy });
+    info.push({ label: t('Demandeur'), value: snapshot.requestedBy });
   }
-  info.push({ label: 'Établi par', value: snapshot.author || MASKED });
+  info.push({ label: t('Établi par'), value: snapshot.author || MASKED });
 
   const columns: StockPdfColumn[] = [
-    { header: 'Référence', weight: 2 },
-    { header: 'Désignation', weight: 5 },
-    { header: 'Unité', weight: 1.4 },
-    { header: 'Quantité', weight: 1.6, align: 'right' }
+    { header: t('Référence'), weight: 2 },
+    { header: t('Désignation'), weight: 5 },
+    { header: t('Unité'), weight: 1.4 },
+    { header: t('Quantité'), weight: 1.6, align: 'right' }
   ];
   if (ctx.valuesVisible) {
-    columns.push({ header: 'Prix unitaire', weight: 2, align: 'right' });
-    columns.push({ header: 'Valeur', weight: 2.2, align: 'right' });
+    columns.push({ header: t('Prix unitaire'), weight: 2, align: 'right' });
+    columns.push({ header: t('Valeur'), weight: 2.2, align: 'right' });
   }
 
   const rows: StockPdfRow[] = movements.map(movement => {
@@ -289,18 +295,20 @@ export function buildSlipPdfModel(input: SlipPdfInput): StockPdfModel {
   const totals: StockPdfModel['totals'] = [];
   if (ctx.valuesVisible && movements.length > 0 && movements.every(movement => movement.totalValue !== null)) {
     const total = movements.reduce((sum, movement) => sum + (movement.totalValue ?? 0), 0);
-    totals.push({ label: 'Valeur totale', value: formatPdfMoney(total, currency) });
+    totals.push({ label: t('Valeur totale'), value: formatPdfMoney(total, currency) });
   }
 
   return {
     fileName: `${slip.number}.pdf`,
-    title: isReceipt ? 'Bon de réception' : 'Bon de sortie',
+    title: isReceipt ? t('Bon de réception') : t('Bon de sortie'),
     number: slip.number,
     info,
     notices: signedSlipNotices(input.attachments),
-    sections: [{ title: 'Articles', columns, rows, emptyText: 'Aucun article.' }],
+    sections: [{ title: t('Articles'), columns, rows, emptyText: t('Aucun article.') }],
     totals,
-    signatures: isReceipt ? ['Livré par', 'Reçu par (magasinier)'] : ['Remis par (magasinier)', 'Reçu par (preneur)'],
+    signatures: isReceipt
+      ? [t('Livré par'), t('Reçu par (magasinier)')]
+      : [t('Remis par (magasinier)'), t('Reçu par (preneur)')],
     reprintMention: reprintMention(input.printedAt)
   };
 }
@@ -351,12 +359,6 @@ export interface CountReportPdfInput {
   printedAt: Date;
 }
 
-const COUNT_KIND_LABEL: Record<StockCountKind, string> = {
-  REGULAR: 'Inventaire courant',
-  OPENING: "Inventaire d'ouverture",
-  CLOSING: 'Inventaire de clôture'
-};
-
 /**
  * Libellés imprimés des motifs : ceux de la spec §4, qui sont aussi ceux de
  * l'écran (`STOCK_REASON_LABELS` côté web). Le PDF est en français. Seules
@@ -377,50 +379,83 @@ export const STOCK_REASON_PDF_LABELS: Record<string, string> = {
   OTHER: 'Autre'
 };
 
+function stockReasonPdfLabel(code: string): string {
+  switch (code) {
+    case 'BREAKAGE':
+      return t('Casse');
+    case 'DETERIORATION':
+      return t('Détérioration (humidité, péremption)');
+    case 'COUNTING_ERROR':
+      return t('Erreur du comptage précédent');
+    case 'ENTRY_ERROR':
+      return t("Erreur de saisie d'un mouvement");
+    case 'UNIT_CONFUSION':
+      return t("Confusion d'unité");
+    case 'UNRECORDED_ISSUE':
+      return t('Sortie non enregistrée');
+    case 'UNRECORDED_RECEIPT':
+      return t('Réception non enregistrée');
+    case 'UNEXPLAINED_DISAPPEARANCE':
+      return t('Disparition non expliquée');
+    case 'OPENING_BALANCE':
+      return t("Stock d'ouverture");
+    case 'OTHER':
+      return t('Autre');
+    default:
+      return code;
+  }
+}
+
 export const PRE_NUMBERING_COUNT_REPORT_TITLE = "Procès-verbal d'inventaire (antérieur à la numérotation)";
 
 /** Modèle d'un procès-verbal d'inventaire (B4-R2, B4-R3 bis). */
 export function buildCountReportPdfModel(input: CountReportPdfInput): StockPdfModel {
   const { ctx } = input;
   const currency = DEFAULT_CURRENCY;
+  const kindLabel =
+    input.kind === 'OPENING'
+      ? t("Inventaire d'ouverture")
+      : input.kind === 'CLOSING'
+        ? t('Inventaire de clôture')
+        : t('Inventaire courant');
 
   const info: StockPdfModel['info'] = [
-    { label: 'Nature', value: COUNT_KIND_LABEL[input.kind] ?? COUNT_KIND_LABEL.REGULAR },
-    { label: 'Date du comptage', value: formatPdfDate(input.countedAt) },
-    { label: 'Validé le', value: input.validatedAt ? formatPdfDateTime(input.validatedAt) : MASKED },
-    { label: 'Lieu', value: input.location || MASKED }
+    { label: t('Nature'), value: kindLabel },
+    { label: t('Date du comptage'), value: formatPdfDate(input.countedAt) },
+    { label: t('Validé le'), value: input.validatedAt ? formatPdfDateTime(input.validatedAt) : MASKED },
+    { label: t('Lieu'), value: input.location || MASKED }
   ];
-  if (input.site) info.push({ label: 'Chantier', value: input.site });
-  info.push({ label: 'Compté par', value: input.counters.length > 0 ? input.counters.join(', ') : MASKED });
-  info.push({ label: 'Validé par', value: input.validator || MASKED });
+  if (input.site) info.push({ label: t('Chantier'), value: input.site });
+  info.push({ label: t('Compté par'), value: input.counters.length > 0 ? input.counters.join(', ') : MASKED });
+  info.push({ label: t('Validé par'), value: input.validator || MASKED });
 
   const notices: string[] = [];
   if (input.selfValidated) {
     notices.push(
-      `Validé par une personne qui a aussi compté (dérogation)${
-        input.selfValidationReason ? ` - motif : ${input.selfValidationReason}` : ''
-      }.`
+      t('Validé par une personne qui a aussi compté (dérogation){{reason}}.', {
+        reason: input.selfValidationReason ? t(' - motif : {{reason}}', { reason: input.selfValidationReason }) : ''
+      })
     );
   }
   notices.push(...signedSlipNotices(input.attachments));
 
   const baseColumns: StockPdfColumn[] = [
-    { header: 'Référence', weight: 1.8 },
-    { header: 'Désignation', weight: 3.6 },
-    { header: 'Unité', weight: 1.1 },
-    { header: 'Attendu', weight: 1.4, align: 'right' },
-    { header: 'Compté', weight: 1.4, align: 'right' },
-    { header: 'Écart', weight: 1.3, align: 'right' }
+    { header: t('Référence'), weight: 1.8 },
+    { header: t('Désignation'), weight: 3.6 },
+    { header: t('Unité'), weight: 1.1 },
+    { header: t('Attendu'), weight: 1.4, align: 'right' },
+    { header: t('Compté'), weight: 1.4, align: 'right' },
+    { header: t('Écart'), weight: 1.3, align: 'right' }
   ];
   const valueColumns: StockPdfColumn[] = ctx.valuesVisible
     ? [
-        { header: 'Coût unitaire', weight: 1.8, align: 'right' },
-        { header: 'Écart valorisé', weight: 2, align: 'right' }
+        { header: t('Coût unitaire'), weight: 1.8, align: 'right' },
+        { header: t('Écart valorisé'), weight: 2, align: 'right' }
       ]
     : [];
-  const movementsColumn: StockPdfColumn = { header: 'Mvts après', weight: 1.3, align: 'right' };
+  const movementsColumn: StockPdfColumn = { header: t('Mvts après'), weight: 1.3, align: 'right' };
 
-  const blindNote = 'Comptée par une personne qui voyait le stock.';
+  const blindNote = t('Comptée par une personne qui voyait le stock.');
 
   const lineCells = (line: CountReportLineInput, withCounted: boolean): string[] => {
     const variance = line.countedQuantity === null ? null : line.countedQuantity - line.expectedQuantity;
@@ -440,7 +475,7 @@ export function buildCountReportPdfModel(input: CountReportPdfInput): StockPdfMo
       cells.push(unitCost === null ? MASKED : formatPdfUnitCost(unitCost, currency));
       cells.push(variance === null || unitCost === null ? MASKED : formatPdfMoney(variance * unitCost, currency));
     }
-    cells.push(line.movementsSinceCapture === null ? 'non mesuré' : String(line.movementsSinceCapture));
+    cells.push(line.movementsSinceCapture === null ? t('non mesuré') : String(line.movementsSinceCapture));
     return cells;
   };
 
@@ -458,28 +493,28 @@ export function buildCountReportPdfModel(input: CountReportPdfInput): StockPdfMo
 
   const sections: StockPdfSection[] = [
     {
-      title: 'Lignes comptées',
+      title: t('Lignes comptées'),
       columns,
       rows: adjusted.map(line => ({ cells: lineCells(line, true), note: noteOf(line, null) })),
-      emptyText: 'Aucune ligne comptée.'
+      emptyText: t('Aucune ligne comptée.')
     },
     {
-      title: 'Lignes écartées (non ajustées, à recompter)',
+      title: t('Lignes écartées (non ajustées, à recompter)'),
       columns,
       rows: setAside.map(line => ({
         cells: lineCells(line, true),
-        note: noteOf(line, line.setAsideReason ? `Écartée : ${line.setAsideReason}` : null)
+        note: noteOf(line, line.setAsideReason ? t('Écartée : {{reason}}', { reason: line.setAsideReason }) : null)
       })),
-      emptyText: 'Aucune ligne écartée.'
+      emptyText: t('Aucune ligne écartée.')
     },
     {
-      title: 'Non comptés (écartés, à recompter)',
+      title: t('Non comptés (écartés, à recompter)'),
       columns,
       rows: uncounted.map(line => ({
         cells: lineCells(line, false),
-        note: noteOf(line, line.setAsideReason ? `Écartée : ${line.setAsideReason}` : null)
+        note: noteOf(line, line.setAsideReason ? t('Écartée : {{reason}}', { reason: line.setAsideReason }) : null)
       })),
-      emptyText: 'Aucun article non compté.'
+      emptyText: t('Aucun article non compté.')
     }
   ];
 
@@ -488,22 +523,24 @@ export function buildCountReportPdfModel(input: CountReportPdfInput): StockPdfMo
     const add = (label: string, value: number | null) => {
       if (value !== null) totals.push({ label, value: formatPdfMoney(value, currency) });
     };
-    add('Valeur comptée', input.values.countedValue);
-    add('Écart brut (somme des écarts en valeur absolue)', input.values.varianceValueGross);
-    add('Écart net', input.values.varianceValueNet);
-    add('Écart des lignes écartées', input.values.setAsideVarianceValue);
+    add(t('Valeur comptée'), input.values.countedValue);
+    add(t('Écart brut (somme des écarts en valeur absolue)'), input.values.varianceValueGross);
+    add(t('Écart net'), input.values.varianceValueNet);
+    add(t('Écart des lignes écartées'), input.values.setAsideVarianceValue);
   }
 
   const dateForName = formatPdfDate(input.countedAt).split('/').reverse().join('-');
   return {
     fileName: input.number ? `${input.number}.pdf` : `PV-inventaire-${dateForName}.pdf`,
-    title: input.number ? "Procès-verbal d'inventaire" : PRE_NUMBERING_COUNT_REPORT_TITLE,
+    title: input.number
+      ? t("Procès-verbal d'inventaire")
+      : t("Procès-verbal d'inventaire (antérieur à la numérotation)"),
     number: input.number,
     info,
     notices,
     sections,
     totals,
-    signatures: ['Compté par', 'Validé par'],
+    signatures: [t('Compté par'), t('Validé par')],
     reprintMention: reprintMention(input.printedAt)
   };
 }
@@ -538,12 +575,187 @@ function wrapText(text: string, font: PDFFont, size: number, maxWidth: number): 
   return lines.map(line => truncate(line, font, size, maxWidth));
 }
 
+/** Même modèle figé, rendu Unicode RTL sans conversion WinAnsi. */
+async function renderArabicStockPdf(model: StockPdfModel, branding: DocumentBranding): Promise<Buffer> {
+  const pdfDoc = await PDFDocument.create();
+  pdfDoc.setLanguage('ar');
+  pdfDoc.setTitle(model.number ? `${model.title} ${model.number}` : model.title);
+  const faces = await arabicFaces(pdfDoc);
+  const width = PAGE_WIDTH - 2 * MARGIN;
+  const right = PAGE_WIDTH - MARGIN;
+  let page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+  let y = await drawDocumentHeader(pdfDoc, page, branding, { title: model.title });
+  const newPage = () => {
+    page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+    y = PAGE_HEIGHT - MARGIN;
+    drawArabicText(page, faces.bold, model.number ? `${model.title} - ${model.number}` : model.title, {
+      x: right,
+      y,
+      size: 10,
+      maxWidth: width
+    });
+    y -= 22;
+  };
+  const ensure = (height: number) => {
+    if (y - height < MARGIN + FOOTER_SPACE) newPage();
+  };
+  const linesOf = (value: string, size: number, maxWidth: number): string[] => {
+    const lines: string[] = [];
+    let line = '';
+    for (const word of value.split(/\s+/).filter(Boolean)) {
+      const next = line ? `${line} ${word}` : word;
+      if (line && faces.regular.width(next, size) > maxWidth) {
+        lines.push(line);
+        line = word;
+      } else line = next;
+    }
+    if (line) lines.push(line);
+    return lines;
+  };
+  if (model.number) {
+    drawArabicText(page, faces.bold, model.number, { x: right, y, size: 14, maxWidth: width });
+    y -= 24;
+  }
+  for (const entry of model.info) {
+    ensure(ROW_HEIGHT);
+    drawArabicText(page, faces.bold, `${entry.label} :`, { x: right, y, size: 9, maxWidth: 130 });
+    drawArabicText(page, faces.regular, entry.value, {
+      x: right - 140,
+      y,
+      size: 9,
+      maxWidth: width - 140,
+      ...(/^\d[\d\s/:.,-]*$/.test(entry.value) ? { align: 'start' as const } : {})
+    });
+    y -= ROW_HEIGHT;
+  }
+  for (const notice of model.notices) {
+    const lines = linesOf(notice, 8.5, width - 12);
+    const height = lines.length * 11 + 6;
+    ensure(height + 10);
+    y -= 4;
+    page.drawRectangle({ x: MARGIN, y: y + 10 - height, width, height, borderColor: RULE, borderWidth: 0.6 });
+    for (const line of lines) {
+      drawArabicText(page, faces.regular, line, { x: right - 6, y, size: 8.5, maxWidth: width - 12 });
+      y -= 11;
+    }
+    y -= 8;
+  }
+  for (const section of model.sections) {
+    y -= 8;
+    ensure(ROW_HEIGHT * 3);
+    drawArabicText(page, faces.bold, section.title, { x: right, y, size: 10.5, maxWidth: width });
+    y -= ROW_HEIGHT + 2;
+    const totalWeight = section.columns.reduce((sum, column) => sum + column.weight, 0) || 1;
+    const widths = section.columns.map(column => (column.weight / totalWeight) * width);
+    const drawCells = (cells: string[], size: number, bold: boolean) => {
+      let edge = right;
+      section.columns.forEach((column, index) => {
+        const cellWidth = widths[index];
+        const value = cells[index] ?? '';
+        drawArabicText(page, bold ? faces.bold : faces.regular, value, {
+          x: column.align === 'right' ? edge - cellWidth + 2 : edge - 2,
+          y,
+          size,
+          maxWidth: cellWidth - 4,
+          ...(column.align === 'right' ? { align: 'start' as const } : {})
+        });
+        edge -= cellWidth;
+      });
+    };
+    const drawHeaderRow = () => {
+      drawCells(
+        section.columns.map(column => column.header),
+        8,
+        true
+      );
+      y -= 4;
+      page.drawLine({ start: { x: MARGIN, y }, end: { x: right, y }, thickness: 0.5, color: RULE });
+      y -= ROW_HEIGHT - 4;
+    };
+    drawHeaderRow();
+    if (!section.rows.length) {
+      drawArabicText(page, faces.regular, section.emptyText, {
+        x: right - 2,
+        y,
+        size: 8.5,
+        maxWidth: width - 4,
+        color: GREY
+      });
+      y -= ROW_HEIGHT;
+      continue;
+    }
+    for (const row of section.rows) {
+      const notes = row.note ? linesOf(row.note, 7, width - 20) : [];
+      if (y - ROW_HEIGHT - notes.length * 9 < MARGIN + FOOTER_SPACE) {
+        newPage();
+        drawHeaderRow();
+      }
+      drawCells(row.cells, 8, false);
+      y -= ROW_HEIGHT;
+      for (const line of notes) {
+        drawArabicText(page, faces.regular, line, {
+          x: right - 14,
+          y: y + 3,
+          size: 7,
+          maxWidth: width - 20,
+          color: GREY
+        });
+        y -= 9;
+      }
+    }
+  }
+  if (model.totals.length) {
+    y -= 6;
+    ensure(model.totals.length * ROW_HEIGHT + 10);
+    for (const total of model.totals) {
+      drawArabicText(page, faces.bold, `${total.label} :`, { x: right, y, size: 9, maxWidth: width - 140 });
+      drawArabicText(page, faces.regular, total.value, { x: MARGIN, y, size: 9, maxWidth: 130, align: 'start' });
+      y -= ROW_HEIGHT;
+    }
+  }
+  const boxHeight = 80;
+  y -= 14;
+  ensure(boxHeight + 20);
+  const boxWidth = (width - 20) / 2;
+  model.signatures.forEach((label, index) => {
+    const x = index === 0 ? right - boxWidth : MARGIN;
+    drawArabicText(page, faces.bold, label, { x: x + boxWidth, y, size: 9, maxWidth: boxWidth });
+    page.drawRectangle({
+      x,
+      y: y - boxHeight - 6,
+      width: boxWidth,
+      height: boxHeight,
+      borderColor: RULE,
+      borderWidth: 0.6
+    });
+    drawArabicText(page, faces.regular, t('Nom, date et signature'), {
+      x: x + boxWidth - 4,
+      y: y - boxHeight,
+      size: 7,
+      maxWidth: boxWidth - 8,
+      color: GREY
+    });
+  });
+  pdfDoc.getPages().forEach(current =>
+    drawArabicText(current, faces.regular, model.reprintMention, {
+      x: right,
+      y: MARGIN + 9,
+      size: 7.5,
+      maxWidth: width,
+      color: GREY
+    })
+  );
+  drawArabicFooters(pdfDoc, faces, branding.issuer.name);
+  return Buffer.from(await pdfDoc.save());
+}
+
 /**
  * Dessine le modèle : en-tête de l'agence sur la première page, en-tête court
  * sur les suivantes, tableaux paginés, totaux, zones de signature, puis la
  * mention de réimpression et le numéro de page au pied de chaque page.
  */
 export async function renderStockPdf(model: StockPdfModel, branding: DocumentBranding): Promise<Buffer> {
+  if (currentLanguage() === 'ar') return renderArabicStockPdf(model, branding);
   const pdfDoc = await PDFDocument.create();
   pdfDoc.setTitle(sanitizeForPdf(model.number ? `${model.title} ${model.number}` : model.title));
   pdfDoc.setLanguage('fr-FR');
@@ -769,8 +981,8 @@ function toMovementView(row: any): MovementView {
     id: row.id,
     type: row.type,
     itemId: row.itemId,
-    itemReference: row.item?.reference ?? 'Article inconnu',
-    itemLabel: row.item?.label ?? 'Article inconnu',
+    itemReference: row.item?.reference ?? t('Article inconnu'),
+    itemLabel: row.item?.label ?? t('Article inconnu'),
     itemUnit: row.item?.unit ?? '',
     locationId: row.locationId,
     locationLabel: row.location?.label ?? 'Lieu inconnu',
@@ -1037,15 +1249,17 @@ export async function buildStockCountReportPdf(
 
   const reportLines: CountReportLineInput[] = lines.map(line => {
     const current = {
-      reference: line.item?.reference ?? 'Article inconnu',
-      label: line.item?.label ?? 'Article inconnu',
+      reference: line.item?.reference ?? t('Article inconnu'),
+      label: line.item?.label ?? t('Article inconnu'),
       unit: line.item?.unit ?? ''
     };
     const frozen = snapshot ? frozenLine(snapshot, null, line.itemId, current) : current;
     const reasonLabel = line.reasonCode
-      ? `Motif : ${STOCK_REASON_PDF_LABELS[line.reasonCode] ?? line.reasonCode}${line.reason ? ` (${line.reason})` : ''}.`
+      ? t('Motif : {{reason}}.', {
+          reason: `${stockReasonPdfLabel(line.reasonCode)}${line.reason ? ` (${line.reason})` : ''}`
+        })
       : line.reason
-        ? `Motif : ${line.reason}.`
+        ? t('Motif : {{reason}}.', { reason: line.reason })
         : null;
     return {
       itemId: line.itemId,

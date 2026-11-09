@@ -60,7 +60,19 @@ vi.mock('../../services/coowner-portal-service', async () => {
     fetchCoOwnerIssuerLogo: (...a: unknown[]) => fetchCoOwnerIssuerLogo(...a),
     downloadCoOwnerChargeCallNotice: (...a: unknown[]) => downloadCoOwnerChargeCallNotice(...a),
     getMyLotAccount: (...a: unknown[]) => getMyLotAccount(...a),
-    listMyChargeCalls: (...a: unknown[]) => listMyChargeCalls(...a)
+    listMyChargeCalls: (...a: unknown[]) => listMyChargeCalls(...a),
+    listMyChargeCallsPage: async (params: { page: number; limit: number }) => {
+      const all = await listMyChargeCalls();
+      return {
+        items: all.slice((params.page - 1) * params.limit, params.page * params.limit),
+        pagination: {
+          page: params.page,
+          limit: params.limit,
+          total: all.length,
+          totalPages: Math.ceil(all.length / params.limit)
+        }
+      };
+    }
   };
 });
 
@@ -181,7 +193,26 @@ describe('Mes paiements', () => {
     await waitFor(() =>
       expect(downloadCoOwnerReceiptFile).toHaveBeenCalledWith(
         '/portal/copropriete/quittances/doc-1/fichier',
-        expect.any(String)
+        expect.any(String),
+        undefined
+      )
+    );
+  });
+
+  it('télécharge séparément la traduction arabe du document lié à un paiement', async () => {
+    listMyLots.mockResolvedValue([lot()]);
+    listMyPayments.mockResolvedValue(payments);
+    downloadCoOwnerReceiptFile.mockResolvedValue({ blob: new Blob(['x']), filename: 'Traduction arabe - REC-001.pdf' });
+
+    mount('/copropriete/paiements', <CoOwnerPayments />);
+    await userEvent.click(await screen.findByRole('button', { name: /Détail/ }, WAIT));
+    await userEvent.click(await screen.findByRole('button', { name: 'Traduction arabe' }, WAIT));
+
+    await waitFor(() =>
+      expect(downloadCoOwnerReceiptFile).toHaveBeenCalledWith(
+        '/portal/copropriete/quittances/doc-1/fichier',
+        expect.any(String),
+        'ar'
       )
     );
   });
@@ -288,7 +319,26 @@ describe('Mes quittances', () => {
     await waitFor(() =>
       expect(downloadCoOwnerReceiptFile).toHaveBeenCalledWith(
         '/portal/copropriete/quittances/rec-1/fichier',
-        expect.any(String)
+        expect.any(String),
+        undefined
+      )
+    );
+  });
+
+  it('télécharge séparément la traduction arabe d’une quittance', async () => {
+    listMyLots.mockResolvedValue([lot()]);
+    listMyReceipts.mockResolvedValue(receipts);
+    downloadCoOwnerReceiptFile.mockResolvedValue({ blob: new Blob(['x']), filename: 'Traduction arabe - QT-001.pdf' });
+
+    mount('/copropriete/quittances', <CoOwnerReceipts />);
+    expect(await screen.findByText('QT-001', {}, WAIT)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Traduction arabe' }));
+
+    await waitFor(() =>
+      expect(downloadCoOwnerReceiptFile).toHaveBeenCalledWith(
+        '/portal/copropriete/quittances/rec-1/fichier',
+        expect.any(String),
+        'ar'
       )
     );
   });

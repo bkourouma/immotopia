@@ -20,7 +20,7 @@ import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import {
-  listSuppliers,
+  getSupplier,
   listSupplierInvoices,
   getSupplierInvoice,
   createSupplierInvoice,
@@ -34,7 +34,7 @@ import {
   listCostCategories
 } from '../../services/finance-lot2-service';
 import { DOCUMENT_STATUS_LABELS, SUPPLIER_PAYMENT_METHODS } from '../../types/finance-lot2-types';
-import type { Supplier, SupplierInvoice, SupplierPayment, DocumentStatus } from '../../types/finance-lot2-types';
+import type { SupplierInvoice, SupplierPayment, DocumentStatus } from '../../types/finance-lot2-types';
 import { detailKey, queryKey, STALE_TIME } from '../../lib/query-keys';
 import {
   PageHeader,
@@ -53,6 +53,7 @@ import { useAgencyFeatures } from '../../hooks/useAgencyFeatures';
 import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { writeErrorMessage } from '../../utils/error-handler';
 import { TreasuryAccountSelector } from '../../components/finance/TreasuryAccountSelector';
+import { SupplierSelect } from '../../components/finance/SupplierSelect';
 import type { TreasuryPaymentMethod } from '../../components/finance/TreasuryAccountSelector';
 import { montantCalcule, montantVerrouille } from '../../utils/ligne-quantite-prix';
 import { montantSaisiProps } from '../../utils/montant-saisi';
@@ -242,10 +243,10 @@ export const FactureFournisseur: React.FC = () => {
     });
   };
 
-  const { data: fournisseurs } = useQuery({
-    queryKey: queryKey('suppliers', tenantId),
-    queryFn: () => listSuppliers(tenantId as string),
-    enabled: Boolean(tenantId),
+  const { data: fournisseur } = useQuery({
+    queryKey: detailKey('supplier', tenantId, supplierId ?? ''),
+    queryFn: () => getSupplier(tenantId as string, supplierId as string),
+    enabled: Boolean(tenantId) && Boolean(supplierId),
     staleTime: STALE_TIME.list
   });
 
@@ -262,11 +263,6 @@ export const FactureFournisseur: React.FC = () => {
     enabled: Boolean(tenantId),
     staleTime: STALE_TIME.reference
   });
-
-  const fournisseur = useMemo<Supplier | undefined>(
-    () => fournisseurs?.find(f => f.id === supplierId),
-    [fournisseurs, supplierId]
-  );
 
   const {
     data: factures,
@@ -1124,11 +1120,6 @@ export const FactureFournisseur: React.FC = () => {
     return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
   }
 
-  const optionsFournisseurs = (fournisseurs ?? [])
-    .filter(f => f.isActive)
-    .map(f => ({ value: f.id, label: f.name }))
-    .sort((a, b) => a.label.localeCompare(b.label));
-
   return (
     <>
       <PageHeader title={t('Factures fournisseurs')} subtitle={fournisseur ? fournisseur.name : undefined} />
@@ -1136,15 +1127,13 @@ export const FactureFournisseur: React.FC = () => {
       <Card style={{ marginBottom: 'var(--space-6)' }}>
         <div style={{ maxWidth: 420 }}>
           <label htmlFor="facture-fournisseur">{t('Fournisseur')}</label>
-          <Select
+          <SupplierSelect
             id="facture-fournisseur"
-            style={{ width: '100%' }}
+            tenantId={tenantId}
             placeholder={t('Choisir un fournisseur…')}
-            showSearch
-            optionFilterProp="label"
             value={supplierId || undefined}
             onChange={choisirFournisseur}
-            options={optionsFournisseurs}
+            selectedSupplier={fournisseur}
           />
         </div>
       </Card>

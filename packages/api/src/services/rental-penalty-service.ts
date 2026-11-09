@@ -3,7 +3,7 @@ import type { PrismaTransactionClient } from '../utils/database';
 import { logger } from '../utils/logger';
 import { logAuditEvent, recordAuditEvent } from './audit-service';
 import { diffForAudit } from '../lib/audit/changes';
-import { RentalPenaltyMode } from '@prisma/client';
+import { Prisma, RentalPenaltyMode } from '@prisma/client';
 import {
   compteLocataireTx,
   libellePeriodeEcheance,
@@ -18,6 +18,7 @@ import { t } from '../i18n';
 import { contentMatchesDeclaredType, detectDocumentKind, extensionForKind } from '../utils/file-signature';
 import { NotFoundError, BadRequestError } from '../middleware/error-middleware';
 import { corrigerNomFichier } from '../utils/multipart-filename';
+import { containsFoldedSql, searchWordsSql } from '../utils/sql-text-search';
 
 // ---------------------------------------------------------------------------
 // Pont vers le grand livre des comptes de tiers — lot 1, tâche 1.3
@@ -701,52 +702,118 @@ export async function getPenaltyById(tenantId: string, penaltyId: string) {
  */
 export async function listPenalties(
   tenantId: string,
-  filters?: {
+  filters: {
     leaseId?: string;
     installmentId?: string;
+    search?: string;
+    from?: string;
+    to?: string;
+    adjusted?: boolean;
+    hasJustification?: boolean;
+    minAmount?: number;
+    maxAmount?: number;
+    page: number;
+    limit: number;
   }
 ) {
-  const where: any = {
-    tenant_id: tenantId
+  const search = filters.search?.trim();
+  const where: Prisma.RentalPenaltyWhereInput = {
+    tenant_id: tenantId,
+    ...(filters.leaseId ? { installment: { lease_id: filters.leaseId } } : {}),
+    ...(filters.installmentId ? { installment_id: filters.installmentId } : {}),
+    ...(filters.from || filters.to
+      ? {
+          calculated_at: {
+            ...(filters.from ? { gte: new Date(`${filters.from}T00:00:00.000Z`) } : {}),
+            ...(filters.to ? { lte: new Date(`${filters.to}T23:59:59.999Z`) } : {})
+          }
+        }
+      : {}),
+    ...(filters.adjusted !== undefined ? { is_manual_override: filters.adjusted } : {}),
+    ...(filters.minAmount !== undefined || filters.maxAmount !== undefined
+      ? {
+          amount: {
+            ...(filters.minAmount !== undefined ? { gte: filters.minAmount } : {}),
+            ...(filters.maxAmount !== undefined ? { lte: filters.maxAmount } : {})
+          }
+        }
+      : {}),
+    ...(filters.hasJustification === true
+      ? { override_reason: { contains: '"justification":{' } }
+      : filters.hasJustification === false
+        ? { OR: [{ override_reason: null }, { NOT: { override_reason: { contains: '"justification":{' } } }] }
+        : {})
   };
-
-  if (filters?.leaseId) {
-    where.installment = {
-      lease_id: filters.leaseId
-    };
+  let pageIds: string[] | undefined;
+  let searchTotal: number | undefined;
+  if (search) {
+    const clauses = [Prisma.sql`p.tenant_id = ${tenantId}`];
+    if (filters.leaseId)
+      clauses.push(
+        Prisma.sql`EXISTS (SELECT 1 FROM rental_installments i WHERE i.id = p.installment_id AND i.tenant_id = ${tenantId} AND i.lease_id = ${filters.leaseId}::uuid)`
+      );
+    if (filters.installmentId) clauses.push(Prisma.sql`p.installment_id = ${filters.installmentId}::uuid`);
+    if (filters.from) clauses.push(Prisma.sql`p.calculated_at >= ${new Date(`${filters.from}T00:00:00.000Z`)}`);
+    if (filters.to) clauses.push(Prisma.sql`p.calculated_at <= ${new Date(`${filters.to}T23:59:59.999Z`)}`);
+    if (filters.adjusted !== undefined) clauses.push(Prisma.sql`p.is_manual_override = ${filters.adjusted}`);
+    if (filters.minAmount !== undefined) clauses.push(Prisma.sql`p.amount >= ${filters.minAmount}::numeric`);
+    if (filters.maxAmount !== undefined) clauses.push(Prisma.sql`p.amount <= ${filters.maxAmount}::numeric`);
+    if (filters.hasJustification !== undefined)
+      clauses.push(
+        Prisma.sql`(COALESCE(p.override_reason, '') LIKE ${'%"justification":{%'}) = ${filters.hasJustification}`
+      );
+    clauses.push(
+      searchWordsSql(
+        search,
+        word =>
+          Prisma.sql`(${Prisma.join(
+            [
+              containsFoldedSql(Prisma.sql`p.override_reason`, word),
+              containsFoldedSql(Prisma.sql`concat(p.days_late::text, ' jours')`, word)
+            ],
+            ' OR '
+          )})`
+      )
+    );
+    const from = Prisma.sql`FROM rental_penalties p WHERE ${Prisma.join(clauses, ' AND ')}`;
+    const [counts, ids] = await Promise.all([
+      prisma.$queryRaw<Array<{ total: bigint }>>(Prisma.sql`SELECT count(*) AS total ${from}`),
+      prisma.$queryRaw<Array<{ id: string }>>(
+        Prisma.sql`SELECT p.id ${from} ORDER BY p.calculated_at DESC, p.id DESC LIMIT ${filters.limit} OFFSET ${(filters.page - 1) * filters.limit}`
+      )
+    ]);
+    searchTotal = Number(counts[0]?.total ?? 0);
+    pageIds = ids.map(row => row.id);
   }
-
-  if (filters?.installmentId) {
-    where.installment_id = filters.installmentId;
-  }
-
-  const penalties = await prisma.rentalPenalty.findMany({
-    where,
-    include: {
-      installment: {
-        include: {
-          lease: {
-            select: {
-              id: true,
-              lease_number: true
+  const [penalties, total] = await Promise.all([
+    prisma.rentalPenalty.findMany({
+      where: pageIds ? { tenant_id: tenantId, id: { in: pageIds } } : where,
+      include: {
+        installment: {
+          include: {
+            lease: {
+              select: {
+                id: true,
+                lease_number: true
+              }
             }
+          }
+        },
+        createdBy: {
+          select: {
+            id: true,
+            email: true,
+            fullName: true
           }
         }
       },
-      createdBy: {
-        select: {
-          id: true,
-          email: true,
-          fullName: true
-        }
-      }
-    },
-    orderBy: {
-      calculated_at: 'desc'
-    }
-  });
+      orderBy: [{ calculated_at: 'desc' }, { id: 'desc' }],
+      ...(pageIds ? {} : { skip: (filters.page - 1) * filters.limit, take: filters.limit })
+    }),
+    pageIds ? Promise.resolve(searchTotal ?? 0) : prisma.rentalPenalty.count({ where })
+  ]);
 
-  return penalties.map(presenterPenalite);
+  return { items: penalties.map(presenterPenalite), total };
 }
 
 /**

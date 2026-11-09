@@ -416,6 +416,7 @@ export interface UpdatePropertyMatchStatusRequest {
 
 // Filter types
 export interface ContactFilters {
+  role?: CrmContactRoleType | CrmContactRoleType[];
   status?: CrmContactStatus;
   source?: string;
   assignedTo?: string;

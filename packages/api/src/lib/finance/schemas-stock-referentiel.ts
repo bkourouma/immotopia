@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { zSearch } from '../../utils/list-query-schemas';
 import { uuidPathParamSchema as sharedUuidPathParamSchema } from './schemas';
 
 /**
@@ -122,7 +123,13 @@ export type UpdateStockItemInput = z.infer<typeof updateStockItemSchema>;
 export const listStockItemsQuerySchema = z
   .object({
     onlyActive: booleanQueryParam,
-    search: z.string().min(1, 'La recherche ne peut pas être une chaîne vide.').optional()
+    isActive: booleanQueryParam,
+    search: zSearch(),
+    unit: zSearch(100),
+    category: zSearch(100),
+    defaultCostCategoryId: z.string().uuid().optional(),
+    page: z.coerce.number().int().min(1).default(1),
+    limit: z.coerce.number().int().min(1).max(100).default(20)
   })
   .strict();
 

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Button, Checkbox, Space, Tag } from 'antd';
 import { FileTextOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
@@ -9,15 +10,18 @@ import { t } from '../../i18n/t';
 import {
   MAX_CHARGE_CALLS_PER_PAYMENT,
   downloadCoOwnerChargeCallNotice,
+  listMyChargeCallsPage,
   type CoOwnerChargeCall
 } from '../../services/coowner-portal-service';
 import { formatChargePeriod } from '../../utils/charge-period';
 import { describeDownloadError } from '../../utils/download-error';
 import { useLocalListSearch } from '../../utils/list-search';
+import { useListSearch } from '../../hooks/useListSearch';
 import type { SearchCriterion } from '../../utils/list-search';
 import { saveBlob } from '../../utils/save-blob';
 import { ChargeCallStatusTag } from './labels';
 import { isNotFound } from './portal-error';
+import { collectAllPages } from '../../utils/table-export/collect';
 
 /**
  * Bouton « Avis d'appel (PDF) ». La route (`GET /appels/:id/avis`) est posée
@@ -131,7 +135,18 @@ export const ChargeCallsTable: React.FC<{
   paramPrefix?: string;
   /** Nom accessible de la barre de recherche, quand un autre tableau partage l'écran. */
   searchAriaLabel?: string;
-}> = ({ calls, showLot = true, selection, onResume, paramPrefix, searchAriaLabel }) => {
+  serverMode?: boolean;
+  serverLotId?: string;
+}> = ({
+  calls,
+  showLot = true,
+  selection,
+  onResume,
+  paramPrefix,
+  searchAriaLabel,
+  serverMode = false,
+  serverLotId
+}) => {
   // Lots présents dans la liste (bornée au copropriétaire) : options du critère « Lot ».
   const lotOptions = useMemo(() => {
     const byId = new Map<string, string>();
@@ -156,6 +171,7 @@ export const ChargeCallsTable: React.FC<{
       type: 'multiSelect',
       label: t('Statut'),
       primary: true,
+      api: 'statuses',
       options: [
         { value: 'PENDING', label: t('En attente') },
         { value: 'PARTIAL', label: t('Partiel') },
@@ -163,8 +179,10 @@ export const ChargeCallsTable: React.FC<{
         { value: 'OVERDUE', label: t('En retard') }
       ]
     },
-    ...(showLot ? [{ key: 'lot', type: 'select' as const, label: t('Lot'), primary: true, options: lotOptions }] : []),
-    { key: 'due', type: 'dateRange', label: t('Échéance') }
+    ...(showLot
+      ? [{ key: 'lot', type: 'select' as const, label: t('Lot'), primary: true, options: lotOptions, api: 'lotId' }]
+      : []),
+    { key: 'due', type: 'dateRange', label: t('Échéance'), api: ['dueFrom', 'dueTo'] }
   ];
   const local = useLocalListSearch<CoOwnerChargeCall>(calls, {
     criteria,
@@ -172,6 +190,22 @@ export const ChargeCallsTable: React.FC<{
     text: TEXTE_RECHERCHE,
     accessors: ACCESSEURS
   });
+  const search = useListSearch({ criteria, paramPrefix, apiNames: { sort: false } });
+  const server = useQuery({
+    queryKey: ['coowner-portal', 'charge-calls-page', serverLotId ?? null, search.apiParams],
+    queryFn: () =>
+      listMyChargeCallsPage({
+        ...search.apiParams,
+        lotId: serverLotId ?? search.apiParams.lotId,
+        page: search.page,
+        limit: Math.min(search.pageSize, 100)
+      }),
+    enabled: serverMode,
+    staleTime: 30_000,
+    placeholderData: keepPreviousData
+  });
+  const displayed = serverMode ? (server.data?.items ?? []) : local.pageItems;
+  const total = serverMode ? (server.data?.pagination.total ?? 0) : local.total;
 
   // Prudence : un appel coché que le filtre masque quitte la sélection. Le total à payer
   // ne porte ainsi jamais sur une ligne qui n'est plus affichée sous les critères.
@@ -287,11 +321,37 @@ export const ChargeCallsTable: React.FC<{
 
   return (
     <DataView<CoOwnerChargeCall>
-      {...local.dataViewProps}
-      search={searchAriaLabel ? { ...local.searchProps, 'aria-label': searchAriaLabel } : local.searchProps}
+      {...(serverMode ? search.dataViewProps : local.dataViewProps)}
+      items={displayed}
+      total={total}
+      search={
+        searchAriaLabel
+          ? { ...(serverMode ? search.searchProps : local.searchProps), 'aria-label': searchAriaLabel }
+          : serverMode
+            ? search.searchProps
+            : local.searchProps
+      }
+      loading={serverMode && server.isPending}
+      isReloading={serverMode && server.isFetching && !server.isPending}
+      error={serverMode && server.error ? t('Impossible de charger les appels de charges.') : null}
+      onRetry={serverMode ? () => void server.refetch() : undefined}
       rowKey={call => call.id}
       aria-label={t('Appels de charges')}
-      export={{ filename: t('Appels de charges'), fetchAll: local.exportAll }}
+      export={{
+        filename: t('Appels de charges'),
+        fetchAll: serverMode
+          ? () =>
+              collectAllPages(async (page, limit) => {
+                const response = await listMyChargeCallsPage({
+                  ...search.filterParams,
+                  lotId: serverLotId ?? search.filterParams.lotId,
+                  page,
+                  limit
+                });
+                return { items: response.items, total: response.pagination.total };
+              })
+          : local.exportAll
+      }}
       emptyDescription={t("Aucun appel de charges n'a été émis pour vos lots.")}
       columns={columns}
       scrollX={1100}

@@ -8,10 +8,12 @@ import { buildLotMonthGrid, type MonthCell, type TrackedCall } from './charge-mo
 import {
   ensureReceiptPdf,
   receiptDownloadName,
+  snapshotOf,
   STORED_RECEIPT_SELECT,
   type StoredReceipt
 } from './charge-receipt-delivery';
 import { periodWhere } from './charge-receipt-queries';
+import { renderArabicReceiptTranslationPdf } from './charge-receipt-translation-pdf';
 import { isoDay, paymentMethodLabel } from './charge-receipt-snapshot';
 import { ownedChargeCallsWhere, type CoOwnerLotScope, type CoOwnerPortalScope } from './coowner-portal';
 import type { CoOwnerPaymentsQuery, CoOwnerReceiptsQuery } from './coowner-portal-schemas';
@@ -39,7 +41,12 @@ import { lastDayOfMonth, utcDay } from './period';
 export const LOT_NOT_FOUND = 'Lot introuvable.';
 export const RECEIPT_NOT_FOUND = 'Document introuvable.';
 const DEFAULT_CURRENCY = 'XOF';
-const MAX_PAYMENTS = 500;
+const PAYMENT_METHOD_CODES = ['ESPECES', 'CASH', 'VIREMENT', 'CHEQUE', 'MOBILE_MONEY', 'CARTE', 'DIRECT_DEBIT'];
+const foldSearch = (value: string) =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase();
 
 /** Chemin (relatif à la base de l'API) de la route qui sert le PDF d'un document. */
 export function coOwnerReceiptDownloadPath(receiptId: string): string {
@@ -210,22 +217,46 @@ export async function listCoOwnerPayments(scope: CoOwnerPortalScope, query: CoOw
   const requested = query.lotId ? [lotInScope(scope, query.lotId).lotId] : scope.lotIds;
   const { lots, viewOf } = await lotContext(scope, requested);
   const lotIds = lots.map(lot => lot.id);
-  if (lotIds.length === 0) return { items: [], advances: [] };
+  if (lotIds.length === 0)
+    return { items: [], advances: [], pagination: { page: query.page, limit: query.limit, total: 0, totalPages: 0 } };
 
-  const payments = await prisma.chargePayment.findMany({
-    where: { AND: [ownedPaymentsWhere(scope, lotIds), yearWhere(query.year)] },
-    select: {
-      id: true,
-      lotId: true,
-      amount: true,
-      unallocatedAmount: true,
-      paidAt: true,
-      method: true,
-      reference: true
-    },
-    orderBy: [{ paidAt: 'desc' }, { createdAt: 'desc' }],
-    take: MAX_PAYMENTS
-  });
+  const methodCodes = query.search
+    ? PAYMENT_METHOD_CODES.filter(code =>
+        foldSearch(paymentMethodLabel(code) ?? code).includes(foldSearch(query.search as string))
+      )
+    : [];
+  const search = query.search
+    ? {
+        OR: [
+          { reference: { contains: escapeLike(query.search), mode: 'insensitive' as const } },
+          { method: { contains: escapeLike(query.search), mode: 'insensitive' as const } },
+          ...(methodCodes.length ? [{ method: { in: methodCodes } }] : []),
+          { lot: { lotNumber: { contains: escapeLike(query.search), mode: 'insensitive' as const } } }
+        ]
+      }
+    : {};
+  const where: Prisma.ChargePaymentWhereInput = {
+    AND: [ownedPaymentsWhere(scope, lotIds), yearWhere(query.year), search]
+  };
+
+  const [payments, total] = await Promise.all([
+    prisma.chargePayment.findMany({
+      where,
+      select: {
+        id: true,
+        lotId: true,
+        amount: true,
+        unallocatedAmount: true,
+        paidAt: true,
+        method: true,
+        reference: true
+      },
+      orderBy: [{ paidAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
+      skip: (query.page - 1) * query.limit,
+      take: query.limit
+    }),
+    prisma.chargePayment.count({ where })
+  ]);
   const details = await loadPaymentDetails(
     scope,
     payments.map(payment => payment.id),
@@ -262,7 +293,11 @@ export async function listCoOwnerPayments(scope: CoOwnerPortalScope, query: CoOw
     advance: fromCents(advanceByLot.get(lot.id) ?? 0),
     currency: DEFAULT_CURRENCY
   }));
-  return { items, advances };
+  return {
+    items,
+    advances,
+    pagination: { page: query.page, limit: query.limit, total, totalPages: Math.ceil(total / query.limit) }
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -363,13 +398,19 @@ export async function listCoOwnerReceipts(scope: CoOwnerPortalScope, query: CoOw
 }
 
 /** PDF d'un document du copropriétaire : fichier stocké, sinon reconstruit depuis le snapshot (lot S3). */
-export async function getCoOwnerReceiptFile(scope: CoOwnerPortalScope, receiptId: string) {
+export async function getCoOwnerReceiptFile(scope: CoOwnerPortalScope, receiptId: string, translation?: 'ar') {
   if (scope.lotIds.length === 0) throw new NotFoundError(RECEIPT_NOT_FOUND);
   const receipt = (await prisma.syndicChargeReceipt.findFirst({
     where: { id: receiptId, ...visibleReceiptsWhere(scope, scope.lotIds) },
     select: STORED_RECEIPT_SELECT
   })) as StoredReceipt | null;
   if (!receipt) throw new NotFoundError(RECEIPT_NOT_FOUND);
+  if (translation === 'ar')
+    return {
+      buffer: await renderArabicReceiptTranslationPdf(snapshotOf(receipt)),
+      fileName: `Traduction arabe - ${receiptDownloadName(receipt)}`,
+      mimeType: 'application/pdf'
+    };
   return {
     buffer: await ensureReceiptPdf(receipt),
     fileName: receiptDownloadName(receipt),

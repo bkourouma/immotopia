@@ -111,6 +111,14 @@ beforeEach(() => {
 });
 
 describe('<TenantBillingSettings> — factures et paiement en ligne', () => {
+  it('télécharge une copie arabe séparée de la facture originale', async () => {
+    downloadOwnInvoicePdf.mockResolvedValue(undefined);
+    mount();
+    await screen.findByText('IMT-2026-00001');
+    fireEvent.click(screen.getByRole('button', { name: 'Traduction arabe' }));
+    await waitFor(() => expect(downloadOwnInvoicePdf).toHaveBeenCalledWith('tenant-1', INVOICE, 'ar'));
+  });
+
   it('liste les factures et ouvre le paiement en ligne sur une facture en retard, même en lecture seule', async () => {
     getOwnEntitlements.mockResolvedValue({ ...ENTITLEMENTS, phase: 'READ_ONLY', readOnly: true });
     startInvoiceCheckout.mockResolvedValue({

@@ -232,7 +232,31 @@ function configurerGet(
       return { data: { data: reglages } };
     }
     if (/\/finance\/stock\/items(\?|$)/.test(url)) {
-      return { data: { data: articles } };
+      const params = new URL(url, 'http://localhost').searchParams;
+      const searchParam = params.get('search');
+      const search = searchParam ? normaliser(searchParam) : undefined;
+      const filtered = articles.filter(
+        article =>
+          (!search || normaliser([article.reference, article.label, article.category].join(' ')).includes(search)) &&
+          (!params.has('isActive') || article.isActive === (params.get('isActive') === 'true')) &&
+          (!params.has('unit') || article.unit === params.get('unit')) &&
+          (!params.has('category') || article.category === params.get('category')) &&
+          (!params.has('defaultCostCategoryId') ||
+            article.defaultCostCategoryId === params.get('defaultCostCategoryId'))
+      );
+      const page = Number(params.get('page') ?? 1);
+      const limit = Number(params.get('limit') ?? 20);
+      return {
+        data: {
+          data: filtered.slice((page - 1) * limit, page * limit),
+          pagination: { total: filtered.length },
+          facets: {
+            units: [...new Set(articles.map(article => article.unit))],
+            categories: [...new Set(articles.flatMap(article => (article.category ? [article.category] : [])))],
+            costCategories: []
+          }
+        }
+      };
     }
     if (/\/finance\/stock\/items\/[^/?]+$/.test(url)) {
       return { data: { data: articles[0] } };
@@ -907,18 +931,18 @@ describe('Les corps de création n’emportent que ce que le schéma `.strict()`
     expect(corps.defaultCostCategoryId).toBe(POSTE_GROS_OEUVRE);
   }, 120000);
 
-  it('les deux listes arrivent en entier : aucun filtre ne part en requête, la recherche est locale', async () => {
+  it('envoie recherche et pagination des articles au serveur', async () => {
     const user = userEvent.setup({ delay: null });
     monter();
 
     await screen.findByText('CIM-42', {}, { timeout: 8000 });
-    expect(get).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/stock/items`);
+    expect(get.mock.calls.some(([url]) => String(url).includes('/finance/stock/items?page=1&limit=20'))).toBe(true);
 
     await user.type(within(screen.getByRole('search')).getByRole('textbox'), 'LAVE');
     await waitFor(() => expect(screen.queryByText('CIM-42')).not.toBeInTheDocument(), { timeout: 8000 });
-    expect(screen.getByText('SAB-00')).toBeInTheDocument();
+    expect(await screen.findByText('SAB-00', {}, { timeout: 8000 })).toBeInTheDocument();
     const appelsArticles = get.mock.calls.filter(([url]) => /\/stock\/items(\?|$)/.test(String(url)));
-    expect(appelsArticles.every(([url]) => !String(url).includes('?'))).toBe(true);
+    expect(appelsArticles.some(([url]) => String(url).includes('search=LAVE'))).toBe(true);
 
     const effacer = screen.getAllByRole('button', { name: 'Effacer les critères' });
     await user.click(effacer[effacer.length - 1]);
@@ -1252,7 +1276,7 @@ describe('Onglets paresseux et pagination locale', () => {
     await waitFor(() => expect(appelsVers('/finance/cost-categories')).toBeGreaterThan(0));
   }, 120000);
 
-  it('pagine localement les articles : 20 puis 5', async () => {
+  it('pagine les articles côté serveur : 20 puis 5', async () => {
     const articles = Array.from({ length: 25 }, (_, n) =>
       ciment({
         id: `article-${n + 1}`,

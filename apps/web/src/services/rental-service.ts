@@ -640,23 +640,21 @@ export interface RentalPenalty {
 export interface PenaltyFilters {
   leaseId?: string;
   installmentId?: string;
-  page?: number;
-  limit?: number;
+  search?: string;
+  from?: string;
+  to?: string;
+  adjusted?: boolean | string;
+  hasJustification?: boolean | string;
+  minAmount?: number | string;
+  maxAmount?: number | string;
+  page?: number | string;
+  limit?: number | string;
 }
 
 export interface PenaltyListResponse {
   success: boolean;
   data: RentalPenalty[];
-  /**
-   * **Jamais renvoyée par l'API.**
-   *
-   * `listPenaltiesHandler` (packages/api) ignore `page` et `limit` et rend
-   * toutes les pénalités de l'agence. Le champ était déclaré obligatoire ici,
-   * si bien que le code appelant croyait pouvoir s'y fier : l'écran en
-   * fabriquait une à partir de `data.length`. Il devient facultatif — ce qu'il
-   * est réellement — et le restera tant que le endpoint ne paginera pas.
-   */
-  pagination?: {
+  pagination: {
     page: number;
     limit: number;
     total: number;

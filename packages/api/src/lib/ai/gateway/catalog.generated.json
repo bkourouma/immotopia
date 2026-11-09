@@ -3510,6 +3510,17 @@
       "sensitive": false
     },
     {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/paiements",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/paiements",
+      "pathParams": ["syndicId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / paiements",
+      "permissions": null,
+      "anyOfPermissions": [["SYNDIC_VIEW"]],
+      "sensitive": false
+    },
+    {
       "id": "GET /api/tenants/:tenantId/syndics/:syndicId/paiements-declares",
       "method": "GET",
       "path": "/api/tenants/:tenantId/syndics/:syndicId/paiements-declares",

@@ -476,6 +476,16 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
     }
   });
 
+  it('protège la lecture paginée des paiements affectés du syndic', () => {
+    const path = '/api/tenants/:tenantId/syndics/:syndicId/paiements';
+    const route = routes.find(r => r.method === 'GET' && r.path === path);
+    expect(route).toBeDefined();
+    expect(hasTenantOrPortalGuard(route!)).toBe(true);
+    expect(route!.middlewares).toContain(authenticate);
+    expect(isWhitelisted(route!)).toBeUndefined();
+    expect(route!.middlewares.flatMap(mw => (mw as any)?.anyPermissionKeys ?? [])).toContain('SYNDIC_VIEW');
+  });
+
   it('declare les 12 routes agence du paiement mobile money declare (spec 047) avec authentification, garde d’agence et droit SYNDIC', () => {
     const base = '/api/tenants/:tenantId/syndics/:syndicId';
     const expected: Array<[string, string, 'SYNDIC_VIEW' | 'SYNDIC_EDIT']> = [

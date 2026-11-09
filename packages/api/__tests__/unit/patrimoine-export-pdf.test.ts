@@ -162,7 +162,7 @@ describe('buildPatrimoinePdf', () => {
     );
   });
 
-  it('rend en français même quand la requête est en arabe (police standard non arabophone)', async () => {
+  it('génère le PDF pour une requête en arabe', async () => {
     const buffer = await runWithLanguage('ar', () => buildPatrimoinePdf(TENANT_ID, buildData()));
     expect(buffer.subarray(0, 5).toString('latin1')).toBe('%PDF-');
   });

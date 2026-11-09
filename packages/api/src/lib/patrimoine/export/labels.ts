@@ -6,9 +6,8 @@ import type { DocumentState } from './data';
  *
  * Mêmes libellés que côté web (`apps/web/src/components/patrimoine/patrimoine-labels.ts`),
  * repris ici parce que le serveur ne peut pas importer le bundle front. Un
- * paramètre `language` explicite permet au PDF de forcer le français quand la
- * requête est en arabe (les polices standard de pdf-lib ne l'encodent pas —
- * voir `pdf.ts`), sans changer la langue du reste de la réponse.
+ * paramètre `language` explicite permet au PDF arabe de garder les libellés
+ * traduits, sans changer la langue du reste de la réponse.
  */
 
 export function documentTypeLabel(type: string, language?: Language): string {

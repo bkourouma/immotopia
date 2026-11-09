@@ -1,7 +1,8 @@
 import { PDFDocument, PDFFont, PDFPage, rgb } from 'pdf-lib';
-import { t } from '../../i18n';
+import { currentLanguage, t } from '../../i18n';
 import { PAGE_MARGIN, fontsOf, truncate } from './document-branding';
 import { pdfLanguage, sanitizeForPdf } from './pdf-text';
+import { arabicFaces, drawArabicText, type ArabicFaces } from './pdf-arabic';
 
 export { pdfLanguage };
 
@@ -14,8 +15,8 @@ export { pdfLanguage };
  * - `drawDocumentFooters` : pied de page « émetteur - page X/Y - référence »
  *   appliqué à toutes les pages, une fois le contenu terminé.
  *
- * Helvetica (WinAnsi) ne dessine pas l'arabe : un document demandé en arabe
- * garde ses libellés fixes en français plutôt que de sortir en « ? ».
+ * La branche arabe utilise les polices Unicode liées et place les blocs
+ * et pieds de page de droite à gauche ; les branches fr/en gardent Helvetica.
  */
 
 const GREY = rgb(0.35, 0.35, 0.35);
@@ -78,6 +79,42 @@ export async function drawPartyBlock(
   y: number,
   columns: [PartyColumn, PartyColumn?]
 ): Promise<number> {
+  if (currentLanguage() === 'ar') {
+    const faces = await arabicFaces(pdfDoc);
+    const { width } = page.getSize();
+    const columnWidth = (width - 2 * PAGE_MARGIN - 20) / 2;
+    let lowest = y;
+    columns.forEach((column, index) => {
+      if (!column) return;
+      const right = width - PAGE_MARGIN - index * (columnWidth + 20);
+      let cursor = y;
+      drawArabicText(page, faces.bold, column.title, {
+        x: right,
+        y: cursor,
+        size: 9,
+        maxWidth: columnWidth,
+        color: GREY
+      });
+      column.lines.forEach((line, lineIndex) => {
+        if (!line?.trim()) return;
+        const strong = lineIndex === 0;
+        const face = strong ? faces.bold : faces.regular;
+        const size = strong ? 11 : 9;
+        for (const part of wrapArabicLine(line, face, size, columnWidth, PARTY_MAX_LINES)) {
+          cursor -= strong ? 15 : 12;
+          drawArabicText(page, face, part, {
+            x: right,
+            y: cursor,
+            size,
+            maxWidth: columnWidth,
+            color: strong ? undefined : GREY
+          });
+        }
+      });
+      lowest = Math.min(lowest, cursor);
+    });
+    return lowest - 18;
+  }
   const { regular, bold } = await fontsOf(pdfDoc);
   const { width } = page.getSize();
   const gutter = 20;
@@ -104,6 +141,31 @@ export async function drawPartyBlock(
   return lowest - 18;
 }
 
+function wrapArabicLine(
+  value: string,
+  face: ArabicFaces['regular'],
+  size: number,
+  width: number,
+  maxLines: number
+): string[] {
+  const lines: string[] = [];
+  let current = '';
+  for (const word of value
+    .replace(/[\r\n\t]+/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (face.width(candidate, size) <= width || !current) current = candidate;
+    else {
+      lines.push(current);
+      current = word;
+    }
+  }
+  if (current) lines.push(current);
+  if (lines.length <= maxLines) return lines;
+  return [...lines.slice(0, maxLines - 1), `${lines.slice(maxLines - 1).join(' ')}…`];
+}
+
 export interface FooterOptions {
   /** Nom de l'émetteur, à gauche. */
   issuerName: string;
@@ -113,10 +175,11 @@ export interface FooterOptions {
 
 /** Texte de droite du pied : « Réf. X - Page 1/3 ». */
 export function footerRightText(reference: string | null | undefined, page: number, total: number): string {
-  const language = pdfLanguage();
+  const language = currentLanguage() === 'ar' ? 'ar' : pdfLanguage();
   const pageText = t('Page {{page}}/{{total}}', { page, total }, language);
   const ref = reference?.trim() ? t('Réf. {{reference}}', { reference: reference.trim() }, language) : null;
-  return sanitizeForPdf([ref, pageText].filter(Boolean).join(' - '));
+  const result = [ref, pageText].filter(Boolean).join(' - ');
+  return language === 'ar' ? result : sanitizeForPdf(result);
 }
 
 /**
@@ -124,6 +187,35 @@ export function footerRightText(reference: string | null | undefined, page: numb
  * pagination à droite. À appeler une fois toutes les pages ajoutées.
  */
 export async function drawDocumentFooters(pdfDoc: PDFDocument, options: FooterOptions): Promise<void> {
+  if (currentLanguage() === 'ar') {
+    const faces = await arabicFaces(pdfDoc);
+    const pages = pdfDoc.getPages();
+    pages.forEach((page, index) => {
+      const { width } = page.getSize();
+      page.drawLine({
+        start: { x: PAGE_MARGIN, y: 38 },
+        end: { x: width - PAGE_MARGIN, y: 38 },
+        thickness: 0.5,
+        color: RULE_GREY
+      });
+      drawArabicText(page, faces.regular, footerRightText(options.reference, index + 1, pages.length), {
+        x: width - PAGE_MARGIN,
+        y: 26,
+        size: 7,
+        maxWidth: (width - 2 * PAGE_MARGIN) / 2,
+        color: GREY
+      });
+      drawArabicText(page, faces.regular, options.issuerName || ' ', {
+        x: PAGE_MARGIN,
+        y: 26,
+        size: 7,
+        maxWidth: (width - 2 * PAGE_MARGIN) / 2,
+        align: 'start',
+        color: GREY
+      });
+    });
+    return;
+  }
   const { regular } = await fontsOf(pdfDoc);
   const pages = pdfDoc.getPages();
   pages.forEach((page, index) => {

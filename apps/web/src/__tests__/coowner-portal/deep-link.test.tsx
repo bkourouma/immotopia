@@ -149,7 +149,9 @@ describe('Portail copropriétaire — adresse profonde ouverte directement', () 
     expect(
       await screen.findByText('Ce lot est introuvable dans votre espace.', {}, { timeout: 8000 })
     ).toBeInTheDocument();
-    expect(apiGet).toHaveBeenCalledWith('/portal/copropriete/lots/lot-de-bakary/compte');
+    expect(apiGet).toHaveBeenCalledWith('/portal/copropriete/lots/lot-de-bakary/compte', {
+      params: { page: 1, limit: 20 }
+    });
     expect(visited).not.toContain('/dashboard');
     expect(visited[visited.length - 1]).toBe('/copropriete/lots/lot-de-bakary');
   });

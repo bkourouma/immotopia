@@ -9,7 +9,8 @@
  */
 
 import { PDFDocument, PDFFont, PDFPage } from 'pdf-lib';
-import { t } from '../../i18n';
+import { currentLanguage, t } from '../../i18n';
+import { buildArabicAccountStatementPdf } from './statement-pdf-ar';
 import { drawDocumentHeader, fontsOf, resolveDocumentBranding, truncate } from '../documents/document-branding';
 import { FOOTER_RESERVED, drawDocumentFooters, pdfLanguage } from '../documents/document-layout';
 import { sanitizeForPdf } from '../documents/pdf-text';
@@ -162,6 +163,7 @@ function drawMovementRow(
 }
 
 export async function buildAccountStatementPdf(payload: AccountStatementPdfPayload): Promise<Buffer> {
+  if (currentLanguage() === 'ar') return buildArabicAccountStatementPdf(payload);
   const pdfDoc = await PDFDocument.create();
   let page = pdfDoc.addPage([595, 842]);
   const { height } = page.getSize();

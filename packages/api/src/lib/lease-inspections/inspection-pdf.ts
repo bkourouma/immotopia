@@ -22,6 +22,7 @@ import { createHash } from 'crypto';
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import { PDFDocument, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
+import { currentLanguage, t } from '../../i18n';
 import { env } from '../../config/env';
 import { NotFoundError } from '../../middleware/error-middleware';
 import { prisma } from '../../utils/database';
@@ -38,6 +39,7 @@ import {
 } from '../documents/document-branding';
 import { detectImageFormat, readImageDimensions } from '../documents/branding-storage';
 import { sanitizeForPdf } from '../documents/pdf-text';
+import { arabicFaces, drawArabicFooters, drawArabicText } from '../documents/pdf-arabic';
 import {
   itemKind,
   normalizeDeductions,
@@ -72,24 +74,20 @@ function formatDeductionMoney(value: number): string {
   return `${grouped}${decimals === '00' ? '' : `,${decimals}`} FCFA`;
 }
 
-const CONDITION_LABELS: Record<Condition, string> = {
-  NEW: 'Neuf',
-  GOOD: 'Bon',
-  FAIR: 'Usagé',
-  POOR: 'Mauvais',
-  BROKEN: 'HS',
-  MISSING: 'Manquant'
-};
-
 const conditionLabel = (condition: Condition | null | undefined) =>
-  condition ? (CONDITION_LABELS[condition] ?? condition) : 'Non renseigné';
-
-const DEDUCTION_SOURCE_LABELS: Record<string, string> = {
-  MANUAL: 'Saisie',
-  DEGRADED: 'Dégradation',
-  MISSING: 'Manquant',
-  KEYS: 'Clés'
-};
+  condition === 'NEW'
+    ? t('Neuf')
+    : condition === 'GOOD'
+      ? t('Bon')
+      : condition === 'FAIR'
+        ? t('Usagé')
+        : condition === 'POOR'
+          ? t('Mauvais')
+          : condition === 'BROKEN'
+            ? t('HS')
+            : condition === 'MISSING'
+              ? t('Manquant')
+              : condition || t('Non renseigné');
 
 // ===========================================================================
 // Photos : lecture dans le dossier privé de l'état des lieux
@@ -378,22 +376,22 @@ function roomTables(rooms: InspectionRoom[]): PdfTableSection[] {
   );
   const columns: PdfColumn[] = showFurniture
     ? [
-        { header: 'Élément', weight: 3 },
-        { header: 'État', weight: 1.2 },
-        { header: 'Qté', weight: 0.7, align: 'right' },
-        { header: 'Valeur de remplacement', weight: 1.8, align: 'right' },
-        { header: 'Commentaire', weight: 3.2 }
+        { header: t('Élément'), weight: 3 },
+        { header: t('État'), weight: 1.2 },
+        { header: t('Qté'), weight: 0.7, align: 'right' },
+        { header: t('Valeur de remplacement'), weight: 1.8, align: 'right' },
+        { header: t('Commentaire'), weight: 3.2 }
       ]
     : [
-        { header: 'Élément', weight: 3 },
-        { header: 'État', weight: 1.3 },
-        { header: 'Commentaire', weight: 4.5 }
+        { header: t('Élément'), weight: 3 },
+        { header: t('État'), weight: 1.3 },
+        { header: t('Commentaire'), weight: 4.5 }
       ];
   return rooms.map(room => ({
     kind: 'table' as const,
     title: room.name,
     columns,
-    emptyText: 'Aucun élément.',
+    emptyText: t('Aucun élément.'),
     rows: room.items.map(item => {
       const base = [item.label, conditionLabel(item.condition)];
       const comment = item.comment?.trim() || '';
@@ -402,7 +400,7 @@ function roomTables(rooms: InspectionRoom[]): PdfTableSection[] {
       const value =
         item.replacementValue === null || item.replacementValue === undefined
           ? ''
-          : `${formatInspectionMoney(item.replacementValue)}${itemKind(item) === 'FURNITURE' ? ' / unité' : ''}`;
+          : `${formatInspectionMoney(item.replacementValue)}${itemKind(item) === 'FURNITURE' ? t(' / unité') : ''}`;
       return [...base, quantity, value, comment];
     })
   }));
@@ -417,57 +415,63 @@ function deductionsTable(input: InspectionPdfInput): PdfTableSection {
   const total = input.deductions.reduce((sum, deduction) => sum + (Number(deduction.amount) || 0), 0);
   return {
     kind: 'table',
-    title: 'Retenues proposées sur le dépôt de garantie',
+    title: t('Retenues proposées sur le dépôt de garantie'),
     columns: [
-      { header: 'Libellé', weight: 4 },
-      { header: 'Origine', weight: 1.4 },
-      { header: 'Pièce et élément', weight: 3 },
-      { header: 'Montant', weight: 1.8, align: 'right' }
+      { header: t('Libellé'), weight: 4 },
+      { header: t('Origine'), weight: 1.4 },
+      { header: t('Pièce et élément'), weight: 3 },
+      { header: t('Montant'), weight: 1.8, align: 'right' }
     ],
-    emptyText: 'Aucune retenue.',
+    emptyText: t('Aucune retenue.'),
     rows: input.deductions.map(deduction => [
       deduction.label,
-      DEDUCTION_SOURCE_LABELS[deduction.source ?? 'MANUAL'] ?? '',
+      deduction.source === 'DEGRADED'
+        ? t('Dégradation')
+        : deduction.source === 'MISSING'
+          ? t('Manquant')
+          : deduction.source === 'KEYS'
+            ? t('Clés')
+            : t('Saisie'),
       labelOf(deduction),
       formatDeductionMoney(Number(deduction.amount) || 0)
     ]),
-    totals: input.deductions.length > 0 ? [{ label: 'Total des retenues', value: formatDeductionMoney(total) }] : []
+    totals: input.deductions.length > 0 ? [{ label: t('Total des retenues'), value: formatDeductionMoney(total) }] : []
   };
 }
 
 /** Construit le modèle imprimé : aucun accès disque ni base. */
 export function buildInspectionPdfModel(input: InspectionPdfInput): InspectionPdfModel {
   const isExit = input.type === 'EXIT';
-  const title = isExit ? 'État des lieux de sortie' : "État des lieux d'entrée";
+  const title = isExit ? t('État des lieux de sortie') : t("État des lieux d'entrée");
   const date = formatInspectionDate(input.inspectionDate);
   const { lease } = input;
 
   const info: InspectionPdfModel['info'] = [
-    { label: 'Bail', value: `N° ${dash(lease.number)}` },
-    { label: 'Bien', value: dash([lease.propertyTitle, lease.propertyAddress].filter(Boolean).join(' - ')) },
-    { label: 'Locataire(s)', value: dash(lease.renterNames.filter(Boolean).join(', ')) },
-    { label: 'Bailleur', value: dash(lease.ownerName) },
-    { label: 'Type', value: isExit ? 'Sortie' : 'Entrée' },
-    { label: 'Date', value: date },
-    { label: 'Locataire présent', value: input.tenantPresent ? 'Oui' : 'Non' },
-    { label: 'Nombre de clés remises', value: dash(input.keysCount) }
+    { label: t('Bail'), value: t('N° {{number}}', { number: dash(lease.number) }) },
+    { label: t('Bien'), value: dash([lease.propertyTitle, lease.propertyAddress].filter(Boolean).join(' - ')) },
+    { label: t('Locataire(s)'), value: dash(lease.renterNames.filter(Boolean).join(', ')) },
+    { label: t('Bailleur'), value: dash(lease.ownerName) },
+    { label: t('Type'), value: isExit ? t('Sortie') : t('Entrée') },
+    { label: t('Date'), value: date },
+    { label: t('Locataire présent'), value: input.tenantPresent ? t('Oui') : t('Non') },
+    { label: t('Nombre de clés remises'), value: dash(input.keysCount) }
   ];
-  if (input.finalizedAt) info.push({ label: 'Finalisé le', value: formatInspectionDate(input.finalizedAt) });
+  if (input.finalizedAt) info.push({ label: t('Finalisé le'), value: formatInspectionDate(input.finalizedAt) });
 
   const meters = input.meters ?? {};
   const sections: InspectionPdfModel['sections'] = [
     {
       kind: 'table',
-      title: 'Compteurs',
+      title: t('Compteurs'),
       columns: [
-        { header: 'Compteur', weight: 2 },
-        { header: 'Index relevé', weight: 4 }
+        { header: t('Compteur'), weight: 2 },
+        { header: t('Index relevé'), weight: 4 }
       ],
       emptyText: '',
       rows: [
-        ['Électricité', dash(meters.electricity)],
-        ['Eau', dash(meters.water)],
-        ['Gaz', dash(meters.gas)]
+        [t('Électricité'), dash(meters.electricity)],
+        [t('Eau'), dash(meters.water)],
+        [t('Gaz'), dash(meters.gas)]
       ]
     },
     ...roomTables(input.rooms)
@@ -475,26 +479,26 @@ export function buildInspectionPdfModel(input: InspectionPdfInput): InspectionPd
   if (isExit) sections.push(deductionsTable(input));
   sections.push({
     kind: 'text',
-    title: 'Observations générales',
-    text: input.generalComment?.trim() || 'Aucune observation.'
+    title: t('Observations générales'),
+    text: input.generalComment?.trim() || t('Aucune observation.')
   });
 
   return {
     fileName: `etat-des-lieux-${isExit ? 'sortie' : 'entree'}-${date.split('/').reverse().join('-')}.pdf`,
     title,
-    subtitle: `Bail N° ${dash(lease.number)} - réalisé le ${date}`,
+    subtitle: t('Bail N° {{number}} - réalisé le {{date}}', { number: dash(lease.number), date }),
     info,
     sections,
     photos: input.photos,
     photosOmitted: input.photosOmitted ?? 0,
     signatures: [
       {
-        label: input.tenantPresent ? 'Le locataire' : 'Le locataire (absent)',
+        label: input.tenantPresent ? t('Le locataire') : t('Le locataire (absent)'),
         name: input.tenantSignatoryName?.trim() || ''
       },
-      { label: "Pour l'agence", name: input.agentSignatoryName?.trim() || '' }
+      { label: t("Pour l'agence"), name: input.agentSignatoryName?.trim() || '' }
     ],
-    footer: `${title} - bail ${dash(lease.number)}`
+    footer: t('{{title}} - bail {{number}}', { title, number: dash(lease.number) })
   };
 }
 
@@ -538,11 +542,238 @@ interface Cursor {
   y: number;
 }
 
+/** Rendu arabe du modèle figé : texte Unicode RTL, valeurs chiffrées LTR, photos inchangées. */
+async function renderArabicInspectionPdf(model: InspectionPdfModel, branding: DocumentBranding): Promise<Buffer> {
+  const pdfDoc = await PDFDocument.create();
+  pdfDoc.setLanguage('ar');
+  pdfDoc.setTitle(model.title);
+  const faces = await arabicFaces(pdfDoc);
+  let page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+  let y = await drawDocumentHeader(pdfDoc, page, branding, { title: model.title, subtitle: model.subtitle });
+  const right = PAGE_WIDTH - MARGIN;
+  const width = PAGE_WIDTH - 2 * MARGIN;
+  const newPage = () => {
+    page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+    y = PAGE_HEIGHT - MARGIN;
+    drawArabicText(page, faces.bold, model.title, { x: right, y, size: 10, maxWidth: width });
+    y -= 22;
+  };
+  const ensure = (height: number) => {
+    if (y - height < MARGIN + FOOTER_SPACE) newPage();
+  };
+  const linesOf = (text: string, size: number, maxWidth: number, maxLines = Infinity): string[] => {
+    const result: string[] = [];
+    let line = '';
+    for (const word of text.split(/\s+/).filter(Boolean)) {
+      const next = line ? `${line} ${word}` : word;
+      if (line && faces.regular.width(next, size) > maxWidth) {
+        result.push(line);
+        line = word;
+      } else line = next;
+    }
+    if (line) result.push(line);
+    return result.slice(0, maxLines);
+  };
+  const draw = (value: string, x: number, size: number, maxWidth: number, numeric = false, bold = false) =>
+    drawArabicText(page, bold ? faces.bold : faces.regular, value, {
+      x,
+      y,
+      size,
+      maxWidth,
+      ...(numeric ? { align: 'start' as const } : {})
+    });
+
+  for (const entry of model.info) {
+    const lines = linesOf(entry.value, 9, width - 140, 3);
+    ensure(Math.max(1, lines.length) * 12 + 2);
+    draw(`${entry.label} :`, right, 9, 130, false, true);
+    for (const line of lines.length ? lines : ['—']) {
+      const numeric = /^\d[\d\s/:.,-]*$/.test(line);
+      draw(line, numeric ? MARGIN : right - 140, 9, width - 140, numeric);
+      y -= 12;
+    }
+  }
+
+  for (const section of model.sections) {
+    y -= 10;
+    ensure(45);
+    draw(section.title, right, 10.5, width, false, true);
+    y -= 14;
+    if (section.kind === 'text') {
+      for (const line of linesOf(section.text, 9, width)) {
+        ensure(12);
+        draw(line, right, 9, width);
+        y -= 12;
+      }
+      continue;
+    }
+    const totalWeight = section.columns.reduce((sum, column) => sum + column.weight, 0) || 1;
+    const widths = section.columns.map(column => (column.weight / totalWeight) * width);
+    const drawRow = (cells: string[][], heightLines: number, header = false) => {
+      let edge = right;
+      section.columns.forEach((column, index) => {
+        const cellWidth = widths[index];
+        cells[index]?.forEach((line, lineIndex) => {
+          drawArabicText(page, header ? faces.bold : faces.regular, line, {
+            x: column.align === 'right' ? edge - cellWidth + 2 : edge - 2,
+            y: y - lineIndex * LINE_HEIGHT,
+            size: 8,
+            maxWidth: cellWidth - 4,
+            ...(column.align === 'right' && !header ? { align: 'start' as const } : {})
+          });
+        });
+        edge -= cellWidth;
+      });
+      y -= heightLines * LINE_HEIGHT + 3;
+    };
+    const drawHeader = () => {
+      ensure(30);
+      drawRow(
+        section.columns.map(column => [column.header]),
+        1,
+        true
+      );
+      page.drawLine({ start: { x: MARGIN, y: y + 6 }, end: { x: right, y: y + 6 }, thickness: 0.5, color: RULE });
+      y -= 4;
+    };
+    drawHeader();
+    if (!section.rows.length) {
+      if (section.emptyText) draw(section.emptyText, right, 8.5, width);
+      y -= 12;
+    }
+    for (const cells of section.rows) {
+      const lines = cells.map((cell, index) => linesOf(cell, 8, widths[index] - 4, MAX_CELL_LINES));
+      const heightLines = Math.max(1, ...lines.map(item => item.length));
+      if (y - heightLines * LINE_HEIGHT - 6 < MARGIN + FOOTER_SPACE) {
+        newPage();
+        drawHeader();
+      }
+      drawRow(lines, heightLines);
+      page.drawLine({
+        start: { x: MARGIN, y: y + 8 },
+        end: { x: right, y: y + 8 },
+        thickness: 0.25,
+        color: rgb(0.88, 0.88, 0.88)
+      });
+    }
+    for (const total of section.totals ?? []) {
+      ensure(16);
+      y -= 4;
+      draw(`${total.label} :`, right, 9, width - 140, false, true);
+      draw(total.value, MARGIN, 9, 130, true);
+      y -= 12;
+    }
+  }
+
+  if (model.photos.length || model.photosOmitted) {
+    const gap = 10;
+    const cellWidth = (width - 2 * gap) / 3;
+    const imageHeight = 110;
+    const cellHeight = imageHeight + 35;
+    y -= 10;
+    ensure(cellHeight + 30);
+    draw(t('Photos'), right, 10.5, width, false, true);
+    y -= 12;
+    for (let index = 0; index < model.photos.length; index += 3) {
+      ensure(cellHeight + 6);
+      const top = y;
+      for (let column = 0; column < 3; column += 1) {
+        const card = model.photos[index + column];
+        if (!card) break;
+        const x = right - cellWidth - column * (cellWidth + gap);
+        const bottom = top - imageHeight;
+        const image = await embedImage(pdfDoc, card.image);
+        if (image) {
+          const size = fitInBox(image.width, image.height, cellWidth, imageHeight);
+          page.drawImage(image, {
+            x: x + (cellWidth - size.width) / 2,
+            y: bottom + (imageHeight - size.height) / 2,
+            ...size
+          });
+        } else {
+          page.drawRectangle({
+            x,
+            y: bottom,
+            width: cellWidth,
+            height: imageHeight,
+            borderColor: RULE,
+            borderWidth: 0.6
+          });
+          drawArabicText(
+            page,
+            faces.regular,
+            t('Photo non reproduite (fichier illisible ou format non pris en charge).'),
+            { x: x + cellWidth - 6, y: top - 16, size: 7.5, maxWidth: cellWidth - 12, color: GREY }
+          );
+        }
+        const caption = [card.label, card.caption].filter(Boolean).join(' - ');
+        linesOf(caption, 7.5, cellWidth, 3).forEach((line, lineIndex) =>
+          drawArabicText(page, faces.regular, line, {
+            x: x + cellWidth,
+            y: bottom - 10 - lineIndex * 9,
+            size: 7.5,
+            maxWidth: cellWidth
+          })
+        );
+      }
+      y = top - cellHeight - 6;
+    }
+    if (model.photosOmitted > 0) {
+      ensure(14);
+      draw(
+        t('{{count}} autre(s) photo(s) enregistrée(s) ne sont pas reproduites ici (volume du document).', {
+          count: model.photosOmitted
+        }),
+        right,
+        8,
+        width
+      );
+      y -= 12;
+    }
+  }
+
+  const boxHeight = 70;
+  y -= 16;
+  ensure(boxHeight + 30);
+  const boxWidth = (width - 20) / 2;
+  model.signatures.forEach((signature, index) => {
+    const x = index === 0 ? right - boxWidth : MARGIN;
+    drawArabicText(page, faces.bold, signature.label, { x: x + boxWidth, y, size: 9, maxWidth: boxWidth });
+    page.drawRectangle({
+      x,
+      y: y - boxHeight - 6,
+      width: boxWidth,
+      height: boxHeight,
+      borderColor: RULE,
+      borderWidth: 0.6
+    });
+    drawArabicText(page, faces.regular, signature.name || t('Nom et signature'), {
+      x: x + boxWidth - 4,
+      y: y - boxHeight - 2,
+      size: 8,
+      maxWidth: boxWidth - 8,
+      color: GREY
+    });
+  });
+  pdfDoc.getPages().forEach(current =>
+    drawArabicText(current, faces.regular, model.footer, {
+      x: right,
+      y: MARGIN + 9,
+      size: 7.5,
+      maxWidth: width,
+      color: GREY
+    })
+  );
+  drawArabicFooters(pdfDoc, faces, branding.issuer.name);
+  return Buffer.from(await pdfDoc.save());
+}
+
 /**
  * Dessine le modèle : en-tête de l'agence, informations, tableaux paginés,
  * observations, photos, zones de signature, pied de page numéroté.
  */
 export async function renderInspectionPdf(model: InspectionPdfModel, branding: DocumentBranding): Promise<Buffer> {
+  if (currentLanguage() === 'ar') return renderArabicInspectionPdf(model, branding);
   const pdfDoc = await PDFDocument.create();
   pdfDoc.setTitle(sanitizeForPdf(model.title));
   pdfDoc.setLanguage('fr-FR');
@@ -819,7 +1050,8 @@ function buildPhotoCards(
   const cards: PdfPhotoCard[] = [];
   for (const { photo, read } of selection.selected) {
     const label =
-      [roomName(photo.roomId), itemLabel(photo.itemId)].filter(Boolean).join(' / ') || `Photo ${cards.length + 1}`;
+      [roomName(photo.roomId), itemLabel(photo.itemId)].filter(Boolean).join(' / ') ||
+      t('Photo {{number}}', { number: cards.length + 1 });
     cards.push({ label, caption: photo.caption?.trim() || null, image: read.ok ? read.image : null });
   }
   return { cards, omitted: selection.omitted };

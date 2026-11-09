@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
+import { zSearch, zDay, dayOrderRefinement } from '../utils/list-query-schemas';
 import { t } from '../i18n';
 import { asyncHandler, BadRequestError } from '../middleware/error-middleware';
 import { assertUuidOrNotFound } from '../lib/documents/mandating-agencies';
@@ -149,11 +150,23 @@ export const decideCheckoutHandler = asyncHandler(async (req: Request, res: Resp
 
 // --- 1.8 et 1.9 : reversements ---------------------------------------------
 
-const payoutsQuerySchema = z.object({ limit: z.coerce.number().int().min(1).max(200).optional() });
+const payoutsQuerySchema = z
+  .object({
+    page: z.coerce.number().int().min(1).optional(),
+    limit: z.coerce.number().int().min(1).max(200).optional(),
+    search: zSearch(),
+    account: z
+      .string()
+      .regex(/^(5525|5521\d+)$/)
+      .optional(),
+    from: zDay,
+    to: zDay
+  })
+  .superRefine(dayOrderRefinement('from', 'to'));
 
 export const listPayoutsHandler = asyncHandler(async (req: Request, res: Response) => {
-  const { limit } = payoutsQuerySchema.parse(req.query);
-  res.json({ success: true, data: await listGatewayPayouts(tenantIdOf(req), syndicIdOf(req), { limit }) });
+  const query = payoutsQuerySchema.parse(req.query);
+  res.json({ success: true, data: await listGatewayPayouts(tenantIdOf(req), syndicIdOf(req), query) });
 });
 
 const payoutBodySchema = z

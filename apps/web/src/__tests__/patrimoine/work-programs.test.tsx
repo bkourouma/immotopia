@@ -229,6 +229,28 @@ describe('Programmes de travaux — recherche multicritères', () => {
 });
 
 describe('Aperçu patrimoine — deux requêtes au montage', () => {
+  it('permet de lire les travaux a venir au-dela du plafond historique de200', async () => {
+    listTenantWorkPrograms.mockImplementation(async (_tenant, params) => ({
+      items: [
+        programme({
+          id: `upcoming-${params.page}`,
+          title: params.page === 11 ? 'Programme ancien 205' : 'Premier programme'
+        })
+      ],
+      total: 205,
+      page: params.page,
+      limit: 20,
+      totalPages: 11
+    }));
+    const user = userEvent.setup();
+    monter(<PatrimoineOverviewPage />, '/tenant/:tenantId/patrimoine', '/tenant/agence-1/patrimoine');
+    expect(await screen.findByText('Premier programme', {}, { timeout: 8000 })).toBeInTheDocument();
+    await user.click(screen.getByTitle('11'));
+    expect(await screen.findByText('Programme ancien 205', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(listTenantWorkPrograms).toHaveBeenLastCalledWith('agence-1', { upcoming: true, page: 11, limit: 20 });
+    expect(screen.getByTestId('url').textContent).toContain('travaux.page=11');
+  });
+
   it('ne charge ni les biens, ni les travaux bien par bien', async () => {
     monter(<PatrimoineOverviewPage />, '/tenant/:tenantId/patrimoine', '/tenant/agence-1/patrimoine');
 

@@ -4,6 +4,7 @@ import {
   CrmActivityType,
   CrmContactStatus,
   CrmContactType,
+  CrmContactRoleType,
   CrmDealStage,
   CrmDealType,
   LeadSource,
@@ -144,6 +145,7 @@ export async function listContactsHandler(req: Request, res: Response): Promise<
     const filters = {
       status: parseEnumListParam(req.query.status, CrmContactStatus, 'status'),
       contactType: parseEnumListParam(req.query.contactType, CrmContactType, 'contactType'),
+      role: parseEnumListParam(req.query.role, CrmContactRoleType, 'role'),
       maturityLevel: parseEnumListParam(req.query.maturityLevel, MaturityLevel, 'maturityLevel'),
       leadSource: parseEnumListParam(req.query.leadSource, LeadSource, 'leadSource'),
       source: parseSearchParam(req.query.source, 'source'),

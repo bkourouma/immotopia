@@ -686,6 +686,15 @@ describe('plafonds par agence', () => {
     expect(service.LIST_ASSETS_HARD_LIMIT).toBe(500);
   });
 
+  it('la liste paginée compte tous les actifs archivés et borne chaque page', async () => {
+    seedAsset({ id: 'a-arch', name: 'Ancien', assetClass: 'CASH', status: 'ARCHIVED' });
+    prismaMock.asset.findMany.mockClear();
+    const page = await service.listAssetsPage(TENANT_A, { status: 'ARCHIVED', page: 2, limit: 25 });
+    expect(prismaMock.asset.findMany.mock.calls[0][0]).toMatchObject({ skip: 25, take: 25 });
+    expect(prismaMock.asset.count).toHaveBeenCalledWith({ where: { tenantId: TENANT_A, status: 'ARCHIVED' } });
+    expect(page.total).toBe(1);
+  });
+
   it("valeur nette : n'interroge pas les valorisations d'un actif archivé et ne sélectionne que le nécessaire", async () => {
     seedAsset({ id: 'a-arch', name: 'Vieux', assetClass: 'CASH', status: 'ARCHIVED' });
     seedAsset({ id: 'a-ok', name: 'Cpt', assetClass: 'CASH' });

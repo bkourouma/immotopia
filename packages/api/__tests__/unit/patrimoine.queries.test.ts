@@ -253,7 +253,8 @@ describe('listTenantWorkPrograms — upcoming=true', () => {
       { id: 'b', status: 'IN_PROGRESS', plannedDate: new Date('2026-02-01'), site: { id: 's1', name: 'Chantier 1' } }
     ]);
 
-    const result = await listTenantWorkPrograms(TENANT, { upcoming: true });
+    workProgramCount.mockResolvedValue(205);
+    const result = await listTenantWorkPrograms(TENANT, { upcoming: true, page: 11, limit: 20 });
 
     expect(workProgramFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -262,8 +263,10 @@ describe('listTenantWorkPrograms — upcoming=true', () => {
     );
     expect(result.items).toHaveLength(2);
     expect(result.items[1].constructionSite).toEqual({ id: 's1', name: 'Chantier 1' });
-    // La pagination classique ne s'applique pas a `upcoming=true`.
-    expect(workProgramCount).not.toHaveBeenCalled();
+    expect(workProgramFindMany).toHaveBeenCalledWith(expect.objectContaining({ skip: 200, take: 20 }));
+    expect(workProgramCount).toHaveBeenCalled();
+    expect(result.total).toBe(205);
+    expect(result.page).toBe(11);
   });
 
   it('sans le parametre, la pagination classique reste inchangee', async () => {

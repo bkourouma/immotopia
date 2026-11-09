@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { InvoiceStatus, PlatformInvoiceNature, PlatformPaymentMethod } from '@prisma/client';
 import { asyncHandler, BadRequestError } from '../middleware/error-middleware';
 import { dayEnd, dayStart, zAmount, zCsvEnum, zDay, zSearch } from '../utils/list-query-schemas';
+import { pdfTranslationQuery } from '../lib/documents/pdf-translation-query';
 import {
   generateInvoiceForPeriod,
   getPlatformInvoice,
@@ -147,7 +148,15 @@ export const adminCreditNoteHandler = asyncHandler(async (req: Request, res: Res
 
 /** GET /api/admin/tenants/:tenantId/platform-invoices/:invoiceId/pdf */
 export const adminInvoicePdfHandler = asyncHandler(async (req: Request, res: Response) => {
-  sendPdf(res, await renderPlatformInvoicePdf(req.params.tenantId, req.params.invoiceId, { includeDrafts: true }));
+  const translation = pdfTranslationQuery(req.query.translation);
+  sendPdf(
+    res,
+    await renderPlatformInvoicePdf(
+      req.params.tenantId,
+      req.params.invoiceId,
+      translation === 'ar' ? { includeDrafts: true, translation: 'ar' } : { includeDrafts: true }
+    )
+  );
 });
 
 // ------------------------------------------------------------------ agence
@@ -167,5 +176,11 @@ export const tenantGetInvoiceHandler = asyncHandler(async (req: Request, res: Re
 
 /** GET /api/tenants/:tenantId/subscription/invoices/:invoiceId/pdf */
 export const tenantInvoicePdfHandler = asyncHandler(async (req: Request, res: Response) => {
-  sendPdf(res, await renderPlatformInvoicePdf(req.params.tenantId, req.params.invoiceId));
+  const translation = pdfTranslationQuery(req.query.translation);
+  sendPdf(
+    res,
+    await (translation === 'ar'
+      ? renderPlatformInvoicePdf(req.params.tenantId, req.params.invoiceId, { translation: 'ar' })
+      : renderPlatformInvoicePdf(req.params.tenantId, req.params.invoiceId))
+  );
 });

@@ -3,12 +3,13 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { App, Button, Form, Input, Modal, Select } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined } from '@ant-design/icons';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { listSuppliers, createSupplier } from '../../services/finance-lot2-service';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
+import { listSuppliersPage, createSupplier } from '../../services/finance-lot2-service';
 import { SUPPLIER_KIND_LABELS } from '../../types/finance-lot2-types';
 import type { Supplier, SupplierKind } from '../../types/finance-lot2-types';
-import { useLocalListSearch } from '../../utils/list-search';
+import { useListSearch } from '../../hooks/useListSearch';
 import type { SearchCriterion } from '../../utils/list-search';
+import { collectAllPages } from '../../utils/table-export/collect';
 import { queryKey, entityKeyPrefix, STALE_TIME } from '../../lib/query-keys';
 import { PageHeader, StateBlock, StatusTag, DataView, DataCard } from '../../components/primitives';
 import { t } from '../../i18n/t';
@@ -18,17 +19,8 @@ import { localizedList } from '../../i18n/localized';
  * Fournisseurs — liste et création, récit 2 du lot 2
  * (`specs/017-finance-fournisseurs-chantiers/spec.md`).
  *
- * **Patron « liste reçue en entier → filtrage local »** (guide :
- * `docs/architecture/recherche-listes.md`). `listSuppliers` n'est ni paginé ni
- * filtrable côté serveur (contrat gelé, `finance-lot2-service.ts`) : la liste
- * arrive d'un bloc et `useLocalListSearch` la filtre, la pagine (20 par page) et
- * fournit l'export de toute la liste filtrée. Les critères vivent dans l'URL
- * (`q`, `nature`, `actif`) : une liste filtrée se partage par lien. Aucun
- * critère ne déclare d'`api` : rien ne part vers le serveur.
- *
- * Les accesseurs sont des constantes de module : leur identité stable garde le
- * filtrage mémoïsé. Les trois états (chargement, erreur, vide) restent
- * délégués à `<DataView>`.
+ * Les critères URL (`q`, `nature`, `actif`) et la pagination sont appliqués par
+ * l'API. L'export relit toutes les pages qui correspondent aux critères.
  *
  * **La nature décide de la suite.** Un fournisseur MATERIALS ou MIXED devra
  * obligatoirement rattacher chacune de ses factures à un chantier
@@ -52,21 +44,6 @@ interface FormulaireFournisseur {
   contactEmail?: string;
 }
 
-// Champ libre : raison sociale, contact et nature (libellé affiché, dans la langue courante).
-const TEXTE_RECHERCHE = [
-  (f: Supplier) => f.name,
-  (f: Supplier) => f.contactName,
-  (f: Supplier) => f.contactPhone,
-  (f: Supplier) => f.contactEmail,
-  (f: Supplier) => SUPPLIER_KIND_LABELS[f.kind]
-];
-
-// Valeur lue par les critères non textuels, par clé de critère.
-const ACCESSEURS = {
-  nature: (f: Supplier) => f.kind,
-  actif: (f: Supplier) => f.isActive
-};
-
 export const Fournisseurs: React.FC = () => {
   const { message } = App.useApp();
   const { tenantId } = useParams<{ tenantId: string }>();
@@ -77,30 +54,16 @@ export const Fournisseurs: React.FC = () => {
   const [enregistrement, setEnregistrement] = useState(false);
   const [formulaire] = Form.useForm<FormulaireFournisseur>();
 
-  const {
-    data: fournisseurs,
-    isPending,
-    isFetching,
-    error: erreurRequete,
-    refetch
-  } = useQuery({
-    queryKey: queryKey('suppliers', tenantId),
-    queryFn: () => listSuppliers(tenantId as string),
-    enabled: Boolean(tenantId),
-    staleTime: STALE_TIME.list
-  });
-
-  const toutes = fournisseurs ?? [];
-
   // Déclarés dans le corps : les libellés se retraduisent au changement de langue.
   const criteres: SearchCriterion[] = [
     {
       key: 'q',
       type: 'text',
       label: t('Rechercher'),
-      placeholder: t('Raison sociale, contact, téléphone, e-mail…')
+      placeholder: t('Raison sociale, contact, téléphone, e-mail…'),
+      api: 'search'
     },
-    { key: 'nature', type: 'multiSelect', label: t('Nature'), primary: true, options: OPTIONS_NATURE },
+    { key: 'nature', type: 'multiSelect', label: t('Nature'), primary: true, options: OPTIONS_NATURE, api: 'kind' },
     {
       key: 'actif',
       type: 'boolean',
@@ -108,14 +71,26 @@ export const Fournisseurs: React.FC = () => {
       primary: true,
       tristate: true,
       trueLabel: t('Actif'),
-      falseLabel: t('Inactif')
+      falseLabel: t('Inactif'),
+      api: 'isActive'
     }
   ];
-  const local = useLocalListSearch<Supplier>(fournisseurs, {
-    criteria: criteres,
-    text: TEXTE_RECHERCHE,
-    accessors: ACCESSEURS
+  const search = useListSearch({ criteria: criteres, apiNames: { sort: false } });
+  const {
+    data,
+    isPending,
+    isFetching,
+    error: erreurRequete,
+    refetch
+  } = useQuery({
+    queryKey: queryKey('suppliers', tenantId, search.apiParams),
+    queryFn: () => listSuppliersPage(tenantId as string, search.apiParams),
+    enabled: Boolean(tenantId),
+    staleTime: STALE_TIME.list,
+    placeholderData: keepPreviousData
   });
+  const total = data?.total ?? 0;
+  const fournisseurs = data?.items ?? [];
 
   const fermer = () => {
     setOuvert(false);
@@ -193,18 +168,24 @@ export const Fournisseurs: React.FC = () => {
         title={t('Fournisseurs')}
         subtitle={
           // Deux clés plutôt qu'un « s » collé : chaque langue accorde à sa façon.
-          toutes.length === 0
-            ? undefined
-            : toutes.length === 1
-              ? t('1 fournisseur')
-              : t('{{count}} fournisseurs', { count: toutes.length })
+          total === 0 ? undefined : total === 1 ? t('1 fournisseur') : t('{{count}} fournisseurs', { count: total })
         }
         primaryAction={{ label: t('Nouveau fournisseur'), icon: <PlusOutlined />, onClick: () => setOuvert(true) }}
       />
 
       <DataView<Supplier>
-        {...local.dataViewProps}
-        export={{ filename: t('Fournisseurs'), fetchAll: local.exportAll }}
+        items={fournisseurs}
+        total={total}
+        search={search.searchProps}
+        {...search.dataViewProps}
+        export={{
+          filename: t('Fournisseurs'),
+          fetchAll: () =>
+            collectAllPages<Supplier>(async (page, limit) => {
+              const result = await listSuppliersPage(tenantId, { ...search.filterParams, page, limit });
+              return result;
+            })
+        }}
         loading={isPending}
         isReloading={isFetching && !isPending}
         error={erreurRequete ? t('Impossible de charger les fournisseurs.') : null}

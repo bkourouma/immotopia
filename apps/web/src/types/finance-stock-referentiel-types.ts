@@ -165,6 +165,12 @@ export interface ListStockItemsFilters {
   onlyActive?: boolean;
   /** Recherche libre. Le serveur refuse la chaîne vide : le service omet la clé. */
   search?: string;
+  isActive?: boolean | string;
+  unit?: string;
+  category?: string;
+  defaultCostCategoryId?: string;
+  page?: number | string;
+  limit?: number | string;
 }
 
 // ---------------------------------------------------------------------------

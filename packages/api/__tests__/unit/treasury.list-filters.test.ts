@@ -6,11 +6,19 @@
 
 const transferFindMany = jest.fn(async (..._a: any[]) => [] as any[]);
 const remittanceFindMany = jest.fn(async (..._a: any[]) => [] as any[]);
+const transferCount = jest.fn(async (..._a: any[]) => 502);
+const remittanceCount = jest.fn(async (..._a: any[]) => 502);
 
 jest.mock('../../src/utils/database', () => ({
   prisma: {
-    treasuryTransfer: { findMany: (...a: any[]) => transferFindMany(...a) },
-    taxRemittance: { findMany: (...a: any[]) => remittanceFindMany(...a) },
+    treasuryTransfer: {
+      findMany: (...a: any[]) => transferFindMany(...a),
+      count: (...a: any[]) => transferCount(...a)
+    },
+    taxRemittance: {
+      findMany: (...a: any[]) => remittanceFindMany(...a),
+      count: (...a: any[]) => remittanceCount(...a)
+    },
     treasuryAccount: { findMany: jest.fn(async () => []) },
     user: { findMany: jest.fn(async () => []) }
   }
@@ -37,7 +45,7 @@ describe('listTransfers — filtres', () => {
   it('sans paramètre : where identique à l’actuel', async () => {
     await listTransfers('t1');
     expect(transfersWhere(transferFindMany)).toEqual({ tenantId: 't1' });
-    expect((transferFindMany.mock.calls[0][0] as any).take).toBe(500);
+    expect((transferFindMany.mock.calls[0][0] as any).take).toBeUndefined();
   });
 
   it('chaînes vides ignorées', async () => {
@@ -81,6 +89,13 @@ describe('listTransfers — filtres', () => {
     ]);
   });
 
+  it('page et montant filtrent au serveur avant la limite', async () => {
+    const res = await listTransfers('t1', { page: '26', limit: '20', minAmount: '0', maxAmount: '500000' });
+    expect(transfersWhere(transferFindMany)).toEqual({ tenantId: 't1', amount: { gte: 0, lte: 500000 } });
+    expect(transferFindMany.mock.calls[0][0] as any).toMatchObject({ skip: 500, take: 20 });
+    expect(res.total).toBe(502);
+  });
+
   it.each([
     ['date mal formée', { from: '01/09/2026' }],
     ['date inexistante', { to: '2026-13-45' }],
@@ -88,7 +103,8 @@ describe('listTransfers — filtres', () => {
     ['from après to', { from: '2026-10-01', to: '2026-09-01' }],
     ['compte non uuid', { accountId: 'abc' }],
     ['statut inconnu', { status: 'VALIDATED,FOO' }],
-    ['recherche trop longue', { search: 'x'.repeat(101) }]
+    ['recherche trop longue', { search: 'x'.repeat(101) }],
+    ['bornes de montant inversées', { minAmount: '500', maxAmount: '100' }]
   ])('valeur invalide (%s) : ZodError', async (_label, filters) => {
     await expect(listTransfers('t1', filters)).rejects.toMatchObject({ name: 'ZodError' });
     expect(transferFindMany).not.toHaveBeenCalled();
@@ -128,6 +144,12 @@ describe('listTaxRemittances — filtres', () => {
       status: { in: ['VOIDED'] },
       treasuryAccountId: TREASURY_ACCOUNT
     });
+  });
+
+  it('la page 26 des versements dépasse l’ancien plafond sans perdre le total', async () => {
+    const res = await listTaxRemittances('t1', { page: '26', limit: '20' });
+    expect(remittanceFindMany.mock.calls[0][0] as any).toMatchObject({ skip: 500, take: 20 });
+    expect(res.total).toBe(502);
   });
 
   it.each([

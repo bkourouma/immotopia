@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Alert, App, Button, Modal, Space, Tag, Typography } from 'antd';
+import { App, Button, Modal, Space, Tag, Typography } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   getExternalAccessGrant,
   getExternalAccessScopeOptions,
-  listExternalAccessGrants,
+  listExternalAccessGrantsPage,
   revokeExternalAccessGrant
 } from '../../../services/external-access-service';
 import type {
@@ -22,11 +22,12 @@ import { PatrimoineForbidden } from '../../../components/patrimoine/PatrimoineFo
 import { activeLocale } from '../../../i18n/format';
 import { localizedList } from '../../../i18n/localized';
 import { t } from '../../../i18n/t';
-import { useLocalListSearch } from '../../../utils/list-search';
+import { useListSearch } from '../../../hooks/useListSearch';
 import type { SearchCriterion } from '../../../utils/list-search';
 import { ExternalAccessLinkReveal, ExternalAccessSendLinkModal, type RevealedLink } from './ExternalAccessLinkModals';
 import { ExternalAccessLogModal } from './ExternalAccessLogModal';
 import { ExternalAccessWizard } from './ExternalAccessWizard';
+import { collectAllPages } from '../../../utils/table-export/collect';
 import {
   EXTERNAL_ACCESS_TYPES,
   accessSectionLabel,
@@ -38,9 +39,6 @@ import {
 const { Text } = Typography;
 
 const DEFAULT_MAX_LINK_TTL_DAYS = 30;
-
-/** Plafond de l'API : la liste renvoie au plus les 500 accès les plus récents (création décroissante). */
-const GRANTS_API_CAP = 500;
 
 // Libellés vivants : un `t()` évalué au chargement du module figerait la langue.
 const TYPE_OPTIONS = localizedList(() =>
@@ -54,19 +52,6 @@ const STATUS_OPTIONS = localizedList(() =>
 );
 
 // Accesseurs stables (hors composant) : le champ libre cherche ce que le tableau affiche.
-const TEXTE_RECHERCHE = [
-  (g: ExternalAccessGrantSummary) => g.recipientName,
-  (g: ExternalAccessGrantSummary) => g.recipientEmail,
-  (g: ExternalAccessGrantSummary) => g.ownerName,
-  (g: ExternalAccessGrantSummary) => accessTypeLabel(g.type),
-  (g: ExternalAccessGrantSummary) => accessStatusLabel(g.status)
-];
-const ACCESSEURS = {
-  type: (g: ExternalAccessGrantSummary) => g.type,
-  statut: (g: ExternalAccessGrantSummary) => g.status,
-  // Un accès permanent n'a pas de date d'expiration : il sort dès qu'un intervalle est posé.
-  expiration: (g: ExternalAccessGrantSummary) => g.expiresAt
-};
 
 type WizardState = { open: false } | { open: true; grant: ExternalAccessGrantDetail | null };
 
@@ -106,12 +91,6 @@ export const ExternalAccessPage: React.FC = () => {
   const [revealed, setRevealed] = useState<RevealedLink | null>(null);
   const [opening, setOpening] = useState(false);
 
-  const grantsQuery = useQuery({
-    queryKey: queryKey('external-access', agence),
-    queryFn: () => listExternalAccessGrants(agence as string),
-    enabled: Boolean(agence),
-    staleTime: STALE_TIME.list
-  });
   const optionsQuery = useQuery({
     queryKey: queryKey('external-access-options', agence),
     queryFn: () => getExternalAccessScopeOptions(agence as string),
@@ -125,17 +104,30 @@ export const ExternalAccessPage: React.FC = () => {
       key: 'q',
       type: 'text',
       label: t('Rechercher'),
-      placeholder: t('Bénéficiaire, e-mail, propriétaire, type…')
+      placeholder: t('Bénéficiaire, e-mail, propriétaire…'),
+      api: 'search'
     },
-    { key: 'type', type: 'multiSelect', label: t('Type d’accès'), primary: true, options: TYPE_OPTIONS },
-    { key: 'statut', type: 'multiSelect', label: t('Statut'), primary: true, options: STATUS_OPTIONS },
-    { key: 'expiration', type: 'dateRange', label: t('Expiration') }
+    { key: 'type', type: 'multiSelect', label: t('Type d’accès'), primary: true, options: TYPE_OPTIONS, api: 'types' },
+    { key: 'statut', type: 'multiSelect', label: t('Statut'), primary: true, options: STATUS_OPTIONS, api: 'statuses' },
+    { key: 'expiration', type: 'dateRange', label: t('Expiration'), api: ['expirationFrom', 'expirationTo'] }
   ];
-  const local = useLocalListSearch<ExternalAccessGrantSummary>(grantsQuery.data, {
+  const search = useListSearch({
     ariaLabel: t('Rechercher dans les accès partagés'),
     criteria: criteres,
-    text: TEXTE_RECHERCHE,
-    accessors: ACCESSEURS
+    defaultPageSize: 25,
+    apiNames: { sort: false }
+  });
+  const grantsQuery = useQuery({
+    queryKey: queryKey('external-access', agence, search.apiParams),
+    queryFn: () =>
+      listExternalAccessGrantsPage(agence as string, {
+        ...search.apiParams,
+        page: search.page,
+        limit: Math.min(search.pageSize, 100)
+      }),
+    enabled: Boolean(agence),
+    staleTime: STALE_TIME.list,
+    placeholderData: keepPreviousData
   });
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: queryKey('external-access', agence) });
@@ -180,7 +172,8 @@ export const ExternalAccessPage: React.FC = () => {
   const startCreate = () => {
     if (options) setWizard({ open: true, grant: null });
   };
-  const grants = grantsQuery.data ?? [];
+  const grants = grantsQuery.data?.items ?? [];
+  const total = grantsQuery.data?.total ?? 0;
 
   if (isForbiddenError(grantsQuery.error) || isForbiddenError(optionsQuery.error)) return <PatrimoineForbidden />;
 
@@ -214,7 +207,7 @@ export const ExternalAccessPage: React.FC = () => {
         />
       ) : grantsQuery.isPending ? (
         <SkeletonList rows={5} aria-label={t('Accès partagés en cours de chargement')} />
-      ) : grants.length === 0 ? (
+      ) : total === 0 && !search.isFiltered ? (
         <StateBlock
           variant="empty"
           description={t('Aucun accès partagé pour le moment.')}
@@ -222,21 +215,17 @@ export const ExternalAccessPage: React.FC = () => {
         />
       ) : (
         <>
-          {grants.length >= GRANTS_API_CAP ? (
-            <Alert
-              type="info"
-              showIcon
-              style={{ marginBlockEnd: 12 }}
-              title={t(
-                'Seuls les 500 accès les plus récents sont affichés : affinez la recherche ou révoquez les accès inutiles.'
-              )}
-            />
-          ) : null}
           <Table<ExternalAccessGrantSummary>
-            {...local.tableProps}
+            dataSource={grants}
+            search={search.searchProps}
+            pagination={search.tablePagination(total)}
             aria-label={t('Accès partagés')}
             exportFilename={t('Accès partagés')}
-            exportFetchAll={local.exportAll}
+            exportFetchAll={() =>
+              collectAllPages((page, limit) =>
+                listExternalAccessGrantsPage(agence, { ...search.filterParams, page, limit })
+              )
+            }
             rowKey="id"
             scroll={{ x: 'max-content' }}
             columns={[
