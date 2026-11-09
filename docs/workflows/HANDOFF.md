@@ -17,6 +17,14 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 
 Modèle de section : voir le bloc « Modèle de section » plus bas.
 
+## fix/pdf-arabic-exclusive-period — 2026-11-09
+
+**Base :** main `0794d6b168a42e151c8b4c244c30f51c8877f914` après #198. Correctif isolé ; aucun changement de l'ancienne intégration non livrée n'est repris sans vérification. #199 ne touche pas au générateur des factures plateforme.
+
+**Fait :** les périodes des lignes de facture arabe affichent le dernier jour inclus au lieu de leur borne de fin exclusive, comme le PDF français. L'en-tête conserve son comportement, avec le même helper immuable. Trois régressions exécutent le rendu PDF réel : fin de mois, passage d'année et février bissextile ; dates sources inchangées.
+
+**Validation et suite :** les trois régressions échouent sur le générateur de main, puis passent après correction ; quatre suites PDF/AR ciblées totalisent 22 tests réussis. Typage API, lint ciblé, architecture et wiki:check réussis. PR à maintenir en brouillon, sans fusion ni déploiement. Aucun changement de route, permission ou fonctionnalité n'impose une nouvelle entrée du wiki ; correction d'affichage de dates uniquement.
+
 ## codex/recuperation-pr196 — 2026-11-09
 
 **Branche :** `codex/recuperation-pr196`, depuis `main` / `origin/main` `333a357e17e0ff524fb0cfcdfa6591923a41df51`. Source récupérée : PR #196 fermée sans fusion, head `9c51a5d625be9bf41c86bc30fbadeeba3b22e9c6`, delta depuis `360591bd`. Dernier commit avant récupération : `333a357e` ; le commit contenant cette section porte la récupération.

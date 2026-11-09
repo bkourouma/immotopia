@@ -33,6 +33,9 @@ const STATUS: Record<string, string> = {
 const date = (value: Date | null | undefined) =>
   value ? new Date(value).toLocaleDateString('fr-FR', { timeZone: 'UTC' }) : '-';
 
+/** Fin de période exclusive affichée comme dernier jour inclus, comme l'original français. */
+const lastDay = (value: Date): Date => new Date(new Date(value).getTime() - 24 * 60 * 60 * 1000);
+
 function brandingOf(payload: PlatformInvoicePdfPayload): DocumentBranding {
   return {
     issuer: issuerFromMandant({
@@ -143,7 +146,7 @@ export async function renderArabicPlatformInvoicePdf(payload: PlatformInvoicePdf
       page,
       faces,
       t('Période', undefined, 'ar'),
-      `${date(payload.periodStart)} - ${date(new Date(payload.periodEnd.getTime() - 86400000))}`,
+      `${date(payload.periodStart)} - ${date(lastDay(payload.periodEnd))}`,
       y
     );
     y -= 20;
@@ -174,7 +177,7 @@ export async function renderArabicPlatformInvoicePdf(payload: PlatformInvoicePdf
     if (line.periodStart && line.periodEnd) {
       next(16);
       if (y > H - 90) header();
-      text(page, faces, `${date(line.periodStart)} - ${date(line.periodEnd)}`, R, y, 245, false, 7);
+      text(page, faces, `${date(line.periodStart)} - ${date(lastDay(line.periodEnd))}`, R, y, 245, false, 7);
       y -= 15;
     }
   }
