@@ -81,7 +81,7 @@ export const RentalPayoutModal: React.FC<RentalPayoutModalProps> = ({
       });
       onRecorded(result);
     } catch (e) {
-      setError(apiErrorMessage(e, t('Le reversement n’a pas pu être enregistré')));
+      setError(apiErrorMessage(e, t("Le reversement n'a pas pu être enregistré")));
     } finally {
       setSubmitting(false);
     }
