@@ -23,7 +23,9 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 **Vérifié** — API : 106 tests ciblés (dont routes-inventory, schema-tenant-coverage, portal-no-disk-paths), tsc à 1 erreur préexistante (`archiver`), eslint propre. Web : 191 tests ciblés, tsc sans erreur. `i18n:check` des deux paquets, `wiki:check`. Audit de sécurité en lecture seule : 0 critique, 0 élevé ; trois points moyens corrigés.
 
-**Non vérifié** — Migration jamais exécutée sur PostgreSQL ; `npm run test:isolation` non lancé ; aucun passage navigateur ; multer réel (2 Mo) et envoi SMTP réel non testés ; arabe non relu par un locuteur natif.
+**CI (premier envoi)** — Trois tests existants échouaient parce qu'ils listent exactement les routes, permissions et clés d'alerte : `syndic-declared-payment.routes` (limiteurs absents du mock), `notification-feature-gate` (clé `RECEIVING_ACCOUNT_CHANGED` classée CORE) et `settings.finance` (deux droits de plus au montage) ; corrigés dans le test, jamais dans le code. Un échec web (`ProviderInvoicesSearch`, lot 2/4) est un aléa : 7 tests sur 7 passent seuls. Tests d'isolation sur base dédiée : passés en CI, migration comprise.
+
+**Non vérifié** — Migration exécutée sur la base de démo et en CI (isolation) ; `npm run test:isolation` non lancé ; aucun passage navigateur ; multer réel (2 Mo) et envoi SMTP réel non testés ; arabe non relu par un locuteur natif.
 
 **Dette connue** — Le routeur `email-notification-config` n'exige aucune permission (tout collaborateur peut désactiver une alerte ; l'alerte de ce lot l'ignore) ; fichiers de QR orphelins à la suppression d'une agence ou d'une copropriété ; image non décodée ; pas de lien entre déclaration et compte de réception ; mention dans les PDF non faite (TQ12) ; sous-compte comptable à décider (TQ02).
 
