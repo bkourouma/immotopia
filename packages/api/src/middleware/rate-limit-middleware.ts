@@ -2,8 +2,19 @@ import type { NextFunction, Request, Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import { env } from '../config/env';
 import { t } from '../i18n';
-import { assertSignupAllowed } from '../services/signup-guard-service';
+import { assertSignupAllowed, normalizeSignupIp } from '../services/signup-guard-service';
 import { hashToken } from '../lib/secure-links/token';
+
+/**
+ * Clé de limiteur par adresse du client (AUTH-01) : IPv4 inchangée, IPv4-mappée
+ * ramenée à l'IPv4, IPv6 réduite à son préfixe /64 (un abonné IPv6 dispose de
+ * tout son /64 et changerait d'adresse à chaque requête pour contourner un
+ * plafond par adresse). `'inconnue'` sans IP. Même règle que le garde des
+ * inscriptions (`normalizeSignupIp`).
+ */
+export function clientIpKey(req: Request): string {
+  return normalizeSignupIp(req.ip);
+}
 
 /**
  * Limiteur d'inscription : 3 par heure et par IP (fenêtre glissante).
@@ -30,6 +41,7 @@ export function registrationRateLimiter(req: Request, _res: Response, next: Next
  * essais par fenêtre.
  */
 export const loginRateLimiter = rateLimit({
+  keyGenerator: req => clientIpKey(req),
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 5, // 5 échecs par fenêtre
   skipSuccessfulRequests: true,
@@ -51,6 +63,7 @@ export const loginRateLimiter = rateLimit({
  * compter aucune requête et désactiverait de fait ce limiteur.
  */
 export const forgotPasswordRateLimiter = rateLimit({
+  keyGenerator: req => clientIpKey(req),
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 3, // 3 requests per window
   message: {
@@ -66,6 +79,7 @@ export const forgotPasswordRateLimiter = rateLimit({
  * 3 attempts per hour per IP
  */
 export const resendVerificationRateLimiter = rateLimit({
+  keyGenerator: req => clientIpKey(req),
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 3, // 3 requests per window
   message: {
@@ -82,6 +96,7 @@ export const resendVerificationRateLimiter = rateLimit({
  * per hour per tab) while blocking refresh-token brute forcing.
  */
 export const refreshRateLimiter = rateLimit({
+  keyGenerator: req => clientIpKey(req),
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 30,
   message: {
@@ -97,6 +112,7 @@ export const refreshRateLimiter = rateLimit({
  * The reset token is a UUID; this blocks guessing it.
  */
 export const resetPasswordRateLimiter = rateLimit({
+  keyGenerator: req => clientIpKey(req),
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 10,
   message: {
@@ -111,6 +127,7 @@ export const resetPasswordRateLimiter = rateLimit({
  * Rate limiter for invitation acceptance (public endpoint carrying a token)
  */
 export const invitationAcceptRateLimiter = rateLimit({
+  keyGenerator: req => clientIpKey(req),
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 10,
   message: {
@@ -126,6 +143,7 @@ export const invitationAcceptRateLimiter = rateLimit({
  * Sized for provider traffic, not for a flood.
  */
 export const webhookRateLimiter = rateLimit({
+  keyGenerator: req => clientIpKey(req),
   windowMs: 60 * 1000, // 1 minute
   max: 120,
   message: {
@@ -149,7 +167,7 @@ export const webhookRateLimiter = rateLimit({
 export const whatsappCloudWebhookRateLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
   max: 600,
-  keyGenerator: req => `wa-cloud:${req.ip ?? 'inconnue'}`,
+  keyGenerator: req => `wa-cloud:${clientIpKey(req)}`,
   message: {
     success: false,
     message: 'Trop de requêtes.'
@@ -165,7 +183,7 @@ export const whatsappCloudWebhookRateLimiter = rateLimit({
 export const signatureProviderWebhookRateLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 600,
-  keyGenerator: req => `sig-provider:${req.ip ?? 'inconnue'}`,
+  keyGenerator: req => `sig-provider:${clientIpKey(req)}`,
   message: {
     success: false,
     message: 'Trop de requêtes.'
@@ -183,7 +201,7 @@ export const signatureProviderWebhookRateLimiter = rateLimit({
 export const secureLinkPublicRateLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 30,
-  keyGenerator: req => `secure-link:${req.ip ?? 'inconnue'}`,
+  keyGenerator: req => `secure-link:${clientIpKey(req)}`,
   handler: (_req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Pragma', 'no-cache');
@@ -204,7 +222,7 @@ export const secureLinkPublicRateLimiter = rateLimit({
 export const secureLinkPaymentStartRateLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 10,
-  keyGenerator: req => `secure-link-payment-start:${req.ip ?? 'inconnue'}`,
+  keyGenerator: req => `secure-link-payment-start:${clientIpKey(req)}`,
   handler: (_req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Pragma', 'no-cache');
@@ -224,7 +242,7 @@ export const secureLinkPaymentStartRateLimiter = rateLimit({
 export const secureLinkStatusRateLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 90,
-  keyGenerator: req => `secure-link-status:${req.ip ?? 'inconnue'}`,
+  keyGenerator: req => `secure-link-status:${clientIpKey(req)}`,
   handler: (_req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Pragma', 'no-cache');
@@ -255,7 +273,7 @@ export function meetingLiveTokenKey(req: Request, bucket: string): string {
   if (typeof token === 'string' && token.length > 0 && token.length <= 256) {
     return `meeting-live-${bucket}:${hashToken(token)}`;
   }
-  return `meeting-live-${bucket}:ip:${req.ip ?? 'inconnue'}`;
+  return `meeting-live-${bucket}:ip:${clientIpKey(req)}`;
 }
 
 /**
@@ -266,7 +284,7 @@ export function meetingLiveTokenKey(req: Request, bucket: string): string {
 export const meetingLiveIpRateLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 3000,
-  keyGenerator: req => `meeting-live-ip:${req.ip ?? 'inconnue'}`,
+  keyGenerator: req => `meeting-live-ip:${clientIpKey(req)}`,
   handler: meetingLiveTooMany,
   standardHeaders: true,
   legacyHeaders: false
@@ -322,7 +340,7 @@ export const meetingDiscussionSendRateLimiter = rateLimit({
 export const livekitWebhookRateLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 3000,
-  keyGenerator: req => `livekit-webhook:${req.ip ?? 'inconnue'}`,
+  keyGenerator: req => `livekit-webhook:${clientIpKey(req)}`,
   message: { success: false, message: 'Trop de requêtes.' },
   standardHeaders: true,
   legacyHeaders: false
@@ -429,7 +447,7 @@ export const syndicDeclaredProofReadRateLimiter = rateLimit({
 export const coOwnerDeclarationCreateLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 10,
-  keyGenerator: req => `coowner-declaration-create:${req.user?.userId ?? req.ip ?? 'anonyme'}`,
+  keyGenerator: req => `coowner-declaration-create:${req.user?.userId ?? clientIpKey(req)}`,
   handler: (_req, res) => {
     res.status(429).json({
       success: false,
@@ -450,7 +468,7 @@ const proofReadMessage = () => ({
 const coOwnerProofReadPerMinute = rateLimit({
   windowMs: 60 * 1000,
   max: 5,
-  keyGenerator: req => `coowner-proof-read-min:${req.user?.userId ?? req.ip ?? 'anonyme'}`,
+  keyGenerator: req => `coowner-proof-read-min:${req.user?.userId ?? clientIpKey(req)}`,
   handler: (_req, res) => {
     res.status(429).json(proofReadMessage());
   },
@@ -461,7 +479,7 @@ const coOwnerProofReadPerMinute = rateLimit({
 const coOwnerProofReadPerDay = rateLimit({
   windowMs: 24 * 60 * 60 * 1000,
   max: 30,
-  keyGenerator: req => `coowner-proof-read-day:${req.user?.userId ?? req.ip ?? 'anonyme'}`,
+  keyGenerator: req => `coowner-proof-read-day:${req.user?.userId ?? clientIpKey(req)}`,
   handler: (_req, res) => {
     res.status(429).json(proofReadMessage());
   },
@@ -484,7 +502,7 @@ export const coOwnerProofReadLimiter = (req: Request, res: Response, next: NextF
 export const chargePaymentViewRateLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 30,
-  keyGenerator: req => `charge-payment-view:${req.ip ?? 'inconnue'}`,
+  keyGenerator: req => `charge-payment-view:${clientIpKey(req)}`,
   handler: (_req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Pragma', 'no-cache');
@@ -500,7 +518,7 @@ export const chargePaymentViewRateLimiter = rateLimit({
 export const chargePaymentStartRateLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 10,
-  keyGenerator: req => `charge-payment-start:${req.ip ?? 'inconnue'}`,
+  keyGenerator: req => `charge-payment-start:${clientIpKey(req)}`,
   handler: (_req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Pragma', 'no-cache');
@@ -516,7 +534,7 @@ export const chargePaymentStartRateLimiter = rateLimit({
 export const chargePaymentStatusRateLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 90,
-  keyGenerator: req => `charge-payment-status:${req.ip ?? 'inconnue'}`,
+  keyGenerator: req => `charge-payment-status:${clientIpKey(req)}`,
   handler: (_req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Pragma', 'no-cache');
@@ -542,6 +560,7 @@ export function isLivekitWebhookPath(path: string): boolean {
 }
 
 export const globalApiRateLimiter = rateLimit({
+  keyGenerator: req => clientIpKey(req),
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 1000,
   message: {
@@ -569,7 +588,7 @@ export const globalApiRateLimiter = rateLimit({
 export const coOwnerPortalPdfRateLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
   max: 30,
-  keyGenerator: req => `coowner-pdf:${req.user?.userId ?? req.ip ?? 'anonyme'}`,
+  keyGenerator: req => `coowner-pdf:${req.user?.userId ?? clientIpKey(req)}`,
   message: {
     success: false,
     message: 'Trop de requêtes. Veuillez réessayer dans quelques minutes.'
@@ -585,7 +604,7 @@ export const coOwnerPortalPdfRateLimiter = rateLimit({
 export const coOwnerMeetingAccessRateLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 10,
-  keyGenerator: req => `coowner-meeting-access:${req.user?.userId ?? req.ip ?? 'anonyme'}`,
+  keyGenerator: req => `coowner-meeting-access:${req.user?.userId ?? clientIpKey(req)}`,
   message: {
     success: false,
     message: 'Trop de requêtes. Veuillez réessayer dans quelques minutes.'
@@ -602,7 +621,7 @@ export const coOwnerMeetingAccessRateLimiter = rateLimit({
 export const coOwnerChargeNoticeRateLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 20,
-  keyGenerator: req => (req.user?.userId ? `user:${req.user.userId}` : `ip:${req.ip}`),
+  keyGenerator: req => (req.user?.userId ? `user:${req.user.userId}` : `ip:${clientIpKey(req)}`),
   message: {
     success: false,
     message: 'Trop de téléchargements. Veuillez réessayer dans une minute.'
@@ -879,7 +898,7 @@ function signatureLimitHandler(_req: Request, res: Response): void {
 export const signaturePublicRateLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 60,
-  keyGenerator: req => `signature-public:${req.ip ?? 'inconnue'}`,
+  keyGenerator: req => `signature-public:${clientIpKey(req)}`,
   handler: signatureLimitHandler,
   standardHeaders: true,
   legacyHeaders: false
@@ -889,7 +908,7 @@ export const signaturePublicRateLimiter = rateLimit({
 export const signatureOtpRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
-  keyGenerator: req => `signature-otp:${req.ip ?? 'inconnue'}`,
+  keyGenerator: req => `signature-otp:${clientIpKey(req)}`,
   handler: signatureLimitHandler,
   standardHeaders: true,
   legacyHeaders: false
@@ -899,7 +918,7 @@ export const signatureOtpRateLimiter = rateLimit({
 export const signatureActionRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
-  keyGenerator: req => `signature-action:${req.ip ?? 'inconnue'}`,
+  keyGenerator: req => `signature-action:${clientIpKey(req)}`,
   handler: signatureLimitHandler,
   standardHeaders: true,
   legacyHeaders: false
@@ -909,7 +928,7 @@ export const signatureActionRateLimiter = rateLimit({
 export const signatureOtpVerifyRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
-  keyGenerator: req => `signature-otp-verify:${req.ip ?? 'inconnue'}`,
+  keyGenerator: req => `signature-otp-verify:${clientIpKey(req)}`,
   handler: signatureLimitHandler,
   standardHeaders: true,
   legacyHeaders: false
@@ -919,7 +938,7 @@ export const signatureOtpVerifyRateLimiter = rateLimit({
 export const signatureExternalLinkRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
-  keyGenerator: req => `signature-external-link:${req.ip ?? 'inconnue'}`,
+  keyGenerator: req => `signature-external-link:${clientIpKey(req)}`,
   handler: signatureLimitHandler,
   standardHeaders: true,
   legacyHeaders: false
@@ -940,7 +959,7 @@ export const messagingSendRateLimiter = rateLimit({
       req.tenantPortal?.tenantId ??
       req.ownerPortal?.tenantId ??
       'sans-agence';
-    return `messaging-send:${tenantId}:${req.user?.userId ?? req.ip ?? 'anonyme'}`;
+    return `messaging-send:${tenantId}:${req.user?.userId ?? clientIpKey(req)}`;
   },
   handler: (_req, res) => {
     res.status(429).json({
@@ -987,7 +1006,7 @@ export const whatsappTestSendUserRateLimiter = rateLimit({
 export const notificationResendRateLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 10,
-  keyGenerator: req => `notification-resend:${req.user?.userId ?? req.ip ?? 'anonyme'}`,
+  keyGenerator: req => `notification-resend:${req.user?.userId ?? clientIpKey(req)}`,
   handler: (_req, res) => {
     res.status(429).json({
       success: false,

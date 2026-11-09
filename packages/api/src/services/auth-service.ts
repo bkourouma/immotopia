@@ -13,6 +13,7 @@ import { AuditActionKey } from '../types/audit-types';
 import { legacySanitizedPassword } from '../middleware/validation-middleware';
 import { getUserPermissions } from './permission-service';
 import type { Language } from '../i18n';
+import { isLoginLocked, recordLoginFailure, clearLoginFailures, clearEmailThrottle } from './login-throttle-service';
 
 /** Entity type used for every authentication event. */
 const AUTH_ENTITY = 'User';
@@ -30,6 +31,32 @@ const INVALID_CREDENTIALS_MESSAGE = 'Email ou mot de passe incorrect.';
  * Aucun mot de passe réel n'y correspond.
  */
 const DUMMY_PASSWORD_HASH = '$2b$12$wSyf5Hb.FEdQ5gWclTtBFezr9YiKXw0o1AejiRc15kyM9uvsEkef.';
+
+/**
+ * Colonnes publiques du modèle User : tout sauf `passwordHash`. Un `select`
+ * explicite garantit que le hash ne sort jamais de la base pour ces lectures.
+ */
+const USER_PUBLIC_SELECT = {
+  id: true,
+  email: true,
+  googleId: true,
+  fullName: true,
+  avatarUrl: true,
+  globalRole: true,
+  emailVerified: true,
+  isActive: true,
+  preferredLanguage: true,
+  createdAt: true,
+  updatedAt: true,
+  lastLoginAt: true
+} as const;
+
+/**
+ * Délai de grâce (ms) après la rotation d'un jeton de rafraîchissement : le
+ * présenter de nouveau dans ce délai (deux onglets, double envoi réseau) est un
+ * doublon légitime, refusé sans révoquer les autres sessions.
+ */
+export const REFRESH_REUSE_GRACE_MS = 15_000;
 
 /** Vrai quand une erreur Prisma est une violation de contrainte d'unicité (P2002). */
 function isUniqueViolation(error: unknown): boolean {
@@ -65,6 +92,24 @@ async function sendQuietly(userId: string, what: string, send: () => Promise<voi
   } catch (error) {
     logger.error(`Failed to send ${what}`, { userId, error });
   }
+}
+
+/**
+ * Lance l'envoi d'un e-mail SANS l'attendre : le temps de réponse ne dépend pas
+ * du serveur d'e-mails (anti-sondage des comptes). Une erreur, y compris
+ * synchrone, est journalisée et ne remonte jamais (aucune rejection non gérée).
+ */
+function sendDetached(userId: string, what: string, send: () => Promise<void> | void): void {
+  let pending: Promise<void | undefined>;
+  try {
+    pending = Promise.resolve(send());
+  } catch (error) {
+    pending = Promise.reject(error);
+  }
+  void pending.then(
+    () => logger.info(`${what} sent`, { userId }),
+    error => logger.error(`Failed to send ${what}`, { userId, error })
+  );
 }
 
 /**
@@ -210,13 +255,16 @@ export async function verifyEmail(token: string) {
         gt: new Date()
       }
     },
-    include: {
-      user: true
+    // Jamais l'objet User complet : il porte `passwordHash`.
+    select: {
+      id: true,
+      userId: true,
+      user: { select: USER_PUBLIC_SELECT }
     }
   });
 
   if (!verificationToken) {
-    throw new Error('Token de vérification invalide ou expiré.');
+    throw new BadRequestError('Token de vérification invalide ou expiré.');
   }
 
   // Mark token as used and verify user email
@@ -234,9 +282,7 @@ export async function verifyEmail(token: string) {
 
   logger.info('Email verified', { userId: verificationToken.userId, email: verificationToken.user.email });
 
-  const { passwordHash: removedPasswordHash, ...userPublic } = verificationToken.user;
-  void removedPasswordHash;
-  return userPublic;
+  return verificationToken.user;
 }
 
 /**
@@ -284,18 +330,14 @@ export async function resendVerificationEmail(email: string) {
     }
   });
 
-  // Send verification email
-  try {
-    await emailService.sendVerificationEmail(user.email, verificationToken, {
+  // Envoi détaché : la réponse n'attend pas le serveur d'e-mails (AUTH-07). Un échec
+  // est journalisé, jamais exposé : la réponse reste identique.
+  sendDetached(user.id, 'verification email resend', () =>
+    emailService.sendVerificationEmail(user.email, verificationToken, {
       userName: user.fullName ?? undefined,
       language: user.preferredLanguage
-    });
-  } catch (error) {
-    // L'echec d'envoi est journalise, jamais expose : la reponse reste identique.
-    logger.error('Verification email resend failed', { userId: user.id, error });
-    return;
-  }
-  logger.info('Verification email resent', { userId: user.id, email: user.email });
+    })
+  );
 }
 
 /**
@@ -347,7 +389,14 @@ async function verifyLoginPassword(password: string, passwordHash: string | null
   return hasLegacyForm ? comparePassword(legacy, passwordHash) : false;
 }
 
-export async function loginUser(data: LoginRequest) {
+export async function loginUser(data: LoginRequest, context?: { ip?: string }) {
+  // Verrou par e-mail (AUTH-01) : refus SANS comparer le mot de passe, avec la même erreur
+  // qu'un échec ordinaire. Un `comparePassword` factice égalise le temps de réponse.
+  if (isLoginLocked(data.email, context?.ip)) {
+    await verifyLoginPassword(data.password, null);
+    throw new BadRequestError(INVALID_CREDENTIALS_MESSAGE);
+  }
+
   // Find user by email
   const user = await prisma.user.findUnique({
     where: { email: data.email }
@@ -359,6 +408,8 @@ export async function loginUser(data: LoginRequest) {
   const isPasswordValid = await verifyLoginPassword(data.password, user?.passwordHash ?? null);
 
   if (!user || !isPasswordValid) {
+    // Compté pour tout e-mail, connu ou non : la réponse ne trahit pas l'existence du compte.
+    recordLoginFailure(data.email, context?.ip);
     if (user) {
       logger.warn('Failed login attempt', { userId: user.id });
       void logAuthEvent({
@@ -371,13 +422,16 @@ export async function loginUser(data: LoginRequest) {
         payload: { reason: 'invalid_password' }
       });
     }
-    throw new Error(INVALID_CREDENTIALS_MESSAGE);
+    throw new BadRequestError(INVALID_CREDENTIALS_MESSAGE);
   }
+
+  // Mot de passe correct : le compteur de cet e-mail repart de zéro.
+  clearLoginFailures(data.email, context?.ip);
 
   // Mot de passe valide : l'état du compte peut maintenant être dit à son titulaire.
   // Check if account is active
   if (!user.isActive) {
-    throw new Error("Votre compte a été désactivé. Contactez l'administrateur.");
+    throw new BadRequestError("Votre compte a été désactivé. Contactez l'administrateur.");
   }
 
   // Check if email is verified
@@ -389,12 +443,12 @@ export async function loginUser(data: LoginRequest) {
       } catch (error) {
         logger.error('Failed to resend verification email on login', { userId: user.id, error });
       }
-      throw new Error('Veuillez vérifier votre adresse email. Un nouveau lien de vérification a été envoyé.');
+      throw new BadRequestError('Veuillez vérifier votre adresse email. Un nouveau lien de vérification a été envoyé.');
     }
     if (isProduction) {
       // Production sans serveur d'e-mails : aucune vérification automatique.
       logger.warn('Login refused: email not verified and mailer is not configured', { userId: user.id });
-      throw new Error(
+      throw new BadRequestError(
         "Votre adresse email n'est pas vérifiée et le service d'e-mails est momentanément indisponible. Réessayez plus tard."
       );
     }
@@ -502,6 +556,50 @@ export async function issueGoogleSession(
   return { accessToken, refreshToken };
 }
 
+/** Marge (ms) entre la révocation du jeton présenté et la création de son successeur (même transaction en pratique). */
+const ROTATION_SUCCESSOR_SKEW_MS = 5_000;
+
+type RefreshTokenRecord = {
+  userId: string;
+  user: { id: string; email: string; isActive: boolean; emailVerified: boolean; globalRole: GlobalRole };
+};
+
+/**
+ * Doublon légitime d'un rafraîchissement (deux onglets, double envoi) : émet un nouvel
+ * accessToken SANS nouveau jeton de rafraîchissement (`refreshToken: null`) ; le cookie
+ * de rafraîchissement déjà posé par la requête gagnante reste valable et ne doit pas être touché.
+ *
+ * Garde-fous : compte actif et vérifié ; et le jeton doit avoir été révoqué par une ROTATION,
+ * c'est-à-dire qu'un autre jeton non révoqué et non expiré du même utilisateur a été créé
+ * à partir de la révocation (moins `ROTATION_SUCCESSOR_SKEW_MS`). Un jeton révoqué par
+ * déconnexion, réinitialisation ou révocation de session n'a pas de successeur : refus 401.
+ */
+async function toleratedRefresh(tokenRecord: RefreshTokenRecord, revokedAt: Date, reason: string) {
+  if (!tokenRecord.user.isActive || !tokenRecord.user.emailVerified) {
+    throw new UnauthorizedError('Compte utilisateur désactivé ou non vérifié.');
+  }
+  const successor = await prisma.refreshToken.findFirst({
+    where: {
+      userId: tokenRecord.userId,
+      revoked: false,
+      expiresAt: { gt: new Date() },
+      createdAt: { gte: new Date(revokedAt.getTime() - ROTATION_SUCCESSOR_SKEW_MS) }
+    },
+    select: { id: true }
+  });
+  if (!successor) {
+    logger.info('Refresh token replay without rotation successor, refused', { userId: tokenRecord.userId, reason });
+    throw new UnauthorizedError('Session invalide. Veuillez vous reconnecter.');
+  }
+  logger.info('Refresh token replay tolerated, access token only', { userId: tokenRecord.userId, reason });
+  const accessToken = generateAccessToken({
+    userId: tokenRecord.user.id,
+    email: tokenRecord.user.email,
+    globalRole: tokenRecord.user.globalRole
+  });
+  return { accessToken, refreshToken: null as string | null };
+}
+
 /**
  * Refresh access token using refresh token.
  *
@@ -510,9 +608,21 @@ export async function issueGoogleSession(
  * reuse after the legitimate client has refreshed is detectable (the record is
  * already revoked).
  *
+ * La rotation est atomique (`updateMany` sur `revoked: false`, `count === 1`
+ * exigé) : de deux requêtes simultanées, une seule réussit. La perdante, comme
+ * un jeton révoqué depuis moins de `REFRESH_REUSE_GRACE_MS` (rejeu d'un autre
+ * onglet), est un doublon légitime : elle reçoit un nouvel accessToken avec
+ * `refreshToken: null` (le contrôleur ne touche alors PAS au cookie de
+ * rafraîchissement de la gagnante), à condition que le compte soit actif et
+ * que le jeton ait été révoqué par une rotation (successeur non révoqué, voir
+ * `toleratedRefresh`) ; sinon 401. Au-delà du délai de grâce, c'est une
+ * réutilisation : toutes les sessions sont révoquées et un événement
+ * `AUTH_TOKEN_REUSE_DETECTED` est tracé.
+ *
  * @param refreshToken - Refresh token from cookie
  * @param deviceInfo - User-Agent of the caller, stored on the new token
  * @returns New access token and the new refresh token to set as a cookie
+ *   (`null` : doublon toléré, ne pas modifier le cookie de rafraîchissement)
  */
 export async function refreshAccessToken(refreshToken: string, deviceInfo?: string) {
   if (!refreshToken) {
@@ -525,7 +635,16 @@ export async function refreshAccessToken(refreshToken: string, deviceInfo?: stri
   // Find the token record (revoked ones included, to detect reuse)
   const tokenRecord = await prisma.refreshToken.findFirst({
     where: { token: refreshTokenHash },
-    include: { user: true }
+    // Seuls les champs utilisés : jamais l'objet User complet (`passwordHash`).
+    select: {
+      id: true,
+      userId: true,
+      revoked: true,
+      revokedAt: true,
+      expiresAt: true,
+      deviceInfo: true,
+      user: { select: { id: true, email: true, isActive: true, emailVerified: true, globalRole: true } }
+    }
   });
 
   if (!tokenRecord) {
@@ -535,6 +654,11 @@ export async function refreshAccessToken(refreshToken: string, deviceInfo?: stri
   // Reuse of an already-rotated token means the token leaked: revoke the whole
   // family so both the attacker and the legitimate client must re-authenticate.
   if (tokenRecord.revoked) {
+    // Délai de grâce : jeton tout juste tourné (deux onglets, double envoi) = doublon légitime.
+    // Refusé (le client efface ses cookies et se reconnecte) sans toucher aux autres sessions.
+    if (tokenRecord.revokedAt && Date.now() - tokenRecord.revokedAt.getTime() < REFRESH_REUSE_GRACE_MS) {
+      return toleratedRefresh(tokenRecord, tokenRecord.revokedAt, 'replay within grace period');
+    }
     logger.warn('Refresh token reuse detected, revoking all sessions', {
       userId: tokenRecord.userId
     });
@@ -578,20 +702,36 @@ export async function refreshAccessToken(refreshToken: string, deviceInfo?: stri
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + 7);
 
-  await prisma.$transaction([
-    prisma.refreshToken.update({
-      where: { id: tokenRecord.id },
+  // Rotation atomique : `updateMany` conditionnel sur `revoked: false`. Si une requête
+  // concurrente a déjà tourné ce jeton (count 0), aucun jeton n'est créé et la requête est
+  // refusée comme un doublon (la gagnante vient de le révoquer : dans le délai de grâce).
+  const rotated = await prisma.$transaction(async tx => {
+    const { count } = await tx.refreshToken.updateMany({
+      where: { id: tokenRecord.id, revoked: false },
       data: { revoked: true, revokedAt: new Date() }
-    }),
-    prisma.refreshToken.create({
+    });
+    if (count !== 1) return false;
+    await tx.refreshToken.create({
       data: {
         token: newRefreshTokenHash,
         userId: tokenRecord.userId,
         expiresAt,
         deviceInfo: deviceInfo || tokenRecord.deviceInfo || 'Web Browser'
       }
-    })
-  ]);
+    });
+    return true;
+  });
+  if (!rotated) {
+    // Perdante d'une course : relire le jeton, qui vient d'être révoqué par la gagnante.
+    const current = await prisma.refreshToken.findFirst({
+      where: { id: tokenRecord.id },
+      select: { revoked: true, revokedAt: true }
+    });
+    if (current?.revoked && current.revokedAt) {
+      return toleratedRefresh(tokenRecord, current.revokedAt, 'concurrent rotation');
+    }
+    throw new UnauthorizedError('Session invalide. Veuillez vous reconnecter.');
+  }
 
   // Generate new access token
   const accessToken = generateAccessToken({
@@ -600,7 +740,7 @@ export async function refreshAccessToken(refreshToken: string, deviceInfo?: stri
     globalRole: tokenRecord.user.globalRole
   });
 
-  return { accessToken, refreshToken: newRefreshToken };
+  return { accessToken, refreshToken: newRefreshToken as string | null };
 }
 
 /** Appartenance active exposée par `/api/auth/me`, avec les droits effectifs du membre. */
@@ -717,14 +857,16 @@ export async function getActiveMembershipsWithPermissions(userId: string): Promi
  */
 export async function getCurrentUser(userId: string) {
   const user = await prisma.user.findUnique({
-    where: { id: userId }
+    where: { id: userId },
+    select: USER_PUBLIC_SELECT
   });
 
   if (!user) {
     throw new BadRequestError('Utilisateur introuvable.');
   }
 
-  const { passwordHash: removedPasswordHash, ...userPublic } = user;
+  // Le `select` exclut déjà `passwordHash` ; retrait défensif au cas où la lecture changerait.
+  const { passwordHash: removedPasswordHash, ...userPublic } = user as typeof user & { passwordHash?: string | null };
   void removedPasswordHash;
   const memberships = await getActiveMembershipsWithPermissions(user.id);
   return { ...userPublic, memberships };
@@ -827,16 +969,14 @@ export async function forgotPassword(data: ForgotPasswordRequest) {
     }
   });
 
-  // Send password reset email
-  try {
-    await emailService.sendPasswordResetEmail(user.email, resetToken, {
+  // Envoi détaché (AUTH-07) : le temps de réponse ne distingue pas adresse connue/inconnue.
+  // Un échec est journalisé sans remonter : l'utilisateur peut redemander.
+  sendDetached(user.id, 'password reset email', () =>
+    emailService.sendPasswordResetEmail(user.email, resetToken, {
       userName: user.fullName ?? undefined,
       language: user.preferredLanguage
-    });
-  } catch (error) {
-    console.error('Failed to send password reset email:', error);
-    // Don't throw - user can request again
-  }
+    })
+  );
 }
 
 /**
@@ -847,7 +987,7 @@ export async function resetPassword(data: PasswordResetRequest) {
   // Validate password strength
   const passwordValidation = validatePasswordStrength(data.newPassword);
   if (!passwordValidation.isValid) {
-    throw new Error(passwordValidation.error);
+    throw new BadRequestError(passwordValidation.error);
   }
 
   // Find valid password reset token
@@ -864,7 +1004,7 @@ export async function resetPassword(data: PasswordResetRequest) {
   });
 
   if (!resetToken) {
-    throw new Error('Token de réinitialisation invalide ou expiré. Veuillez faire une nouvelle demande.');
+    throw new BadRequestError('Token de réinitialisation invalide ou expiré. Veuillez faire une nouvelle demande.');
   }
 
   // Hash new password
@@ -912,4 +1052,7 @@ export async function resetPassword(data: PasswordResetRequest) {
       entityId: resetToken.userId
     });
   });
+
+  // Le titulaire a prouvé le contrôle de l'adresse : le verrou de connexion éventuel est levé.
+  clearEmailThrottle(resetToken.user.email);
 }

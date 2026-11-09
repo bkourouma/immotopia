@@ -32,6 +32,9 @@ const GOOGLE_USER_SELECT = {
   avatarUrl: true
 } as const;
 
+/** Lecture initiale du compte : ajoute `lastLoginAt` (jamais `passwordHash`). */
+const GOOGLE_LOOKUP_SELECT = { ...GOOGLE_USER_SELECT, lastLoginAt: true } as const;
+
 export type GoogleUser = {
   id: string;
   email: string;
@@ -109,9 +112,9 @@ export async function resolveGoogleUser(profile: GoogleProfileLike): Promise<Goo
   const email = normalizeEmail(rawEmail);
   const verified = isGoogleEmailVerified(profile);
 
-  const candidates: GoogleUser[] = await prisma.user.findMany({
+  const candidates: Array<GoogleUser & { lastLoginAt?: Date | null }> = await prisma.user.findMany({
     where: { email: { equals: email, mode: 'insensitive' } },
-    select: GOOGLE_USER_SELECT,
+    select: GOOGLE_LOOKUP_SELECT,
     take: 2
   });
   const existing = candidates.find(c => c.email === email) ?? (candidates.length === 1 ? candidates[0] : null);
@@ -148,7 +151,12 @@ export async function resolveGoogleUser(profile: GoogleProfileLike): Promise<Goo
       }
       return existing;
     }
-    // Premier rattachement Google de ce compte.
+    // Premier rattachement Google de ce compte. Un compte jamais connecté
+    // (`lastLoginAt` nul) n'a pas prouvé que son mot de passe est celui du
+    // titulaire de l'adresse (pré-détournement, AUTH-09) : on l'efface, comme
+    // pour une adresse non vérifiée. Un compte déjà connecté par mot de passe
+    // le conserve.
+    const dropPassword = !existing.emailVerified || !existing.lastLoginAt;
     return prisma.$transaction(async tx => {
       const linked = await tx.user.update({
         where: { id: existing.id },
@@ -156,11 +164,11 @@ export async function resolveGoogleUser(profile: GoogleProfileLike): Promise<Goo
           googleId: profile.id,
           avatarUrl: existing.avatarUrl || profile.photos?.[0]?.value,
           emailVerified: true,
-          ...(existing.emailVerified ? {} : { passwordHash: null })
+          ...(dropPassword ? { passwordHash: null } : {})
         },
         select: GOOGLE_USER_SELECT
       });
-      if (!existing.emailVerified) {
+      if (dropPassword) {
         await tx.refreshToken.updateMany({
           where: { userId: existing.id, revoked: false },
           data: { revoked: true, revokedAt: new Date() }
