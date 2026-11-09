@@ -17,6 +17,24 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 
 Modèle de section : voir le bloc « Modèle de section » plus bas.
 
+## Recette du scénario de gestion locative — 2026-11-09
+
+**État** — Branche locale `codex/recette-immotopia-2026-11-09` issue de `main` à `333a357e`. Correctifs et tests dans `259e03c3`. Le parcours navigateur de création, signature, facturation, déclaration et affectation du virement, relevé, rapport et reversement a abouti sur `BAIL-2026-0126`. Le détail des cas rejoués, des écarts de données de test et du périmètre restant figure dans [le bilan de recette](../recette/gestion-locative/SCENARIO-2026-11-09.md).
+
+**Fait** — Assistant de création avec navigation séquentielle, nom accessible du bouton de justificatif, libellés accessibles de sélection et d'affectation des échéances. Lors de la reprise, trois correctifs ont été rejoués dans Chrome : validation des montants d'affectation, libellé de date des états des lieux et création de liens réservée aux baux actifs. Le bilan consigne notamment le renouvellement, le dépôt, les états des lieux, l'import bancaire et le rejet tardif, le partage et sa révocation, le rejet d'une déclaration, l'annulation d'un reversement et le retour du simulateur. Lot de reprise : 49 tests web et 67 tests API réussis, TypeScript web, i18n et wiki vérifiés.
+
+**Environnement** — Web 3321, API 8821 et SMTP local 2525. Copie de recette `immotopia_recette_20261109_fixture`. Le quota de signatures et le consentement du contact de test ont été ajustés dans cette copie après avoir vérifié les refus attendus. Les références de contrôle sont `BAIL-2026-0126` et `REV-2026-0136`.
+
+**Dernière reprise** — Chrome confirme le refus du renouvellement de `BAIL-2026-0126` en chevauchement avec `RECETTE-H39-ADJACENT`, sans mutation. Sur le bail adjacent, la virgule des retenues de sortie est corrigée et la sortie finalisée conserve 1 500,50 FCFA. Le solde calculé après collecte est de 498 499,50 FCFA. Ajustement, confiscation et journal d'accès partagé vérifiés. Le message de nouvelle tentative après échec ou annulation du paiement public a été aligné sur le comportement du simulateur et retesté jusqu'au succès.
+
+**Documents et intégrations** — Correction locale des noms de fichiers accentués au dépôt et de la disponibilité de « Nouvel accès » pendant le chargement. Chrome confirme téléchargement intact et journalisé, refus hors périmètre et après révocation. Le relais SMTP du staging a accepté le message de recette `GL-20261109` et l'utilisateur en a confirmé la réception. Le fournisseur OpenRouter a répondu en streaming à une requête synthétique depuis l'adaptateur déployé. Aucune passerelle locative active en mode réel. Yousign, SMS et WhatsApp locatifs indisponibles dans la configuration vérifiée.
+
+**Droits par rôle** — Contrôles sur sept profils et isolation inter-agences et inter-portails. Actions du reversement, dépôt, liens et déclarations alignées sur les droits serveur, de même que les actions d'écriture de signature du bail et son onglet Prélèvements. Le comptable a créé un reversement de 1 000 FCFA, annulé par l'administrateur après le refus d'annulation du comptable. Le PDF signé reste téléchargeable par le comptable. Matrice et résultats dans le bilan.
+
+**Reprise des variantes** — Ajout et retrait du rôle Gestionnaire avec une session lecteur existante, désactivation et réactivation du comptable, lecture seule manuelle et après expiration d'essai, suspension de l'agence et restrictions Syndic et Patrimoine Essentiel rejoués sur la copie. Les packs et états initiaux ont été restaurés. Avenant et résiliation future passés en Chrome. Confirmation de résiliation alignée sur l'annulation des échéances ultérieures sans paiement. Actions de Vie du bail masquées pour le comptable et historique conservé après rejeu. Cycle du mandat avec scan et rapports CSV propriétaire vérifiés via API, exports des deux portails téléchargés dans Chrome, messagerie vérifiée entre comptes fictifs. 288 tests API, 40 tests web, TypeScript et wiki passés. Les cas et limites sont détaillés dans le bilan.
+
+**Suite** — Les variantes et intégrations restantes figurent dans le bilan. Pour un autre scénario de signature nominale sur la même agence de test, prévoir une place dans le quota. Les traces Playwright et courriels de recette restent dans le dossier temporaire de la session, avec les journaux de reprise sous `variantes`.
+
 ## fix/patrimoine-tenant-admin-permissions — 2026-11-06
 
 **État :** prêt à livrer.
