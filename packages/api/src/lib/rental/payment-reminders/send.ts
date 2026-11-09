@@ -10,6 +10,7 @@
 import { AppError, ErrorCode } from '../../../middleware/error-middleware';
 import { t } from '../../../i18n';
 import { prisma } from '../../../utils/database';
+import { withTransactionalAdvisoryLock } from '../../ai/advisory-lock';
 import { logger } from '../../../utils/logger';
 import { logAuditEvent, flushAuditEvents } from '../../../services/audit-service';
 import { AuditActionKey } from '../../../types/audit-types';
@@ -265,8 +266,18 @@ export async function sendInstallmentReminder(
   installmentId: string,
   body: { channels?: RentalReminderChannel[]; level?: RentalReminderLevel }
 ): Promise<SendReminderResultDto> {
-  const [plan] = await planReminders(tenantId, [installmentId]);
-  const result = await deliverPlanned(newContext(tenantId, actorUserId, body.channels), plan, body.level);
+  // Verrou consultatif par echeance : le plan (espacement de 7 jours) est lu et l'envoi ecrit
+  // sous le meme verrou ; un double clic ou deux onglets se suivent et le second voit la
+  // relance du premier (TOO_SOON -> 409).
+  const { plan, result } = await withTransactionalAdvisoryLock(
+    `rental-reminder:${tenantId}:${installmentId}`,
+    async () => {
+      const [planned] = await planReminders(tenantId, [installmentId]);
+      const delivered = await deliverPlanned(newContext(tenantId, actorUserId, body.channels), planned, body.level);
+      return { plan: planned, result: delivered };
+    },
+    { timeoutMs: 60_000, maxWaitMs: 10_000 }
+  );
   if (result.status === 'SKIPPED') {
     const reason = result.reason ?? 'NO_CONTACT_CHANNEL';
     const tooSoon = reason === 'TOO_SOON';

@@ -50,6 +50,19 @@ jest.mock('../../src/lib/patrimoine/notification-channels', () => ({
   loadChannelConfigs: (...a: any[]) => mockLoadConfigs(...a)
 }));
 
+// Verrou consultatif simule : les sections de meme cle se suivent (file d'attente en memoire).
+const lockTails = new Map<string, Promise<unknown>>();
+jest.mock('../../src/lib/ai/advisory-lock', () => ({
+  withTransactionalAdvisoryLock: (key: string, fn: (tx: unknown) => Promise<unknown>) => {
+    const run = (lockTails.get(key) ?? Promise.resolve()).then(() => fn({}));
+    lockTails.set(
+      key,
+      run.catch(() => undefined)
+    );
+    return run;
+  }
+}));
+
 const mockPlan = jest.fn();
 jest.mock('../../src/lib/rental/payment-reminders/plan', () => ({
   REMINDER_EVENT_TARGETS: {
@@ -372,6 +385,23 @@ describe('sendInstallmentReminder', () => {
   it('echeance etrangere : NotFoundError propagee', async () => {
     mockPlan.mockRejectedValue(new NotFoundError('Échéance introuvable.'));
     await expect(sendInstallmentReminder(TENANT, ACTOR, INST_A, {})).rejects.toBeInstanceOf(NotFoundError);
+  });
+});
+
+describe('sendInstallmentReminder concurrence', () => {
+  it('deux appels simultanes : un seul envoi, le second recoit 409 TOO_SOON', async () => {
+    mockPlan
+      .mockResolvedValueOnce([makePlan(INST_A)])
+      .mockResolvedValueOnce([makePlan(INST_A, { item: { eligible: false, exclusions: ['TOO_SOON'] } })]);
+    const settled = await Promise.allSettled([
+      sendInstallmentReminder(TENANT, ACTOR, INST_A, {}),
+      sendInstallmentReminder(TENANT, ACTOR, INST_A, {})
+    ]);
+    expect(settled[0].status).toBe('fulfilled');
+    expect(settled[1].status).toBe('rejected');
+    expect((settled[1] as PromiseRejectedResult).reason.code).toBe(ErrorCode.RENTAL_REMINDER_TOO_SOON);
+    expect(mockPlan).toHaveBeenCalledTimes(2);
+    expect(mockPrisma.rentalPaymentReminder.create).toHaveBeenCalledTimes(2);
   });
 });
 

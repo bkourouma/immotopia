@@ -46,14 +46,6 @@ function conflictExclusions(e: any): RentalReminderExclusionReason[] | null {
   return [];
 }
 
-function findItem(groups: { items: RentalReminderPreviewItemDto[] }[], installmentId: string) {
-  for (const g of groups) {
-    const found = g.items.find(i => i.installmentId === installmentId);
-    if (found) return found;
-  }
-  return null;
-}
-
 export interface InstallmentReminderModalProps {
   tenantId: string;
   installmentId: string;
@@ -90,10 +82,11 @@ export const InstallmentReminderModal: React.FC<InstallmentReminderModalProps> =
     setItem(null);
     setResult(null);
     setConflict(null);
-    previewPaymentReminders(tenantId, { eligibleOnly: false, daysBefore: 30, minDaysLate: 0 })
+    previewPaymentReminders(tenantId, { installmentId })
       .then(preview => {
         if (cancelled) return;
-        const found = findItem(preview?.groups ?? [], installmentId);
+        // L'API restreint l'aperçu à cette échéance (motifs d'exclusion inclus) : une seule ligne.
+        const found = preview?.groups?.[0]?.items?.[0] ?? null;
         setItem(found);
         setChannels(found ? [...found.channels] : []);
         setLevel(found ? (found.nextLevel ?? undefined) : undefined);

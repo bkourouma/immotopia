@@ -174,8 +174,7 @@ export const EMAIL_NOTIFICATION_DEFAULT_TEMPLATES: Record<EmailNotificationKey, 
     bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#d97706;">Rappel d'échéance</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{contactName}},</p>
 <p style="margin:0 0 20px 0;">Nous vous rappelons qu'une échéance de <strong>{{dueAmount}}</strong> est prévue le <strong>{{dueDate}}</strong> pour le bail {{leaseLabel}}.</p>
-<p style="margin:0 0 20px 0; padding:14px; background:#fffbeb; border-radius:8px; font-size:14px;">{{paymentBlock}}</p>
-<p style="margin:0 0 20px 0; font-size:14px;"><a href="{{paymentUrl}}" style="color:#b45309; font-weight:600; text-decoration:underline;">Payer cette échéance</a></p>
+<p style="margin:0 0 20px 0; padding:14px; background:#fffbeb; border-radius:8px; font-size:14px; white-space:pre-line;">{{paymentBlock}}</p>
 <p style="margin:20px 0 0 0; font-size:14px;">Cordialement,<br/>{{agencyName}}</p>`
   },
   INSTALLMENT_OVERDUE: {
@@ -183,8 +182,7 @@ export const EMAIL_NOTIFICATION_DEFAULT_TEMPLATES: Record<EmailNotificationKey, 
     bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#b91c1c;">Échéance dépassée</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{contactName}},</p>
 <p style="margin:0 0 20px 0;">L'échéance du <strong>{{dueDate}}</strong> (montant : {{dueAmount}}) pour le bail {{leaseLabel}} n'a pas été réglée. Merci de régulariser au plus tôt.</p>
-<p style="margin:0 0 20px 0; padding:14px; background:#fef2f2; border-radius:8px; font-size:14px;">{{paymentBlock}}</p>
-<p style="margin:0 0 20px 0; font-size:14px;"><a href="{{paymentUrl}}" style="color:#b91c1c; font-weight:600; text-decoration:underline;">Payer cette échéance</a></p>
+<p style="margin:0 0 20px 0; padding:14px; background:#fef2f2; border-radius:8px; font-size:14px; white-space:pre-line;">{{paymentBlock}}</p>
 <p style="margin:20px 0 0 0; font-size:14px;">Cordialement,<br/>{{agencyName}}</p>`
   },
   LEASE_ACTIVATED: {

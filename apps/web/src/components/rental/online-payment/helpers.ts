@@ -26,6 +26,11 @@ export const STATUS_ORDER: RentalOnlineCheckoutStatus[] = [
   'EXPIRED'
 ];
 
+/** « Vérifier » : tentative en cours, à trancher, ou expirée (relecture d'un succès tardif). */
+export function canVerifyStatus(status: RentalOnlineCheckoutStatus): boolean {
+  return status === 'PENDING' || status === 'REVIEW' || status === 'EXPIRED';
+}
+
 export function statusLabel(status: RentalOnlineCheckoutStatus): string {
   switch (status) {
     case 'PENDING':

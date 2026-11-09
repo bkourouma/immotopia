@@ -148,6 +148,8 @@ tranche avec `POST /api/tenants/:tenantId/rental/online-payments/:checkoutId/res
   qu'avec `ACCEPT`.
 - **Claim atomique** : une mise à jour conditionnelle sur `status = 'REVIEW'` fait passer la tentative en
   `SUCCESS` ou `FAILED` ; deux décisions concurrentes n'ont qu'un vainqueur, l'autre reçoit 409.
+- **Vérifier une tentative `EXPIRED` est permis** : cela permet de relire un succès tardif de la passerelle
+  survenu après l'expiration.
 - **Jamais encaissé automatiquement** : ni la vérification manuelle (`…/verify`, `…/online-check`), ni le
   retour portail ou l'IPN, ni le job de rapprochement n'encaissent une tentative en `REVIEW` ; ils ne
   mettent à jour que l'état fournisseur, le montant reçu et les compteurs de vérification. Seule la
@@ -196,9 +198,13 @@ Spec 049, §2.8 et §2.9.
 - **Portail locataire** : limiteurs 60 par minute et par IP sur `availability`, 10 par minute et par
   utilisateur sur le démarrage, 60 par minute et par utilisateur sur la lecture ; garde `RENTAL` (403
   `RENTAL_FEATURE_DENIED`), sauf `availability` qui répond `available: false`.
-- **Lien public d'échéance** : à l'ouverture et au démarrage, le serveur recontrôle le locataire **actuel**
-  du bail et que le bail n'est pas terminé (409 `RENTAL_ONLINE_PAYMENT_LEASE_TENANT_CHANGED`, message
-  neutre, sans donnée divulguée). Le lien n'est **pas révoqué en base** : aucun effet de bord à l'ouverture.
+- **Lien public d'échéance** : à l'ouverture et au démarrage, le serveur recontrôle que le bail n'est pas
+  terminé. Le lien n'est **pas révoqué en base** : aucun effet de bord à l'ouverture.
+- **Limite connue : changement de locataire non contrôlé.** Le lien public ne mémorise pas le locataire pour
+  lequel il a été émis (colonne manquante sur `SecureLink`) : si le locataire du bail change après l'envoi,
+  rien ne le détecte. Le code d'erreur `RENTAL_ONLINE_PAYMENT_LEASE_TENANT_CHANGED` est déclaré mais jamais
+  levé. Correctif : ajouter la colonne (migration) puis refuser le lien dont le locataire n'est plus celui
+  du bail.
 - **Configuration marchande** : changer le mode, le `merchantId` ou la clé alors qu'une tentative est
   `PENDING` est refusé (409 `GATEWAY_CHECKOUTS_PENDING`).
 - **Relances** : une relance d'échéance n'inclut un lien de paiement que si `usable` est vrai ; sinon elle
