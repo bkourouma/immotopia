@@ -65,6 +65,14 @@ jest.mock('../../src/middleware/rental-declared-rate-limiters', () => ({
   rentalProofReadDayLimiter: (_req: any, _res: any, next: any) => {
     limiterCalls.push('proof-read-day');
     next();
+  },
+  rentalPortalReadLimiter: (_req: any, _res: any, next: any) => {
+    limiterCalls.push('portal-read');
+    next();
+  },
+  rentalDeclareCancelLimiter: (_req: any, _res: any, next: any) => {
+    limiterCalls.push('declare-cancel');
+    next();
   }
 }));
 void limiter;

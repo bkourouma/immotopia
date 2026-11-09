@@ -12,7 +12,7 @@ import { NotFoundError } from '../../../middleware/error-middleware';
 import { t } from '../../../i18n';
 import { prisma } from '../../../utils/database';
 import { computeInstallmentStatus, startOfDay } from '../../finance/installment-status';
-import { isConfigUsable, loadConfig, paymentGatewaySimulatorAvailable } from '../../payment-gateway/config';
+import { resolveRentalOnlineAvailability } from '../../payment-gateway/availability';
 import { resteDuEcheance } from '../../payment-gateway/checkout';
 import {
   CHANNEL_RECIPIENT_SELECT,
@@ -158,13 +158,9 @@ export function computeReminderPlan(facts: ReminderPlanFacts): ReminderPlanOutco
   };
 }
 
-/**
- * Passerelle de paiement en ligne utilisable pour joindre un lien aux relances.
- * Sera remplacee par `resolveRentalOnlineAvailability` du lot 2.
- */
+/** La relance ne joint un lien que si le paiement en ligne locatif est utilisable (contrat 049 2.8). */
 export async function isRentalGatewayUsableForReminders(tenantId: string): Promise<boolean> {
-  const config = await loadConfig(tenantId);
-  return isConfigUsable(config) && (config.mode !== 'SIMULATOR' || paymentGatewaySimulatorAvailable);
+  return (await resolveRentalOnlineAvailability(tenantId)).usable;
 }
 
 const INSTALLMENT_SELECT = {

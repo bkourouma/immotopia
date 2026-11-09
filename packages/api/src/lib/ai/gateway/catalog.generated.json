@@ -2355,6 +2355,17 @@
       "sensitive": false
     },
     {
+      "id": "GET /api/tenants/:tenantId/rental/declared-payment/settings",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/rental/declared-payment/settings",
+      "pathParams": [],
+      "module": "rental",
+      "summary": "rental / declared-payment / settings",
+      "permissions": ["RENTAL_PAYMENTS_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
       "id": "GET /api/tenants/:tenantId/rental/deposits/:depositId/movements",
       "method": "GET",
       "path": "/api/tenants/:tenantId/rental/deposits/:depositId/movements",
@@ -2509,6 +2520,17 @@
       "sensitive": true
     },
     {
+      "id": "GET /api/tenants/:tenantId/rental/installments/:installmentId/reminders",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/rental/installments/:installmentId/reminders",
+      "pathParams": ["installmentId"],
+      "module": "rental",
+      "summary": "rental / installments / {installmentId} / reminders",
+      "permissions": ["RENTAL_PAYMENTS_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
       "id": "GET /api/tenants/:tenantId/rental/leases",
       "method": "GET",
       "path": "/api/tenants/:tenantId/rental/leases",
@@ -2630,6 +2652,72 @@
       "sensitive": false
     },
     {
+      "id": "GET /api/tenants/:tenantId/rental/online-payments",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/rental/online-payments",
+      "pathParams": [],
+      "module": "rental",
+      "summary": "rental / online-payments",
+      "permissions": ["RENTAL_PAYMENTS_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/rental/online-payments/:checkoutId",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/rental/online-payments/:checkoutId",
+      "pathParams": ["checkoutId"],
+      "module": "rental",
+      "summary": "rental / online-payments / {checkoutId}",
+      "permissions": ["RENTAL_PAYMENTS_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/rental/online-payments/availability",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/rental/online-payments/availability",
+      "pathParams": [],
+      "module": "rental",
+      "summary": "rental / online-payments / availability",
+      "permissions": ["RENTAL_PAYMENTS_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/rental/online-payments/collection-account",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/rental/online-payments/collection-account",
+      "pathParams": [],
+      "module": "rental",
+      "summary": "rental / online-payments / collection-account",
+      "permissions": ["RENTAL_PAYMENTS_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/rental/online-payments/collection-account/payouts",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/rental/online-payments/collection-account/payouts",
+      "pathParams": [],
+      "module": "rental",
+      "summary": "rental / online-payments / collection-account / payouts",
+      "permissions": ["RENTAL_PAYMENTS_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/rental/online-payments/summary",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/rental/online-payments/summary",
+      "pathParams": [],
+      "module": "rental",
+      "summary": "rental / online-payments / summary",
+      "permissions": ["RENTAL_PAYMENTS_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
       "id": "GET /api/tenants/:tenantId/rental/payment-declarations",
       "method": "GET",
       "path": "/api/tenants/:tenantId/rental/payment-declarations",
@@ -2660,7 +2748,40 @@
       "summary": "rental / payment-declarations / {declarationId} / proof",
       "permissions": ["RENTAL_PAYMENTS_VIEW"],
       "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/rental/payment-declarations/pending-count",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/rental/payment-declarations/pending-count",
+      "pathParams": [],
+      "module": "rental",
+      "summary": "rental / payment-declarations / pending-count",
+      "permissions": ["RENTAL_PAYMENTS_VIEW"],
+      "anyOfPermissions": null,
       "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/rental/payment-reminders",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/rental/payment-reminders",
+      "pathParams": [],
+      "module": "rental",
+      "summary": "rental / payment-reminders",
+      "permissions": ["RENTAL_PAYMENTS_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/rental/payment-reminders/preview",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/rental/payment-reminders/preview",
+      "pathParams": [],
+      "module": "rental",
+      "summary": "rental / payment-reminders / preview",
+      "permissions": ["RENTAL_PAYMENTS_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": true
     },
     {
       "id": "GET /api/tenants/:tenantId/rental/payments",
@@ -2716,6 +2837,17 @@
       "permissions": ["RENTAL_PENALTIES_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/rental/receiving-numbers",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/rental/receiving-numbers",
+      "pathParams": [],
+      "module": "rental",
+      "summary": "rental / receiving-numbers",
+      "permissions": ["RENTAL_PAYMENTS_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": true
     },
     {
       "id": "GET /api/tenants/:tenantId/sales/agreements",
@@ -4456,6 +4588,17 @@
       "sensitive": false
     },
     {
+      "id": "PATCH /api/tenants/:tenantId/rental/receiving-numbers/:numberId",
+      "method": "PATCH",
+      "path": "/api/tenants/:tenantId/rental/receiving-numbers/:numberId",
+      "pathParams": ["numberId"],
+      "module": "rental",
+      "summary": "rental / receiving-numbers / {numberId}",
+      "permissions": ["RENTAL_PAYMENTS_ALLOCATE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
       "id": "PATCH /api/tenants/:tenantId/sales/agreements/:id",
       "method": "PATCH",
       "path": "/api/tenants/:tenantId/sales/agreements/:id",
@@ -5951,7 +6094,7 @@
       "summary": "owner-accounts / {ownerClientId} / payouts",
       "permissions": ["FINANCE_DOCUMENTS_CREATE"],
       "anyOfPermissions": null,
-      "sensitive": false
+      "sensitive": true
     },
     {
       "id": "POST /api/tenants/:tenantId/owner-accounts/:ownerClientId/payouts/:payoutId/void",
@@ -5962,7 +6105,7 @@
       "summary": "owner-accounts / {ownerClientId} / payouts / {payoutId} / void",
       "permissions": ["FINANCE_DOCUMENTS_VALIDATE"],
       "anyOfPermissions": null,
-      "sensitive": false
+      "sensitive": true
     },
     {
       "id": "POST /api/tenants/:tenantId/owner-statements",
@@ -6724,6 +6867,17 @@
       "sensitive": true
     },
     {
+      "id": "POST /api/tenants/:tenantId/rental/installments/:installmentId/reminder",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/installments/:installmentId/reminder",
+      "pathParams": ["installmentId"],
+      "module": "rental",
+      "summary": "rental / installments / {installmentId} / reminder",
+      "permissions": ["RENTAL_PAYMENTS_ALLOCATE"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
       "id": "POST /api/tenants/:tenantId/rental/leases",
       "method": "POST",
       "path": "/api/tenants/:tenantId/rental/leases",
@@ -6856,6 +7010,50 @@
       "sensitive": false
     },
     {
+      "id": "POST /api/tenants/:tenantId/rental/online-payments/:checkoutId/resolve",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/online-payments/:checkoutId/resolve",
+      "pathParams": ["checkoutId"],
+      "module": "rental",
+      "summary": "rental / online-payments / {checkoutId} / resolve",
+      "permissions": ["RENTAL_PAYMENTS_ALLOCATE"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/rental/online-payments/:checkoutId/verify",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/online-payments/:checkoutId/verify",
+      "pathParams": ["checkoutId"],
+      "module": "rental",
+      "summary": "rental / online-payments / {checkoutId} / verify",
+      "permissions": ["RENTAL_PAYMENTS_ALLOCATE"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/rental/online-payments/collection-account/payouts",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/online-payments/collection-account/payouts",
+      "pathParams": [],
+      "module": "rental",
+      "summary": "rental / online-payments / collection-account / payouts",
+      "permissions": ["FINANCE_DOCUMENTS_CREATE", "RENTAL_PAYMENTS_ALLOCATE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/rental/payment-declarations",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/payment-declarations",
+      "pathParams": [],
+      "module": "rental",
+      "summary": "rental / payment-declarations",
+      "permissions": ["RENTAL_PAYMENTS_CREATE"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
       "id": "POST /api/tenants/:tenantId/rental/payment-declarations/:declarationId/approve",
       "method": "POST",
       "path": "/api/tenants/:tenantId/rental/payment-declarations/:declarationId/approve",
@@ -6876,6 +7074,17 @@
       "permissions": ["RENTAL_PAYMENTS_ALLOCATE"],
       "anyOfPermissions": null,
       "sensitive": false
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/rental/payment-reminders/batch",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/payment-reminders/batch",
+      "pathParams": [],
+      "module": "rental",
+      "summary": "rental / payment-reminders / batch",
+      "permissions": ["RENTAL_PAYMENTS_ALLOCATE"],
+      "anyOfPermissions": null,
+      "sensitive": true
     },
     {
       "id": "POST /api/tenants/:tenantId/rental/payments",
@@ -6931,6 +7140,17 @@
       "permissions": ["RENTAL_PENALTIES_CALCULATE"],
       "anyOfPermissions": null,
       "sensitive": false
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/rental/receiving-numbers",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/receiving-numbers",
+      "pathParams": [],
+      "module": "rental",
+      "summary": "rental / receiving-numbers",
+      "permissions": ["RENTAL_PAYMENTS_ALLOCATE"],
+      "anyOfPermissions": null,
+      "sensitive": true
     },
     {
       "id": "POST /api/tenants/:tenantId/sales/agreements/:id/cancel",
@@ -8504,6 +8724,17 @@
       "permissions": ["PROPERTIES_EDIT"],
       "anyOfPermissions": null,
       "sensitive": false
+    },
+    {
+      "id": "PUT /api/tenants/:tenantId/rental/declared-payment/settings",
+      "method": "PUT",
+      "path": "/api/tenants/:tenantId/rental/declared-payment/settings",
+      "pathParams": [],
+      "module": "rental",
+      "summary": "rental / declared-payment / settings",
+      "permissions": ["RENTAL_PAYMENTS_ALLOCATE"],
+      "anyOfPermissions": null,
+      "sensitive": true
     },
     {
       "id": "PUT /api/tenants/:tenantId/rental/leases/:leaseId/inspections/:id",
