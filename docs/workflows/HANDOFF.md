@@ -23,6 +23,8 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 **Décisions du fondateur (2026-11-09)** — D1 : agences clientes directes de leur participant. D2 : participant de type opérateur de monnaie électronique (opérateur à choisir). Ouvertes : D3 mTLS du webhook, D4 alias du payeur, D5 frais de l'API Business.
 
+**Lot Q ajouté (2026-11-09 soir)** — QR et alias de l'agence affichés dans l'application, sans API ni certificat ; preuve par déclaration validée par le gestionnaire. À faire avant P1. Questions au participant : TQ01.
+
 **Reste** — Lot P0 hors code : choisir l'opérateur, vérifier son API Business homologuée et le plafond de son compte professionnel, ouvrir le compte sandbox, valider au playground, sonder BMI/PaySecureHub. Puis lot P1 (socle, simulateur, configuration par agence).
 
 **Pièges** — PI-SPI interdit le prélèvement (la spec 042 n'est pas remplaçable) ; QR interdit en paiement en ligne ; webhooks en mTLS avec la CA de la BCEAO ; texte de l'Avis 0019, grille tarifaire et noms des 8 API ivoiriennes non lus ; ne pas confondre la liste des 8 acteurs du lancement (2025) avec celle des API Business homologuées (2026-09-16).

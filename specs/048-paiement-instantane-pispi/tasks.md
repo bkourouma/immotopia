@@ -5,6 +5,57 @@ commencée. `API/` = `packages/api/src`, `WEB/` = `apps/web/src`. `[P]` = parall
 distincts). Une branche empilée et une PR par lot ; classeur des fonctionnalités et
 `npm run wiki:export` dans toute PR qui change un écran ou une route.
 
+## Lot Q — QR et alias de l'agence, sans API (à faire en premier)
+
+Prérequis hors code
+
+- [ ] TQ01 Demander au participant : l'alias et le QR de l'agence sont-ils lisibles dans son application
+      professionnelle ? Un QR avec montant et référence est-il reconnu ? La référence apparaît-elle
+      dans la notification et le relevé de l'agence ? Le paiement par QR à distance est-il toléré ? Un
+      même QR scanné deux fois est-il refusé ?
+- [ ] TQ02 Obtenir l'alias de l'agence pilote et un paiement réel de faible montant pour la recette.
+
+Données
+
+- [ ] TQ03 Migration : `AgencyPispiAlias`, `SyndicPispiAlias`, `PispiPayReference` ; unicités ;
+      `tenantId` direct ; test `schema-tenant-coverage`.
+- [ ] TQ04 [P] `API/lib/payment-gateway/pispi/qr.ts` : TLV, CRC16, validation, analyse inverse ; tests sur
+      le vecteur officiel du guide (CRC `9618`) et sur des cas invalides (alias non UUID, référence
+      trop longue, montant non entier).
+- [ ] TQ05 [P] `API/lib/payment-gateway/pispi/reference.ts` : génération et résolution des références
+      (≤ 25 caractères, unicité par agence).
+
+API
+
+- [ ] TQ06 Routes de réglages de l'alias (agence : `…/settings/pispi-alias`, copropriété :
+      `…/syndics/:syndicId/paiement-qr`) avec `TENANT_SETTINGS_VIEW` / `TENANT_SETTINGS_EDIT` ;
+      audit et e-mail aux administrateurs à chaque changement.
+- [ ] TQ07 Routes de lecture du QR d'une échéance (portail locataire, portail copropriétaire, lien
+      sécurisé) : vérification d'appartenance, création de la référence, charge utile validée ;
+      limiteur de débit.
+- [ ] TQ08 Moyen « PI-SPI » dans les déclarations existantes (loyers et spec 047) avec référence
+      préremplie ; tests de validation par le gestionnaire.
+- [ ] TQ09 QR dans les PDF d'avis d'échéance et d'appels de charges (`pdf-lib`).
+- [ ] TQ10 Décision comptable : sous-compte de trésorerie du paiement PI-SPI (banque ou monnaie
+      électronique) pour les loyers et pour chaque plan comptable de copropriété.
+
+Web
+
+- [ ] TQ11 Dépendance de dessin de QR : évaluer (licence, taille, audit), ajouter au bon paquet.
+- [ ] TQ12 [P] `WEB/components/payment/PispiQrCard.tsx` : QR, alias copiable, nom attendu, étapes,
+      avertissements ; `WEB/services/pispi-alias-service.ts`.
+- [ ] TQ13 [P] Carte « QR PI-SPI » dans les réglages de l'agence et de la copropriété.
+- [ ] TQ14 Intégration dans `pages/TenantPortal/Payments.tsx`, `pages/CoOwnerPortal/ChargeCalls.tsx` et les
+      pages de paiement ; moyen « PI-SPI » dans les formulaires de déclaration.
+
+Tests et fin de lot
+
+- [ ] TQ15 Tests API (isolation entre deux agences, alias absent, changement journalisé et notifié,
+      droits) et web (QR affiché, alias manquant, textes traduits dont l'arabe).
+- [ ] TQ16 `npm run typecheck`, lint, `check:architecture`, `i18n:extract`, classeur des fonctionnalités + `wiki:export`.
+- [ ] TQ17 Recette navigateur sur la démo figée ; puis paiement réel de faible montant chez l'agence
+      pilote, sur staging, avec accord explicite du fondateur.
+
 ## P0 — Prérequis hors code (fondateur, bloquant pour P1 réel)
 
 - [ ] T001 Choisir l'opérateur de monnaie électronique ; vérifier son API Business homologuée sur la

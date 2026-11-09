@@ -15,6 +15,9 @@ PI-SPI, la plateforme de paiement instantané de la BCEAO, avec une **demande de
 payeur approuve dans son application bancaire ou son portefeuille. Le paiement est irrévocable à
 l'état `IRREVOCABLE`.
 
+**Lot Q (priorité 0)** : avant toute intégration technique, afficher le QR et l'alias PI-SPI de
+l'agence dans l'application, avec preuve de paiement par déclaration validée par le gestionnaire.
+
 Hors objet : tout ce que PI-SPI interdit ou ne couvre pas (prélèvement automatique, QR dans un
 paiement en ligne, devises autres que le FCFA, pays hors UEMOA, chargeback) ; la remise de fonds
 détenus par ImmoTopia (ImmoTopia ne détient jamais les fonds).
@@ -29,6 +32,25 @@ détenus par ImmoTopia (ImmoTopia ne détient jamais les fonds).
 - **Super-administrateur ImmoTopia** : compte plateforme pour les abonnements.
 
 ## 3. Récits utilisateur
+
+### US0 — Le locataire ou le copropriétaire paie en scannant le QR de l'agence (priorité 0, lot Q)
+
+En tant que locataire ou copropriétaire, je vois dans mon portail (ou sur mon avis) le QR PI-SPI et
+l'alias de mon agence ou de ma copropriété, avec le montant et la référence de mon échéance ; je
+scanne avec mon application bancaire ou mon portefeuille, je vérifie le nom affiché, je paie ; puis
+je déclare mon paiement. Le gestionnaire le valide après avoir vu l'argent sur son compte.
+
+Scénarios :
+
+1. **Succès** : le QR contient l'alias de l'agence, le montant et la référence de l'échéance ; je paie
+   et je déclare ; le gestionnaire valide ; l'échéance est soldée par le chemin existant.
+2. **Alias non configuré** : aucun QR n'est affiché ; les moyens actuels restent disponibles.
+3. **Alias modifié** : l'ancien QR n'est plus proposé ; le changement est journalisé et notifié aux
+   administrateurs.
+4. **Nom différent à l'écran de mon application** : l'interface m'invite à ne pas payer et à
+   prévenir l'agence.
+5. **Paiement sans déclaration** : le gestionnaire peut quand même enregistrer le paiement
+   manuellement (circuit existant), la référence l'aide à retrouver l'échéance.
 
 ### US1 — Le locataire paie son loyer par demande de paiement (priorité 1, lot P2)
 
@@ -131,6 +153,29 @@ rapproché par référence ; un paiement non reconnu entre dans une file de revu
   interne et un plafond par agence ; il est journalisé.
 - FR-061 Un échec ne marque pas le reversement payé.
 
+**QR et alias de l'agence (lot Q)**
+
+- FR-080 L'agence et la copropriété peuvent enregistrer un alias PI-SPI (UUID v4 validé) ; un alias
+  inactif ou absent n'affiche aucun QR.
+- FR-081 ImmoTopia construit la charge utile du QR selon les spécifications BCEAO (champs 00, 36, 52,
+  53, 54, 58, 59, 60, 62-05, 62-11, 63) et valide son CRC16 avant tout affichage ; un QR invalide n'est
+  jamais montré.
+- FR-082 Le QR d'une échéance porte le montant et une référence unique par agence (≤ 25 caractères,
+  `A-Za-z0-9`) qui permet de retrouver l'échéance ; le canal est statique (`000`) par défaut,
+  dynamique (`400`) pour le guichet.
+- FR-083 L'alias et le QR ne sont visibles que des utilisateurs authentifiés de l'agence, du payeur
+  concerné (portail, lien sécurisé) ; aucune liste publique d'alias.
+- FR-084 Tout changement d'alias est journalisé (auteur, ancienne et nouvelle valeur) et notifié aux
+  administrateurs de l'agence.
+- FR-085 L'écran de paiement affiche le nom attendu du bénéficiaire et rappelle que le paiement est
+  irrévocable.
+- FR-086 Le moyen « PI-SPI » est proposé dans les déclarations de paiement (loyers et copropriété) avec
+  la référence préremplie ; la validation par le gestionnaire suit le chemin existant.
+- FR-087 Aucun crédit n'a lieu sans validation du gestionnaire tant que le rail automatique (phase 2)
+  n'est pas actif.
+- FR-088 Le libellé de la fonction n'emploie pas « paiement en ligne » tant que la zone grise
+  réglementaire n'est pas levée.
+
 **Transversal**
 
 - FR-070 Aucune route ni modèle sans garde tenant ; textes via `t()` ; propriétés logiques (RTL).
@@ -169,6 +214,8 @@ rapproché par référence ; un paiement non reconnu entre dans une file de revu
 - SC-002 Deux agences configurées côte à côte restent étanches (test d'isolation).
 - SC-003 Aucun secret n'apparaît dans une réponse d'API, un journal ou un fichier statique.
 - SC-004 Un paiement réel de faible montant aboutit chez l'agence pilote, avec plafond du compte
+- SC-005 Un paiement réel de faible montant par QR est déclaré, vérifié et validé chez l'agence pilote
+  (lot Q), sans API ni certificat.
   connu.
 
 ## 9. Questions ouvertes
@@ -181,3 +228,9 @@ rapproché par référence ; un paiement non reconnu entre dans une file de revu
 6. **Mandat** de l'agence à ImmoTopia et responsabilité en cas d'erreur d'alias (juridique).
 7. **Texte de l'Avis BCEAO n° 0019** et grille tarifaire des entreprises : non lus à ce jour.
 8. **Wave** : statut réel dans PI-SPI.
+9. **Référence du QR** : apparaît-elle dans la notification et le relevé de l'agence chez le
+   participant ? (conditionne le rapprochement du lot Q)
+10. **QR à distance** : le paiement par QR d'un locataire chez lui est-il toléré par la BCEAO ?
+11. **Alias lisible** : l'agence peut-elle lire son alias et son QR dans l'application de son participant ?
+12. **Sous-compte de trésorerie** d'un paiement PI-SPI reçu sur un compte de monnaie électronique ou
+    bancaire (loyers et copropriétés) : décision comptable.
