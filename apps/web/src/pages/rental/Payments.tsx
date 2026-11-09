@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { App, Button, Tabs, Modal, Drawer } from 'antd';
+import { App, Badge, Button, Space, Tabs, Modal, Drawer } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined } from '@ant-design/icons';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -13,6 +13,7 @@ import {
   CreatePaymentRequest,
   AllocatePaymentRequest
 } from '../../services/rental-service';
+import { getRentalPendingCount } from '../../services/rental-declared-payment-service';
 import { collectAllPages } from '../../utils/table-export/collect';
 import { PaymentForm } from '../../components/rental/PaymentForm';
 import { AllocatePaymentForm } from '../../components/rental/AllocatePaymentForm';
@@ -161,6 +162,17 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
   const total = data?.pagination?.total ?? 0;
 
   const rafraichir = () => queryClient.invalidateQueries({ queryKey: ['payments', tenantId] });
+
+  // Compteur de l'onglet « Déclarations en attente » : un échec reste silencieux (pas de badge).
+  const { data: enAttente } = useQuery({
+    queryKey: queryKey('rental-declarations-pending', tenantId),
+    queryFn: () => getRentalPendingCount(tenantId as string),
+    enabled: Boolean(tenantId),
+    staleTime: STALE_TIME.list,
+    retry: false
+  });
+  const rafraichirCompteur = () =>
+    queryClient.invalidateQueries({ queryKey: ['rental-declarations-pending', tenantId] });
 
   const handleCreate = async (donnees: CreatePaymentRequest) => {
     if (!tenantId) return;
@@ -424,13 +436,38 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
           { key: 'paiements', label: t('Paiements'), children: listeDesPaiements },
           {
             key: 'declarations',
-            label: t('Déclarations en attente'),
+            label: (
+              <Space size={6}>
+                <span>{t('Déclarations en attente')}</span>
+                {enAttente && enAttente.pending > 0 ? (
+                  <Badge
+                    count={enAttente.pending}
+                    overflowCount={99}
+                    color={enAttente.overdue > 0 ? 'red' : undefined}
+                    title={
+                      enAttente.overdue > 0
+                        ? t('{{n}} en attente, dont {{retard}} en retard', {
+                            n: enAttente.pending,
+                            retard: enAttente.overdue
+                          })
+                        : t('{{n}} en attente', { n: enAttente.pending })
+                    }
+                  />
+                ) : null}
+              </Space>
+            ),
             children: (
               <PaymentDeclarationsList
                 tenantId={tenantId}
                 leaseId={leaseId}
                 canReview={ready && peutAffecter}
-                onApproveSuccess={() => void rafraichir()}
+                canCreate={ready && peutEncaisser}
+                onApproveSuccess={() => {
+                  void rafraichir();
+                  void rafraichirCompteur();
+                }}
+                onRejectSuccess={() => void rafraichirCompteur()}
+                onCreated={() => void rafraichirCompteur()}
               />
             )
           }

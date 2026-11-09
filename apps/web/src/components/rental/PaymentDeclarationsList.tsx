@@ -1,11 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { App, Button, Tag, Space, Typography, Alert, Modal, Input, Image } from 'antd';
+import { App, Button, Tag, Space, Alert, Modal, Image } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { EyeOutlined, CheckCircleOutlined, CloseCircleOutlined, FileImageOutlined } from '@ant-design/icons';
+import { CheckCircleOutlined, CloseCircleOutlined, FileImageOutlined, PlusOutlined } from '@ant-design/icons';
 import {
   listPaymentDeclarations,
-  approvePaymentDeclaration,
-  rejectPaymentDeclaration,
   RentalPaymentDeclaration,
   PaymentDeclarationStatus,
   RentalPaymentMethod,
@@ -22,12 +20,26 @@ import {
   formatMontantLocatif
 } from '../../lib/rental-labels';
 import { useListSearch } from '../../hooks/useListSearch';
-import { TreasuryAccountSelector } from '../finance/TreasuryAccountSelector';
+import type { RentalPaymentDeclarationDto } from '../../types/rental-declared-payment';
+import { getRentalDeclaration } from '../../services/rental-declared-payment-service';
+import { DeclarationDrawer } from './declared-payment/DeclarationDrawer';
+import { ApproveModal } from './declared-payment/ApproveModal';
+import { RejectModal } from './declared-payment/RejectModal';
+import { DeclareForThirdPartyModal } from './declared-payment/DeclareForThirdPartyModal';
+import { formatPhone, operatorLabel } from './declared-payment/helpers';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
-const { Text } = Typography;
-const { TextArea } = Input;
+
+/** Ligne legacy (snake_case) + clé additive `view` du nouveau contrat (spec 049). */
+type DeclarationRow = RentalPaymentDeclaration & { view?: RentalPaymentDeclarationDto };
+
+/**
+ * L'API traite `status` absent comme PENDING : « Tous les statuts » doit envoyer `ALL`.
+ * (Cast local : le type legacy ne connaît pas `ALL`.)
+ */
+const statusAll = (status: unknown): { status?: PaymentDeclarationStatus } =>
+  status ? {} : { status: 'ALL' as unknown as PaymentDeclarationStatus };
 
 /** Libellés vivants (lus à chaque rendu : ils suivent la langue). */
 const METHOD_LABELS = (): Record<RentalPaymentMethod, string> => ({
@@ -44,20 +56,26 @@ interface PaymentDeclarationsListProps {
   tenantId: string;
   leaseId?: string;
   canReview?: boolean;
+  /** Droit de déclarer pour un tiers (RENTAL_PAYMENTS_CREATE). */
+  canCreate?: boolean;
   onApproveSuccess?: () => void;
   onRejectSuccess?: () => void;
+  /** Après la création d'une déclaration pour un tiers. */
+  onCreated?: () => void;
 }
 
 export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = ({
   tenantId,
   leaseId,
   canReview = true,
+  canCreate = false,
   onApproveSuccess,
-  onRejectSuccess
+  onRejectSuccess,
+  onCreated
 }) => {
   const { message } = App.useApp();
 
-  const [declarations, setDeclarations] = useState<RentalPaymentDeclaration[]>([]);
+  const [declarations, setDeclarations] = useState<DeclarationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // Recherche multicritères dans l'URL, préfixe `decl` : la page Paiements porte aussi sa propre barre.
@@ -105,12 +123,10 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
   });
   const [total, setTotal] = useState(0);
   const requestId = useRef(0);
-  const [approveModalVisible, setApproveModalVisible] = useState(false);
-  const [rejectModalVisible, setRejectModalVisible] = useState(false);
-  const [selectedDeclaration, setSelectedDeclaration] = useState<RentalPaymentDeclaration | null>(null);
-  const [reviewNotes, setReviewNotes] = useState('');
-  const [treasuryAccountId, setTreasuryAccountId] = useState<string | null>(null);
-  const [processing, setProcessing] = useState(false);
+  const [drawerId, setDrawerId] = useState<string | null>(null);
+  const [approveTarget, setApproveTarget] = useState<RentalPaymentDeclarationDto | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<RentalPaymentDeclarationDto | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
   const [proofImageVisible, setProofImageVisible] = useState(false);
   const [proofImageUrl, setProofImageUrl] = useState<string | null>(null);
 
@@ -128,6 +144,7 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
     try {
       const response = await listPaymentDeclarations(tenantId, {
         ...search.apiParams,
+        ...statusAll(search.apiParams.status),
         ...(leaseId ? { leaseId } : {})
       });
       // Réponse d'une recherche déjà remplacée : ignorée.
@@ -146,62 +163,57 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
     }
   };
 
-  const handleApprove = (declaration: RentalPaymentDeclaration) => {
-    setSelectedDeclaration(declaration);
-    setReviewNotes('');
-    setTreasuryAccountId(null);
-    setApproveModalVisible(true);
-  };
-
-  const handleReject = (declaration: RentalPaymentDeclaration) => {
-    setSelectedDeclaration(declaration);
-    setReviewNotes('');
-    setRejectModalVisible(true);
-  };
-
-  const confirmApprove = async () => {
-    if (!selectedDeclaration || !tenantId) return;
-    setProcessing(true);
+  // La vue du nouveau contrat est portée par la ligne ; à défaut (serveur plus ancien), on la lit.
+  const resolveView = async (row: DeclarationRow): Promise<RentalPaymentDeclarationDto | null> => {
+    if (row.view) return row.view;
     try {
-      await approvePaymentDeclaration(tenantId, selectedDeclaration.id, {
-        reviewNotes: reviewNotes || undefined,
-        treasuryAccountId: treasuryAccountId || undefined
-      });
-      message.success(t('Déclaration approuvée avec succès'));
-      setApproveModalVisible(false);
-      setSelectedDeclaration(null);
-      setReviewNotes('');
-      setTreasuryAccountId(null);
-      await loadDeclarations();
-      onApproveSuccess?.();
-    } catch (err: any) {
-      message.error(err.response?.data?.message || t("Erreur lors de l'approbation"));
-    } finally {
-      setProcessing(false);
+      return await getRentalDeclaration(tenantId, row.id);
+    } catch {
+      message.error(t('Impossible de charger la déclaration'));
+      return null;
     }
   };
 
-  const confirmReject = async () => {
-    if (!selectedDeclaration || !tenantId || !reviewNotes.trim()) {
-      message.warning(t('Veuillez fournir une raison pour le rejet'));
-      return;
-    }
-    setProcessing(true);
-    try {
-      await rejectPaymentDeclaration(tenantId, selectedDeclaration.id, {
-        reviewNotes: reviewNotes
-      });
-      message.success(t('Déclaration rejetée'));
-      setRejectModalVisible(false);
-      setSelectedDeclaration(null);
-      setReviewNotes('');
-      await loadDeclarations();
-      onRejectSuccess?.();
-    } catch (err: any) {
-      message.error(err.response?.data?.message || t('Erreur lors du rejet'));
-    } finally {
-      setProcessing(false);
-    }
+  const handleApprove = async (row: DeclarationRow) => {
+    const view = await resolveView(row);
+    if (view) setApproveTarget(view);
+  };
+
+  const handleReject = async (row: DeclarationRow) => {
+    const view = await resolveView(row);
+    if (view) setRejectTarget(view);
+  };
+
+  // 409 « déjà traitée » : tout se ferme, la liste et le compteur se rechargent.
+  const afterStale = async () => {
+    setApproveTarget(null);
+    setRejectTarget(null);
+    setDrawerId(null);
+    await loadDeclarations();
+    onRejectSuccess?.();
+  };
+
+  const afterApproved = async () => {
+    message.success(t('Déclaration approuvée avec succès'));
+    setApproveTarget(null);
+    setDrawerId(null);
+    await loadDeclarations();
+    onApproveSuccess?.();
+  };
+
+  const afterRejected = async () => {
+    message.success(t('Déclaration rejetée'));
+    setRejectTarget(null);
+    setDrawerId(null);
+    await loadDeclarations();
+    onRejectSuccess?.();
+  };
+
+  const afterCreated = async () => {
+    message.success(t('Déclaration enregistrée'));
+    setCreateOpen(false);
+    await loadDeclarations();
+    onCreated?.();
   };
 
   // La preuve n'est plus lue en statique (`/uploads/portal/payments` répond
@@ -214,7 +226,7 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
     };
   }, [proofImageUrl]);
 
-  const handleViewProof = async (declaration: RentalPaymentDeclaration) => {
+  const handleViewProof = async (declaration: DeclarationRow) => {
     if (!tenantId) return;
     try {
       const { blob, filename } = await fetchPaymentDeclarationProof(tenantId, declaration.id);
@@ -254,7 +266,7 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
   // à l'entier ; « FCFA » par l'utilitaire commun.
   const formatCurrency = (amount: number, currency: string = 'FCFA') => formatMontantLocatif(amount, currency);
 
-  const columns: ColumnsType<RentalPaymentDeclaration> = [
+  const columns: ColumnsType<DeclarationRow> = [
     {
       title: t('Date de déclaration'),
       key: 'created_at',
@@ -324,6 +336,18 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
       render: (_, record) => getMethodLabel(record.payment_method)
     },
     {
+      title: t('Opérateur'),
+      key: 'operator',
+      exportValue: record => (record.view?.operator ? operatorLabel(record.view.operator) : null),
+      render: (_, record) => (record.view?.operator ? operatorLabel(record.view.operator) : '-')
+    },
+    {
+      title: t('N° de réception'),
+      key: 'receiving_number',
+      exportValue: record => record.view?.receivingNumber?.phone ?? null,
+      render: (_, record) => (record.view?.receivingNumber ? formatPhone(record.view.receivingNumber.phone) : '-')
+    },
+    {
       title: t('Référence'),
       key: 'reference',
       // Vide à l'export quand il n'y a pas de référence (voir « Échéance »).
@@ -333,14 +357,24 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
     {
       title: t('Statut'),
       key: 'status',
-      render: (_, record) => getStatusTag(record.status)
+      render: (_, record) => (
+        <Space size={4} wrap>
+          {getStatusTag(record.status)}
+          {record.view?.duplicateSuspected && <Tag color="orange">{t('Doublon probable')}</Tag>}
+          {!!record.view?.aiEditedFields?.length && <Tag color="gold">{t('Modifié après lecture IA')}</Tag>}
+          {record.view?.overdue && <Tag color="red">{t('En retard')}</Tag>}
+        </Space>
+      )
     },
     {
       title: t('Actions'),
       key: 'actions',
-      width: 200,
+      width: 260,
       render: (_, record) => (
         <Space>
+          <Button type="link" size="small" onClick={() => setDrawerId(record.view?.id ?? record.id)}>
+            {t('Détail')}
+          </Button>
           {record.proof_file_url && (
             <Button
               type="text"
@@ -379,13 +413,22 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
           />
         )}
 
+        {canCreate && (
+          <div>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+              {t('Déclarer pour un tiers')}
+            </Button>
+          </div>
+        )}
+
         <Table
           exportFilename={t('Déclarations de paiement')}
           // Export de TOUTES les déclarations qui correspondent à la recherche affichée.
           exportFetchAll={() =>
-            collectAllPages<RentalPaymentDeclaration>(async (page, limit) => {
+            collectAllPages<DeclarationRow>(async (page, limit) => {
               const reponse = await listPaymentDeclarations(tenantId, {
                 ...search.filterParams,
+                ...statusAll(search.filterParams.status),
                 ...(leaseId ? { leaseId } : {}),
                 page,
                 limit
@@ -410,109 +453,39 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
         />
       </Space>
 
-      {/* Approve Modal */}
-      <Modal
-        title={t('Approuver la déclaration de paiement')}
-        open={approveModalVisible}
-        onOk={confirmApprove}
-        onCancel={() => {
-          setApproveModalVisible(false);
-          setSelectedDeclaration(null);
-          setReviewNotes('');
-          setTreasuryAccountId(null);
-        }}
-        confirmLoading={processing}
-        okText={t('Approuver')}
-        cancelText={t('Annuler')}
-      >
-        {selectedDeclaration && (
-          <Space direction="vertical" style={{ width: '100%' }} size="middle">
-            <div>
-              <Text strong>{t('Montant :')} </Text>
-              <Text>{formatCurrency(Number(selectedDeclaration.amount))}</Text>
-            </div>
-            <div>
-              <Text strong>{t('Date de paiement :')} </Text>
-              <Text>{formatDate(selectedDeclaration.payment_date)}</Text>
-            </div>
-            <div>
-              <Text strong>{t('Méthode :')} </Text>
-              <Text>{getMethodLabel(selectedDeclaration.payment_method)}</Text>
-            </div>
-            {selectedDeclaration.declarer?.user?.fullName && (
-              <div>
-                <Text strong>{t('Déclarant :')} </Text>
-                <Text>{selectedDeclaration.declarer.user.fullName}</Text>
-              </div>
-            )}
-            <div>
-              <Text strong style={{ display: 'block', marginBottom: 4 }}>
-                {t('Compte de trésorerie')}
-              </Text>
-              <TreasuryAccountSelector
-                tenantId={tenantId}
-                paymentMethod={selectedDeclaration.payment_method}
-                value={treasuryAccountId}
-                onChange={setTreasuryAccountId}
-              />
-            </div>
-            <div>
-              <Text strong>{t('Notes de révision (optionnel) :')}</Text>
-              <TextArea
-                rows={4}
-                value={reviewNotes}
-                onChange={e => setReviewNotes(e.target.value)}
-                placeholder={t('Ajoutez des notes de révision si nécessaire...')}
-              />
-            </div>
-          </Space>
-        )}
-      </Modal>
+      <DeclarationDrawer
+        tenantId={tenantId}
+        declarationId={drawerId}
+        canReview={canReview}
+        onClose={() => setDrawerId(null)}
+        onApprove={declaration => setApproveTarget(declaration)}
+        onReject={declaration => setRejectTarget(declaration)}
+      />
 
-      {/* Reject Modal */}
-      <Modal
-        title={t('Rejeter la déclaration de paiement')}
-        open={rejectModalVisible}
-        onOk={confirmReject}
-        onCancel={() => {
-          setRejectModalVisible(false);
-          setSelectedDeclaration(null);
-          setReviewNotes('');
-        }}
-        confirmLoading={processing}
-        okText={t('Rejeter')}
-        cancelText={t('Annuler')}
-        okButtonProps={{ danger: true }}
-      >
-        {selectedDeclaration && (
-          <Space direction="vertical" style={{ width: '100%' }} size="middle">
-            <div>
-              <Text strong>{t('Montant :')} </Text>
-              <Text>{formatCurrency(Number(selectedDeclaration.amount))}</Text>
-            </div>
-            <div>
-              <Text strong>{t('Date de paiement :')} </Text>
-              <Text>{formatDate(selectedDeclaration.payment_date)}</Text>
-            </div>
-            {selectedDeclaration.declarer?.user?.fullName && (
-              <div>
-                <Text strong>{t('Déclarant :')} </Text>
-                <Text>{selectedDeclaration.declarer.user.fullName}</Text>
-              </div>
-            )}
-            <div>
-              <Text strong>{t('Raison du rejet (obligatoire) :')}</Text>
-              <TextArea
-                rows={4}
-                value={reviewNotes}
-                onChange={e => setReviewNotes(e.target.value)}
-                placeholder={t('Expliquez pourquoi cette déclaration est rejetée...')}
-                required
-              />
-            </div>
-          </Space>
-        )}
-      </Modal>
+      <ApproveModal
+        tenantId={tenantId}
+        declaration={approveTarget}
+        onClose={() => setApproveTarget(null)}
+        onApproved={() => void afterApproved()}
+        onStale={() => void afterStale()}
+      />
+
+      <RejectModal
+        tenantId={tenantId}
+        declaration={rejectTarget}
+        onClose={() => setRejectTarget(null)}
+        onRejected={() => void afterRejected()}
+        onStale={() => void afterStale()}
+      />
+
+      {canCreate && (
+        <DeclareForThirdPartyModal
+          tenantId={tenantId}
+          open={createOpen}
+          onClose={() => setCreateOpen(false)}
+          onCreated={() => void afterCreated()}
+        />
+      )}
 
       {/* Proof Image Modal */}
       <Modal
