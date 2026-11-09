@@ -17,7 +17,15 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 
 Modèle de section : voir le bloc « Modèle de section » plus bas.
 
-## Recette du scénario de gestion locative — 2026-11-09
+## Abonnements : scénario de test et propositions — 2026-11-09
+
+**Branche** `orch/2026-11-09-abonnements`, depuis `origin/main` `aa857a25`. Livrable documentaire, aucun code, aucun schéma, aucune fonctionnalité visible (classeur de fonctionnalités inchangé).
+
+**Fait** — [docs/recette/abonnements/](../recette/abonnements/README.md) : 190 cas en 8 sections (souscription, extensions, changement de pack Agence → +Syndic → Intégré, capacités, cycle de vie, super-admin, droits, cas limites), fil rouge à montants cumulés, 65 écarts code/plan, 50 hypothèses. [PROPOSITIONS-ABONNEMENTS.md](../architecture/PROPOSITIONS-ABONNEMENTS.md) : état des lieux, 25 propositions, feuille de route en 3 vagues, 5 squelettes de spec, décisions métier (section 5). Les deux livrables ont été relus par un vérificateur indépendant puis corrigés.
+
+**Reste** — Le scénario est **écrit, non rejoué** : le rejeu navigateur est à faire (un seul bouton de changement de pack existe dans l'interface, Patrimoine ; les autres changements passent par l'API). Les décisions métier de la section 5 des propositions attendent le propriétaire. Les écarts de code ne sont pas corrigés ; à traiter en priorité : changement programmé non annulable (E-S3-1), changement de cycle sans facture (E-S3-4), `listQuotaAlerts` jamais appelée, routes héritées qui passent une facture plateforme à PAID, `addBillingPeriod` qui dérive en fin de mois (31/01 → 03/03), carte Statistiques « undefined actifs ». `PLAN-ABONNEMENTS.md` diverge du code sur plusieurs points (E-S4-1, E-S4-5, E-S5-7) et n'est pas mis à jour.
+
+**Pièges** — Le README du dossier recette est généré par un script hors dépôt à partir des sections : après un changement de section, le régénérer ou corriger à la main. Section 8 du scénario relue une seule fois (par le vérificateur).
 
 **État** — Branche locale `codex/recette-immotopia-2026-11-09` issue de `main` à `333a357e`. Correctifs et tests dans `259e03c3`. La branche a été réconciliée avec `origin/main` à `0794d6b1` pour la PR #199. Le PDF conserve la traduction et les retenues fractionnaires. Les modifications du wiki ont été reportées sur le classeur de main. Le parcours navigateur de création, signature, facturation, déclaration et affectation du virement, relevé, rapport et reversement a abouti sur `BAIL-2026-0126`. Le détail des cas rejoués, des écarts de données de test et du périmètre restant figure dans [le bilan de recette](../recette/gestion-locative/SCENARIO-2026-11-09.md).
 
