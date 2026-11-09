@@ -18,9 +18,9 @@ export const WHATSAPP_NOTIFICATION_DEFAULT_TEMPLATES: Record<WhatsappNotificatio
   PAYMENT_ALLOCATED_TENANT:
     'Bonjour {{tenantName}}, votre paiement a été alloué aux échéances ({{amountAllocated}}). Bail {{leaseLabel}}. {{agencyName}}.',
   INSTALLMENT_DUE_REMINDER:
-    'Bonjour {{tenantName}}, rappel : votre échéance de loyer est prévue le {{dueDate}}. Montant : {{amount}}. {{agencyName}}.',
+    'Bonjour {{tenantName}}, rappel : votre échéance de loyer est prévue le {{dueDate}}. Montant : {{amount}}.{{paymentBlock}} Payer en ligne : {{paymentUrl}} {{agencyName}}.',
   INSTALLMENT_OVERDUE:
-    'Bonjour {{tenantName}}, votre échéance du {{dueDate}} n’a pas été réglée. Merci de régulariser au plus tôt. {{agencyName}}.',
+    'Bonjour {{tenantName}}, votre échéance du {{dueDate}} n’a pas été réglée. Merci de régulariser au plus tôt.{{paymentBlock}} Payer en ligne : {{paymentUrl}} {{agencyName}}.',
   LEASE_ACTIVATED:
     'Bonjour {{tenantName}}, votre bail {{leaseLabel}} a été activé. Période : {{leaseStartDate}} à {{leaseEndDate}}. Loyer : {{rentAmount}}. Connexion : {{loginUrl}}. Mot de passe oublié : {{forgotPasswordUrl}}. {{agencyName}} vous souhaite une bonne installation.',
   LEASE_ENDING_SOON:
@@ -54,6 +54,12 @@ export const WHATSAPP_NOTIFICATION_DEFAULT_TEMPLATES: Record<WhatsappNotificatio
     'Bonjour {{ownerName}}, votre paiement mobile money (référence {{transactionReference}}) pour la copropriété {{syndicName}} a été validé : {{acceptedAmount}} enregistrés sur votre compte. Montant corrigé : {{corrected}}. {{reviewNote}} Votre reçu ou quittance vous est envoyé séparément.',
   SYNDIC_PAYMENT_DECLARATION_REJECTED:
     'Bonjour {{ownerName}}, votre déclaration de paiement mobile money de {{amount}} (référence {{transactionReference}}) pour la copropriété {{syndicName}} n’a pas été retenue. Motif : {{rejectReasonLabel}}. {{reviewNote}} Aucun montant n’a été enregistré.',
+  RENTAL_PAYMENT_DECLARATION_TO_REVIEW:
+    '{{agencyName}} : {{count}} paiement(s) de loyer déclaré(s) attendent votre vérification.\n{{lines}}\nOuvrir : {{reviewUrl}}',
+  RENTAL_PAYMENT_DECLARATION_OVERDUE_ALERT:
+    '{{agencyName}} : {{count}} paiement(s) de loyer déclaré(s) attendent votre vérification depuis plus de {{days}} jour(s) ouvré(s).\n{{lines}}\nOuvrir : {{reviewUrl}}',
+  RENTAL_RECEIVING_NUMBER_CHANGED:
+    '{{agencyName}} : {{changedBy}} a {{action}} le numéro {{operator}} {{phone}} qui reçoit les loyers. Si vous n’êtes pas au courant, vérifiez-le sans attendre.',
   CHARGE_CALL_ISSUED:
     'Bonjour {{ownerName}}, un nouvel appel de charges a été émis pour votre lot {{lotLabel}} dans la copropriété {{syndicateName}}. Montant : {{amount}} {{currency}}. Échéance : {{dueDate}}.{{paymentBlock}}',
   CHARGE_CALL_REMINDER:

@@ -73,6 +73,20 @@ describe('catalogue d’audit', () => {
     // ici, et nulle part ailleurs : la migration est figée.
     const postMigrationKeys = [
       'AUDIT_VIEWED',
+      // Lot 049-0 : parité Syndic du paiement locatif.
+      'RENTAL_RECEIVING_NUMBER_CREATED',
+      'RENTAL_RECEIVING_NUMBER_UPDATED',
+      'RENTAL_RECEIVING_NUMBER_DEACTIVATED',
+      'RENTAL_DECLARED_PAYMENT_SETTINGS_UPDATED',
+      'RENTAL_PAYMENT_DECLARATION_CREATED_FOR_THIRD_PARTY',
+      'RENTAL_PAYMENT_DECLARATION_APPROVED_WITH_CORRECTION',
+      'RENTAL_PAYMENT_DECLARATION_REJECTED',
+      'RENTAL_PAYMENT_DECLARATION_CANCELED',
+      'RENTAL_PAYMENT_DECLARATION_PROOF_VIEWED',
+      'RENTAL_ONLINE_PAYMENT_REVIEW',
+      'RENTAL_ONLINE_PAYMENT_RESOLVED',
+      'RENTAL_COLLECTION_PAYOUT_RECORDED',
+      'RENTAL_PAYMENT_REMINDER_SENT',
       // Menu lot 3 : relance d'une notification en échec.
       'NOTIFICATION_RESENT',
       // Spec 044 : signature électronique.
