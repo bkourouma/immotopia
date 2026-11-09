@@ -31,7 +31,15 @@ const SENSITIVE_EXACT_SEGMENTS = new Set([
   'sso',
   'oauth',
   'numeros-reception',
-  'preuve'
+  'preuve',
+  // Locatif (contrat 049) : numéros qui reçoivent les loyers, compte d'encaissement et reversements,
+  // réglages du paiement déclaré et relances (envois aux locataires). La capture d'un paiement déclaré
+  // est le segment `proof` d'une `payment-declarations/:id/proof`.
+  'receiving-numbers',
+  'collection-account',
+  'payouts',
+  'declared-payment',
+  'payment-reminders'
 ]);
 
 /**
@@ -61,6 +69,8 @@ const SENSITIVE_SEGMENT_PAIRS: ReadonlyArray<readonly [string, string]> = [
 
 export function isSensitivePath(path: string): boolean {
   const segments = path.split('/').map(segment => segment.toLowerCase());
+  // Locatif : la capture privée d'un paiement déclaré (`…/payment-declarations/:id/proof`).
+  if (segments[segments.length - 1] === 'proof' && segments.includes('payment-declarations')) return true;
   for (const [first, second] of SENSITIVE_SEGMENT_PAIRS) {
     if (segments.some((segment, index) => segment === first && segments[index + 1] === second)) return true;
   }

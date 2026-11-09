@@ -13,7 +13,7 @@ const mocks = {
   checkoutFindMany: jest.fn(),
   loadChannelConfigs: jest.fn(),
   planChannels: jest.fn(),
-  loadConfig: jest.fn()
+  resolveAvailability: jest.fn()
 };
 
 jest.mock('../../src/utils/database', () => ({
@@ -33,10 +33,8 @@ jest.mock('../../src/lib/patrimoine/notification-channels', () => ({
   loadChannelConfigs: (...a: any[]) => mocks.loadChannelConfigs(...a),
   planChannels: (...a: any[]) => mocks.planChannels(...a)
 }));
-jest.mock('../../src/lib/payment-gateway/config', () => ({
-  loadConfig: (...a: any[]) => mocks.loadConfig(...a),
-  isConfigUsable: (c: any) => Boolean(c && c.usable),
-  paymentGatewaySimulatorAvailable: false
+jest.mock('../../src/lib/payment-gateway/availability', () => ({
+  resolveRentalOnlineAvailability: (...a: any[]) => mocks.resolveAvailability(...a)
 }));
 jest.mock('../../src/lib/payment-gateway/checkout', () => ({
   resteDuEcheance: (i: any) => Number(i.amount_rent) - Number(i.amount_paid)
@@ -214,7 +212,7 @@ function defaultMocks() {
   mocks.checkoutFindMany.mockResolvedValue([]);
   mocks.loadChannelConfigs.mockResolvedValue({});
   mocks.planChannels.mockReturnValue({ channels: ['EMAIL'] });
-  mocks.loadConfig.mockResolvedValue({ usable: true, mode: 'LIVE' });
+  mocks.resolveAvailability.mockResolvedValue({ usable: true, unavailableReason: null });
   mocks.leaseFindFirst.mockResolvedValue({ id: 'lease-1' });
   mocks.propertyFindFirst.mockResolvedValue({ id: 'prop-1' });
 }
@@ -250,7 +248,7 @@ describe('planReminders', () => {
     expect(mocks.reminderFindMany.mock.calls[0][0].where.tenant_id).toBe('tenant-A');
     expect(mocks.declarationFindMany.mock.calls[0][0].where.tenant_id).toBe('tenant-A');
     expect(mocks.checkoutFindMany.mock.calls[0][0].where.tenantId).toBe('tenant-A');
-    expect(mocks.loadConfig).toHaveBeenCalledTimes(1);
+    expect(mocks.resolveAvailability).toHaveBeenCalledTimes(1);
     expect(mocks.loadChannelConfigs).toHaveBeenCalledTimes(1);
     expect(mocks.installmentFindMany).toHaveBeenCalledTimes(1);
   });
@@ -297,7 +295,7 @@ describe('planReminders', () => {
 
   it('passerelle inutilisable : paymentLinkIncluded faux', async () => {
     mocks.installmentFindMany.mockResolvedValue([row('a')]);
-    mocks.loadConfig.mockResolvedValue({ usable: true, mode: 'SIMULATOR' });
+    mocks.resolveAvailability.mockResolvedValue({ usable: false, unavailableReason: 'SUBSCRIPTION' });
     expect((await planReminders('tenant-A', ['a'], { now: NOW }))[0].item.paymentLinkIncluded).toBe(false);
   });
 });

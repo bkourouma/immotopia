@@ -3,7 +3,9 @@ import { authenticate } from '../middleware/auth-middleware';
 import { requireTenantPortalAccess } from '../middleware/tenant-portal-access';
 import { receiveRentalDeclarationProof } from '../middleware/rental-declared-proof-upload';
 import {
+  rentalDeclareCancelLimiter,
   rentalDeclareCreateLimiter,
+  rentalPortalReadLimiter,
   rentalProofReadDayLimiter,
   rentalProofReadMinuteLimiter
 } from '../middleware/rental-declared-rate-limiters';
@@ -31,7 +33,7 @@ const router = Router();
 
 const guards: RequestHandler[] = [authenticate, requireTenantPortalAccess];
 
-router.get('/payments/declare/availability', ...guards, getAvailabilityHandler);
+router.get('/payments/declare/availability', ...guards, rentalPortalReadLimiter, getAvailabilityHandler);
 router.post(
   '/payments/declare/lecture',
   ...guards,
@@ -47,8 +49,13 @@ router.post(
   receiveRentalDeclarationProof,
   declarePaymentHandler
 );
-router.get('/payments/declarations', ...guards, listMyDeclarationsHandler);
-router.get('/payments/declarations/:declarationId', ...guards, getMyDeclarationHandler);
-router.post('/payments/declarations/:declarationId/cancel', ...guards, cancelMyDeclarationHandler);
+router.get('/payments/declarations', ...guards, rentalPortalReadLimiter, listMyDeclarationsHandler);
+router.get('/payments/declarations/:declarationId', ...guards, rentalPortalReadLimiter, getMyDeclarationHandler);
+router.post(
+  '/payments/declarations/:declarationId/cancel',
+  ...guards,
+  rentalDeclareCancelLimiter,
+  cancelMyDeclarationHandler
+);
 
 export default router;

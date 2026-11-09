@@ -64,3 +64,23 @@ export const rentalDeclaredManagerWriteLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false
 });
+
+/** Lectures du portail (disponibilité, liste, détail) : 60 par minute et par compte. */
+export const rentalPortalReadLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  keyGenerator: req => `rental-portal-read:${portalKey(req)}`,
+  handler,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Annulation d'une déclaration par le locataire : 20 par minute et par compte. */
+export const rentalDeclareCancelLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  keyGenerator: req => `rental-declare-cancel:${portalKey(req)}`,
+  handler,
+  standardHeaders: true,
+  legacyHeaders: false
+});
