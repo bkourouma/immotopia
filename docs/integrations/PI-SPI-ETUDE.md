@@ -4,7 +4,7 @@
 > [specs/048-paiement-instantane-pispi/](../../specs/048-paiement-instantane-pispi/plan.md). Décisions
 > du 2026-11-09 : agences clientes directes de leur participant ; participant de type opérateur de
 > monnaie électronique. Les recommandations du §8 (pilote sur les abonnements) sont dépassées sur ce
-> point : le plan commence par le lot Q (QR et alias de l'agence, sans API), puis les loyers d'une agence.
+> point : le plan commence par le lot Q (comptes de réception : QR et alias fournis par l'établissement, aucun QR généré), puis les loyers d'une agence.
 
 Étude du 2026-11-09. Recherche documentaire uniquement : aucun code modifié,
 aucun compte sandbox créé, aucun appel d'API réel. Chaque affirmation porte son

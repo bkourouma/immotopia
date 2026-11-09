@@ -4,7 +4,7 @@
 clientes directes** (modèle A), **D2 = un opérateur de monnaie électronique** comme participant
 (lequel : à choisir). D3 à D5 restent ouvertes. Aucun code. Le numéro 048 est le premier libre
 (047 est le dernier dossier ; ADR suivant : 009).
-**Mise à jour du 2026-11-09 (soir)** : lot Q (QR et alias de l'agence, sans API) ajouté en tête.
+**Mise à jour du 2026-11-09 (soir)** : lot Q (comptes de réception : QR et alias fournis par l'établissement, aucun QR généré) ajouté en tête.
 **Documents** : [spec.md](./spec.md) · [tasks.md](./tasks.md).
 **Étude source** : [docs/integrations/PI-SPI-ETUDE.md](../../docs/integrations/PI-SPI-ETUDE.md)
 (faits, niveaux de preuve, inconnues). Ce plan ne répète pas l'étude : il dit quoi construire,
@@ -23,13 +23,14 @@ reversements sortants, puis encaissements non sollicités et rapprochement.
 
 ## Deux phases (décision du 2026-11-09, après le lot QR)
 
-- **Phase 1 — lot Q** : afficher le **QR PI-SPI et l'alias de l'agence** dans l'application, pour que
-  locataires et copropriétaires paient en scannant. **Sans API Business, sans certificat, sans
-  compte développeur** : la charge utile du QR est publique (BCEAO) et ImmoTopia la fabrique. La
-  preuve de paiement passe par le circuit de **déclaration** déjà présent, validé par le gestionnaire.
+- **Phase 1 — lot Q** : l'agence ajoute le **QR et l'alias fournis par son établissement** (PI-SPI, Wave,
+  Orange Money, banque…) ; ImmoTopia les **présente** au locataire ou au copropriétaire, qui paie dans sa
+  propre application en saisissant lui-même le montant. **ImmoTopia ne génère aucun QR.** Sans API
+  Business, sans certificat, sans compte développeur. La preuve passe par la **déclaration** de paiement
+  déjà présente, validée par le gestionnaire.
 - **Phase 2 — lots P0 à P7** : rail de demande de paiement (RTP), webhooks, reversements, rapprochement
-  automatique. Elle **automatise** ce que le lot Q rend déjà possible ; le générateur de QR, la carte
-  de réglages et les références du lot Q y sont réutilisés (rien n'est jeté).
+  automatique. Elle **automatise** ce que le lot Q rend déjà possible ; les comptes de réception du lot Q y
+  restent utilisés comme repli (rien n'est jeté).
 
 ## Conséquences du modèle A et du participant « opérateur de monnaie électronique »
 
@@ -126,77 +127,76 @@ reversements sortants, puis encaissements non sollicités et rapprochement.
 Chaque lot : une branche `feat/pispi-*` empilée sur la précédente, une PR, hooks respectés, classeur
 des fonctionnalités et `npm run wiki:export` dès qu'un écran ou une route visible apparaît.
 
-### Lot Q — QR et alias de l'agence, sans API · taille M (environ une semaine, estimation)
+### Lot Q — Comptes de réception de l'agence : QR et alias fournis par son établissement · taille S à M (quelques jours, estimation)
 
-**But.** L'agence (et chaque copropriété) saisit son alias PI-SPI une fois ; ImmoTopia affiche le QR et
-l'alias là où le payeur en a besoin ; le payeur scanne avec son application bancaire ou son
-portefeuille et paie ; il déclare ensuite son paiement ; le gestionnaire vérifie dans l'application de
-son participant et valide.
+**Décision du fondateur (2026-11-09, soir).** ImmoTopia **ne génère aucun QR**. L'agence ajoute le QR
+téléchargé depuis l'application de son établissement (PI-SPI, Wave, Orange Money, banque…) et/ou son
+alias. ImmoTopia les **présente** au locataire ou au copropriétaire, qui ouvre sa propre application,
+choisit « scanner » ou « saisir l'alias », **entre lui-même le montant** et paie. Rien n'est prérempli.
 
-**Prérequis hors code (à confirmer avec le participant, voir TQ01).** L'agence a un compte chez un
-participant et peut y lire son alias (SHID) et son QR ; la **référence** du QR (champ 62-05)
-apparaît dans la notification ou le relevé de l'agence (indispensable au rapprochement) ; un QR avec
-montant et référence est reconnu par les applications des payeurs.
+**But.** Donner au payeur les coordonnées de paiement de l'agence, au même endroit que le reste de son
+parcours, puis recueillir sa déclaration de paiement. Le lot est **indépendant de PI-SPI** : un QR Wave,
+Orange Money, MTN, Moov ou bancaire convient aussi ; PI-SPI n'est qu'un cas, le meilleur quand
+l'établissement fournit le QR interopérable (n'importe quelle application le lit).
 
-**Faits BCEAO utilisés** (guide « Générer un QR Code PI-SPI », lu le 2026-11-09) : charge utile EMV en
-TLV ; champ 36 = GUI `int.bceao.pi` + alias (SHID de 36 caractères) ; 52 = `0000` ; 53 = `952` ;
-54 = montant (facultatif) ; 58 = pays ; 59 et 60 = `X` ; 62-05 = référence (≤ 25 caractères) ;
-62-11 = canal : `000` statique (avec ou sans montant, « factures pré-imprimées », référence
-recommandée), `400` dynamique (référence unique obligatoire), `731` transfert présenté par le payeur ;
-63 = CRC16-CCITT (polynôme `0x1021`, départ `0xFFFF`). Exemple officiel de vérification : le payload du
-guide donne le CRC `9618`.
+**Ce qui existe déjà et se prolonge** (revérifié dans le code) :
+
+- Côté copropriété : `SyndicReceivingNumber` (opérateur, numéro, titulaire, sous-compte de trésorerie,
+  actif, ordre) avec ses écrans (`components/syndics/declared-payment/ReceivingNumbersCard.tsx`,
+  `components/coowner-portal/declared-payment/ReceivingNumbersCard.tsx`) et la déclaration de paiement
+  (spec 047) validée par le gestionnaire.
+- Côté loyers : `RentalPaymentDeclaration` existe, mais **aucun compte de réception d'agence** n'est
+  configuré : c'est la vraie nouveauté du lot.
 
 **Conception.**
 
-1. **Alias de l'agence et de la copropriété** : deux petits modèles (`AgencyPispiAlias`,
-   `SyndicPispiAlias`), un alias UUID v4 validé, actif ou non, `tenantId` direct. L'alias n'est pas un
-   secret (il figure dans le QR) : pas de chiffrement, mais accès limité aux utilisateurs
-   authentifiés de l'agence et aux payeurs légitimes (portail, lien sécurisé) ; jamais de liste
-   publique. Droits existants `TENANT_SETTINGS_VIEW` et `TENANT_SETTINGS_EDIT` (à durcir si le
-   propriétaire de l'agence le demande).
-2. **Anti-détournement** : tout changement d'alias est journalisé (audit) et notifié par e-mail aux
-   administrateurs de l'agence ; l'ancien alias n'est jamais effacé de l'historique. Un alias changé
-   par un compte compromis redirigerait les loyers : c'est le risque principal du lot.
-3. **Générateur de QR** : fonctions pures `API/lib/payment-gateway/pispi/qr.ts` (construction TLV,
-   CRC16, validation, analyse inverse) testées sur le vecteur officiel ; **la même logique côté web**
-   ou une route qui renvoie la charge utile. Une bibliothèque de dessin de QR est nécessaire : ni
-   l'API ni le web n'en ont aujourd'hui (nouvelle dépendance à évaluer : licence, taille, audit).
-4. **Références** : table `PispiPayReference` (`tenantId`, référence ≤ 25 caractères `A-Za-z0-9`,
-   nature `RENT_INSTALLMENT` ou `CHARGE_CALL`, identifiant de l'entité, montant, créée le) ; unicité
-   par agence ; permet de retrouver l'échéance depuis la référence lue dans l'application du
-   participant.
-5. **Type de QR** : par défaut **statique avec montant** (canal `000`, montant de l'échéance, référence
-   de l'échéance), réutilisable et imprimable ; **dynamique** (`400`) pour le guichet. Choix à
-   confirmer avec le participant (risque de refus d'un doublon de référence si le QR est scanné deux
-   fois).
-6. **Affichage** : composant `PispiQrCard` (QR, alias copiable, nom attendu de l'agence, étapes « Comment
-   payer », avertissement : paiement irrévocable, vérifier le nom affiché par votre application) sur le
-   portail locataire, le portail copropriétaire et les pages de paiement ; QR dans les PDF d'avis
-   d'échéance et d'appels de charges. Pas de message WhatsApp avec image : les modèles Meta ne s'y
-   prêtent pas, on envoie un lien vers le portail.
-7. **Preuve de paiement** : le moyen **PI-SPI** est ajouté aux déclarations existantes
-   (`RentalPaymentDeclaration`, spec 047 pour les copropriétaires), avec la référence préremplie ; la
-   validation par le gestionnaire passe par le chemin actuel (paiement d'origine `DECLARED`). Aucun
-   crédit automatique en phase 1.
-8. **Compte de trésorerie** : le paiement PI-SPI arrive sur le compte de l'agence chez son participant
-   (banque ou monnaie électronique) ; le plan comptable des copropriétés impose un choix de sous-compte
-   (5521x ou 5211) : décision à prendre avec le comptable (TQ10).
+1. **Compte de réception** : pour l'agence (loyers) un nouveau modèle ; pour la copropriété,
+   prolongement de `SyndicReceivingNumber` (colonnes ajoutées, ou modèle commun : à trancher au tout
+   début, tâche TQ03). Champs : établissement (libellé libre), nature (QR, alias, numéro, ou
+   plusieurs), **image du QR** (facultative), **alias** (facultatif), **nom du titulaire attendu**,
+   « scannable avec » (ex. « toutes les applications PI-SPI » ou « application Wave »), instructions
+   libres, actif, ordre, sous-compte de trésorerie. Plusieurs comptes par agence ou copropriété
+   (Wave, Orange Money, banque…).
+2. **Image du QR** : formats PNG, JPEG ou WebP, taille bornée, métadonnées retirées
+   (`stripImageMetadata`), type vérifié à la signature de fichier (`detectStockFileKind`) ; stockage
+   privé, **servie uniquement par une route authentifiée** (portail ou lien sécurisé) avec garde
+   d'appartenance ; jamais en statique ; aucun chemin disque dans une réponse d'API.
+3. **Alias** : si l'alias est un identifiant PI-SPI (UUID v4), il est validé ; sinon texte libre
+   borné. Bouton « copier ».
+4. **Montant et référence** : le montant est saisi par le payeur. ImmoTopia affiche un **motif suggéré**
+   à recopier (ex. « Loyer janvier — Appartement 3 ») sans promettre qu'il apparaisse chez l'agence.
+   Le rapprochement se fait sur la **déclaration** (montant, date, référence de transaction de
+   l'application du payeur, capture facultative) comme aujourd'hui.
+5. **Affichage** : composant commun `PaymentAccountsCard` (QR agrandissable, alias copiable, nom attendu
+   du bénéficiaire, étapes « Comment payer », avertissements : paiement irrévocable, vérifier le nom
+   affiché par votre application) dans le portail locataire, le portail copropriétaire et la page de
+   déclaration ; mention dans les PDF d'avis d'échéance et d'appels de charges (alias en texte ; QR
+   image intégrée si facile avec `pdf-lib`).
+6. **Preuve de paiement** : déclaration existante, validée par le gestionnaire après vérification sur
+   le compte de l'agence ; paiement d'origine `DECLARED`. **Aucun crédit automatique.**
+7. **Anti-détournement** : tout ajout, changement ou retrait d'un compte de réception est journalisé et
+   notifié par e-mail aux administrateurs de l'agence ; l'historique garde l'ancienne valeur. Un compte
+   modifié par un accès compromis redirigerait les loyers : c'est le risque principal.
+8. **Cohérence QR et alias** : si les deux sont fournis, l'agence est responsable de leur concordance.
+   Une lecture automatique du QR pour vérifier l'alias est une amélioration optionnelle (nouvelle
+   dépendance de décodage), hors lot.
 
-**Zone grise réglementaire.** Les spécifications BCEAO disent d'interdire l'usage du QR « pour des
-paiements en ligne ou à distance », alors que le guide cite la facture digitalisée comme usage. Un
-locataire qui paie de chez lui est probablement un cas « à distance ». À trancher par écrit avec le
-participant avant de présenter la fonction comme un paiement en ligne ; en attendant, la libeller
-« paiement par QR PI-SPI » et non « paiement en ligne ».
+**Zone grise réglementaire, réduite mais pas nulle.** Les spécifications BCEAO disent d'interdire
+l'usage du QR « pour des paiements en ligne ou à distance ». Ici ImmoTopia ne génère pas de paiement : il
+affiche des coordonnées, comme une vitrine ou une facture papier, et le payeur paie dans sa propre
+application. Libeller la fonction « payer l'agence » (coordonnées de paiement), jamais « paiement en
+ligne », tant que le participant n'a pas confirmé par écrit.
 
-**Risques propres au lot.** Détournement d'alias (parade : audit + alerte) ; fausse déclaration
-(parade : vérification sur le compte de l'agence, argent visible immédiatement) ; référence absente de
-la notification du participant (le rapprochement redevient manuel) ; plafond du compte de l'opérateur ;
-paiement irrévocable sur un mauvais nom (parade : nom attendu affiché).
+**Risques.** Détournement de compte de réception (audit + alerte) ; QR ou alias erroné saisi par
+l'agence (nom attendu affiché, test par un paiement réel de faible montant) ; fausse déclaration
+(vérification sur le compte de l'agence) ; référence absente chez l'agence (rapprochement manuel par
+montant, date et nom) ; QR propre à un opérateur illisible par les autres applications (champ
+« scannable avec ») ; plafond du compte de l'opérateur.
 
-**Fin de lot.** QR validé par un outil indépendant et lu par l'application sandbox ou celle d'un
-participant ; un paiement réel de faible montant déclaré puis validé chez l'agence pilote ; isolation
-entre deux agences vérifiée ; changement d'alias journalisé et notifié ; classeur des fonctionnalités à
-jour.
+**Fin de lot.** Une agence pilote ajoute son QR et son alias ; un locataire les voit sur son portail et
+paie un petit montant ; il déclare ; le gestionnaire valide ; isolation entre deux agences vérifiée ;
+fichier QR inaccessible sans authentification ; changement de compte journalisé et notifié ; classeur
+des fonctionnalités à jour.
 
 ### P0 — Prérequis hors code (fondateur) · 1 à 4 semaines, délai non maîtrisé
 

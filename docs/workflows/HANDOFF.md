@@ -23,7 +23,7 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 **Décisions du fondateur (2026-11-09)** — D1 : agences clientes directes de leur participant. D2 : participant de type opérateur de monnaie électronique (opérateur à choisir). Ouvertes : D3 mTLS du webhook, D4 alias du payeur, D5 frais de l'API Business.
 
-**Lot Q ajouté (2026-11-09 soir)** — QR et alias de l'agence affichés dans l'application, sans API ni certificat ; preuve par déclaration validée par le gestionnaire. À faire avant P1. Questions au participant : TQ01.
+**Lot Q ajouté (2026-11-09 soir)** — comptes de réception de l'agence (QR et alias fournis par son établissement, ImmoTopia ne génère aucun QR, le payeur saisit le montant) ; preuve par déclaration validée par le gestionnaire. À faire avant P1. À prolonger : `SyndicReceivingNumber` côté copropriété, nouveau modèle côté loyers (TQ03).
 
 **Reste** — Lot P0 hors code : choisir l'opérateur, vérifier son API Business homologuée et le plafond de son compte professionnel, ouvrir le compte sandbox, valider au playground, sonder BMI/PaySecureHub. Puis lot P1 (socle, simulateur, configuration par agence).
 

@@ -5,55 +5,51 @@ commencée. `API/` = `packages/api/src`, `WEB/` = `apps/web/src`. `[P]` = parall
 distincts). Une branche empilée et une PR par lot ; classeur des fonctionnalités et
 `npm run wiki:export` dans toute PR qui change un écran ou une route.
 
-## Lot Q — QR et alias de l'agence, sans API (à faire en premier)
+## Lot Q — Comptes de réception de l'agence : QR et alias fournis par son établissement (à faire en premier)
 
-Prérequis hors code
+Décisions et prérequis
 
-- [ ] TQ01 Demander au participant : l'alias et le QR de l'agence sont-ils lisibles dans son application
-      professionnelle ? Un QR avec montant et référence est-il reconnu ? La référence apparaît-elle
-      dans la notification et le relevé de l'agence ? Le paiement par QR à distance est-il toléré ? Un
-      même QR scanné deux fois est-il refusé ?
-- [ ] TQ02 Obtenir l'alias de l'agence pilote et un paiement réel de faible montant pour la recette.
+- [ ] TQ01 Fondateur : fournir les QR et alias de l'agence pilote (établissement, titulaire) ; confirmer
+      avec le participant la tolérance de l'usage (coordonnées affichées, paiement depuis chez soi).
+- [ ] TQ02 Fondateur et comptable : sous-compte de trésorerie d'un paiement reçu par QR ou alias (loyers
+      et plan de chaque copropriété).
+- [ ] TQ03 Trancher le modèle : prolonger `SyndicReceivingNumber` (colonnes alias, image, établissement)
+      ou créer un modèle commun de comptes de réception pour l'agence et la copropriété ; noter la
+      décision dans le plan.
 
-Données
+Données et API
 
-- [ ] TQ03 Migration : `AgencyPispiAlias`, `SyndicPispiAlias`, `PispiPayReference` ; unicités ;
-      `tenantId` direct ; test `schema-tenant-coverage`.
-- [ ] TQ04 [P] `API/lib/payment-gateway/pispi/qr.ts` : TLV, CRC16, validation, analyse inverse ; tests sur
-      le vecteur officiel du guide (CRC `9618`) et sur des cas invalides (alias non UUID, référence
-      trop longue, montant non entier).
-- [ ] TQ05 [P] `API/lib/payment-gateway/pispi/reference.ts` : génération et résolution des références
-      (≤ 25 caractères, unicité par agence).
-
-API
-
-- [ ] TQ06 Routes de réglages de l'alias (agence : `…/settings/pispi-alias`, copropriété :
-      `…/syndics/:syndicId/paiement-qr`) avec `TENANT_SETTINGS_VIEW` / `TENANT_SETTINGS_EDIT` ;
-      audit et e-mail aux administrateurs à chaque changement.
-- [ ] TQ07 Routes de lecture du QR d'une échéance (portail locataire, portail copropriétaire, lien
-      sécurisé) : vérification d'appartenance, création de la référence, charge utile validée ;
-      limiteur de débit.
-- [ ] TQ08 Moyen « PI-SPI » dans les déclarations existantes (loyers et spec 047) avec référence
-      préremplie ; tests de validation par le gestionnaire.
-- [ ] TQ09 QR dans les PDF d'avis d'échéance et d'appels de charges (`pdf-lib`).
-- [ ] TQ10 Décision comptable : sous-compte de trésorerie du paiement PI-SPI (banque ou monnaie
-      électronique) pour les loyers et pour chaque plan comptable de copropriété.
+- [ ] TQ04 Migration additive selon TQ03 ; `tenantId` direct ; stockage privé de l'image (chemin, type,
+      empreinte) ; test `schema-tenant-coverage`.
+- [ ] TQ05 [P] Validation : alias UUID v4 ou texte borné ; image PNG, JPEG ou WebP, taille bornée,
+      signature vérifiée (`detectStockFileKind`), métadonnées retirées (`stripImageMetadata`).
+- [ ] TQ06 Routes de gestion (agence : `…/settings/comptes-reception`, copropriété : prolongement des
+      routes des numéros de réception) avec `TENANT_SETTINGS_VIEW` / `TENANT_SETTINGS_EDIT` ; audit et
+      e-mail aux administrateurs à chaque changement.
+- [ ] TQ07 Routes de lecture pour les portails locataire et copropriétaire et le lien sécurisé, avec
+      garde d'appartenance ; route authentifiée pour l'image du QR ; aucun chemin disque dans les
+      réponses (`__tests__/api/portal-no-disk-paths.test.ts`) ; limiteur de débit.
+- [ ] TQ08 Moyen de paiement « QR / alias » dans les déclarations de loyers, avec motif suggéré ; la
+      validation par le gestionnaire reste inchangée.
 
 Web
 
-- [ ] TQ11 Dépendance de dessin de QR : évaluer (licence, taille, audit), ajouter au bon paquet.
-- [ ] TQ12 [P] `WEB/components/payment/PispiQrCard.tsx` : QR, alias copiable, nom attendu, étapes,
-      avertissements ; `WEB/services/pispi-alias-service.ts`.
-- [ ] TQ13 [P] Carte « QR PI-SPI » dans les réglages de l'agence et de la copropriété.
-- [ ] TQ14 Intégration dans `pages/TenantPortal/Payments.tsx`, `pages/CoOwnerPortal/ChargeCalls.tsx` et les
-      pages de paiement ; moyen « PI-SPI » dans les formulaires de déclaration.
+- [ ] TQ09 [P] `WEB/components/payment/PaymentAccountsCard.tsx` : QR agrandissable, alias copiable, nom
+      attendu, « scannable avec », motif suggéré à copier, étapes, avertissements ; service associé.
+- [ ] TQ10 [P] Carte « Comptes de réception » dans les réglages de l'agence (ajout, aperçu, ordre,
+      activation) et prolongement de la carte existante côté copropriété.
+- [ ] TQ11 Intégration dans `pages/TenantPortal/Payments.tsx`, `pages/CoOwnerPortal/ChargeCalls.tsx` et la
+      page de déclaration ; textes via `t()`, propriétés logiques.
+- [ ] TQ12 Mention des coordonnées dans les PDF d'avis d'échéance et d'appels de charges (alias en
+      texte ; image du QR si intégrable avec `pdf-lib`).
 
 Tests et fin de lot
 
-- [ ] TQ15 Tests API (isolation entre deux agences, alias absent, changement journalisé et notifié,
-      droits) et web (QR affiché, alias manquant, textes traduits dont l'arabe).
-- [ ] TQ16 `npm run typecheck`, lint, `check:architecture`, `i18n:extract`, classeur des fonctionnalités + `wiki:export`.
-- [ ] TQ17 Recette navigateur sur la démo figée ; puis paiement réel de faible montant chez l'agence
+- [ ] TQ13 Tests API (isolation entre deux agences, image refusée si type faux, fichier inaccessible
+      sans authentification, changement journalisé et notifié, droits) et web (affichage, absence de
+      compte, plusieurs comptes, arabe).
+- [ ] TQ14 `npm run typecheck`, lint, `check:architecture`, `i18n:extract`, classeur des fonctionnalités + `wiki:export`.
+- [ ] TQ15 Recette navigateur sur la démo figée ; puis un paiement réel de faible montant chez l'agence
       pilote, sur staging, avec accord explicite du fondateur.
 
 ## P0 — Prérequis hors code (fondateur, bloquant pour P1 réel)
