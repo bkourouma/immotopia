@@ -116,6 +116,15 @@ jest.mock('../../src/utils/database', () => ({
   )
 }));
 
+jest.mock('../../src/lib/rental/online-review/pending-declaration', () => ({
+  assertNoPendingDeclaration: jest.fn(async () => undefined)
+}));
+jest.mock('../../src/lib/payment-gateway/availability', () =>
+  require('../helpers/rental-availability-mock').makeAvailabilityMock(() =>
+    jest.requireActual('../../src/lib/payment-gateway/config')
+  )
+);
+
 jest.mock('../../src/services/rental-payment-service', () => ({
   updatePaymentStatusTx: jest.fn(),
   allocatePaymentTx: jest.fn()

@@ -8,6 +8,11 @@ import {
   startOnlinePaymentHandler,
   getOnlinePaymentHandler
 } from '../controllers/tenant-portal-online-payment-controller';
+import {
+  rentalPortalOnlinePaymentAvailabilityLimiter,
+  rentalPortalOnlinePaymentStartLimiter,
+  rentalPortalOnlinePaymentStatusLimiter
+} from '../middleware/rate-limit-middleware';
 import multer from 'multer';
 
 const router = Router();
@@ -45,9 +50,13 @@ router.get('/payments', controller.getPaymentHistory);
 router.post('/payments/declare', upload.single('proof'), controller.declarePayment);
 
 // Lot 7 : paiement en ligne (PaySecureHub).
-router.get('/online-payments/availability', getOnlinePaymentAvailabilityHandler);
-router.post('/online-payments', startOnlinePaymentHandler);
-router.get('/online-payments/:codePaiement', getOnlinePaymentHandler);
+router.get(
+  '/online-payments/availability',
+  rentalPortalOnlinePaymentAvailabilityLimiter,
+  getOnlinePaymentAvailabilityHandler
+);
+router.post('/online-payments', rentalPortalOnlinePaymentStartLimiter, startOnlinePaymentHandler);
+router.get('/online-payments/:codePaiement', rentalPortalOnlinePaymentStatusLimiter, getOnlinePaymentHandler);
 
 // Deposit
 router.get('/deposit', controller.getDepositInfo);

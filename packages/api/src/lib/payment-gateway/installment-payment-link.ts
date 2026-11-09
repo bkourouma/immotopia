@@ -16,7 +16,8 @@ import {
   verifySecureLink
 } from '../secure-links';
 import type { CreatedSecureLink, VerifiedSecureLink } from '../secure-links';
-import { isConfigUsable, loadConfig } from './config';
+import { isConfigUsable } from './config';
+import { rentalOnlineUnavailableError, resolveRentalOnlineAvailability } from './availability';
 import {
   normalizeProviderCheckoutUrl,
   reconcileCheckout,
@@ -142,8 +143,11 @@ async function loadInstallmentContext(
   const amountDue = Math.round(roundMoney(resteDuEcheance(installment)));
   if (amountDue <= 0) return { failure: 'SETTLED' };
 
-  const config = await loadConfig(tenantId);
-  if (!isConfigUsable(config)) return { failure: 'ONLINE_UNAVAILABLE' };
+  // Règle unique de disponibilité (contrat 049 §2.8) : configuration utilisable, simulateur
+  // autorisé sur le serveur ET droit RENTAL de l'agence. Jamais de repli.
+  const availability = await resolveRentalOnlineAvailability(tenantId);
+  const config = availability.config;
+  if (!availability.usable || !isConfigUsable(config)) return { failure: 'ONLINE_UNAVAILABLE' };
 
   return {
     mode: config.mode,
@@ -176,7 +180,7 @@ function failureToError(failure: ContextFailure): Error {
         t("Cette échéance est encore à l'état de brouillon : émettez-la avant d'envoyer un lien de paiement.")
       );
     case 'ONLINE_UNAVAILABLE':
-      return new BadRequestError(t("Le paiement en ligne n'est pas disponible pour cette agence."));
+      return rentalOnlineUnavailableError();
   }
 }
 
