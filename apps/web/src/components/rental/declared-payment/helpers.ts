@@ -34,6 +34,16 @@ export function formatDay(value: string | null | undefined): string {
   return value ? dayjs(value).format('DD/MM/YYYY') : '—';
 }
 
+/**
+ * Locataire de la déclaration : le déclarant enregistré, jamais le gestionnaire
+ * qui l'a saisie pour lui. Repli sur `declaredBy` (ancienne API sans
+ * `tenantName`) seulement quand c'est le locataire lui-même qui a déclaré.
+ */
+export function declarationTenantName(declaration: RentalPaymentDeclarationDto): string {
+  if (declaration.tenantName) return declaration.tenantName;
+  return declaration.declaredBy.type === 'TENANT' && declaration.declaredBy.name ? declaration.declaredBy.name : '—';
+}
+
 export function formatAmount(value: number | null | undefined): string {
   return value === null || value === undefined ? '—' : formatMontantLocatif(value);
 }

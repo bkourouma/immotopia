@@ -443,7 +443,9 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
                   <Badge
                     count={enAttente.pending}
                     overflowCount={99}
-                    color={enAttente.overdue > 0 ? 'red' : undefined}
+                    // Le badge Ant Design est rouge par défaut : sans retard, une
+                    // couleur explicite neutre, le rouge reste réservé au retard.
+                    color={enAttente.overdue > 0 ? 'red' : 'blue'}
                     title={
                       enAttente.overdue > 0
                         ? t('{{n}} en attente, dont {{retard}} en retard', {

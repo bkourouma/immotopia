@@ -88,19 +88,19 @@ describe('Échéances — relances', () => {
   it('propose « Relancer » et « Relancer en lot » avec RENTAL_PAYMENTS_ALLOCATE', async () => {
     permissions = new Set(['RENTAL_INSTALLMENTS_VIEW', 'RENTAL_PAYMENTS_ALLOCATE']);
     await monter('OVERDUE');
-    expect(screen.getByRole('button', { name: /Relancer(?! en lot)/ })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Relancer en lot/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Envoyer une relance/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Envoyer des relances en lot/ })).toBeTruthy();
   });
 
   it('masque les deux sans ce droit', async () => {
     permissions = new Set(['RENTAL_INSTALLMENTS_VIEW', 'RENTAL_PAYMENTS_VIEW']);
     await monter('OVERDUE');
-    expect(screen.queryByRole('button', { name: /Relancer(?! en lot)/ })).toBeNull();
-    expect(screen.queryByRole('button', { name: /Relancer en lot/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Envoyer une relance/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Envoyer des relances en lot/ })).toBeNull();
   });
 
   it("n'offre pas « Relancer » sur une échéance soldée", async () => {
     await monter('PAID', 100000);
-    expect(screen.queryByRole('button', { name: /Relancer(?! en lot)/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Envoyer une relance/ })).toBeNull();
   });
 });

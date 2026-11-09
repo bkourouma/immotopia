@@ -59,6 +59,11 @@ export interface CreateRentalDeclarationInput {
   proofReadId?: string | null;
 }
 
+/** Montant entier avec séparateur de milliers (espace), pour un message d'erreur. */
+export function formatFcfaAmount(value: number): string {
+  return String(Math.trunc(value)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+}
+
 function bad(message: string, code: string): AppError {
   return new AppError(message, 400, code);
 }
@@ -192,7 +197,9 @@ export async function createRentalDeclaration(
   }
   if (amount > RENTAL_MAX_DECLARATION_AMOUNT) {
     throw bad(
-      t('Le montant dépasse le plafond de {max} FCFA par déclaration.', { max: RENTAL_MAX_DECLARATION_AMOUNT }),
+      t('Le montant dépasse le plafond de {{max}} FCFA par déclaration.', {
+        max: formatFcfaAmount(RENTAL_MAX_DECLARATION_AMOUNT)
+      }),
       ErrorCode.RENTAL_DECLARATION_AMOUNT_TOO_HIGH
     );
   }
@@ -203,7 +210,7 @@ export async function createRentalDeclaration(
   const earliest = now.getTime() - RENTAL_PAID_AT_MAX_AGE_DAYS * 86_400_000;
   if (paidAt.getTime() > latest || paidAt.getTime() < earliest) {
     throw bad(
-      t('La date du paiement ne peut pas être dans le futur ni remonter à plus de {days} jours.', {
+      t('La date du paiement ne peut pas être dans le futur ni remonter à plus de {{days}} jours.', {
         days: RENTAL_PAID_AT_MAX_AGE_DAYS
       }),
       ErrorCode.RENTAL_DECLARATION_DATE_OUT_OF_RANGE

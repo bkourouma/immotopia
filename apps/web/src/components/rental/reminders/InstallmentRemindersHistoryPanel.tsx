@@ -71,7 +71,7 @@ export const InstallmentRemindersHistoryPanel: React.FC<InstallmentRemindersHist
               dataIndex: 'sent_at',
               render: (v: string) => new Date(v).toLocaleString(activeLocale())
             },
-            { title: t('Niveau'), dataIndex: 'level', render: (v: number) => reminderLevelLabel(v) },
+            { title: t('Niveau de relance'), dataIndex: 'level', render: (v: number) => reminderLevelLabel(v) },
             {
               title: t('Canal'),
               dataIndex: 'channel',

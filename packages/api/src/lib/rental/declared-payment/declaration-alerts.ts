@@ -12,9 +12,6 @@ import type { RentalDeclarationAlert, RentalPrefillField } from './types';
  * `RECIPIENT_MISMATCH` décrivent la déclaration elle-même : tout statut.
  */
 
-/** Écart maximal de `payment_date` entre deux déclarations pour un doublon probable. */
-export const RENTAL_DUPLICATE_WINDOW_MS = 10 * 60 * 1000;
-
 const PREFILL_FIELDS: readonly RentalPrefillField[] = ['operator', 'amount', 'paidAt', 'reference', 'payerPhone'];
 
 export interface AlertInstallment {
@@ -112,61 +109,80 @@ export interface DuplicateProbeRow {
   status: string;
   amount: unknown;
   payment_date: Date;
-  transaction_phone: string | null;
-  receiving_number_id: string | null;
-  reference_normalized: string | null;
+  lease_id: string;
+  installment_id?: string | null;
   created_at: Date;
 }
 
+const DAY_MS = 86_400_000;
+
+/** Début du jour UTC de `date` (même découpage que la création). */
+function utcDayStart(date: Date): number {
+  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+}
+
+/** `a` a été enregistrée avant `b` (égalité départagée par l'id : un seul des deux est « l'autre »). */
+function createdBefore(a: DuplicateProbeRow, b: DuplicateProbeRow): boolean {
+  const diff = a.created_at.getTime() - b.created_at.getTime();
+  return diff !== 0 ? diff < 0 : a.id < b.id;
+}
+
 /**
- * Doublons probables des déclarations `PENDING` données : même numéro de
- * réception, même montant, même numéro payeur, `payment_date` à 10 minutes
- * près, références DIFFÉRENTES (une même référence est refusée à la création).
- * Une requête groupée pour toute la liste. Résultat : id → id de l'autre déclaration.
+ * Règle unique du doublon probable (contrat §1.3, identique à la création) :
+ * `other` est une déclaration PENDING ou APPROVED du même bail, de la MÊME
+ * échéance (ou toutes deux sans échéance), du même montant, payée le même
+ * jour UTC, et enregistrée AVANT `target`. Une déclaration ne se signale donc
+ * jamais elle-même, et la première d'une paire n'est pas signalée : seule la
+ * suivante l'est, comme le `duplicateSuspected` renvoyé à sa création.
+ */
+export function isProbableDuplicateOf(target: DuplicateProbeRow, other: DuplicateProbeRow): boolean {
+  return (
+    other.id !== target.id &&
+    (other.status === 'PENDING' || other.status === 'APPROVED') &&
+    other.lease_id === target.lease_id &&
+    (other.installment_id ?? null) === (target.installment_id ?? null) &&
+    Math.round(Number(other.amount) * 100) === Math.round(Number(target.amount) * 100) &&
+    utcDayStart(other.payment_date) === utcDayStart(target.payment_date) &&
+    createdBefore(other, target)
+  );
+}
+
+/**
+ * Doublons probables des déclarations `PENDING` données, selon
+ * `isProbableDuplicateOf`. Une requête groupée pour toute la liste, filtrée par
+ * agence. Résultat : id → id de la plus ancienne déclaration en doublon.
  */
 export async function findProbableDuplicates(
   tenantId: string,
   rows: DuplicateProbeRow[]
 ): Promise<Map<string, string>> {
   const result = new Map<string, string>();
-  const targets = rows.filter(r => r.status === 'PENDING' && r.receiving_number_id);
+  const targets = rows.filter(r => r.status === 'PENDING' && r.lease_id);
   if (targets.length === 0) return result;
-  const times = targets.map(r => r.payment_date.getTime());
-  const pool: DuplicateProbeRow[] = await prisma.rentalPaymentDeclaration.findMany({
-    where: {
-      tenant_id: tenantId,
-      status: { in: ['PENDING', 'APPROVED'] },
-      receiving_number_id: { in: Array.from(new Set(targets.map(r => r.receiving_number_id as string))) },
-      payment_date: {
-        gte: new Date(Math.min(...times) - RENTAL_DUPLICATE_WINDOW_MS),
-        lte: new Date(Math.max(...times) + RENTAL_DUPLICATE_WINDOW_MS)
-      }
-    },
-    select: {
-      id: true,
-      status: true,
-      amount: true,
-      payment_date: true,
-      transaction_phone: true,
-      receiving_number_id: true,
-      reference_normalized: true,
-      created_at: true
-    },
-    take: 1000
-  });
+  const days = targets.map(r => utcDayStart(r.payment_date));
+  const pool: DuplicateProbeRow[] =
+    (await prisma.rentalPaymentDeclaration.findMany({
+      where: {
+        tenant_id: tenantId,
+        status: { in: ['PENDING', 'APPROVED'] },
+        lease_id: { in: Array.from(new Set(targets.map(r => r.lease_id))) },
+        payment_date: { gte: new Date(Math.min(...days)), lt: new Date(Math.max(...days) + DAY_MS) }
+      },
+      select: {
+        id: true,
+        status: true,
+        amount: true,
+        payment_date: true,
+        lease_id: true,
+        installment_id: true,
+        created_at: true
+      },
+      take: 1000
+    })) ?? [];
   for (const target of targets) {
-    const cents = Math.round(Number(target.amount) * 100);
     const other = pool
-      .filter(
-        o =>
-          o.id !== target.id &&
-          o.receiving_number_id === target.receiving_number_id &&
-          o.transaction_phone === target.transaction_phone &&
-          o.reference_normalized !== target.reference_normalized &&
-          Math.round(Number(o.amount) * 100) === cents &&
-          Math.abs(o.payment_date.getTime() - target.payment_date.getTime()) <= RENTAL_DUPLICATE_WINDOW_MS
-      )
-      .sort((a, b) => a.created_at.getTime() - b.created_at.getTime())[0];
+      .filter(candidate => isProbableDuplicateOf(target, candidate))
+      .sort((a, b) => (createdBefore(a, b) ? -1 : 1))[0];
     if (other) result.set(target.id, other.id);
   }
   return result;

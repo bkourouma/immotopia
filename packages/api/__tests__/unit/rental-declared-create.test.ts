@@ -137,6 +137,18 @@ describe('createRentalDeclaration', () => {
     );
   });
 
+  it('messages de plafond et de date interpolés, sans jeton brut (BUG-2026-11-09-PLB-001)', async () => {
+    const tooHigh = await createRentalDeclaration({ ...base(), amount: 5_000_001 }).catch((e: Error) => e);
+    expect((tooHigh as Error).message).toContain('5 000 000 FCFA');
+    expect((tooHigh as Error).message).not.toMatch(/[{}]/);
+    const tooOld = await createRentalDeclaration({
+      ...base(),
+      paidAt: new Date(Date.now() - 91 * 86_400_000).toISOString()
+    }).catch((e: Error) => e);
+    expect((tooOld as Error).message).toContain('90 jours');
+    expect((tooOld as Error).message).not.toMatch(/[{}]/);
+  });
+
   it('refuse quand la fonction est désactivée, ou sans numéro actif', async () => {
     db.settings = { enabled: false };
     await expectCode(createRentalDeclaration(base()), ErrorCode.RENTAL_DECLARED_PAYMENT_DISABLED, 400);

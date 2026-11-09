@@ -12,6 +12,7 @@ import {
   NOTE_MIN_LENGTH,
   apiErrorCode,
   apiErrorMessage,
+  declarationTenantName,
   formatAmount,
   formatDateTime,
   rejectReasonOptions
@@ -90,7 +91,7 @@ export const RejectModal: React.FC<RejectModalProps> = ({ tenantId, declaration,
     >
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         <Descriptions column={1} size="small" bordered>
-          <Descriptions.Item label={t('Locataire')}>{declaration.declaredBy.name}</Descriptions.Item>
+          <Descriptions.Item label={t('Locataire')}>{declarationTenantName(declaration)}</Descriptions.Item>
           <Descriptions.Item label={t('Bail')}>{declaration.leaseNumber ?? '—'}</Descriptions.Item>
           <Descriptions.Item label={t('Référence')}>{declaration.reference ?? '—'}</Descriptions.Item>
           <Descriptions.Item label={t('Montant déclaré')}>{formatAmount(declaration.amount)}</Descriptions.Item>

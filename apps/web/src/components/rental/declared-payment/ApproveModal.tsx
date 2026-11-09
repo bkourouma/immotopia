@@ -16,6 +16,7 @@ import {
   alertView,
   apiErrorCode,
   apiErrorMessage,
+  declarationTenantName,
   formatAmount,
   formatDateTime,
   formatDay,
@@ -37,8 +38,8 @@ export interface ApproveModalProps {
 /**
  * Validation d'une déclaration de paiement locatif (contrat §1.6). Montant
  * retenu = montant déclaré par défaut ; un montant différent exige une note de
- * correction. Le compte de trésorerie est dérivé du numéro de réception sauf
- * choix explicite du gestionnaire.
+ * correction. Le compte de trésorerie est dérivé du numéro de réception (mobile
+ * money) ou du mode de paiement, sauf choix explicite du gestionnaire.
  */
 export const ApproveModal: React.FC<ApproveModalProps> = ({ tenantId, declaration, onClose, onApproved, onStale }) => {
   const { message } = App.useApp();
@@ -74,6 +75,10 @@ export const ApproveModal: React.FC<ApproveModalProps> = ({ tenantId, declaratio
   const noteOk = differs ? noteLengthOk : noteTrimmed.length === 0 || noteLengthOk;
   const canSubmit = amountValid && noteOk;
   const receivingPhone = declaration.receivingNumber?.phone;
+  // Hors mobile money il n'y a pas de numéro de réception : le serveur retient
+  // le compte de l'agence pour le mode déclaré (sauf choix explicite).
+  const paymentMethod = declaration.paymentMethod ?? 'MOBILE_MONEY';
+  const isMobileMoney = paymentMethod === 'MOBILE_MONEY';
 
   const submit = async () => {
     if (!canSubmit || submitting) return;
@@ -119,7 +124,7 @@ export const ApproveModal: React.FC<ApproveModalProps> = ({ tenantId, declaratio
         })}
 
         <Descriptions column={1} size="small" bordered>
-          <Descriptions.Item label={t('Locataire')}>{declaration.declaredBy.name}</Descriptions.Item>
+          <Descriptions.Item label={t('Locataire')}>{declarationTenantName(declaration)}</Descriptions.Item>
           <Descriptions.Item label={t('Bail')}>{declaration.leaseNumber ?? '—'}</Descriptions.Item>
           <Descriptions.Item label={t('Échéance')}>
             {installmentLabel(declaration.installment)}
@@ -183,16 +188,18 @@ export const ApproveModal: React.FC<ApproveModalProps> = ({ tenantId, declaratio
           </Text>
           <TreasuryAccountSelector
             tenantId={tenantId}
-            paymentMethod="MOBILE_MONEY"
+            paymentMethod={paymentMethod}
             value={treasuryAccountId}
             onChange={setTreasuryAccountId}
           />
           <Text type="secondary" style={{ fontSize: 12 }}>
-            {receivingPhone
-              ? t('Par défaut : le compte de trésorerie du numéro de réception ({{numero}})', {
-                  numero: receivingPhone
-                })
-              : t('Par défaut : le compte de trésorerie du numéro de réception')}
+            {!isMobileMoney
+              ? t('Par défaut : le compte de trésorerie de l’agence pour ce mode de paiement')
+              : receivingPhone
+                ? t('Par défaut : le compte de trésorerie du numéro de réception ({{numero}})', {
+                    numero: receivingPhone
+                  })
+                : t('Par défaut : le compte de trésorerie du numéro de réception')}
           </Text>
         </div>
 

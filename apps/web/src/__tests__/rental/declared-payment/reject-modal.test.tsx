@@ -27,19 +27,13 @@ const declaration = {
   alerts: []
 } as unknown as RentalPaymentDeclarationDto;
 
-const renderModal = () => {
+const renderModal = (current: RentalPaymentDeclarationDto = declaration) => {
   const onClose = vi.fn();
   const onRejected = vi.fn();
   const onStale = vi.fn();
   render(
     <AntApp>
-      <RejectModal
-        tenantId="t1"
-        declaration={declaration}
-        onClose={onClose}
-        onRejected={onRejected}
-        onStale={onStale}
-      />
+      <RejectModal tenantId="t1" declaration={current} onClose={onClose} onRejected={onRejected} onStale={onStale} />
     </AntApp>
   );
   return { onClose, onRejected, onStale };
@@ -109,5 +103,15 @@ describe('RejectModal (locatif)', () => {
     fireEvent.click(okButton());
     await waitFor(() => expect(onStale).toHaveBeenCalled());
     expect(onRejected).not.toHaveBeenCalled();
+  });
+
+  it('saisie par un gestionnaire : « Locataire » = locataire déclarant (PLC-002)', () => {
+    renderModal({
+      ...declaration,
+      declaredBy: { type: 'MANAGER', userId: 'u-9', name: 'Fatima Traoré' },
+      tenantName: 'Aminata Locataire Demo'
+    });
+    expect(screen.getByText('Aminata Locataire Demo')).toBeInTheDocument();
+    expect(screen.queryByText('Fatima Traoré')).not.toBeInTheDocument();
   });
 });

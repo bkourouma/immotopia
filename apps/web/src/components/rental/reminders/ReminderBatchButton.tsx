@@ -17,7 +17,7 @@ export const ReminderBatchButton: React.FC<ReminderBatchButtonProps> = ({ tenant
   return (
     <>
       <Button icon={<BellOutlined />} onClick={() => setOpen(true)}>
-        {t('Relancer en lot')}
+        {t('Envoyer des relances en lot')}
       </Button>
       {open ? (
         <ReminderBatchModal tenantId={tenantId} leaseId={leaseId} open onClose={() => setOpen(false)} onDone={onDone} />
