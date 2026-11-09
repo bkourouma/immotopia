@@ -28,6 +28,14 @@ vi.mock('../../services/personal-space-service', async importOriginal => {
   };
 });
 
+type MenuAccess = { permissions: Set<string> | null; disabled: Set<string>; enabled: Set<string>; ready: boolean };
+const DEFAULT_ACCESS: MenuAccess = { permissions: null, disabled: new Set(), enabled: new Set(), ready: true };
+const useMyMenuAccess = vi.fn<(tenantId?: string) => MenuAccess>();
+
+vi.mock('../../hooks/useMenuAccess', () => ({
+  useMyMenuAccess: (tenantId?: string) => useMyMenuAccess(tenantId)
+}));
+
 const UPGRADE = { target: 'PARTICULIER_PLUS', priceMonthly: 2900, currency: 'XOF', limit: 100 };
 const FREE = { plan: 'FREE', limit: 10, used: 4, canAdd: true, upgrade: UPGRADE };
 
@@ -49,6 +57,7 @@ function monter(url = '/tenant/espace-1/settings/abonnement') {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  useMyMenuAccess.mockReturnValue(DEFAULT_ACCESS);
   getAssetUsage.mockResolvedValue(FREE);
   getTenantIdentity.mockResolvedValue({ type: 'PARTICULIER', contactPhone: '+2250712345678' });
   Object.defineProperty(window, 'location', { configurable: true, value: { ...originalLocation, assign } });
@@ -66,6 +75,46 @@ describe('<PersonalTierCard>', () => {
     expect(screen.getByText(/jusqu’à 100 actifs pour/)).toBeInTheDocument();
     expect(screen.getByText('Tarif provisoire')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Passer au palier payant' })).toBeInTheDocument();
+  });
+
+  it('sans TENANT_SETTINGS_EDIT : pas de bouton, une note, l’offre reste visible', async () => {
+    useMyMenuAccess.mockReturnValue({ ...DEFAULT_ACCESS, permissions: new Set(['TENANT_SETTINGS_VIEW']) });
+    monter();
+    expect(await screen.findByText('Palier gratuit')).toBeInTheDocument();
+    expect(screen.getByText("Montée de palier réservée à l'administrateur de l'espace")).toBeInTheDocument();
+    expect(screen.getByText(/jusqu’à 100 actifs pour/)).toBeInTheDocument();
+    expect(screen.getByText('Tarif provisoire')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Passer au palier payant' })).not.toBeInTheDocument();
+    expect(startPersonalUpgrade).not.toHaveBeenCalled();
+  });
+
+  it('avec TENANT_SETTINGS_EDIT (propriétaire) : le bouton déclenche la montée de palier', async () => {
+    const user = userEvent.setup();
+    useMyMenuAccess.mockReturnValue({
+      ...DEFAULT_ACCESS,
+      permissions: new Set(['TENANT_SETTINGS_VIEW', 'TENANT_SETTINGS_EDIT'])
+    });
+    startPersonalUpgrade.mockResolvedValue({ invoiceId: 'inv-1', checkoutUrl: 'https://pay.example/c/3', code: 'C3' });
+    monter();
+    await screen.findByText('Palier gratuit');
+    await waitFor(() => expect(getTenantIdentity).toHaveBeenCalled());
+    await user.click(screen.getByRole('button', { name: 'Passer au palier payant' }));
+    await waitFor(() => expect(startPersonalUpgrade).toHaveBeenCalledWith('espace-1', 'PARTICULIER_PLUS'));
+    expect(screen.queryByText("Montée de palier réservée à l'administrateur de l'espace")).not.toBeInTheDocument();
+  });
+
+  it('permissions inconnues (null) : le bouton est présent', async () => {
+    useMyMenuAccess.mockReturnValue({ ...DEFAULT_ACCESS, permissions: null });
+    monter();
+    expect(await screen.findByRole('button', { name: 'Passer au palier payant' })).toBeInTheDocument();
+  });
+
+  it('droits pas encore chargés : ni bouton ni note', async () => {
+    useMyMenuAccess.mockReturnValue({ ...DEFAULT_ACCESS, permissions: new Set(), ready: false });
+    monter();
+    expect(await screen.findByText('Palier gratuit')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Passer au palier payant' })).not.toBeInTheDocument();
+    expect(screen.queryByText("Montée de palier réservée à l'administrateur de l'espace")).not.toBeInTheDocument();
   });
 
   it('n’affiche rien pour une agence', async () => {

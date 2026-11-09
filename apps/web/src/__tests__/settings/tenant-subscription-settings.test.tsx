@@ -18,13 +18,16 @@ import { getAssetUsage } from '../../services/personal-space-service';
 
 const getOwnEntitlements = vi.fn();
 const useMenuEntryAccess = vi.fn();
+// Sans restriction connue (permissions null) : les actions d'écriture restent visibles.
+const useMyMenuAccess = vi.fn(() => ({ permissions: null, ready: true }));
 const createExtensionRequest = vi.fn();
 const listOwnExtensionRequests = vi.fn();
 const listExtensionOffers = vi.fn();
 
 // Droits de la personne dans l'agence (même source que le menu) : mockés, sans appel réseau.
 vi.mock('../../hooks/useMenuAccess', () => ({
-  useMenuEntryAccess: (...a: unknown[]) => useMenuEntryAccess(...a)
+  useMenuEntryAccess: (...a: unknown[]) => useMenuEntryAccess(...a),
+  useMyMenuAccess: (...a: unknown[]) => (useMyMenuAccess as (...x: unknown[]) => unknown)(...a)
 }));
 
 vi.mock('../../services/subscription-v2-service', () => ({

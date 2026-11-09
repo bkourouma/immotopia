@@ -26,8 +26,9 @@ export const Statistics: React.FC = () => {
       } else {
         setError(t('Erreur lors du chargement des statistiques'));
       }
-    } catch (err: any) {
-      setError(err.response?.data?.message || t('Erreur lors du chargement des statistiques'));
+    } catch (err: unknown) {
+      const message = (err as { response?: { data?: { message?: unknown } } } | null)?.response?.data?.message;
+      setError(typeof message === 'string' && message ? message : t('Erreur lors du chargement des statistiques'));
     } finally {
       setLoading(false);
     }
@@ -81,13 +82,16 @@ export const Statistics: React.FC = () => {
       icon: <CreditCardOutlined style={{ fontSize: 24, color: '#722ed1' }} />,
       footer: (
         <>
-          <Text type="success">{stats.activeSubscriptions} actifs</Text>
-          {stats.cancelledSubscriptions > 0 && (
-            <>
-              <Text type="danger" style={{ marginInlineStart: 8 }}>
-                {stats.cancelledSubscriptions} {t('annulés')}
-              </Text>
-            </>
+          <Text type="success">{t('{{value}} actifs', { value: stats.subscriptionsByStatus.ACTIVE })}</Text>
+          {stats.subscriptionsByStatus.TRIALING > 0 && (
+            <Text type="secondary" style={{ marginInlineStart: 8 }}>
+              {t('{{value}} en essai', { value: stats.subscriptionsByStatus.TRIALING })}
+            </Text>
+          )}
+          {stats.subscriptionsByStatus.CANCELED > 0 && (
+            <Text type="danger" style={{ marginInlineStart: 8 }}>
+              {t('{{value}} annulés', { value: stats.subscriptionsByStatus.CANCELED })}
+            </Text>
           )}
         </>
       )

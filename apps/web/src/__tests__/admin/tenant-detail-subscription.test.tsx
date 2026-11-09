@@ -22,6 +22,7 @@ const revokeCapacityOverride = vi.fn();
 const updateSubscriptionSettings = vi.fn();
 const updateSubscriptionItem = vi.fn();
 const listExtensionRequests = vi.fn();
+const changeSubscriptionPack = vi.fn();
 
 vi.mock('../../hooks/useBreakpoint', () => ({
   useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
@@ -36,6 +37,7 @@ vi.mock('../../services/subscription-v2-service', () => ({
   previewNextInvoice: (...a: unknown[]) => previewNextInvoice(...a),
   addSubscriptionItem: (...a: unknown[]) => addSubscriptionItem(...a),
   removeSubscriptionItem: (...a: unknown[]) => removeSubscriptionItem(...a),
+  changeSubscriptionPack: (...a: unknown[]) => changeSubscriptionPack(...a),
   grantCapacityOverride: (...a: unknown[]) => grantCapacityOverride(...a),
   revokeCapacityOverride: (...a: unknown[]) => revokeCapacityOverride(...a),
   updateSubscriptionSettings: (...a: unknown[]) => updateSubscriptionSettings(...a),
@@ -239,6 +241,121 @@ describe('SubscriptionTab — abonnement par packs', () => {
     fireEvent.click(within(dialogue).getByRole('button', { name: 'Retirer à l’échéance' }));
 
     await waitFor(() => expect(removeSubscriptionItem).toHaveBeenCalledWith('tenant-1', 'item-1', {}));
+  });
+
+  describe('changement de palier Patrimoine', () => {
+    const patrimoine = (code: string, name: string) => ({
+      ...OVERVIEW,
+      items: [{ ...OVERVIEW.items[0], id: 'item-p', code, name }]
+    });
+
+    it('montée vers le Pro : confirmation immédiate au prorata', async () => {
+      getSubscriptionOverview.mockResolvedValue(patrimoine('PATRIMOINE_ESSENTIEL', 'Patrimoine Essentiel'));
+      const user = userEvent.setup();
+      mount();
+
+      await screen.findByText('Abonnement');
+      await user.click(screen.getByRole('button', { name: 'Passer au Pro' }));
+      const dialogue = await screen.findByRole('dialog');
+      expect(within(dialogue).getByText(/immédiatement/)).toBeInTheDocument();
+      expect(within(dialogue).getByText(/au prorata/)).toBeInTheDocument();
+    });
+
+    it("descente vers l'Essentiel : confirmation à l'échéance, sans prorata", async () => {
+      getSubscriptionOverview.mockResolvedValue(patrimoine('PATRIMOINE_PRO', 'Patrimoine Pro'));
+      const user = userEvent.setup();
+      mount();
+
+      await screen.findByText('Abonnement');
+      await user.click(screen.getByRole('button', { name: "Passer à l'Essentiel" }));
+      const dialogue = await screen.findByRole('dialog');
+      expect(within(dialogue).getByText(/à l'échéance/)).toBeInTheDocument();
+      expect(within(dialogue).getByText(/sans prorata/)).toBeInTheDocument();
+      expect(within(dialogue).queryByText(/immédiatement/)).not.toBeInTheDocument();
+    });
+
+    it("pendant l'essai : une seule phrase, immédiat et sans prorata, sans le texte normal", async () => {
+      const essai = patrimoine('PATRIMOINE_PRO', 'Patrimoine Pro');
+      getSubscriptionOverview.mockResolvedValue({
+        ...essai,
+        subscription: { ...essai.subscription, status: 'TRIALING' as const }
+      });
+      const user = userEvent.setup();
+      mount();
+
+      await screen.findByText('Abonnement');
+      await user.click(screen.getByRole('button', { name: "Passer à l'Essentiel" }));
+      const dialogue = await screen.findByRole('dialog');
+      expect(
+        within(dialogue).getByText("Pendant l'essai, le changement est immédiat et sans prorata.")
+      ).toBeInTheDocument();
+      expect(within(dialogue).queryByText(/à l'échéance/)).not.toBeInTheDocument();
+      expect(within(dialogue).queryByText(/au prorata de la période/)).not.toBeInTheDocument();
+    });
+
+    it("sens déduit du prix catalogue, comme l'API : cible moins chère que le prix figé = descente", async () => {
+      // Essentiel figé à 20 000 alors que le Pro du catalogue vaut 15 000 :
+      // l'API (changePack) programme le changement à l'échéance.
+      const essentiel = patrimoine('PATRIMOINE_ESSENTIEL', 'Patrimoine Essentiel');
+      getSubscriptionOverview.mockResolvedValue({
+        ...essentiel,
+        items: [{ ...essentiel.items[0], unitMonthlyPrice: 20_000 }]
+      });
+      listCatalog.mockResolvedValue([
+        ...CATALOG,
+        { ...CATALOG[0], id: 'c-pro', code: 'PATRIMOINE_PRO', name: 'Patrimoine Pro', monthlyPrice: 15_000 }
+      ]);
+      const user = userEvent.setup();
+      mount();
+
+      await screen.findByText('Abonnement');
+      await user.click(screen.getByRole('button', { name: 'Passer au Pro' }));
+      const dialogue = await screen.findByRole('dialog');
+      expect(within(dialogue).getByText(/à l'échéance/)).toBeInTheDocument();
+      expect(within(dialogue).queryByText(/immédiatement/)).not.toBeInTheDocument();
+    });
+
+    it("descente confirmée (immediate: false) : « Changement programmé à l'échéance »", async () => {
+      getSubscriptionOverview.mockResolvedValue(patrimoine('PATRIMOINE_PRO', 'Patrimoine Pro'));
+      changeSubscriptionPack.mockResolvedValue({ immediate: false, upgrade: false });
+      const user = userEvent.setup();
+      mount();
+
+      await screen.findByText('Abonnement');
+      await user.click(screen.getByRole('button', { name: "Passer à l'Essentiel" }));
+      const dialogue = await screen.findByRole('dialog');
+      await user.click(within(dialogue).getByRole('button', { name: 'Changer de pack' }));
+
+      await waitFor(() =>
+        expect(changeSubscriptionPack).toHaveBeenCalledWith('tenant-1', {
+          fromCodes: ['PATRIMOINE_PRO'],
+          toCode: 'PATRIMOINE_ESSENTIEL'
+        })
+      );
+      expect(await screen.findByText("Changement programmé à l'échéance")).toBeInTheDocument();
+      expect(screen.queryByText('Pack changé')).not.toBeInTheDocument();
+    });
+
+    it('montée confirmée (immediate: true) : « Pack changé »', async () => {
+      getSubscriptionOverview.mockResolvedValue(patrimoine('PATRIMOINE_ESSENTIEL', 'Patrimoine Essentiel'));
+      changeSubscriptionPack.mockResolvedValue({ immediate: true, upgrade: true });
+      const user = userEvent.setup();
+      mount();
+
+      await screen.findByText('Abonnement');
+      await user.click(screen.getByRole('button', { name: 'Passer au Pro' }));
+      const dialogue = await screen.findByRole('dialog');
+      await user.click(within(dialogue).getByRole('button', { name: 'Changer de pack' }));
+
+      await waitFor(() =>
+        expect(changeSubscriptionPack).toHaveBeenCalledWith('tenant-1', {
+          fromCodes: ['PATRIMOINE_ESSENTIEL'],
+          toCode: 'PATRIMOINE_PRO'
+        })
+      );
+      expect(await screen.findByText('Pack changé')).toBeInTheDocument();
+      expect(screen.queryByText("Changement programmé à l'échéance")).not.toBeInTheDocument();
+    });
   });
 
   it('accorde une dérogation de capacité', async () => {
