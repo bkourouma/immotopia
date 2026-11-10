@@ -158,7 +158,7 @@ export function PaymentAccountsCard({
         {reason ? (
           <div>
             <Text type="secondary">{t('Motif suggéré à recopier')}</Text>
-            <Paragraph style={{ margin: '2px 0 6px', overflowWrap: 'anywhere' }} strong>
+            <Paragraph style={{ margin: '2px 0 6px', overflowWrap: 'anywhere', unicodeBidi: 'plaintext' }} strong>
               {reason}
             </Paragraph>
             <CopyButton text={reason} label={t('Copier le motif')} ariaLabel={t('Copier le motif de paiement')} />

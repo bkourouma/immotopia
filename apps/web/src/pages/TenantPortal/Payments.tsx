@@ -42,7 +42,7 @@ import {
 import { redirectToExternalUrl } from '../../utils/external-redirect';
 import { t } from '../../i18n/t';
 
-import { activeLocale } from '../../i18n/format';
+import { activeLocale, dateFormat } from '../../i18n/format';
 import { formatMontantLocatif } from '../../lib/rental-labels';
 const { Title, Text } = Typography;
 
@@ -344,6 +344,16 @@ function SuiviPaiementEnLigne({
 /** Quelques lignes suffisent : l'API les trie par échéance, on retrie quand même ici. */
 const UNPAID_LOOKAHEAD = 10;
 
+/** « 2026-10 » (format technique de l'API) devient un mois lisible dans la langue courante ; autre forme : inchangée. */
+export function rentPeriodLabel(period: string): string {
+  const match = /^(\d{4})-(\d{2})$/.exec(period.trim());
+  if (!match) return period;
+  const month = Number(match[2]);
+  if (month < 1 || month > 12) return period;
+  // Midi, le 15 : aucun décalage de fuseau possible.
+  return dayjs(new Date(Number(match[1]), month - 1, 15, 12)).format(dateFormat('month'));
+}
+
 /**
  * Motif « Loyer <période> » de la plus ancienne échéance non soldée (triée par
  * date d'échéance ici, sans supposer l'ordre reçu). Lecture en échec : motif
@@ -357,8 +367,8 @@ function rentReason(installments: InstallmentItem[] | undefined, failed: boolean
     .sort((a, b) => Date.parse(a.dueDate) - Date.parse(b.dueDate))[0];
   if (!next) return null;
   return withLease && next.leaseNumber
-    ? t('Loyer {{period}} — {{lease}}', { period: next.period, lease: next.leaseNumber })
-    : t('Loyer {{period}}', { period: next.period });
+    ? t('Loyer {{period}} — {{lease}}', { period: rentPeriodLabel(next.period), lease: next.leaseNumber })
+    : t('Loyer {{period}}', { period: rentPeriodLabel(next.period) });
 }
 
 export default function TenantPayments() {
