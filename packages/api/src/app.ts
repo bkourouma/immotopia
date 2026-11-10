@@ -110,7 +110,7 @@ import { auditAccessMiddleware } from './middleware/audit-access-middleware';
 import { resolveLanguage } from './middleware/language-middleware';
 import { errorHandler } from './middleware/error-middleware';
 import { compressionMiddleware } from './middleware/compression-middleware';
-import { uploadsAccessGuard } from './middleware/uploads-access-middleware';
+import { uploadsAccessGuard, applyUploadsResponseHeaders } from './middleware/uploads-access-middleware';
 import { globalApiRateLimiter } from './middleware/rate-limit-middleware';
 import { subscriptionRouteGuard } from './middleware/subscription-feature-middleware';
 import helmet from 'helmet';
@@ -197,28 +197,7 @@ app.use(
   // passes straight through.
   uploadsAccessGuard,
   express.static(uploadsPath, {
-    setHeaders: (res, filePath) => {
-      // Credentialed requests cannot use a wildcard origin: scope to the app.
-      res.setHeader('Access-Control-Allow-Origin', frontendUrl);
-      res.setHeader('Access-Control-Allow-Credentials', 'true');
-      res.setHeader('Vary', 'Origin');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-      // Set appropriate content type for images and documents
-      if (filePath.endsWith('.jpg') || filePath.endsWith('.jpeg')) {
-        res.setHeader('Content-Type', 'image/jpeg');
-      } else if (filePath.endsWith('.png')) {
-        res.setHeader('Content-Type', 'image/png');
-      } else if (filePath.endsWith('.webp')) {
-        res.setHeader('Content-Type', 'image/webp');
-      } else if (filePath.endsWith('.pdf')) {
-        res.setHeader('Content-Type', 'application/pdf');
-      } else if (filePath.endsWith('.doc')) {
-        res.setHeader('Content-Type', 'application/msword');
-      } else if (filePath.endsWith('.docx')) {
-        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-      }
-    }
+    setHeaders: (res, filePath) => applyUploadsResponseHeaders(res, filePath, frontendUrl)
   })
 );
 

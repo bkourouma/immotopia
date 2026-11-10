@@ -578,6 +578,30 @@ possible (un `TRUNCATE` ne passe pas par les déclencheurs de ligne) ; vider
 seulement `audit_logs` laisserait des scellés orphelins, que la vérification
 signalerait comme lignes disparues.
 
+### Inventaire des médias de bien suspects
+
+Avant le correctif SUR-01, l'extension d'un média de bien venait du nom envoyé
+par le client : un `.html` ou `.svg` a pu être déposé sous
+`uploads/properties/`. Depuis le correctif, `/uploads` ne sert plus que les
+extensions `jpg, jpeg, png, webp, gif, mp4, webm, mov` (404 sinon). Pour
+retrouver les fichiers anciens concernés (depuis `packages/api`, ou à la racine
+avec `-w @immotopia/api`) :
+
+```bash
+npm run ops:list-suspect-uploads
+# depuis la racine du monorepo :
+npm run ops:list-suspect-uploads -w @immotopia/api
+```
+
+Le script est en lecture seule : il ne supprime, ne déplace et n'écrit rien. Il
+liste, une ligne par fichier, le chemin relatif, la taille et le type réel
+détecté par les octets magiques (`inconnu` si non reconnu), puis un total. Le
+sous-dossier privé `documents/` est ignoré. Périmètres parcourus :
+`uploads/properties/<propertyId>/` (un niveau), `uploads/properties/agency-logos/<tenantId>/`
+(logos d'agence) et `uploads/whatsapp/**` (récursif, images de diffusion
+WhatsApp). Un fichier listé est déjà refusé en
+404 par `/uploads` ; le nettoyer ou le renommer reste une décision manuelle.
+
 ### Catalogue d'abonnement : `--missing-only` après un ajustement produit
 
 `npm run db:seed:catalog` **sans** `--missing-only` réaligne le catalogue sur

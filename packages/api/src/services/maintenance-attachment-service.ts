@@ -1,6 +1,8 @@
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
 import { validateFileUpload, sanitizeFilename } from '../utils/maintenance-validators';
+import { BadRequestError, NotFoundError } from '../middleware/error-middleware';
+import { assertUploadMatchesDeclaredType } from '../utils/file-signature';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 
@@ -29,7 +31,7 @@ export async function uploadAttachment(
   });
 
   if (!ticket) {
-    throw new Error('Ticket introuvable');
+    throw new NotFoundError('Ticket introuvable');
   }
 
   // Le contact qui dépose la pièce jointe (venant du corps de la requête) doit
@@ -42,7 +44,7 @@ export async function uploadAttachment(
       }
     });
     if (!contact) {
-      throw new Error('Contact introuvable');
+      throw new NotFoundError('Contact introuvable');
     }
   }
 
@@ -57,8 +59,14 @@ export async function uploadAttachment(
   // Validate file upload
   const validation = validateFileUpload(file, existingCount);
   if (!validation.isValid) {
-    throw new Error(validation.error || 'Fichier invalide');
+    throw new BadRequestError(validation.error || 'Fichier invalide');
   }
+
+  // Le contenu doit correspondre au type déclaré ; l'extension vient du type
+  // réel détecté, jamais du nom d'origine. Contrôle avant toute écriture disque.
+  const { extension: fileExtension } = assertUploadMatchesDeclaredType(file, {
+    allowedKinds: ['jpg', 'png', 'webp', 'pdf']
+  });
 
   // Determine project root (similar to property-media-service)
   const cwd = process.cwd();
@@ -73,7 +81,6 @@ export async function uploadAttachment(
 
   // Sanitize filename and generate unique filename
   const sanitizedOriginalName = sanitizeFilename(file.originalname);
-  const fileExtension = path.extname(sanitizedOriginalName);
   const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}${fileExtension}`;
   const filePath = path.join(uploadDir, fileName);
 

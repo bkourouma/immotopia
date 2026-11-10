@@ -11,6 +11,7 @@ import { getPropertyForTenant } from '../utils/property-tenant-guard';
 import { getProjectRoot } from '../utils/project-root';
 import { BadRequestError, NotFoundError } from '../middleware/error-middleware';
 import { corrigerNomFichier } from '../utils/multipart-filename';
+import { assertUploadMatchesDeclaredType, type UploadKind } from '../utils/file-signature';
 
 /**
  * `filePath` (chemin disque absolu) n'est jamais renvoyé au client : select
@@ -31,25 +32,6 @@ export const PROPERTY_DOCUMENT_SELECT = {
   createdAt: true,
   updatedAt: true
 } satisfies Prisma.PropertyDocumentSelect;
-
-/**
- * Extension du fichier stocké sur disque : dérivée du type MIME déjà validé
- * contre `getAllowedFileTypes`, jamais de `file.originalname` (nom fourni par
- * le client, non fiable pour construire un chemin disque).
- */
-const MIME_TYPE_EXTENSIONS: Record<string, string> = {
-  'application/pdf': '.pdf',
-  'application/msword': '.doc',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
-  'image/jpeg': '.jpg',
-  'image/png': '.png',
-  'image/tiff': '.tiff',
-  'application/dwg': '.dwg'
-};
-
-function extensionForMimeType(mimeType: string): string {
-  return MIME_TYPE_EXTENSIONS[mimeType] || '';
-}
 
 /**
  * Validate document type
@@ -122,15 +104,23 @@ export async function uploadDocument(
     throw new BadRequestError(`Type de fichier invalide pour ${documentType}. Autorisés : ${allowedTypes.join(', ')}`);
   }
 
+  // Le contenu doit correspondre au type déclaré (un HTML déclaré image/png est
+  // refusé) ; l'extension vient du type réel. Contrôle avant toute écriture disque.
+  const allowedKinds: UploadKind[] = ['pdf', 'doc', 'docx', 'jpg', 'png', 'tiff'];
+  if (documentType === PropertyDocumentType.PLAN) allowedKinds.push('dwg');
+  const { extension: fileExtension } = assertUploadMatchesDeclaredType(file, {
+    allowedKinds,
+    message: 'Le contenu du fichier ne correspond pas à son type déclaré.'
+  });
+
   // Generate file path
   const projectRoot = getProjectRoot();
   const uploadDir = path.join(projectRoot, 'uploads', 'properties', propertyId, 'documents');
   await fs.mkdir(uploadDir, { recursive: true });
 
   // CSPRNG name: property documents must not be guessable from a timestamp,
-  // and its extension vient du mime type déjà validé, jamais de
+  // and its extension vient du type réel détecté, jamais de
   // `file.originalname` (nom fourni par le client).
-  const fileExtension = extensionForMimeType(file.mimetype);
   const fileName = `${documentType}-${randomUUID()}${fileExtension}`;
   const filePath = path.join(uploadDir, fileName);
   const originalName = corrigerNomFichier(file.originalname);

@@ -35,7 +35,15 @@ import { logger } from '../utils/logger';
  * file system that also ignores trailing dots — Windows — `DOCUMENTS/` or
  * `documents./` would reach the private folder through a deny-list.
  */
+const PUBLIC_EXTENSION = /\.(jpe?g|png|webp|gif|mp4|webm|mov)$/i;
+
 function isPublic(segments: string[]): boolean {
+  // Allow-list d'extensions : un fichier sans extension ou d'un autre type
+  // (.html, .svg, .js, .xml…) n'est jamais servi, même dans un dossier public ;
+  // sous /uploads il s'exécuterait dans l'origine de l'application.
+  const last = segments[segments.length - 1];
+  if (!last || !PUBLIC_EXTENSION.test(last)) return false;
+
   const [root, ...rest] = segments;
 
   switch (root) {
@@ -56,6 +64,39 @@ function isPublic(segments: string[]): boolean {
   }
 }
 
+/**
+ * En-têtes des réponses statiques de /uploads (CORS, CORP, Content-Type par
+ * extension), plus `sandbox` et `nosniff` : un fichier qui s'afficherait comme
+ * une page ne pourrait ni exécuter de script ni être deviné d'un autre type.
+ */
+export function applyUploadsResponseHeaders(res: Response, filePath: string, frontendUrl: string): void {
+  // Credentialed requests cannot use a wildcard origin: scope to the app.
+  res.setHeader('Access-Control-Allow-Origin', frontendUrl);
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Vary', 'Origin');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  // Set appropriate content type for images and documents
+  if (filePath.endsWith('.jpg') || filePath.endsWith('.jpeg')) {
+    res.setHeader('Content-Type', 'image/jpeg');
+  } else if (filePath.endsWith('.png')) {
+    res.setHeader('Content-Type', 'image/png');
+  } else if (filePath.endsWith('.webp')) {
+    res.setHeader('Content-Type', 'image/webp');
+  } else if (filePath.endsWith('.pdf')) {
+    res.setHeader('Content-Type', 'application/pdf');
+  } else if (filePath.endsWith('.doc')) {
+    res.setHeader('Content-Type', 'application/msword');
+  } else if (filePath.endsWith('.docx')) {
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  }
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; sandbox"
+  );
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+}
+
 function deny(res: Response, status: number, message: string): void {
   res.status(status).json({ success: false, message });
 }
@@ -68,7 +109,15 @@ export async function uploadsAccessGuard(req: Request, res: Response, next: Next
       return;
     }
 
-    const decodedPath = decodeURIComponent(req.path);
+    // Un pourcentage mal formé (`%E0%A4%A`) est une requête du client, pas une
+    // panne : même 404 qu'un fichier absent, sans journal d'erreur.
+    let decodedPath: string;
+    try {
+      decodedPath = decodeURIComponent(req.path);
+    } catch {
+      deny(res, 404, 'Fichier introuvable.');
+      return;
+    }
 
     // Defence in depth: express.static normalises paths, but reject traversal
     // attempts before we use the segments for the decision.

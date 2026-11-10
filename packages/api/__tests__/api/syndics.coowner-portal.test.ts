@@ -1048,13 +1048,13 @@ describe('Gestionnaire — télécharger un document de copropriété (jamais en
       .set(as(USER_MANAGER))
       .field('title', 'Carnet entretien')
       .field('type', 'OTHER')
-      .attach('file', Buffer.from('PDF-CARNET'), { filename: 'carnet.pdf', contentType: 'application/pdf' });
+      .attach('file', Buffer.from('%PDF-1.4 PDF-CARNET'), { filename: 'carnet.pdf', contentType: 'application/pdf' });
 
     expect(created.status).toBe(201);
     const storedUrl: string = created.body.data.fileUrl;
     expect(storedUrl).toMatch(new RegExp(`^/uploads/syndics/${S1}/documents/other-[^/]+\.pdf$`));
     const onDisk = path.join(UPLOADS_ROOT, storedUrl.replace(/^\/uploads\//, ''));
-    expect((await fs.readFile(onDisk)).toString()).toBe('PDF-CARNET');
+    expect((await fs.readFile(onDisk)).toString()).toBe('%PDF-1.4 PDF-CARNET');
 
     const downloaded = await request(app)
       .get(fileUrl(S1, created.body.data.id))
@@ -1062,7 +1062,7 @@ describe('Gestionnaire — télécharger un document de copropriété (jamais en
       .buffer(true)
       .parse(binary);
     expect(downloaded.status).toBe(200);
-    expect((downloaded.body as Buffer).toString()).toBe('PDF-CARNET');
+    expect((downloaded.body as Buffer).toString()).toBe('%PDF-1.4 PDF-CARNET');
   });
 
   it('création : la visibilité par défaut dépend du type, une valeur explicite est respectée', async () => {
@@ -1073,7 +1073,7 @@ describe('Gestionnaire — télécharger un document de copropriété (jamais en
         .field('title', `Doc ${type}`)
         .field('type', type);
       if (visible !== undefined) req.field('visibleToCoOwners', visible);
-      return req.attach('file', Buffer.from('PDF-X'), { filename: 'x.pdf', contentType: 'application/pdf' });
+      return req.attach('file', Buffer.from('%PDF-1.4 PDF-X'), { filename: 'x.pdf', contentType: 'application/pdf' });
     };
 
     expect((await post('REGULATION')).body.data.visibleToCoOwners).toBe(true);

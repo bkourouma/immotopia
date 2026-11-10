@@ -29,7 +29,10 @@ const router = Router({ mergeParams: true });
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 10 * 1024 * 1024 // 10 MB
+    fileSize: 10 * 1024 * 1024, // 10 MB
+    files: 1,
+    fields: 8,
+    fieldSize: 100 * 1024 // 100 Ko
   },
   fileFilter: (_req, file, cb) => {
     if (

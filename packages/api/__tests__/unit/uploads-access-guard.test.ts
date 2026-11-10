@@ -14,7 +14,12 @@
  * de session pour montrer qu'il ne change rien.
  */
 
-import { uploadsAccessGuard } from '../../src/middleware/uploads-access-middleware';
+jest.mock('../../src/utils/logger', () => ({
+  logger: { error: jest.fn(), warn: jest.fn(), info: jest.fn(), debug: jest.fn() }
+}));
+
+import { uploadsAccessGuard, applyUploadsResponseHeaders } from '../../src/middleware/uploads-access-middleware';
+import { logger } from '../../src/utils/logger';
 
 async function hit(path: string, options: { method?: string; session?: boolean } = {}) {
   const req: any = {
@@ -79,5 +84,60 @@ describe('uploadsAccessGuard — requêtes invalides', () => {
 
   it('refuse une autre méthode que GET/HEAD (405)', async () => {
     expect(await hit('/properties/prop-1/photo.jpg', { method: 'POST' })).toEqual({ served: false, status: 405 });
+  });
+});
+
+describe("uploadsAccessGuard — liste blanche d'extensions", () => {
+  const dirs = ['/properties/prop-1', '/properties/agency-logos/tenant-a', '/whatsapp/group/tenant-a'];
+
+  it.each(dirs.flatMap(d => ['.html', '.svg', '.js', '.xml', ''].map(ext => `${d}/fichier${ext}`)))(
+    '%s : 404',
+    async path => {
+      expect(await hit(path)).toEqual({ served: false, status: 404 });
+    }
+  );
+
+  it.each(
+    dirs.flatMap(d =>
+      ['.jpg', '.png', '.webp', '.gif', '.mp4', '.webm', '.mov', '.JPEG'].map(ext => `${d}/fichier${ext}`)
+    )
+  )('%s : servi', async path => {
+    expect((await hit(path)).served).toBe(true);
+  });
+});
+
+describe('uploadsAccessGuard — pourcentage mal formé', () => {
+  it("répond 404 uniforme sans journal d'erreur", async () => {
+    (logger.error as jest.Mock).mockClear();
+    expect(await hit('/%E0%A4%A')).toEqual({ served: false, status: 404 });
+    expect(logger.error).not.toHaveBeenCalled();
+  });
+});
+
+describe('applyUploadsResponseHeaders', () => {
+  function headersFor(filePath: string) {
+    const headers: Record<string, string> = {};
+    const res: any = { setHeader: (k: string, v: string) => (headers[k] = v) };
+    applyUploadsResponseHeaders(res, filePath, 'http://localhost:3002');
+    return headers;
+  }
+
+  it('pose sandbox et nosniff', () => {
+    const h = headersFor('/uploads/properties/p/a.png');
+    expect(h['Content-Security-Policy']).toBe(
+      "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; sandbox"
+    );
+    expect(h['X-Content-Type-Options']).toBe('nosniff');
+  });
+
+  it('conserve CORS, CORP et Content-Type par extension', () => {
+    const h = headersFor('/uploads/properties/p/a.png');
+    expect(h['Access-Control-Allow-Origin']).toBe('http://localhost:3002');
+    expect(h['Access-Control-Allow-Credentials']).toBe('true');
+    expect(h['Cross-Origin-Resource-Policy']).toBe('cross-origin');
+    expect(h['Content-Type']).toBe('image/png');
+    expect(headersFor('x.jpeg')['Content-Type']).toBe('image/jpeg');
+    expect(headersFor('x.webp')['Content-Type']).toBe('image/webp');
+    expect(headersFor('x.mp4')['Content-Type']).toBeUndefined();
   });
 });
