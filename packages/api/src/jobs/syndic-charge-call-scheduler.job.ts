@@ -45,7 +45,9 @@ export function startSyndicChargeCallSchedulerJob(): void {
     '0 6 * * *',
     async () => {
       try {
-        await withJobLock('syndic-charge-call-scheduler-daily', 60 * 60 * 1000, () => runSyndicChargeCallScheduler());
+        await withJobLock('syndic-charge-call-scheduler-daily', 60 * 60 * 1000, () => runSyndicChargeCallScheduler(), {
+          failOpen: false
+        });
       } catch (error) {
         logger.error('Error in syndic charge call scheduler job', {
           error: error instanceof Error ? error.message : String(error)

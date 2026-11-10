@@ -18,7 +18,8 @@ export async function loadConfig(tenantId: string): Promise<PaymentGatewayConfig
  */
 export function isConfigUsable(config: PaymentGatewayConfig | null): config is PaymentGatewayConfig {
   if (!config || !config.isActive) return false;
-  if (config.mode === 'SIMULATOR') return true;
+  // Le simulateur n'est utilisable que s'il est disponible (jamais en production).
+  if (config.mode === 'SIMULATOR') return paymentGatewaySimulatorAvailable;
   return Boolean(config.merchantId && config.apiKeyEncrypted);
 }
 

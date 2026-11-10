@@ -188,3 +188,71 @@ describe('withJobLock : prolongation du verrou', () => {
     expect(order).toEqual(['extend:start', 'extend:end', 'release']);
   });
 });
+
+describe('withJobLock : verrou indisponible (SUR-10)', () => {
+  const originalEnv = process.env.NODE_ENV;
+  afterEach(() => {
+    (process.env as Record<string, string | undefined>).NODE_ENV = originalEnv;
+  });
+  const setEnv = (v: string) => {
+    (process.env as Record<string, string | undefined>).NODE_ENV = v;
+  };
+  const down = () => queryRaw.mockRejectedValue(new Error('relation "job_locks" does not exist'));
+
+  it('(a) production + défaut : fn non exécutée', async () => {
+    setEnv('production');
+    down();
+    const fn = jest.fn().mockResolvedValue('ok');
+    await expect(withJobLock('job-a', 1000, fn)).resolves.toBeUndefined();
+    expect(fn).not.toHaveBeenCalled();
+    expect(executeRaw).not.toHaveBeenCalled();
+  });
+
+  it('(b) hors production + défaut : fn exécutée', async () => {
+    setEnv('development');
+    down();
+    const fn = jest.fn().mockResolvedValue('ok');
+    await expect(withJobLock('job-a', 1000, fn)).resolves.toBe('ok');
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('(c) failOpen:true explicite en production : fn exécutée', async () => {
+    setEnv('production');
+    down();
+    const fn = jest.fn().mockResolvedValue('ok');
+    await expect(withJobLock('job-a', 1000, fn, { failOpen: true })).resolves.toBe('ok');
+  });
+
+  it.each([
+    [true, 'exécution sans verrou'],
+    [false, 'tâche sautée']
+  ])('message d’avertissement cohérent avec failOpen:%s', async (failOpen, expected) => {
+    const { logger } = jest.requireMock('../../src/utils/logger');
+    queryRaw.mockRejectedValue(new Error('connexion perdue'));
+    await withJobLock('job-a', 1000, jest.fn().mockResolvedValue('ok'), { failOpen });
+    const messages = logger.warn.mock.calls.map((c: any[]) => String(c[0]));
+    expect(messages.some((m: string) => m.includes(expected))).toBe(true);
+    const other = failOpen ? 'tâche sautée' : 'exécution sans verrou';
+    expect(messages.some((m: string) => m.includes(other))).toBe(false);
+  });
+
+  it('(d) failOpen:false explicite hors production : fn non exécutée', async () => {
+    setEnv('development');
+    down();
+    const fn = jest.fn().mockResolvedValue('ok');
+    await expect(withJobLock('job-a', 1000, fn, { failOpen: false })).resolves.toBeUndefined();
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it('(e) busy et acquired inchangés en production fermée', async () => {
+    setEnv('production');
+    queryRaw.mockResolvedValueOnce([]);
+    const busyFn = jest.fn();
+    await expect(withJobLock('job-a', 1000, busyFn, { failOpen: false })).resolves.toBeUndefined();
+    expect(busyFn).not.toHaveBeenCalled();
+    queryRaw.mockResolvedValueOnce([{ name: 'job-a' }]);
+    const okFn = jest.fn().mockResolvedValue('ok');
+    await expect(withJobLock('job-a', 1000, okFn, { failOpen: false })).resolves.toBe('ok');
+    expect(executeRaw).toHaveBeenCalledTimes(1);
+  });
+});

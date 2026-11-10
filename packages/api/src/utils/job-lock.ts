@@ -15,7 +15,11 @@
  *   libérer, plus personne ne prolonge et le verrou expire seul.
  * - Libération en fin de passage (succès ou échec), seulement par son titulaire.
  * - Table absente (migration pas encore appliquée) ou base injoignable pour le
- *   verrou : on journalise et on exécute quand même, comme avant le verrou.
+ *   verrou (« indisponible ») : selon `options.failOpen`, on journalise et on
+ *   exécute quand même (ouvert, comme avant le verrou), ou on refuse
+ *   d'exécuter (fermé). Par défaut : ouvert hors production, fermé en
+ *   production. Les tâches qui écrivent de l'argent passent `failOpen: false`
+ *   explicitement : sans verrou, deux instances les exécuteraient en double.
  */
 import { randomUUID } from 'crypto';
 import { prisma } from './database';
@@ -38,7 +42,7 @@ function isMissingTable(error: unknown): boolean {
 
 type Acquisition = 'acquired' | 'busy' | 'unavailable';
 
-async function acquire(name: string, ttlMs: number): Promise<Acquisition> {
+async function acquire(name: string, ttlMs: number, failOpen: boolean): Promise<Acquisition> {
   try {
     const rows = await prisma.$queryRaw<Array<{ name: string }>>`
       INSERT INTO job_locks (name, holder, locked_until, updated_at)
@@ -52,10 +56,11 @@ async function acquire(name: string, ttlMs: number): Promise<Acquisition> {
     `;
     return Array.isArray(rows) && rows.length > 0 ? 'acquired' : 'busy';
   } catch (error) {
+    const outcome = failOpen ? 'exécution sans verrou' : 'tâche sautée';
     logger.warn(
       isMissingTable(error)
-        ? `Verrou de tâche « ${name} » : table job_locks absente (migration non appliquée), exécution sans verrou`
-        : `Verrou de tâche « ${name} » : prise impossible, exécution sans verrou`,
+        ? `Verrou de tâche « ${name} » : table job_locks absente (migration non appliquée), ${outcome}`
+        : `Verrou de tâche « ${name} » : prise impossible, ${outcome}`,
       { error: error instanceof Error ? error.message : String(error) }
     );
     return 'unavailable';
@@ -95,10 +100,23 @@ async function extend(name: string, ttlMs: number): Promise<void> {
  * Exécute `fn` si aucune autre instance ne détient le verrou `name`.
  * Renvoie le résultat de `fn`, ou `undefined` si le passage est sauté parce
  * qu'une autre instance travaille. Les erreurs de `fn` sont relancées après
- * libération du verrou.
+ * libération du verrou. Verrou indisponible et mode fermé : `undefined`, `fn`
+ * n'est pas exécutée.
  */
-export async function withJobLock<T>(name: string, ttlMs: number, fn: () => Promise<T>): Promise<T | undefined> {
-  const state = await acquire(name, ttlMs);
+export async function withJobLock<T>(
+  name: string,
+  ttlMs: number,
+  fn: () => Promise<T>,
+  options?: { failOpen?: boolean }
+): Promise<T | undefined> {
+  const failOpen = options?.failOpen ?? process.env.NODE_ENV !== 'production';
+  const state = await acquire(name, ttlMs, failOpen);
+  if (state === 'unavailable') {
+    if (!failOpen) {
+      logger.error(`Tâche « ${name} » : verrou indisponible, exécution refusée (mode fermé)`);
+      return undefined;
+    }
+  }
   if (state === 'busy') {
     logger.info(`Tâche « ${name} » : déjà en cours sur une autre instance, passage sauté`);
     return undefined;
