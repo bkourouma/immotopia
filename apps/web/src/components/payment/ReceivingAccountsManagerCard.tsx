@@ -171,7 +171,7 @@ function AccountRow(props: AccountRowProps) {
           <Text type="secondary">{t('À scanner avec : {{apps}}', { apps: row.scannableWith })}</Text>
         ) : null}
         {row.alias ? (
-          <Text dir="ltr" style={{ overflowWrap: 'anywhere' }}>
+          <Text dir="ltr" style={{ overflowWrap: 'anywhere', direction: 'ltr', unicodeBidi: 'isolate' }}>
             {row.alias}
           </Text>
         ) : null}
@@ -211,7 +211,12 @@ function AccountTextFields() {
         <Input maxLength={80} />
       </Form.Item>
       <Form.Item label={t('Alias (facultatif)')} name="alias" rules={[aliasRule]}>
-        <Input maxLength={80} autoComplete="off" dir="ltr" />
+        <Input
+          maxLength={80}
+          autoComplete="off"
+          dir="ltr"
+          style={{ direction: 'ltr', unicodeBidi: 'isolate', textAlign: 'start' }}
+        />
       </Form.Item>
       <Form.Item
         label={t('Nom attendu du bénéficiaire')}
@@ -574,7 +579,9 @@ export const ReceivingAccountsManagerCard: React.FC<ReceivingAccountsManagerCard
         forceRender
       >
         {formError ? <Alert type="error" showIcon style={{ marginBottom: 16 }} message={formError} /> : null}
-        <Form form={form} layout="vertical" onFinish={handleSubmit}>
+        {/* `name` préfixe les identifiants des champs (receivingAccountForm_holderName…) : sans lui,
+            la page porte deux `id="holderName"` avec la modale des numéros de réception. */}
+        <Form name="receivingAccountForm" form={form} layout="vertical" onFinish={handleSubmit}>
           <AccountTextFields />
           <QrField
             editing={editing}

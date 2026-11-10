@@ -241,6 +241,11 @@ export const AUDIT_ACTION_LABELS_FR: Record<string, string> = localizedRecord(()
   AI_ACTION_EXECUTED: t("Action de l'assistant IA exécutée"),
   AI_ACTION_REJECTED: t("Action de l'assistant IA rejetée"),
 
+  // Comptes de réception (spec 048, lot Q)
+  RECEIVING_ACCOUNT_CREATED: t("Ajout d'un compte de réception (QR ou alias de paiement)"),
+  RECEIVING_ACCOUNT_UPDATED: t("Modification d'un compte de réception (QR ou alias de paiement)"),
+  RECEIVING_ACCOUNT_DELETED: t("Suppression d'un compte de réception (QR ou alias de paiement)"),
+
   // Journal d'audit
   AUDIT_VIEWED: t("Consultation du journal d'audit"),
   AUDIT_EXPORTED: t("Export du journal d'audit"),

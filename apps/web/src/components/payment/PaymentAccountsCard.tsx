@@ -72,7 +72,17 @@ function AccountBlock({ account }: { account: ReceivingAccountPublic }) {
         {account.alias ? (
           <div>
             <Text type="secondary">{t('Alias à saisir')}</Text>
-            <div style={{ fontSize: 18, fontWeight: 600, margin: '2px 0 6px', overflowWrap: 'anywhere' }} dir="ltr">
+            <div
+              style={{
+                fontSize: 18,
+                fontWeight: 600,
+                margin: '2px 0 6px',
+                overflowWrap: 'anywhere',
+                direction: 'ltr',
+                unicodeBidi: 'isolate'
+              }}
+              dir="ltr"
+            >
               {account.alias}
             </div>
             <CopyButton
