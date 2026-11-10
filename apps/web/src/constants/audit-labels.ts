@@ -270,6 +270,7 @@ export const AUDIT_ENTITY_TYPE_LABELS_FR: Record<string, string> = localizedReco
   CONTACT: 'Contact',
   DEAL: 'Affaire',
   ACTIVITY: t('Activité'),
+  RECEIVING_ACCOUNT: t('Compte de réception'),
   TENANT: 'Tenant',
   Tenant: 'Tenant',
   USER: 'Utilisateur',
