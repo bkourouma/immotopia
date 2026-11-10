@@ -175,30 +175,20 @@ export const disableMemberHandler = asyncHandler(async (req: Request, res: Respo
  * Enable a member
  * POST /api/tenants/:tenantId/users/:userId/enable
  */
-export async function enableMemberHandler(req: Request, res: Response): Promise<void> {
-  try {
-    if (!req.user?.userId) {
-      res.status(401).json({ success: false, message: 'Authentification requise.' });
-      return;
-    }
-
-    const { tenantId, userId } = req.params;
-    const membership = await enableMember(userId, tenantId, req.user.userId);
-
-    res.status(200).json({
-      success: true,
-      message: 'Membre activé avec succès.',
-      data: membership
-    });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue.';
-    if (errorMessage.includes('introuvable')) {
-      res.status(404).json({ success: false, message: errorMessage });
-    } else {
-      res.status(400).json({ success: false, message: errorMessage });
-    }
+export const enableMemberHandler = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user?.userId) {
+    throw new UnauthorizedError();
   }
-}
+
+  const { tenantId, userId } = req.params;
+  const membership = await enableMember(userId, tenantId, req.user.userId);
+
+  res.status(200).json({
+    success: true,
+    message: 'Membre activé avec succès.',
+    data: membership
+  });
+});
 
 /**
  * Reset member password
@@ -238,26 +228,19 @@ export const resetPasswordHandler = asyncHandler(async (req: Request, res: Respo
  * Revoke member sessions
  * POST /api/tenants/:tenantId/users/:userId/revoke-sessions
  */
-export async function revokeSessionsHandler(req: Request, res: Response): Promise<void> {
-  try {
-    if (!req.user?.userId) {
-      res.status(401).json({ success: false, message: 'Authentification requise.' });
-      return;
-    }
-
-    const { tenantId, userId } = req.params;
-    await revokeMemberSessions(userId, tenantId, req.user.userId);
-
-    res.status(200).json({
-      success: true,
-      message: 'Sessions révoquées avec succès.'
-    });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue.';
-    if (errorMessage.includes('introuvable')) {
-      res.status(404).json({ success: false, message: errorMessage });
-    } else {
-      res.status(400).json({ success: false, message: errorMessage });
-    }
+export const revokeSessionsHandler = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user?.userId) {
+    throw new UnauthorizedError();
   }
-}
+
+  const { tenantId, userId } = req.params;
+  const { sessionsRevoked } = await revokeMemberSessions(userId, tenantId, req.user.userId);
+
+  res.status(200).json({
+    success: true,
+    sessionsRevoked,
+    message: sessionsRevoked
+      ? t('Sessions révoquées avec succès.')
+      : t("Les sessions ne sont pas révoquées : le compte est utilisé dans d'autres agences ou sur la plateforme.")
+  });
+});
