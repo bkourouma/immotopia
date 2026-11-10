@@ -1189,7 +1189,8 @@ describe('write-plan (fonctions pures)', () => {
 // --- contrat et SSE ---------------------------------------------------------------------------
 
 describe('contrat figé (miroir du front)', () => {
-  const read = (relative: string) => readFileSync(join(__dirname, '../../../..', relative), 'utf8');
+  const read = (relative: string) =>
+    readFileSync(join(__dirname, '../../../..', relative), 'utf8').replace(/\r\n/g, '\n');
   const keysOf = (source: string, name: string): string[] => {
     const start = source.indexOf(`export interface ${name} {`);
     expect(start).toBeGreaterThan(-1);

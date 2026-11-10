@@ -30,9 +30,11 @@ const findUnique = jest.fn();
 const findMany = jest.fn();
 const tenantClientFindUnique = jest.fn();
 const tenantFindUnique = jest.fn();
+const userFindUnique = jest.fn();
 
 jest.mock('../../src/utils/database', () => ({
   prisma: {
+    user: { findUnique: (...a: any[]) => userFindUnique(...a) },
     membership: { findUnique: (...a: any[]) => findUnique(...a) },
     userRole: { findMany: (...a: any[]) => findMany(...a) },
     tenantClient: { findUnique: (...a: any[]) => tenantClientFindUnique(...a) },
@@ -65,6 +67,7 @@ beforeEach(() => {
   findMany.mockResolvedValue([{ role: { scope: 'TENANT' } }]);
   tenantClientFindUnique.mockResolvedValue(null);
   tenantFindUnique.mockResolvedValue({ status: 'ACTIVE' });
+  userFindUnique.mockResolvedValue({ globalRole: 'SUPER_ADMIN', isActive: true });
 });
 
 describe('authenticate — une seule fois par requête', () => {
@@ -239,5 +242,47 @@ describe('requireTenantAccess — agence suspendue', () => {
     await requireTenantAccess(req as any, reponseFactice() as any, next);
 
     expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['rétrogradé', { globalRole: 'USER', isActive: true }],
+    ['inactif', { globalRole: 'SUPER_ADMIN', isActive: false }],
+    ['introuvable', null]
+  ])(
+    "super-admin %s depuis l'émission du jeton : pas de contournement, refus uniforme si non membre",
+    async (_libelle, compte) => {
+      userFindUnique.mockResolvedValue(compte);
+      findUnique.mockResolvedValue(null);
+      tenantClientFindUnique.mockResolvedValue(null);
+      tenantFindUnique.mockResolvedValue({ status: 'SUSPENDED' });
+      const req = { ...requete(), user: { userId: 'admin', globalRole: 'SUPER_ADMIN' } };
+      const res = reponseFactice();
+      const next = jest.fn();
+
+      await requireTenantAccess(req as any, res as any, next);
+
+      expect(userFindUnique).toHaveBeenCalledTimes(1);
+      // Chemin normal : l'adhésion est vérifiée, et à défaut c'est le refus uniforme.
+      expect(findUnique).toHaveBeenCalledTimes(1);
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json.mock.calls[0][0]).not.toHaveProperty('code');
+    }
+  );
+
+  it("erreur de lecture du super-admin : refus 403 uniforme, sans passer par l'adhésion", async () => {
+    userFindUnique.mockRejectedValue(new Error('base indisponible'));
+    const erreur = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const req = { ...requete(), user: { userId: 'admin', globalRole: 'SUPER_ADMIN' } };
+    const res = reponseFactice();
+    const next = jest.fn();
+
+    await requireTenantAccess(req as any, res as any, next);
+
+    erreur.mockRestore();
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json.mock.calls[0][0]).not.toHaveProperty('code');
+    expect(findUnique).not.toHaveBeenCalled();
   });
 });

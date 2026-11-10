@@ -2177,10 +2177,13 @@ ls -lh /home/deployer/backups/immotopia-prod
   « Différences de configuration » la confirme derrière le nginx de l'hôte, en
   HTTPS, sur les deux domaines.
 - **Le build de la production échoue si le bundle contient un identifiant de
-  démonstration.** `Dockerfile.web` cherche `Admin@123456` et `DevMick@2003` dans
-  le bundle quand `VITE_SHOW_DEMO_ACCOUNTS` n'est pas `true`. Ces deux valeurs
-  viennent de `apps/web/src/dev/dev-accounts.ts` : si elles y changent (ou si un
-  compte de démonstration est ajouté), **mettre à jour la liste dans le
+  démonstration.** `Dockerfile.web` cherche dans le bundle, quand
+  `VITE_SHOW_DEMO_ACCOUNTS` n'est pas `true`, trois familles de comptes de
+  démonstration : les mots de passe de démonstration historiques cités dans
+  `packages/api/src/utils/bootstrap-admin-input.ts`, le mot de passe commun des
+  comptes de pack, et le domaine des adresses e-mail de ces comptes de pack. Ces
+  motifs viennent de `apps/web/src/dev/dev-accounts.ts` : s'ils y changent (ou si
+  un compte de démonstration est ajouté), **mettre à jour la liste dans le
   `Dockerfile.web`**, sinon le garde-fou ne verrait plus la nouvelle valeur.
 - **Les seeds de développement refusent la production** (`NODE_ENV=production`,
   code de sortie 1) : `create-super-admin.ts`, `seed-quick-login-users.ts`,

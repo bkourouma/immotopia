@@ -18,7 +18,8 @@
   3. fichiers, paiement, injection, IA ;
   4. front, infrastructure, dépendances.
 - Correctifs ensuite livrés en 7 lots sur une branche d'intégration (`orch/2026-11-09-audit-securite`), sans migration de schéma : lot 1 (connexion, sessions, journaux, CSRF), lot 2 (fichiers téléversés, DOCX), lot 3 (isolation, droits), lot 4 (configuration, paiement, e-mail), lot 5 (front), lot 6 (infrastructure, CI, dépendances, graines de données), lot 7 (reliquats, traductions, classeur des fonctionnalités, documentation).
-- Chaque lot a été relu par un vérificateur indépendant ; les lots 1 à 4 et 6 ont eu au moins un aller-retour de corrections, et le lot 2 une seconde vérification.
+- Les lots 1, 2, 3, 4 et 6 ont été relus par un vérificateur indépendant (certains deux fois, avec des allers-retours de corrections) ; les lots 5 et 7 l'ont été par le superviseur ; une vérification finale indépendante couvre l'assemblage.
+- Vérifications d'ensemble : la suite API complète a été exécutée par lots (une exécution unique saturait la mémoire à 4 Go ; 793 suites, dont 28 sautées faute de base d'isolation) ; la suite web complète n'a pas été menée à terme (un sous-ensemble ciblé de 214 fichiers et 2081 tests est vert) ; `npm audit` n'a pas été revérifié (registre injoignable pendant la vérification). Deux tests dont le mock ne couvrait pas la relecture du super-admin en base (`tenant-middleware.ts`) ont été corrigés.
 - Les statuts du tableau ont été recoupés avec le code du lot 7 pour les points principaux (voir le rapport de remise pour ce qui n'a pas été relu).
 
 ## 2. Synthèse chiffrée
@@ -39,8 +40,8 @@ Répartition par statut (48 constats) :
 
 | Statut                         | Nombre |
 | ------------------------------ | -----: |
-| Corrigé dans cette PR          |     29 |
-| Partiellement corrigé          |     13 |
+| Corrigé dans cette PR          |     28 |
+| Partiellement corrigé          |     14 |
 | Différé                        |      4 |
 | Action requise du propriétaire |      2 |
 
@@ -50,25 +51,25 @@ Légende des statuts : « corrigé » = corrigé dans cette PR ; « partiel » =
 
 ### AUTH : authentification et configuration
 
-| ID      | Gravité | Titre court                                                            | Statut  | Note                                                                                                           |
-| ------- | ------- | ---------------------------------------------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------- |
-| AUTH-01 | Élevée  | Limiteurs de connexion contournables en IPv6, pas de verrou e-mail     | partiel | Verrou dur par (e-mail, IP/64) et global à 15 s, gardé en mémoire (H4) : se vide au redémarrage                |
-| AUTH-02 | Moyenne | Pas de double authentification (MFA/TOTP)                              | différé | Migration et écran nécessaires (voir section 5)                                                                |
-| AUTH-03 | Moyenne | Messages d'erreur bruts à la connexion, vérification, réinitialisation | corrigé |                                                                                                                |
-| AUTH-04 | Moyenne | Jeton de vérification d'e-mail tracé dans les journaux et nginx        | corrigé | Masque de jeton dans les journaux API et dans nginx                                                            |
-| AUTH-05 | Faible  | Pas de contrôle Origin / Sec-Fetch-Site sur les méthodes non sûres     | corrigé | `express.urlencoded` global conservé (mode réel du PSP non validé)                                             |
-| AUTH-06 | Faible  | SPA sans CSP ni HSTS                                                   | partiel | CSP en Report-Only et Permissions-Policy posées ; HSTS à poser à la main dans les blocs 443                    |
-| AUTH-07 | Faible  | Différence de temps de réponse forgot-password / resend                | corrigé |                                                                                                                |
-| AUTH-08 | Faible  | JWT non révocable, durée non bornée                                    | partiel | Durée bornée à 30 min et unité obligatoire ; le JWT reste non révocable avant expiration                       |
-| AUTH-09 | Faible  | Pré-détournement de compte à l'inscription                             | partiel | Mitigation minimale seulement ; refonte du flux différée                                                       |
-| AUTH-10 | Faible  | Rafraîchissement de session non atomique                               | corrigé | Risque accepté : jeton révoqué dans les 5 s suivant une autre session peut obtenir un accessToken sans refresh |
-| AUTH-11 | Faible  | Hygiène de configuration (NODE_ENV, process.env, cookie, select)       | corrigé | Cookie de rafraîchissement limité à `/api/auth` ; à confirmer derrière nginx en staging                        |
+| ID      | Gravité | Titre court                                                            | Statut  | Note                                                                                                                          |
+| ------- | ------- | ---------------------------------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| AUTH-01 | Élevée  | Limiteurs de connexion contournables en IPv6, pas de verrou e-mail     | partiel | Verrou dur par (e-mail, IP/64) et global à 15 s, gardé en mémoire (H4) : se vide au redémarrage                               |
+| AUTH-02 | Moyenne | Pas de double authentification (MFA/TOTP)                              | différé | Migration et écran nécessaires (voir section 5)                                                                               |
+| AUTH-03 | Moyenne | Messages d'erreur bruts à la connexion, vérification, réinitialisation | corrigé |                                                                                                                               |
+| AUTH-04 | Moyenne | Jeton de vérification d'e-mail tracé dans les journaux et nginx        | corrigé | Masque de jeton dans les journaux API et dans nginx                                                                           |
+| AUTH-05 | Faible  | Pas de contrôle Origin / Sec-Fetch-Site sur les méthodes non sûres     | corrigé | `express.urlencoded` global conservé (mode réel du PSP non validé)                                                            |
+| AUTH-06 | Faible  | SPA sans CSP ni HSTS                                                   | partiel | CSP en Report-Only et Permissions-Policy posées ; HSTS à poser à la main dans les blocs 443                                   |
+| AUTH-07 | Faible  | Différence de temps de réponse forgot-password / resend                | corrigé |                                                                                                                               |
+| AUTH-08 | Faible  | JWT non révocable, durée non bornée                                    | partiel | Durée bornée à 30 min et unité obligatoire ; le JWT reste non révocable avant expiration                                      |
+| AUTH-09 | Faible  | Pré-détournement de compte à l'inscription                             | partiel | Mitigation minimale seulement ; refonte du flux différée                                                                      |
+| AUTH-10 | Faible  | Rafraîchissement de session non atomique                               | corrigé | Risque accepté : jeton révoqué dans les 5 s suivant une autre session peut obtenir un accessToken sans refresh                |
+| AUTH-11 | Faible  | Hygiène de configuration (NODE_ENV, process.env, cookie, select)       | partiel | `NODE_ENV` garde son défaut `development` (H11) ; cookie de rafraîchissement limité à `/api/auth`, à confirmer derrière nginx |
 
 ### SUR : fichiers, paiement, injection
 
 | ID     | Gravité | Titre court                                                  | Statut  | Note                                                                               |
 | ------ | ------- | ------------------------------------------------------------ | ------- | ---------------------------------------------------------------------------------- |
-| SUR-01 | Élevée  | XSS stockée via les médias de bien (même origine)            | corrigé | Fichiers déjà déposés : lancer le script d'inventaire (section 7)                  |
+| SUR-01 | Élevée  | XSS stockée via les médias de bien (même origine)            | corrigé | Fichiers déjà déposés : lancer le script d'inventaire (section 6)                  |
 | SUR-02 | Moyenne | Paiement confirmé sans montant considéré comme encaissé      | corrigé | Échec fermé (REVIEW) ; mode réel PaySecureHub à valider                            |
 | SUR-03 | Moyenne | DOCX non borné (zip bomb)                                    | corrigé | Seconde vérification active : 150 000 mutations sans divergence                    |
 | SUR-04 | Moyenne | Signature de fichier non contrôlée sur la plupart des dépôts | corrigé | Contrôle du type réel, extension dérivée du type détecté                           |
@@ -108,7 +109,7 @@ Légende des statuts : « corrigé » = corrigé dans cette PR ; « partiel » =
 
 | ID     | Gravité | Titre court                                                                      | Statut  | Note                                                                                                            |
 | ------ | ------- | -------------------------------------------------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------- |
-| TEN-01 | Élevée  | Création de bien avec un conteneur parent d'une autre agence                     | corrigé | Compteurs `containerChildren` encore sans `tenantId` (section 6)                                                |
+| TEN-01 | Élevée  | Création de bien avec un conteneur parent d'une autre agence                     | corrigé | Compteurs `containerChildren` encore sans `tenantId` (section 5)                                                |
 | TEN-02 | Élevée  | Lot de copropriété pointant le bien d'une autre agence                           | corrigé | Un immeuble pointé est refusé en 422 (H5)                                                                       |
 | TEN-03 | Moyenne | `PATCH client-details` ouvert à tout client de l'agence                          | corrigé | Endpoint supprimé (non utilisé par le front)                                                                    |
 | TEN-04 | Élevée  | Un gestionnaire peut se donner le rôle administrateur                            | corrigé | Étendu aux invitations d'administrateur et aux comptes super-admin cibles                                       |
@@ -119,21 +120,22 @@ Légende des statuts : « corrigé » = corrigé dans cette PR ; « partiel » =
 
 ## 4. Hypothèses métier à valider
 
-| Id  | Question                                                                                            | Choix appliqué                                                                                         |
-| --- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| H1  | Un gestionnaire peut-il attribuer ou retirer le rôle administrateur, ou toucher un administrateur ? | Non : réservé à `TENANT_ADMIN` et `SUPER_ADMIN`. L'édition des rôles non administrateurs reste permise |
-| H2  | Que faire d'un paiement confirmé sans montant par le prestataire ?                                  | Il passe en REVIEW (échec fermé) au lieu d'être encaissé                                               |
-| H3  | Qui modifie les gabarits d'e-mail de notification ?                                                 | Seul `TENANT_SETTINGS_EDIT` : un gestionnaire perd cette édition. La lecture reste ouverte             |
-| H4  | Verrou de connexion par e-mail                                                                      | Verrou temporaire gardé en mémoire (dur par e-mail et IP/64, global court de 15 s), jamais définitif   |
-| H5  | Lot de copropriété pointant un immeuble                                                             | Refusé en 422, même règle qu'à la création                                                             |
-| H6  | Propriétaire externe d'un bien désigné par identifiant                                              | Refusé en 404 (traité comme un objet inexistant)                                                       |
-| H7  | Vidéo ou photo pour une visite à 360 degrés                                                         | `TOUR_360` accepte une photo ou une vidéo ; `PHOTO` image seule, `VIDEO` vidéo seule                   |
-| H8  | Médias historiques dont l'extension n'est pas dans la liste blanche                                 | Renvoyés en 404 (le script d'inventaire les repère)                                                    |
-| H9  | Devise lue dans la réponse du prestataire de paiement                                               | Lue dans `payments.currency` ou `devise` (supposition, alias « F CFA » et 952 reconnus)                |
-| H10 | `JWT_EXPIRES_IN` sans unité                                                                         | Refusé au démarrage ; durée maximale de 30 minutes                                                     |
-| H11 | `NODE_ENV` absent                                                                                   | Plus de défaut `development` silencieux : vérifier les `.env` réels                                    |
-| H12 | Image TIFF comme preuve de paiement de plateforme                                                   | Retirée de la liste acceptée                                                                           |
-| H13 | Un jeton révoqué par déconnexion dans les 5 s après une autre session                               | Peut recevoir un accessToken de 15 min sans refresh (risque accepté)                                   |
+| Id  | Question                                                                                            | Choix appliqué                                                                                                                                                                                                                                                                                                                                                  |
+| --- | --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| H1  | Un gestionnaire peut-il attribuer ou retirer le rôle administrateur, ou toucher un administrateur ? | Non : réservé à `TENANT_ADMIN` et `SUPER_ADMIN`. L'édition des rôles non administrateurs reste permise                                                                                                                                                                                                                                                          |
+| H2  | Que faire d'un paiement confirmé sans montant par le prestataire ?                                  | Il passe en REVIEW (échec fermé) au lieu d'être encaissé                                                                                                                                                                                                                                                                                                        |
+| H3  | Qui modifie les gabarits d'e-mail de notification ?                                                 | Seul `TENANT_SETTINGS_EDIT` : un gestionnaire perd cette édition. La lecture reste ouverte                                                                                                                                                                                                                                                                      |
+| H4  | Verrou de connexion par e-mail                                                                      | Verrou temporaire gardé en mémoire (dur par e-mail et IP/64, global court de 15 s), jamais définitif                                                                                                                                                                                                                                                            |
+| H5  | Lot de copropriété pointant un immeuble                                                             | Refusé en 422, même règle qu'à la création                                                                                                                                                                                                                                                                                                                      |
+| H6  | Propriétaire externe d'un bien désigné par identifiant                                              | Refusé en 404 (traité comme un objet inexistant)                                                                                                                                                                                                                                                                                                                |
+| H7  | Vidéo ou photo pour une visite à 360 degrés                                                         | `TOUR_360` accepte une photo ou une vidéo ; `PHOTO` image seule, `VIDEO` vidéo seule                                                                                                                                                                                                                                                                            |
+| H8  | Médias historiques dont l'extension n'est pas dans la liste blanche                                 | Renvoyés en 404 (le script d'inventaire les repère)                                                                                                                                                                                                                                                                                                             |
+| H9  | Devise lue dans la réponse du prestataire de paiement                                               | Lue dans `payments.currency` ou `devise` (supposition, alias « F CFA » et 952 reconnus)                                                                                                                                                                                                                                                                         |
+| H10 | `JWT_EXPIRES_IN` sans unité                                                                         | Refusé au démarrage ; durée maximale de 30 minutes                                                                                                                                                                                                                                                                                                              |
+| H11 | `NODE_ENV` absent                                                                                   | Défaut `development` conservé dans `env.ts` ; les options réservées au développement (fournisseurs factices, `ws://`, `http://`, transport de log) exigent un `NODE_ENV` explicite, et en production les URL ne peuvent plus pointer sur localhost. Un `NODE_ENV` absent donne toujours `isProduction=false` (cookies non `secure`) : vérifier les `.env` réels |
+| H12 | Image TIFF comme preuve de paiement de plateforme                                                   | Retirée de la liste acceptée                                                                                                                                                                                                                                                                                                                                    |
+| H13 | Un jeton révoqué par déconnexion dans les 5 s après une autre session                               | Peut recevoir un accessToken de 15 min sans refresh (risque accepté)                                                                                                                                                                                                                                                                                            |
+| H14 | Un membre peut-il modifier ses propres rôles dans l'agence ?                                        | Non, y compris un administrateur (`services/membership-service.ts` ~l.282). Réversible : limiter l'interdiction aux non-administrateurs si l'interface le requiert                                                                                                                                                                                              |
 
 ## 5. Recommandations non implémentées
 
@@ -169,7 +171,7 @@ Effort : S (moins d'une journée), M (quelques jours), L (plusieurs semaines).
 - [ ] Faire tourner (rotation) le SID Twilio présent dans l'historique git.
 - [ ] Lancer l'inventaire des fichiers suspects en staging puis en production AVANT le déploiement : `npm run ops:list-suspect-uploads -w @immotopia/api` depuis la racine (ou `npm run ops:list-suspect-uploads` depuis `packages/api`). Le script ne supprime rien ; il liste les fichiers `html`, `js`, `svg`, `xml` ou à extension inattendue déposés comme médias, qui seront désormais refusés en 404.
 - [ ] Valider `docker build` sous Node 22 (non testé : docker indisponible) et le mode réel de PaySecureHub (montant et devise présents dans la réponse, sinon tout paiement part en REVIEW).
-- [ ] Valider les hypothèses métier H1 à H13 (section 4), en particulier H1 et H3 (un gestionnaire perd des droits) et H8 (médias historiques en 404).
+- [ ] Valider les hypothèses métier H1 à H14 (section 4), en particulier H1 et H3 (un gestionnaire perd des droits), H8 (médias historiques en 404) et H14 (nul ne modifie ses propres rôles). Valider aussi le défaut `NODE_ENV` du `docker-compose.yml` racine, passé de `production` à `development` (compose de poste de développement).
 - [ ] Contrôler les `.env` réels de staging et de production : `JWT_EXPIRES_IN` avec unité et au plus 30 min, `FRONTEND_URL`, `BACKEND_URL`, `CLIENT_URL` non locales, `EMAIL_SMTP_PORT` correct, `NODE_ENV` explicite.
 - [ ] Confirmer par la CI que `npm ci` passe avec le `package-lock.json` régénéré (Node 24 / npm 11, lot 6).
 - [ ] Supprimer le fichier vide `D:\tmp_tsc_out.txt`, créé hors du dépôt par un vérificateur (suppression refusée par le contrôle de sécurité).
@@ -186,7 +188,7 @@ Effort : S (moins d'une journée), M (quelques jours), L (plusieurs semaines).
 | 2   | Fichiers, médias, DOCX                       | `c2a6fdf3` | `c6b785cf`                |
 | 4   | Configuration, paiement, e-mail              | `ce65424f` | `4494c4be`                |
 | 6   | Infrastructure, CI, dépendances, seeds, docs | `8a9b6e81` | `201d915b`                |
-| 7   | Reliquats, traductions, classeur, documents  | à commiter | sur l'intégration         |
+| 7   | Reliquats, traductions, classeur, documents  | `c13af66c` | `352567cd`                |
 
 Reliquats du lot 7 : typage de `sendDetached` réparé ; `TOUR_360` accepte photo ou vidéo ; détection PDF avec bourrage évaluée en dernier (`%PDF-\d\.\d`, pas de `<` avant) ; `readDirSafe` journalise les erreurs autres que ENOENT ; limiteurs propres de `newsletter-public` et `coowner-portal` clés sur `clientIpKey` (le limiteur `finance-stock-whatsapp` est clé par agence et utilisateur, inchangé) ; `process.env` remplacé par `env` (sauf `WHATSAPP_GROUP_*`) ; `syndic-demo-seed.ts` gardé par `assertNotProduction` ; traductions en anglais et en arabe ; classeur des fonctionnalités à jour.
 
