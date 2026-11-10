@@ -8,6 +8,11 @@ import {
   startOnlinePaymentHandler,
   getOnlinePaymentHandler
 } from '../controllers/tenant-portal-online-payment-controller';
+import {
+  listTenantPortalReceivingAccountsHandler,
+  readTenantPortalReceivingAccountQrHandler
+} from '../controllers/receiving-account-controller';
+import { receivingAccountQrReadRateLimiter } from '../middleware/rate-limit-middleware';
 import multer from 'multer';
 
 const router = Router();
@@ -51,6 +56,14 @@ router.post('/payments/declare', upload.single('proof'), controller.declarePayme
 router.get('/online-payments/availability', getOnlinePaymentAvailabilityHandler);
 router.post('/online-payments', startOnlinePaymentHandler);
 router.get('/online-payments/:codePaiement', getOnlinePaymentHandler);
+
+// Spec 048, lot Q : comptes de réception de l'agence (alias, QR), actifs seulement ; image privée.
+router.get('/receiving-accounts', listTenantPortalReceivingAccountsHandler);
+router.get(
+  '/receiving-accounts/:accountId/qr',
+  receivingAccountQrReadRateLimiter,
+  readTenantPortalReceivingAccountQrHandler
+);
 
 // Deposit
 router.get('/deposit', controller.getDepositInfo);

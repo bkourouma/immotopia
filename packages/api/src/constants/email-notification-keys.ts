@@ -70,6 +70,8 @@ export const EMAIL_NOTIFICATION_KEYS = [
   'SYNDIC_PAYMENT_DECLARATION_REJECTED',
   'SYNDIC_PAYMENT_DECLARATION_TO_REVIEW',
   'SYNDIC_RECEIVING_NUMBER_CHANGED',
+  // Comptes de réception de l'agence (spec 048, lot Q)
+  'RECEIVING_ACCOUNT_CHANGED',
   // Patrimoine – accès en lecture seule des tiers de confiance (lot B3)
   'EXTERNAL_ACCESS_LINK_SENT',
   // Chantiers – contrôle du stock (lot 040, B7-R6)
@@ -407,6 +409,13 @@ export const EMAIL_NOTIFICATION_META: Record<EmailNotificationKey, EmailNotifica
     description:
       'Envoyé aux autres gestionnaires de la copropriété (droit de modification du syndic) quand le numéro qui reçoit les paiements mobile money est changé : seuls les numéros masqués sont indiqués.',
     recipientLabel: 'Gestionnaires de la copropriété'
+  },
+  RECEIVING_ACCOUNT_CHANGED: {
+    key: 'RECEIVING_ACCOUNT_CHANGED',
+    label: 'Compte de réception de paiement modifié',
+    description:
+      "Alerte de sécurité, toujours envoyée (ne peut être désactivée ni réécrite) aux administrateurs de l'agence quand un compte de réception (alias ou QR de paiement) est ajouté, modifié, désactivé, réactivé ou supprimé : un détournement est ainsi vu par un second regard.",
+    recipientLabel: "Administrateurs de l'agence"
   },
   EXTERNAL_ACCESS_LINK_SENT: {
     key: 'EXTERNAL_ACCESS_LINK_SENT',

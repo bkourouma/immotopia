@@ -4,7 +4,12 @@ import { CreditCardOutlined, SyncOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { MoneyValue, SkeletonList, StateBlock } from '../../components/primitives';
-import { DeclaredPaymentSection } from '../../components/coowner-portal/declared-payment/DeclaredPaymentSection';
+import { CoOwnerReceivingAccountsSection } from '../../components/coowner-portal/ReceivingAccountsSection';
+import {
+  DeclaredPaymentSection,
+  declaredSyndicateAnchorId
+} from '../../components/coowner-portal/declared-payment/DeclaredPaymentSection';
+import { syndicateNamesFromCalls } from '../../components/coowner-portal/receiving-account-groups';
 import { useDeclaredAvailabilities } from '../../components/coowner-portal/declared-payment/useDeclaredAvailabilities';
 import { t } from '../../i18n/t';
 import {
@@ -24,6 +29,8 @@ import { OnlinePaymentReturn, isPaymentCode } from './OnlinePaymentReturn';
 import { portalErrorMessage } from './portal-error';
 
 const { Title, Text } = Typography;
+
+const DECLARED_SECTION_ID = 'coowner-declared-payment';
 
 function channelLabel(channel: OnlinePaymentChannel): string {
   switch (channel) {
@@ -166,6 +173,19 @@ export default function CoOwnerChargeCalls() {
   const onlineEnabled = Boolean(availability?.syndicates.some(syndicate => syndicate.available));
   const availabilityKnown = !availabilityQuery.isPending;
   const hasSomethingToPay = calls.some(call => call.outstanding > 0);
+
+  // « Payer l'agence » : noms des copropriétés tirés des données déjà chargées (appels, déclaration).
+  const syndicateNames = syndicateNamesFromCalls(
+    calls,
+    declaredEntries.map(entry => entry.syndicate)
+  );
+  const declarableSyndicateIds = declaredEntries.map(entry => entry.syndicate.id);
+
+  // Vers la déclaration de la copropriété du compte, à défaut vers la section entière.
+  const scrollToDeclaration = (syndicateId: string) =>
+    (
+      document.getElementById(declaredSyndicateAnchorId(syndicateId)) ?? document.getElementById(DECLARED_SECTION_ID)
+    )?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   // Sélection valide : un appel disparu ou devenu non payable (liste rechargée) en sort.
   const selectedCalls: CoOwnerChargeCall[] = [];
@@ -310,7 +330,16 @@ export default function CoOwnerChargeCalls() {
         </Card>
       ) : null}
 
-      <DeclaredPaymentSection calls={calls} entries={declaredEntries} />
+      <CoOwnerReceivingAccountsSection
+        calls={calls}
+        syndicateNames={syndicateNames}
+        declarableSyndicateIds={declarableSyndicateIds}
+        onDeclare={declaredAvailable ? scrollToDeclaration : undefined}
+      />
+
+      <div id={DECLARED_SECTION_ID}>
+        <DeclaredPaymentSection calls={calls} entries={declaredEntries} />
+      </div>
 
       <Card>
         <ChargeCallsTable

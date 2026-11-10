@@ -419,7 +419,9 @@ export const FAKE_MODEL_NAMES = [
   // Marqueurs de notification (ADR-006, phase 5) : journal de remise des convocations.
   'notificationMarker',
   // Spec 047 : numéros de réception mobile money (sous-comptes 5521x).
-  'syndicReceivingNumber'
+  'syndicReceivingNumber',
+  // Spec 048, lot Q : comptes de réception (alias, QR) de l'agence et des copropriétés.
+  'receivingAccount'
 ] as const;
 
 export type FakePrisma = Record<(typeof FAKE_MODEL_NAMES)[number], FakeModel> & {

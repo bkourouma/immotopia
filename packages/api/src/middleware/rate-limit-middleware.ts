@@ -1094,3 +1094,38 @@ export const whatsappTestSendTenantRateLimiter = rateLimit({
 });
 
 export const whatsappTestSendRateLimiter = [whatsappTestSendUserRateLimiter, whatsappTestSendTenantRateLimiter];
+
+/** Écritures sur les comptes de réception (alias, QR ; spec 048, lot Q). 20 par minute et par utilisateur. */
+export const receivingAccountWriteRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  keyGenerator: req => `receiving-account-write:${userTenantKey(req)}`,
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      code: 'RATE_LIMITED',
+      message: t('Trop de requêtes. Veuillez réessayer dans une minute.')
+    });
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/**
+ * Image du QR d'un compte de réception (fichier privé ; gestion et portails, spec 048, lot Q).
+ * 60 par minute et par utilisateur ; posé après `authenticate` et la garde d'agence ou de portail.
+ */
+export const receivingAccountQrReadRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  keyGenerator: req => `receiving-account-qr:${userTenantKey(req)}`,
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      code: 'RATE_LIMITED',
+      message: t('Trop de requêtes. Veuillez réessayer dans une minute.')
+    });
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});

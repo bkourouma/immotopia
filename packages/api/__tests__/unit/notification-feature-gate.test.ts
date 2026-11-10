@@ -272,7 +272,9 @@ describe('classement complet du catalogue', () => {
         'PAYMENT_CONFIRMED',
         'PAYMENT_RECEIVED',
         'PORTAL_ACCOUNT_CREATED',
-        'PROPERTY_PUBLISHED'
+        'PROPERTY_PUBLISHED',
+        // Lot Q : alerte de sécurité sur les comptes de réception, jamais soumise à un pack.
+        'RECEIVING_ACCOUNT_CHANGED'
       ].sort()
     );
   });

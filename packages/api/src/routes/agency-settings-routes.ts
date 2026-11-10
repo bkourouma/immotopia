@@ -16,6 +16,19 @@ import {
   updateOwnerPortalSettingsHandler
 } from '../controllers/owner-portal-settings-controller';
 
+import {
+  createAgencyReceivingAccountHandler,
+  deleteAgencyReceivingAccountHandler,
+  listAgencyReceivingAccountsHandler,
+  readAgencyReceivingAccountQrHandler,
+  updateAgencyReceivingAccountHandler
+} from '../controllers/receiving-account-controller';
+import { receiveReceivingAccountQr } from '../middleware/receiving-account-upload';
+import {
+  receivingAccountQrReadRateLimiter,
+  receivingAccountWriteRateLimiter
+} from '../middleware/rate-limit-middleware';
+
 /**
  * Paramètres de l'agence qui ne relèvent pas de son identité (`PATCH
  * /tenants/:tenantId`) : aujourd'hui la fiscalité, les honoraires de gestion et
@@ -87,6 +100,54 @@ router.put(
   requireTenantAccess,
   requirePermission('TENANT_SETTINGS_EDIT'),
   updateOwnerPortalSettingsHandler
+);
+
+// Spec 048, lot Q : comptes de réception de l'agence (alias, QR) pour les loyers. Mêmes
+// permissions que les autres paramètres agence ; limiteur AVANT le parseur multipart.
+const RECEIVING_ACCOUNTS_PATH = '/tenants/:tenantId/settings/receiving-accounts';
+const canViewSettings = requirePermission('TENANT_SETTINGS_VIEW');
+const canEditSettings = requirePermission('TENANT_SETTINGS_EDIT');
+
+router.get(
+  RECEIVING_ACCOUNTS_PATH,
+  authenticate,
+  requireTenantAccess,
+  canViewSettings,
+  listAgencyReceivingAccountsHandler
+);
+router.post(
+  RECEIVING_ACCOUNTS_PATH,
+  authenticate,
+  requireTenantAccess,
+  canEditSettings,
+  receivingAccountWriteRateLimiter,
+  receiveReceivingAccountQr,
+  createAgencyReceivingAccountHandler
+);
+router.put(
+  `${RECEIVING_ACCOUNTS_PATH}/:accountId`,
+  authenticate,
+  requireTenantAccess,
+  canEditSettings,
+  receivingAccountWriteRateLimiter,
+  receiveReceivingAccountQr,
+  updateAgencyReceivingAccountHandler
+);
+router.delete(
+  `${RECEIVING_ACCOUNTS_PATH}/:accountId`,
+  authenticate,
+  requireTenantAccess,
+  canEditSettings,
+  receivingAccountWriteRateLimiter,
+  deleteAgencyReceivingAccountHandler
+);
+router.get(
+  `${RECEIVING_ACCOUNTS_PATH}/:accountId/qr`,
+  authenticate,
+  requireTenantAccess,
+  canViewSettings,
+  receivingAccountQrReadRateLimiter,
+  readAgencyReceivingAccountQrHandler
 );
 
 export default router;

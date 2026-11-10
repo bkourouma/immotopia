@@ -102,6 +102,11 @@ export const TENANT_ROUTE_FEATURES: readonly RouteFeatureRule[] = [
   { prefix: '/settings/finance', feature: 'CORE' },
   { prefix: '/settings/payment-gateway', feature: 'CORE' },
   {
+    prefix: '/settings/receiving-accounts',
+    feature: 'CORE',
+    note: "Comptes de réception de paiement de l'agence (spec 048, lot Q)."
+  },
+  {
     prefix: '/settings/owner-portal',
     feature: 'CORE',
     note: 'Masquage de la vue patrimoine du portail propriétaire (lot P5).'
