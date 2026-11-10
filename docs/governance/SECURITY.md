@@ -65,32 +65,69 @@ base `globalRole` et `isActive` d'un compte qui se réclame SUPER_ADMIN
 chemin `/api/auth` (`utils/auth-cookies.ts`) : le navigateur ne l'envoie plus
 qu'aux routes d'authentification.
 
+**Rotation du jeton de rafraîchissement.** `refreshAccessToken`
+(`services/auth-service.ts`) révoque le jeton présenté et crée son successeur
+dans une même transaction, avec le même horodatage (`revokedAt` de l'ancien,
+`createdAt` du nouveau) ; la rotation est atomique (`updateMany` sur
+`revoked: false`). Un jeton déjà révoqué, présenté moins de 15 s après sa
+révocation (`REFRESH_REUSE_GRACE_MS`, deux onglets ou double envoi), reçoit un
+accessToken seul (`refreshToken: null`, cookie de la requête gagnante
+intact), à condition que le compte soit actif et vérifié et qu'un successeur non
+révoqué ait été créé à ±1 s de la révocation (`ROTATION_SUCCESSOR_SKEW_MS`) :
+un jeton révoqué par déconnexion, réinitialisation ou révocation de sessions
+n'a pas de successeur et reçoit 401, même si une session s'ouvre juste après.
+Au-delà des 15 s, toute réutilisation révoque toutes les sessions du compte et
+trace `AUTH_TOKEN_REUSE_DETECTED`.
+
 **Verrou de connexion.** `services/login-throttle-service.ts` complète le
-limiteur par IP : verrou par paire (e-mail, IP) à partir de 10 échecs dans la
-fenêtre de 15 minutes (durée `15 s × 2^(n − 10)`, plafonnée à 15 minutes), plus
-un plafond global par e-mail, toutes IP confondues (50 échecs, puis un verrou
-court et fixe de 15 s, sans escalade). La paire est voulue : un tiers qui
-martèle un compte depuis sa propre connexion ne verrouille que sa paire, pas le
-titulaire. L'IP est normalisée comme à l'inscription (IPv6 regroupée par /64).
-Les clés sont des HMAC de l'e-mail et de l'IP, jamais en clair. **L'état est en
-mémoire, par processus** : perdu au redémarrage, non partagé entre instances
-(voir §13).
+limiteur par IP. Verrou dur par paire (e-mail, IP) à partir de 10 échecs dans la
+fenêtre de 15 minutes (durée `15 s × 2^(n − 10)`, plafonnée à 15 minutes) ;
+l'IP de la paire est normalisée comme à l'inscription (IPv6 regroupée par /64).
+Verrou global par e-mail, toutes IP confondues : à chaque tranche de 50 échecs,
+un verrou qui escalade d'un engagement à l'autre (15 s, 30 s, 60 s…, 5 minutes
+au plus), sans prolongation pendant le verrou. Une paire (e-mail, IP) qui a
+réussi une connexion depuis moins de 30 jours échappe au verrou global (pas à
+celui de sa paire) : le titulaire n'est pas enfermé par une attaque répartie.
+La paire est voulue : un tiers qui martèle un compte depuis sa propre connexion
+ne verrouille que sa paire. Une tentative pendant un verrou n'est comptée nulle
+part, et sa réponse est identique à un échec ordinaire (le motif interne
+`LOGIN_LOCKED` n'est jamais renvoyé). Un succès remet la paire et le compteur
+global à zéro ; une réinitialisation de mot de passe efface tout l'état de
+l'e-mail. Les clés sont des HMAC de l'e-mail et de l'IP, jamais en clair.
+**L'état est en mémoire, par processus** : perdu au redémarrage, non partagé
+entre instances (voir §13).
+
+**Limiteurs de la connexion.** `loginRateLimiter` (5 échecs par 15 minutes)
+ne compte pas les refus pendant un verrou : ceux-ci ont leur propre seau,
+`loginLockedRefusalRateLimiter` (30 par 15 minutes), sinon le titulaire qui
+retape le bon mot de passe pendant un verrou bloquerait sa propre IP. Les
+limiteurs de connexion, de mot de passe oublié et de réinitialisation
+regroupent l'IPv6 par /56 (`authBruteForceIpKey`) ; les autres limiteurs, par
+/64 (`clientIpKey`, §9).
 
 **CSRF.** `middleware/csrf-origin-middleware.ts`, monté globalement après CORS
-et avant tout routeur, refuse (403, code `CSRF_REJECTED`) toute requête
-POST/PUT/PATCH/DELETE authentifiée par le seul cookie `accessToken` (sans en-tête
-`Authorization`) quand le navigateur indique qu'elle ne vient pas de
+et `globalApiRateLimiter`, avant tout routeur, refuse (403, code
+`CSRF_REJECTED`) toute requête POST/PUT/PATCH/DELETE qui porte le cookie
+`accessToken` — avec ou sans en-tête `Authorization`, puisque l'authentification
+lit le cookie en premier — quand le navigateur indique qu'elle ne vient pas de
 l'interface : `Sec-Fetch-Site: cross-site`, ou, pour `same-site` ou sans
 `Sec-Fetch-Site`, une origine (`Origin`, à défaut celle du `Referer`) différente
 de `FRONTEND_URL`. Un client sans `Origin`, `Referer` ni `Sec-Fetch-Site`
-(scripts, tests) et un client à `Authorization: Bearer` ne sont pas visés. Sont
-exclus : les webhooks signés (WhatsApp Cloud, Twilio/WaSender, LiveKit,
-prestataire de signature, IPN PaySecureHub), les routes publiques à jeton
-(`/api/public/signatures`, `secure-links`, `external-access`, `assemblees`),
-la newsletter publique (`/api/newsletter`, jamais les routes connectées sous
-`/api/tenants/:tenantId/newsletter`), le simulateur de paiement et les routes
-d'authentification sans session (`login`, `register`, `forgot-password`,
-`reset-password`, `resend-verification`, `refresh`).
+(scripts, tests) et un client sans cookie (`Authorization: Bearer` seul) ne sont
+pas visés. Sont exclus : les webhooks signés (WhatsApp Cloud, Twilio/WaSender,
+LiveKit, prestataire de signature, IPN PaySecureHub), les routes publiques à
+jeton (`/api/public/signatures`, `secure-links`, `external-access`,
+`assemblees`), la newsletter publique (`/api/newsletter`, jamais les routes
+connectées sous `/api/tenants/:tenantId/newsletter`), le simulateur de paiement
+et les routes d'authentification sans session (`login`, `register`,
+`forgot-password`, `reset-password`, `resend-verification`, `refresh`).
+Connexion et inscription restent protégées contre le **CSRF de connexion**,
+cookie présent ou non : `Sec-Fetch-Site: cross-site`, ou une `Origin` différente
+de `FRONTEND_URL` hors `same-origin`/`none`, sont refusés. Le chemin est
+normalisé par une boucle linéaire, et une écriture portant le cookie sur un
+chemin de plus de 2048 caractères est refusée sans autre calcul (l'ancienne
+expression régulière était quadratique : déni de service sans authentification,
+relevé par le contre-audit du 2026-11-10).
 
 **Journaux et jetons.** `requestLogger` (`middleware/logging-middleware.ts`) et
 le garde CSRF passent l'URL par `utils/sensitive-path.ts` : la valeur du
@@ -99,8 +136,10 @@ paramètre `token` (vérification d'e-mail, newsletter, tous chemins), de
 signatures publiques sont remplacés par `[masqué]` avant écriture. Côté nginx,
 les journaux d'accès (nginx embarqué `infra/nginx/spa.conf` et vhosts
 `infra/nginx/*.immotopia.cloud.conf`) masquent de la même façon l'URI et le
-`Referer` pour tout paramètre dont le nom finit par `token`, avec une limite :
-au-delà de trois tels paramètres dans une même URL, les suivants restent en clair.
+`Referer` pour tout paramètre dont le nom finit par `token` (lettres, `_` et `.` :
+`hub.verify_token` compris), avec des limites (§13) : au-delà de trois tels
+paramètres dans une même URL, les suivants restent en clair, et le journal
+d'erreurs (`error_log`) n'est pas masqué.
 
 ## 4. Isolation multi-tenant et IDOR
 
@@ -135,7 +174,12 @@ Trois lignes de défense, dans l'ordre où une requête les traverse :
 Le contrôle des biens passe par `enforcePropertyTenantIsolation` +
 `getPropertyForTenant` (l'ancien `property-ownership-middleware.ts`, monté
 nulle part et qui répondait 403 ou 404 selon l'existence du bien, a été
-supprimé).
+supprimé). Les enfants d'un immeuble (`containerChildren`) ne sont lus et comptés
+que s'ils appartiennent à l'agence ou relèvent d'un mandat actif de celle-ci
+(`childAccessWhere` dans la liste des biens, `services/property-service.ts` ;
+même filtre, avec un `select` restreint, dans les copropriétés,
+`lib/syndics/queries.ts`) : un lot d'une autre
+agence ne fausse plus les compteurs et ne trahit plus son existence.
 
 **Filet en sortie** : `middleware/response-sanitizer-middleware.ts`
 retire récursivement `passwordHash`/`password_hash`/`tokenHash`/`token_hash`
@@ -148,8 +192,9 @@ utiliser `include` — la règle reste : toujours un `select` explicite sur
 (toute route doit porter une garde tenant/portail/plateforme, sauf liste
 blanche explicite) et `__tests__/unit/schema-tenant-coverage.test.ts`
 (tout modèle Prisma doit être classé cloisonné/enfant/global). L'étanchéité
-de bout en bout se vérifie avec `npm run test:isolation`, qui utilise une
-base dédiée (`DATABASE_URL_TEST`).
+de bout en bout se vérifie avec `npm run test:isolation -w @immotopia/api`
+(script du paquet API, absent de la racine), qui utilise une base dédiée
+(`DATABASE_URL_TEST`).
 
 ### Journal d'audit
 
@@ -171,14 +216,45 @@ le journal lui-même :
 
 **Droits d'administration dans l'agence.** Attribuer ou retirer le rôle
 `TENANT_ADMIN`, ou agir sur le compte d'un administrateur, est réservé à un
-administrateur de la même agence ou à un SUPER_ADMIN
-(`services/tenant-admin-guard.ts`, `actorMayTouchAdmin`) : un gestionnaire
-(`USERS_EDIT`, `USERS_CREATE`) ne peut pas se promouvoir. Agir sur un compte
+administrateur ACTIF de la même agence (appartenance ACTIVE, compte actif) ou à
+un SUPER_ADMIN (`services/tenant-admin-guard.ts`, `actorMayTouchAdmin`) : un
+gestionnaire (`USERS_EDIT`, `USERS_CREATE`) ne peut pas se promouvoir, et un
+administrateur désactivé ne peut pas se réactiver. Agir sur un compte
 SUPER_ADMIN est réservé à un SUPER_ADMIN (`assertActorMayTouchSuperAdmin`). Ces
 gardes sont appliquées par `services/membership-service.ts` (rôles,
 désactivation, réactivation, réinitialisation de mot de passe, révocation des
 sessions) et par `services/invitation-service.ts` (invitation avec le rôle
-administrateur). L'écriture des gabarits d'e-mail de notification exige
+administrateur, ou d'un membre déjà administrateur). Les changements qui
+peuvent retirer un administrateur (rôles, désactivation) rejouent la règle
+« au moins un administrateur actif » sous un verrou consultatif par agence
+(`pg_advisory_xact_lock`).
+
+**Statut de l'appartenance.** `fetchPermissionsFromDB`
+(`services/permission-service.ts`) ne renvoie aucune permission d'agence tant
+que l'appartenance n'est pas ACTIVE (désactivée ou invitation en attente), même
+si le compte garde ses lignes `user_roles` ou reste client de l'agence. Les
+routes de gestion des membres et des invitations de l'agence
+(`/:tenantId/users…`, `/:tenantId/invitations`, `routes/tenant-routes.ts`)
+exigent en plus `requireTenantCollaborator`. Une invitation ne réactive jamais une appartenance
+désactivée (refus 409 à l'invitation comme à l'acceptation : la réactivation
+passe par la liste des membres) ; une invitation dont l'auteur n'est plus actif
+dans l'agence n'est plus valable, et la désactivation d'un membre révoque ses
+invitations en attente.
+
+**Révocation des sessions.** Désactivation, réinitialisation du mot de passe par
+l'agence et révocation explicite révoquent **toujours** les jetons de
+rafraîchissement du membre, y compris pour un compte présent dans d'autres
+agences (une déconnexion forcée est sans danger pour elles, et un compte qui se
+fabriquerait une appartenance ailleurs n'y échappe plus). Exceptions : le
+SUPER_ADMIN, dont les sessions sont de portée plateforme (révocation explicite
+refusée depuis une agence, sautée ailleurs), et un administrateur visé par un
+acteur qui n'est pas administrateur actif (désactivation et révocation
+refusées ; à la réinitialisation, seul le lien est envoyé, sans écraser le mot
+de passe ni révoquer les sessions). Imposer un mot de passe reste interdit pour un
+compte partagé avec une autre agence ou la plateforme
+(`isSharedOrPlatformAccount`) : seul un lien de réinitialisation est envoyé.
+**Limite** : un gestionnaire (`USERS_EDIT`) peut encore imposer un mot de passe
+à un collègue non administrateur dont le compte n'est pas partagé (§13). L'écriture des gabarits d'e-mail de notification exige
 `TENANT_SETTINGS_EDIT` (`routes/email-notification-config-routes.ts`) : le
 gabarit part tel quel aux clients de l'agence, et son HTML est assaini à
 l'écriture (`utils/sanitize-html`) ; la lecture reste ouverte aux
@@ -202,15 +278,26 @@ nom du fichier) n'est jamais cru seul : `assertUploadMatchesDeclaredType`
 WebP, MP4/MOV, WebM, TIFF, DWG), refuse un contenu qui ne correspond pas au type
 déclaré ou qui n'est pas dans la liste de types autorisés de la route, et
 **dérive l'extension du fichier enregistré du type détecté**, pas du nom envoyé.
+Un type déclaré différent du type réel n'est accepté que si c'est celui d'un
+autre type autorisé de la même famille (image ou vidéo : un PNG nommé `.jpg`).
 Il est appelé notamment pour les médias et documents de bien, les pièces jointes
 de maintenance, le logo d'agence, les pièces de syndic, les images de diffusion
 WhatsApp, l'image de configuration WhatsApp et les justificatifs de facturation
 plateforme. Les modèles DOCX sont bornés avant d'être confiés à PizZip
 (`utils/docx-limits.ts`, appelé par `services/document-template-service.ts`,
 `services/docx-renderer.ts` et `lib/pdf-convert/sanitize-docx.ts`) : 2000
-entrées au plus, 50 Mo décompressés au total et par entrée, répertoire central
-relu strictement, chaque entrée réellement décompressée avec un plafond de
-sortie (une taille annoncée mensongère n'alloue donc rien).
+entrées au plus, 20 Mo décompressés au total, 20 Mo par entrée binaire et 5 Mo
+par partie XML (`.xml`, `.rels`, celles que lisent les expressions régulières
+et docxtemplater) pour un modèle importé ou rendu — 20 Mo par partie XML pour
+un document rendu par l'application avant sa conversion PDF (`sanitizeDocx`,
+dont les expressions sont linéaires : un relevé de milliers de lignes dépasse
+5 Mo) ; répertoire central relu strictement, nom de chaque
+entrée identique dans l'en-tête local et le répertoire central (PizZip lit le
+premier), chaque entrée réellement décompressée avec un plafond de sortie (une
+taille annoncée mensongère n'alloue donc rien). Les expressions régulières qui
+parcourent ces XML (balises, `Relationship`, `instrText`) sont linéaires : une
+forme quadratique laissait un DOCX de quelques kilo-octets figer l'API
+(contre-audit du 2026-11-10).
 
 **Service de `/uploads`.** En plus de la liste blanche de chemins, le garde
 n'accepte que les extensions `jpg, jpeg, png, webp, gif, mp4, webm, mov` : un
@@ -218,9 +305,17 @@ n'accepte que les extensions `jpg, jpeg, png, webp, gif, mp4, webm, mov` : un
 au lieu de s'exécuter dans l'origine de l'application. Les réponses statiques
 portent `X-Content-Type-Options: nosniff` et une `Content-Security-Policy`
 restrictive avec `sandbox` (`applyUploadsResponseHeaders`). Un pourcentage mal
-formé dans l'URL répond 404. L'inventaire des anciens fichiers de bien concernés
-se fait avec `npm run ops:list-suspect-uploads` (lecture seule ; voir le
-[RUNBOOK](../workflows/RUNBOOK.md)).
+formé dans l'URL répond 404, de même qu'un chemin décodé contenant `\` ou `:`
+(sous Windows, `\` est un séparateur pour `express.static` et `:` ouvre un flux
+NTFS). L'inventaire des anciens fichiers de bien concernés se fait avec
+`npm run ops:list-suspect-uploads` sur un poste, et sur un serveur avec
+`node dist/scripts/list-suspect-property-uploads.js` dans le conteneur `api`
+(lecture seule ; voir le [RUNBOOK](../workflows/RUNBOOK.md)).
+
+Les téléversements en mémoire sont bornés par multer en taille, en nombre de
+fichiers et en champs (portail locataire : 10 fichiers, 10 champs, 100 Ko par
+champ). Le dépôt d'une pièce de copropriété vérifie que la copropriété
+appartient à l'agence avant toute écriture sur le disque.
 
 Une réponse de portail ne porte jamais de chemin disque ni d'identifiant
 de stockage `/uploads/...` d'un fichier privé : les services de portail
@@ -480,7 +575,11 @@ passe (règles de validation : §7).
 
 **Seeds de développement.** L'image `migrate` embarque tout
 `packages/api/prisma/seeds/`. Les seeds à comptes ou mots de passe connus, ou à
-suppressions, refusent `NODE_ENV=production` (code de sortie 1) par la garde
+suppressions, refusent `NODE_ENV=production` **et toute `DATABASE_URL` dont
+l'hôte n'est pas local** (`localhost`, `127.0.0.1`, `::1`,
+`host.docker.internal`, socket Unix ; une URL illisible est refusée) — donc
+aussi sur le serveur, où l'hôte de la base est `<pile>-postgres` (`make-env.sh`) — (code
+de sortie 1, sans variable de contournement) par la garde
 `prisma/seeds/assert-not-production.ts`, appelée avant tout accès à la base :
 `create-super-admin.ts`, `seed-quick-login-users.ts`, `seed-comprehensive-data.ts`,
 `seed-crm-data.ts`, `seed-tenant-members.ts`, `seed-users.ts`, les
@@ -489,15 +588,20 @@ suppressions, refusent `NODE_ENV=production` (code de sortie 1) par la garde
 sa propre garde, adaptée au staging (drapeau `ALLOW_PACK_TEST_TENANTS=1`, refus
 de l'origine de la production), et `scripts/fix-demo-login-account.cjs` refuse
 aussi `NODE_ENV=production`. `syndic-demo-fund-movements.ts` n'a pas de garde :
-ce sont des fonctions pures, sans accès à la base. Le bundle web de production
-est, lui, refusé au build s'il contient un identifiant de démonstration
-(`infra/compose/Dockerfile.web`).
+ce sont des fonctions pures, sans accès à la base. Le bundle web hors staging
+est, lui, refusé au build (`infra/compose/Dockerfile.web`) s'il contient l'un
+des quatre motifs du garde : deux mots de passe de démonstration historiques,
+le mot de passe commun des comptes de pack et le domaine
+`packs.immotopia.test`. Ce garde ne reprend pas les huit mots de passe de la
+liste de refus de `utils/bootstrap-admin-input.ts` : un nouveau compte de
+démonstration doit y être ajouté à la main.
 
 **Comptes de démonstration.** Le menu « Choisir un compte de test » du web
 (`apps/web/src/dev/dev-accounts.ts`, affiché en développement et quand
 `VITE_SHOW_DEMO_ACCOUNTS=true`, donc sur le staging) ne liste plus aucun compte
 de la plateforme (`PLATFORM_SUPER_ADMIN`) ; un test le garantit. Il liste encore
-les comptes d'agence de démonstration (voir §13). Le seed du premier
+les comptes d'agence de démonstration, dont trois adresses Gmail d'apparence
+réelle et les agences de pack à mot de passe commun (voir §13). Le seed du premier
 SUPER_ADMIN (`utils/bootstrap-admin-input.ts`) refuse, **en production**, les
 e-mails et mots de passe de démonstration connus (comparaison insensible à la
 casse).
@@ -525,8 +629,10 @@ d'invitation, rafraîchissement de session — `middleware/rate-limit-middleware
 plus un plancher global (`globalApiRateLimiter`) et le limiteur webhook
 dédié (§6). Les limiteurs par IP s'appuient sur `clientIpKey` : l'adresse IPv6
 est regroupée par /64 (une machine peut disposer de tout un préfixe), l'IPv4
-mappée ramenée à son IPv4, comme au garde des inscriptions. Le contrôle CSRF par
-origine est décrit en §3.
+mappée ramenée à son IPv4, comme au garde des inscriptions. La connexion, le mot
+de passe oublié et la réinitialisation regroupent l'IPv6 par /56
+(`authBruteForceIpKey`, §3). `globalApiRateLimiter` est monté avant le garde
+CSRF. Le contrôle CSRF par origine est décrit en §3.
 
 Les deux environnements sont cloisonnés : chaque pile a sa base, ses volumes et
 son réseau Docker, ses ports ne sont publiés que sur `127.0.0.1` (le nginx de
@@ -550,12 +656,19 @@ derrière le nginx de l'hôte) : il se pose à la main dans le bloc TLS (443) de
 chaque vhost de l'hôte (consigne en commentaire dans
 `infra/nginx/*.immotopia.cloud.conf`). Dans nginx, un `add_header`
 défini dans un `location` annule l'héritage de ceux du niveau supérieur : les
-trois lignes sont répétées dans chaque `location` qui en définit un, et tout
-nouveau `location` avec `add_header` doit faire de même. Pour `/api/`, `/uploads/`
+cinq lignes (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`,
+`Content-Security-Policy-Report-Only`, `Permissions-Policy`) sont répétées dans
+chaque `location` qui en définit un, et tout nouveau `location` avec
+`add_header` doit faire de même ; `infra/scripts/check-infra.sh` le vérifie pour
+le niveau `server` et chaque `location` de `spa.conf` qui porte un `add_header`
+(pas les `location` sans `add_header`, qui héritent). Pour `/api/`, `/uploads/`
 et `/health`, nginx masque (`proxy_hide_header`) ceux que Helmet pose déjà, pour
 n'émettre qu'un jeu. **Éprouvé en local** (image web réelle, faux upstream imitant
-Helmet, 2026-09-29) : `nginx -t` valide, trois en-têtes sur le SPA, les assets et
-les icônes, un seul jeu sur l'API. **À confirmer** derrière le nginx de l'hôte, en
+Helmet, 2026-09-29, avant l'ajout de la CSP Report-Only et de
+`Permissions-Policy`) : `nginx -t` valide, les trois premiers en-têtes sur le
+SPA, les assets et les icônes, un seul jeu sur l'API ; `nginx -t` a été rejoué
+avec succès le 2026-11-10 sur `spa.conf` et les deux vhosts (image
+`nginx:1.27-alpine`). **À confirmer** derrière le nginx de l'hôte, en
 HTTPS : la commande de vérification est dans
 [DEPLOIEMENT.md](../workflows/DEPLOIEMENT.md).
 
@@ -1416,7 +1529,24 @@ bilan dans [AUDIT_SECURITE_2026-11-09.md](AUDIT_SECURITE_2026-11-09.md).
   remis à zéro à chaque redémarrage, plafonds multipliés par le nombre
   d'instances de l'API. Sans conséquence tant qu'il n'y a qu'une instance par
   pile. Une attaque distribuée sur de très nombreuses IP n'est freinée que par le
-  verrou global court (15 s par tranche de 50 échecs).
+  verrou global escaladant (15 s puis doublé à chaque tranche de 50 échecs,
+  5 minutes au plus) : c'est un frein, **sans verrou durable**. Les paires sûres
+  (30 jours) sont elles aussi en mémoire : après un redémarrage, le titulaire
+  redevient soumis au verrou global jusqu'à sa prochaine connexion réussie.
+- **Rejeu d'un jeton de rafraîchissement dans le délai de grâce.** Un jeton volé
+  rejoué moins de 15 s après la rotation légitime reçoit un accessToken (durée
+  `JWT_EXPIRES_IN`), sans jeton de rafraîchissement (§3). Le lien de famille
+  entre jetons, qui le fermerait, exige une migration.
+- **Usurpation d'un collègue par un gestionnaire.** Un `TENANT_MANAGER`
+  (`USERS_EDIT`) peut imposer un mot de passe à un membre non administrateur dont
+  le compte n'est pas partagé, s'y connecter, puis lui donner un rôle non
+  administrateur. Comportement préexistant ; le réserver aux administrateurs est
+  une décision produit.
+- **E-mail à partie locale accentuée.** `normalizeEmailForSmtp`
+  (`services/email-service.ts`) retire les accents de la partie locale :
+  `josé@exemple.ci` part vers `jose@exemple.ci`, qui peut être une autre boîte.
+  Refuser une partie locale non ASCII, ou envoyer l'adresse intacte avec
+  SMTPUTF8.
 - **`express.json` et `express.urlencoded` globaux à 10 Mo** (`app.ts`) : le
   plafond est large pour toutes les routes qui n'ont pas de parseur propre
   (certaines routes publiques ont le leur, de 1 à 4 Ko). La migration vers Zod 4,
@@ -1425,10 +1555,20 @@ bilan dans [AUDIT_SECURITE_2026-11-09.md](AUDIT_SECURITE_2026-11-09.md).
   global (1000 requêtes par 15 minutes et par IP) et les limites propres de
   multer (taille, nombre de fichiers) s'appliquent aux routes d'upload.
 - **Pas de blocage par la CSP.** La `Content-Security-Policy-Report-Only` du nginx
-  embarqué ne bloque rien et ne remonte nulle part (aucun `report-uri`) : les
-  violations ne se lisent que dans la console du navigateur. La passer en
-  `Content-Security-Policy` suppose une période d'observation, puis l'ajout de
-  `frame-ancestors 'self'`. L'API garde sa propre CSP bloquante (Helmet).
+  embarqué ne bloque rien et ne remonte nulle part (ni `report-uri` ni
+  `report-to`) : les violations ne se lisent que dans la console du navigateur.
+  L'API garde sa propre CSP bloquante (Helmet). Avant de la passer en
+  `Content-Security-Policy` (mode bloquant), la politique actuelle bloquerait des
+  usages réels ; prérequis relevés par le contre-audit du 2026-11-10 :
+  `frame-src blob:` (aperçus PDF de `PublicSigningFlow.tsx` et
+  `PrintReceiptsModal.tsx`) ; `connect-src https://photon.komoot.io`
+  (`services/photon-service.ts`) et l'hôte LiveKit en `https:` (le client
+  LiveKit fait aussi des requêtes HTTPS, `wss:` ne suffit pas) ;
+  `img-src https://lh3.googleusercontent.com` (avatar d'un compte Google) ; le
+  script en ligne de `public/hors-ligne.html` à sortir dans un fichier (ou à
+  autoriser par empreinte) ; `frame-ancestors 'self'` ; une adresse
+  `report-uri`/`report-to` pour observer avant de bloquer. Aucun besoin
+  d'`unsafe-eval` relevé.
 - **HSTS à poser aux vhosts.** `Strict-Transport-Security` n'est posé par aucun
   fichier actif du dépôt (seule la consigne figure en commentaire dans les
   vhosts) : il se pose à la main dans le bloc 443 de chaque vhost de l'hôte (§9),
@@ -1441,6 +1581,19 @@ bilan dans [AUDIT_SECURITE_2026-11-09.md](AUDIT_SECURITE_2026-11-09.md).
   prestataire **sans montant** n'est plus encaissé : il passe en `REVIEW`
   (`lib/payment-gateway/checkout-core.ts`, `services/platform-payment-service.ts`).
   Si le mode réel omet systématiquement le montant, tout paiement partira en revue.
+  En location, une tentative en REVIEW pour montant ou devise absents est
+  revérifiée automatiquement par la tâche de réconciliation pendant 48 heures
+  après sa création (`reconcilePendingCheckouts`, `lib/payment-gateway/checkout.ts`) ;
+  au-delà, son motif est marqué et elle reste en vérification manuelle, sans
+  bouton de décision côté agence. Un paiement de plateforme en REVIEW sans
+  montant (`services/platform-payment-service.ts`) n'est pas concerné par cette
+  revérification et peut connaître la même impasse (non vérifié en détail).
+- **Mode de la tentative de paiement de copropriété non enregistré.**
+  `SyndicOnlineCheckout` ne porte pas le mode (réel ou simulateur) de la
+  tentative : la réconciliation interroge le prestataire selon le mode courant de
+  la configuration. Sur le staging, où le simulateur est disponible, basculer la
+  configuration pourrait faire valider par le simulateur une tentative réelle.
+  Corriger exige une migration.
 
 ### Isolation multi-tenant
 
@@ -1457,16 +1610,20 @@ bilan dans [AUDIT_SECURITE_2026-11-09.md](AUDIT_SECURITE_2026-11-09.md).
   d'agence. Les appelants reçoivent des identifiants déjà vérifiés ; le verrou
   lui-même n'a pas de filtre. Même constat pour `lib/lease-lifecycle/period-overlap.ts`
   et `lib/signature/events.ts` (`FOR UPDATE` sans agence).
-- **`containerChildren` sans `tenantId`** (`services/property-service.ts`, lecture
-  de la liste des biens) : les compteurs d'enfants d'un immeuble sont lus par
-  relation, sans filtre d'agence sur les enfants. La création d'un bien refuse
-  désormais un parent d'une autre agence ; des données antérieures à ce
-  correctif ne sont pas vérifiées.
 - **Dernier administrateur d'agence.** `disableMember` refuse (409) l'auto-désactivation et la désactivation du
   dernier administrateur actif (`TENANT_ADMIN`, membre ACTIF, compte actif) ; `updateMemberRoles` refuse de lui retirer
-  le rôle. Contrôle avant la transaction, sans verrou : deux désactivations simultanées des deux seuls
-  administrateurs peuvent théoriquement passer. Les autres chemins qui suppriment un administrateur (désactivation
-  du compte utilisateur au niveau plateforme, suspension de l'agence) ne sont pas couverts par cette règle.
+  le rôle. La règle est rejouée dans la transaction sous un verrou consultatif par agence (`pg_advisory_xact_lock`) :
+  deux changements simultanés ne peuvent plus laisser l'agence sans administrateur. Les autres chemins qui
+  suppriment un administrateur (désactivation du compte utilisateur au niveau plateforme, suspension de l'agence)
+  ne sont pas couverts par cette règle.
+- **Membre désactivé resté client.** `requireTenantAccess` (`middleware/tenant-middleware.ts`) laisse encore
+  passer, comme client, un membre DISABLED qui est aussi `TenantClient` de l'agence. Il n'exerce aucune
+  permission d'agence (§4, statut de l'appartenance) et n'atteint pas la gestion des membres
+  (`requireTenantCollaborator`), mais le refus n'est pas fait à l'entrée.
+- **Liaisons croisées antérieures aux correctifs.** Les correctifs empêchent d'écrire un conteneur parent, un
+  lot de copropriété ou un propriétaire d'une autre agence ; ceux déjà écrits ne sont pas corrigés. Inventaire
+  en lecture seule : `npm run ops:list-cross-tenant-links -w @immotopia/api` sur un poste,
+  `node dist/scripts/list-cross-tenant-links.js` dans le conteneur `api` d'un serveur (RUNBOOK).
 
 ### Fichiers
 
@@ -1477,6 +1634,8 @@ bilan dans [AUDIT_SECURITE_2026-11-09.md](AUDIT_SECURITE_2026-11-09.md).
 - **Fichiers antérieurs au correctif.** Un média de bien déposé avant le contrôle
   du type réel peut porter une extension hors liste blanche : il répond 404 sur
   `/uploads` (l'inventaire est dans le RUNBOOK), mais reste sur le disque.
+- **Pas de limiteur dédié aux téléversements** : voir « Authentification et
+  sessions » ci-dessus.
 
 ### Exploitation et infrastructure
 
@@ -1505,15 +1664,34 @@ bilan dans [AUDIT_SECURITE_2026-11-09.md](AUDIT_SECURITE_2026-11-09.md).
 - **Images de base flottantes** (`node:22-alpine`, `nginx:1.27-alpine`,
   `postgres:16-alpine`, `alpine`) : référencées par étiquette, pas par digest ;
   leur contenu peut changer à un `--pull` sans qu'un fichier du dépôt change. Le
-  passage à Node 22 n'a pas été éprouvé par un `docker build` complet.
-- **Dépendances vulnérables restantes.** Le dernier `npm audit` relevé par l'audit
-  du 2026-11-09 (lot « infra et dépendances ») portait sur 1 critique, 3 élevées et
-  4 modérées, qui relèvent de montées majeures non faites (`tar`/`node-pre-gyp`,
-  `exceljs`, `nodemailer`, `zod`, `uuid`, `react-router`). À relancer avant toute
-  mise en production.
+  passage à Node 22 n'a pas été éprouvé par un `docker build` complet, et le
+  `package-lock.json` a été régénéré sous Node 24 / npm 11 : `npm ci` et
+  `docker build` sous Node 22 restent à valider.
+- **Dépendances vulnérables restantes.** Le dernier `npm audit` relevé (lot
+  « infra et dépendances » du 2026-11-09, recompté par le contre-audit du
+  2026-11-10) porte sur 1 critique, 3 élevées et 4 modérées, qui relèvent de
+  montées majeures non faites. La critique (`tar`, tiré par `@mapbox/node-pre-gyp`
+  via `bcrypt` 5) ne joue qu'à l'installation : bcrypt 6 la retirerait, à
+  recompiler et tester sous Alpine. Restent `nodemailer`, `zod`, `exceljs`,
+  `uuid`, `react-router`. À relancer avant toute mise en production.
 - **Comptes de démonstration d'agence** : `dev-accounts.ts` liste encore les
-  comptes d'agence de démonstration à mot de passe commun, visibles dans le bundle
-  du staging.
+  comptes d'agence de démonstration, visibles dans le bundle du staging : trois
+  adresses Gmail d'apparence réelle (dont un `TENANT_ADMIN`) et douze agences de
+  pack à mot de passe commun (un `TENANT_ADMIN` chacune). Fermer le staging les
+  protège ; remplacer les adresses Gmail par des adresses
+  `@packs.immotopia.test` suppose de changer les comptes réels du staging et les
+  seeds, avec accord.
+- **Journal d'erreurs nginx non masqué.** Le masque de jeton ne s'applique qu'aux
+  journaux d'accès. Quand l'API est injoignable (502, délai), `error_log` écrit la
+  ligne de requête complète, jeton compris (constaté le 2026-11-10 sur
+  `nginx:1.27-alpine`) : rotation courte et lecture réservée à root. Le masque
+  des journaux d'accès lui-même ne couvre pas un nom de paramètre contenant autre
+  chose que des lettres, `_` et `.` (`x-token=`, `token[]=`), ni un nom encodé en
+  `%`, et laisse en clair les paramètres au-delà du troisième `…token=` d'une URL.
+- **Durcissement des conteneurs incomplet.** `no-new-privileges` et `pids_limit`
+  (512 pour l'API, qui lance LibreOffice ; 256 pour le web) sont posés dans
+  `infra/compose/docker-compose.prod.yml` ; `cap_drop`, limites mémoire/CPU et
+  image nginx non privilégiée ne le sont pas.
 
 ### Organisation
 

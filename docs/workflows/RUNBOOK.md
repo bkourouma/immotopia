@@ -30,14 +30,34 @@ les sauvegardes et la restauration sont dans
     démarrer sans lui. L'exporter dans le shell ou le poser dans un fichier
     `.env` à la racine (ignoré par git), par exemple avec
     `openssl rand -hex 24`, et utiliser la même valeur dans `DATABASE_URL`.
-    `scripts/setup-dev-env.ps1` le pose lui-même pour l'appel, avec le mot de
-    passe qu'il écrit dans `DATABASE_URL`.
   - `api` (optionnel) : construit l'image depuis `packages/api/Dockerfile`
     avec pour contexte la racine du monorepo (un seul lockfile) ; exige
     `JWT_SECRET` (pas de valeur par défaut, la commande échoue sans elle) ;
-    expose le port `8001`.
-  - Usage courant : `POSTGRES_PASSWORD=<valeur> docker compose up -d db` (base seule — le cas le plus
-    fréquent, l'API tournant en local avec `npm run dev:api`).
+    publie le port `8001` sur la boucle locale seulement (`127.0.0.1:8001`) :
+    hors production, l'API sert le simulateur de paiement, qui ne doit pas être
+    joignable depuis le réseau local. `NODE_ENV` y vaut `development` par
+    défaut.
+  - **Compose interpole tout le fichier** : `POSTGRES_PASSWORD` **et**
+    `JWT_SECRET` doivent être définis même pour ne lancer que la base, et pour
+    `docker compose config`. Usage courant (base seule — le cas le plus
+    fréquent, l'API tournant en local avec `npm run dev:api`) :
+
+    ```bash
+    # Git Bash / Linux / macOS
+    POSTGRES_PASSWORD=<valeur> JWT_SECRET=<valeur jetable> docker compose up -d db
+    ```
+
+    ```powershell
+    # PowerShell
+    $env:POSTGRES_PASSWORD = '<valeur>'; $env:JWT_SECRET = '<valeur jetable>'
+    docker compose up -d db
+    ```
+
+    `scripts/setup-dev-env.ps1` fait cet appel lui-même : il pose pour la durée
+    de l'appel un `JWT_SECRET` jetable et le mot de passe de développement local
+    `immotopia`, celui qu'il écrit dans `DATABASE_URL` (base publiée sur
+    `127.0.0.1` seulement), puis les retire de l'environnement.
+
   - C'est un outil de développement : ne jamais le déployer. Les piles du
     serveur (staging, production) utilisent
     `infra/compose/docker-compose.prod.yml`, uniquement par
@@ -214,6 +234,15 @@ Autres seeds utiles, à lancer séparément selon le besoin (liste tirée de
 | `db:seed:tenant-members`                                 | Membres de démonstration par agence.                                                                     |
 | `db:seed:syndic-demo`                                    | Jeu de données de démonstration syndic/copropriété.                                                      |
 | `db:seed:crm`, `db:seed:comprehensive`                   | Données CRM de démonstration, jeu de données complet.                                                    |
+
+**Seeds de démonstration et base distante.** Les seeds à comptes connus ou à
+suppressions (`db:seed:super-admin`, `db:seed:tenant-members`,
+`db:seed:syndic-demo`, `db:seed:crm`, `db:seed:comprehensive`, les
+`seed-demo-*.ts`…) passent par `prisma/seeds/assert-not-production.ts`, qui
+refuse `NODE_ENV=production` **et** toute `DATABASE_URL` dont l'hôte n'est pas
+local (`localhost`, `127.0.0.1`, `::1`, `host.docker.internal`, socket Unix).
+Un `.env` de poste qui vise une base distante (staging compris) est donc refusé,
+sans variable de contournement : pointer `DATABASE_URL` sur une base locale.
 
 ## Commandes quotidiennes
 
@@ -608,6 +637,47 @@ sous-dossier privé `documents/` est ignoré. Périmètres parcourus :
 (logos d'agence) et `uploads/whatsapp/**` (récursif, images de diffusion
 WhatsApp). Un fichier listé est déjà refusé en
 404 par `/uploads` ; le nettoyer ou le renommer reste une décision manuelle.
+
+**Sur un serveur (staging, production)**, `npm run ops:…` ne fonctionne pas :
+l'image d'exécution de l'API ne contient ni `src/` ni `ts-node`, et l'image
+`migrate` n'a pas le volume des fichiers. Le script compilé
+(`dist/scripts/list-suspect-property-uploads.js`, produit par `tsc` avec tout
+`src/`) se lance dans le conteneur `api`, qui monte le volume sous
+`UPLOADS_DIR=/data/uploads`, une fois cette version déployée :
+
+```bash
+set -a; . infra/environments/staging.conf; set +a   # prod.conf pour la production
+docker compose -p "$STACK_NAME" --env-file "$IMMOTOPIA_ENV_FILE" \
+  -f infra/compose/docker-compose.prod.yml exec api node dist/scripts/list-suspect-property-uploads.js
+```
+
+La présence du fichier compilé dans l'image n'a pas encore été constatée par un
+`docker build` : en cas d'erreur « Cannot find module », vérifier
+`docker compose … exec api ls dist/scripts`.
+
+### Inventaire des liaisons croisées entre agences
+
+Les correctifs d'isolation (TEN-01, TEN-02, TEN-07) empêchent d'écrire une
+liaison vers une autre agence ; celles écrites avant ne sont pas corrigées.
+`list-cross-tenant-links` les liste en **lecture seule** (il n'écrit, ne corrige
+et ne supprime rien), avec des identifiants techniques seulement (aucun nom,
+e-mail, adresse ni montant) :
+
+- `CONTAINER_PARENT` : bien rattaché à l'immeuble d'une autre agence sans mandat
+  actif de son agence sur cet immeuble ;
+- `SYNDICATE_LOT_PROPERTY` : lot de copropriété lié à un bien d'une autre agence ;
+- `PROPERTY_OWNER` : bien dont le propriétaire n'est ni membre ACTIF ni client de
+  l'agence du bien.
+
+```bash
+# poste de développement (depuis la racine)
+npm run ops:list-cross-tenant-links -w @immotopia/api
+# serveur, une fois cette version déployée (mêmes variables que ci-dessus)
+docker compose -p "$STACK_NAME" --env-file "$IMMOTOPIA_ENV_FILE" \
+  -f infra/compose/docker-compose.prod.yml exec api node dist/scripts/list-cross-tenant-links.js
+```
+
+Chaque ligne est à examiner à la main avec l'agence concernée.
 
 ### Catalogue d'abonnement : `--missing-only` après un ajustement produit
 
