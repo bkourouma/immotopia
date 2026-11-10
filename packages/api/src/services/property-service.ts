@@ -1069,14 +1069,19 @@ export async function listProperties(
           propertyType: true
         }
       },
+      // Lots d'un immeuble : seuls ceux que l'agence voit (TEN-01, comme la
+      // fiche) entrent dans les compteurs loués / disponibles. Sans ce filtre,
+      // les lots d'une autre agence faussaient les compteurs et trahissaient
+      // leur existence.
       containerChildren: {
+        where: childAccessWhere(tenantId),
         select: {
           status: true
         }
       },
       _count: {
         select: {
-          containerChildren: true
+          containerChildren: { where: childAccessWhere(tenantId) }
         }
       },
       rentalLeases: {

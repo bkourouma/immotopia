@@ -1,6 +1,6 @@
 import PizZip from 'pizzip';
 import { BadRequestError } from '../../middleware/error-middleware';
-import { assertDocxWithinLimits } from '../../utils/docx-limits';
+import { DOCX_MAX_RENDERED_XML_ENTRY_UNCOMPRESSED_BYTES, assertDocxWithinLimits } from '../../utils/docx-limits';
 
 /**
  * Neutralise un DOCX AVANT de le confier à LibreOffice (audit sécurité) : le
@@ -152,8 +152,21 @@ function sanitizeWordXml(xml: string): string {
   return out.replace(FILE_URL, 'blocked:');
 }
 
-export function sanitizeDocx(docx: Buffer): Buffer {
-  assertDocxWithinLimits(docx);
+export interface SanitizeDocxOptions {
+  /**
+   * Plafond décompressé d'une partie `.xml` / `.rels`. Par défaut
+   * `DOCX_MAX_RENDERED_XML_ENTRY_UNCOMPRESSED_BYTES` (20 Mo) : le document à
+   * convertir est RENDU par l'application (un relevé de milliers de lignes
+   * dépasse les 5 Mo d'un modèle importé) et les expressions ci-dessus sont
+   * linéaires.
+   */
+  maxXmlEntryUncompressedBytes?: number;
+}
+
+export function sanitizeDocx(docx: Buffer, options: SanitizeDocxOptions = {}): Buffer {
+  assertDocxWithinLimits(docx, {
+    maxXmlEntryUncompressedBytes: options.maxXmlEntryUncompressedBytes ?? DOCX_MAX_RENDERED_XML_ENTRY_UNCOMPRESSED_BYTES
+  });
   let zip: PizZip;
   try {
     zip = new PizZip(docx);

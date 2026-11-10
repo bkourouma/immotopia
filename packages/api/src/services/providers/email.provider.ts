@@ -112,7 +112,8 @@ export async function sendWithTemplate(options: EmailTemplateOptions): Promise<E
     to: options.to,
     subject: options.subject,
     html: options.html,
-    text: options.html.replace(/<[^>]*>/g, ' ')
+    // `[^<>]*` et non `[^>]*` : linéaire même sur un long HTML fait de `<` sans `>`.
+    text: options.html.replace(/<[^<>]*>/g, ' ')
   });
 }
 

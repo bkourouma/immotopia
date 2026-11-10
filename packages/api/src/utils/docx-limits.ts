@@ -34,6 +34,14 @@ export const DOCX_MAX_ENTRY_UNCOMPRESSED_BYTES = 20 * 1024 * 1024;
  * pour 400 000 balises). Le plus gros XML d'un vrai modèle fait ~160 Ko.
  */
 export const DOCX_MAX_XML_ENTRY_UNCOMPRESSED_BYTES = 5 * 1024 * 1024;
+/**
+ * Plafond d'une partie XML pour un document RENDU par l'application (contrat,
+ * relevé de plusieurs milliers de lignes) avant sa conversion PDF : seul
+ * `sanitizeDocx` l'emploie, ses expressions étant linéaires. L'upload et le
+ * rendu d'un MODÈLE gardent `DOCX_MAX_XML_ENTRY_UNCOMPRESSED_BYTES` (5 Mo). Le
+ * plafond cumulé `DOCX_MAX_UNCOMPRESSED_BYTES` reste appliqué.
+ */
+export const DOCX_MAX_RENDERED_XML_ENTRY_UNCOMPRESSED_BYTES = 20 * 1024 * 1024;
 
 export interface DocxLimits {
   maxEntries?: number;

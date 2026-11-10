@@ -8,6 +8,7 @@ import { logNotificationDelivery } from '../lib/notifications/log-delivery';
 import { describeFailure } from '../lib/notifications/describe-error';
 import { isReplayableVariables } from '../lib/notifications/replayable';
 import { env } from '../config/env';
+import { charSet, trimEndCharsLinear } from '../utils/trim-chars';
 import { getWhatsappNotificationConfig } from './whatsapp-notification-config-service';
 import { WHATSAPP_NOTIFICATION_DEFAULT_TEMPLATES } from '../constants/whatsapp-notification-default-templates';
 import { WHATSAPP_NOTIFICATION_META, type WhatsappNotificationKey } from '../constants/whatsapp-notification-keys';
@@ -42,13 +43,15 @@ export function omitSentencesWithEmptyVariables(tpl: string, vars: Record<string
   return output.trim();
 }
 
+const isUrlTrailingPunctuation = charSet('`,.;!?');
+
 /**
  * Normalize body text so WhatsApp clients can auto-detect clickable links.
  * - Convert markdown links [text](url) to "text: url"
  * - Remove backticks/angle-brackets around urls
  * - Trim trailing punctuation that often breaks auto-linking
  */
-function normalizeBodyForClickableLinks(body: string): string {
+export function normalizeBodyForClickableLinks(body: string): string {
   if (!body) return body;
 
   let output = body;
@@ -57,7 +60,9 @@ function normalizeBodyForClickableLinks(body: string): string {
   output = output.replace(/`(https?:\/\/[^`\s]+)`/gi, '$1');
   output = output.replace(/<(https?:\/\/[^>\s]+)>/gi, '$1');
 
-  output = output.replace(/https?:\/\/\S+/gi, match => match.replace(/[`,.;!?]+$/g, ''));
+  // Ponctuation finale retirée en temps linéaire : `/[`,.;!?]+$/` était
+  // quadratique sur une URL truffée de virgules internes (variable saisie).
+  output = output.replace(/https?:\/\/\S+/gi, match => trimEndCharsLinear(match, isUrlTrailingPunctuation));
 
   return output;
 }

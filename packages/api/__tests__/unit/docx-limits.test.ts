@@ -391,6 +391,29 @@ describe('renderDocxBuffer / sanitizeDocx', () => {
     expect(() => sanitizeDocx(bomb())).toThrow(BadRequestError);
   });
 
+  it('sanitizeDocx accepte un document RENDU de 8 Mo de XML ; le même fichier reste refusé comme modèle', async () => {
+    const row = '<w:p><w:r><w:t>Appel de fonds — lot 12 : 45 000 FCFA</w:t></w:r></w:p>';
+    const body = row.repeat(Math.ceil((8 * MB) / row.length));
+    const rendered = build(zip =>
+      zip.file('word/document.xml', `<w:document xmlns:w="w"><w:body>${body}</w:body></w:document>`)
+    );
+    // Conversion PDF d'un relevé rendu : plafond de 20 Mo par partie XML.
+    const out = new PizZip(sanitizeDocx(rendered)).file('word/document.xml')!.asText();
+    expect(out.length).toBeGreaterThan(8 * MB);
+    // Plafond explicite de l'appelant : 5 Mo, refusé.
+    expect(() => sanitizeDocx(rendered, { maxXmlEntryUncompressedBytes: 5 * MB })).toThrow(TOO_BIG);
+    // Upload et rendu d'un MODÈLE : 5 Mo par partie XML, refusé.
+    expect(() => assertDocxUpload(rendered)).toThrow(TOO_BIG);
+    expect(() => assertDocxWithinLimits(rendered)).toThrow(TOO_BIG);
+    expect(() => renderDocxBuffer(rendered, {})).toThrow(TOO_BIG);
+    await expect(
+      uploadTemplate('t1', 'LEASE_HABITATION' as any, rendered, 'releve.docx', 'Relevé', 'u1')
+    ).rejects.toThrow(TOO_BIG);
+    // Le total reste borné à 20 Mo, même pour un document rendu.
+    const tooBig = build(zip => zip.file('word/document.xml', ' '.repeat(21 * MB)));
+    expect(() => sanitizeDocx(tooBig)).toThrow(TOO_BIG);
+  });
+
   it('refusent le nombre d’entrées falsifié et la taille mensongère', () => {
     const lying = forgeZip([
       ...wordEntries(),
