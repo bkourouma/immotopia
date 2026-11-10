@@ -39,8 +39,10 @@ const BUILD_DIR = join(WEB_ROOT, 'build');
  * dépassaient le plafond de 42 o.
  * Relevé de 229 376 à 230 400 o (+1 Kio) le 2026-10-19, sur décision du superviseur :
  * la cloche de notifications, l'icône Messagerie et leurs entrées de menu (lot 3) ne laissaient que 269 o de marge.
+ * Relevé de 230 400 à 231 424 o (+1 Kio) le 2026-11-10, sur décision du superviseur (PR de sécurité n°205) :
+ * la redirection de connexion normalisée et la purge des données locales (expiration de session, changement de compte) dépassaient le plafond de 165 o.
  */
-const DEFAULT_BUDGET = 230_400;
+const DEFAULT_BUDGET = 231_424;
 
 const args = process.argv.slice(2);
 const asJson = args.includes('--json');
