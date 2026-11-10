@@ -4,14 +4,17 @@
  * actif (désactivation ou retrait du rôle).
  */
 const tx: any = {
-  membership: { update: jest.fn() },
+  membership: { update: jest.fn(), count: jest.fn() },
+  user: { findUnique: jest.fn() },
   refreshToken: { updateMany: jest.fn() },
-  userRole: { deleteMany: jest.fn(), createMany: jest.fn() }
+  tenantClient: { count: jest.fn() },
+  userRole: { deleteMany: jest.fn(), createMany: jest.fn(), count: jest.fn() }
 };
 const prismaMock: any = {
   membership: { findUnique: jest.fn() },
   role: { findMany: jest.fn() },
   userRole: { count: jest.fn() },
+  user: { findUnique: jest.fn() },
   $transaction: jest.fn(async (cb: (client: unknown) => Promise<unknown>) => cb(tx))
 };
 jest.mock('../../src/utils/database', () => ({ prisma: prismaMock }));
@@ -35,11 +38,24 @@ beforeEach(() => {
   prismaMock.membership.findUnique.mockResolvedValue({ id: 'm1', status: MembershipStatus.ACTIVE });
   tx.membership.update.mockResolvedValue({ id: 'm1', status: MembershipStatus.DISABLED });
   tx.refreshToken.updateMany.mockResolvedValue({ count: 0 });
+  tx.user.findUnique.mockResolvedValue({ globalRole: 'USER' });
+  tx.membership.count.mockResolvedValue(0);
+  tx.userRole.count.mockResolvedValue(0);
+  tx.tenantClient.count.mockResolvedValue(0);
+  prismaMock.user.findUnique.mockResolvedValue({ globalRole: 'USER' });
+  prismaMock.userRole.count.mockReset();
 });
 
-/** `count` est appelé d'abord pour « la cible est-elle admin ? », puis pour « combien d'autres admins actifs ? ». */
-function adminCounts(targetIsAdmin: number, otherActiveAdmins: number) {
-  prismaMock.userRole.count.mockResolvedValueOnce(targetIsAdmin).mockResolvedValueOnce(otherActiveAdmins);
+/**
+ * `userRole.count` : la cible est-elle admin ? (userId = cible), l'acteur 'u1'
+ * est-il admin ? (userId = 'u1'), combien d'autres admins actifs ? (userId: { not }).
+ */
+function adminCounts(targetIsAdmin: number, otherActiveAdmins: number, actorIsAdmin = 1) {
+  prismaMock.userRole.count.mockImplementation(async ({ where }: any) => {
+    if (typeof where.userId === 'object') return otherActiveAdmins;
+    if (where.userId === 'u1') return actorIsAdmin;
+    return targetIsAdmin;
+  });
 }
 
 describe('disableMember', () => {
@@ -63,7 +79,7 @@ describe('disableMember', () => {
   });
 
   it('désactive un autre collaborateur (non administrateur)', async () => {
-    prismaMock.userRole.count.mockResolvedValue(0);
+    adminCounts(0, 0);
     await disableMember('u2', TENANT, 'u1');
     expect(tx.membership.update).toHaveBeenCalledTimes(1);
   });
@@ -73,7 +89,9 @@ describe('disableMember', () => {
     await disableMember('u2', TENANT, 'u1');
     expect(tx.membership.update).toHaveBeenCalledTimes(1);
     // Le décompte des autres administrateurs exclut la cible et n'admet que des membres actifs.
-    expect(prismaMock.userRole.count.mock.calls[1][0].where).toMatchObject({
+    expect(
+      prismaMock.userRole.count.mock.calls.map((c: any) => c[0].where).find((w: any) => typeof w.userId === 'object')
+    ).toMatchObject({
       tenantId: TENANT,
       userId: { not: 'u2' },
       role: { key: 'TENANT_ADMIN' },
@@ -101,8 +119,10 @@ describe('updateMemberRoles', () => {
 
   it("ne contrôle rien quand le rôle d'administrateur est conservé", async () => {
     prismaMock.role.findMany.mockResolvedValue([{ id: 'r-admin', key: 'TENANT_ADMIN' }]);
+    adminCounts(1, 0);
     await updateMemberRoles('u2', TENANT, { roleIds: ['r-admin'] }, 'u1').catch(() => undefined);
-    expect(prismaMock.userRole.count).not.toHaveBeenCalled();
+    // Pas de décompte « autres administrateurs » quand le rôle est conservé.
+    expect(prismaMock.userRole.count.mock.calls.some((c: any) => typeof c[0].where.userId === 'object')).toBe(false);
     expect(tx.userRole.deleteMany).toHaveBeenCalledTimes(1);
   });
 });

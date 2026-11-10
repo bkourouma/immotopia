@@ -37,6 +37,11 @@ const visibleIds = (permissions: ReadonlySet<string>, kind: 'read' | 'write') =>
     COMMUNICATION_MODULES.flatMap(module => searchCapabilities({ module, kind, permissions }).entries.map(e => e.id))
   );
 
+const EMAIL_TEMPLATE_WRITES = new Set([
+  'PATCH /api/tenants/:tenantId/email-notifications/:key',
+  'POST /api/tenants/:tenantId/email-notifications/:key/reset'
+]);
+
 describe('catalogue IA — gardes de routeur', () => {
   it('aucune écriture du catalogue n’est sans permission connue (hors liste blanche justifiée)', () => {
     const offenders = getCatalogEntries()
@@ -53,7 +58,12 @@ describe('catalogue IA — gardes de routeur', () => {
       expect(ids).toContain(`POST /api/tenants/:tenantId/${suffix}`);
     }
     expect(ids).toContain('POST /api/tenants/:tenantId/newsletter/campaigns/:campaignId/send');
-    for (const entry of communicationEntries()) expect(entry.permissions).toEqual(['COMMUNICATION_VIEW']);
+    // TEN-05 : l'ecriture des gabarits e-mail exige en plus TENANT_SETTINGS_EDIT (garde de la route).
+    for (const entry of communicationEntries()) {
+      expect(entry.permissions).toEqual(
+        EMAIL_TEMPLATE_WRITES.has(entry.id) ? ['COMMUNICATION_VIEW', 'TENANT_SETTINGS_EDIT'] : ['COMMUNICATION_VIEW']
+      );
+    }
   });
 
   it('un utilisateur qui n’a que PROPERTIES_VIEW ne les voit ni en lecture ni en écriture, et ne peut pas les planifier', () => {
@@ -68,7 +78,8 @@ describe('catalogue IA — gardes de routeur', () => {
     const writes = visibleIds(COMMUNICATION_ROLE, 'write');
     for (const entry of communicationWrites()) {
       expect(findWritableEntry(entry.id)).toBeDefined();
-      expect(writes.has(entry.id)).toBe(true);
+      // Les deux ecritures de gabarit e-mail demandent TENANT_SETTINGS_EDIT : invisibles pour ce role seul.
+      expect(writes.has(entry.id)).toBe(!EMAIL_TEMPLATE_WRITES.has(entry.id));
     }
     const reads = visibleIds(COMMUNICATION_ROLE, 'read');
     for (const entry of communicationEntries().filter(e => e.method === 'GET' && !e.sensitive)) {
@@ -77,16 +88,15 @@ describe('catalogue IA — gardes de routeur', () => {
   });
 
   it('findWritableEntry refuse une écriture sans permission connue (fail closed)', () => {
-    expect(findWritableEntry('PATCH /api/tenants/:tenantId/client-details')).toBeUndefined();
+    expect(findWritableEntry('POST /api/tenants/:tenantId/notifications/read-all')).toBeUndefined();
   });
 
-  it('le générateur écarte PATCH client-details et les deux écritures de la boîte de notifications (libre-service, aucune permission) et ne laisse aucune écriture sans info', () => {
+  it('le générateur écarte les deux écritures de la boîte de notifications (libre-service, aucune permission) et ne laisse aucune écriture sans info', () => {
     const built = buildCatalog(collectRoutes(app));
-    // client-details : libre-service du portail. `notifications/:id/read` et `notifications/read-all` : simple
+    // `notifications/:id/read` et `notifications/read-all` : simple
     // appartenance (l'utilisateur marque SES notifications lues), aucune permission : fail closed.
     expect(built.excludedUnguardedWrites.map(e => e.id).sort()).toEqual(
       [
-        'PATCH /api/tenants/:tenantId/client-details',
         'POST /api/tenants/:tenantId/notifications/:id/read',
         'POST /api/tenants/:tenantId/notifications/read-all'
       ].sort()

@@ -7,7 +7,6 @@ import {
   getTenantClientsHandler,
   syncOwnerClientsHandler,
   getMyMemberships,
-  updateClientDetails,
   unregisterFromTenant,
   updateTenantSelfHandler,
   uploadTenantLogoHandler
@@ -183,7 +182,6 @@ router.post(
   syncOwnerClientsHandler
 );
 
-router.patch('/:tenantId/client-details', authenticate, requireTenantAccess, updateClientDetails);
 router.delete('/:tenantId/unregister', authenticate, unregisterFromTenant);
 
 // L'alias POST /api/tenants a ete supprime (lot F2) : la creation d'agence

@@ -6,6 +6,37 @@ import {
   type EmailNotificationKey
 } from '../constants/email-notification-keys';
 import { EMAIL_NOTIFICATION_DEFAULT_TEMPLATES } from '../constants/email-notification-default-templates';
+import { BadRequestError } from '../middleware/error-middleware';
+
+/** Colonne `subject_override` : VARCHAR(500). */
+export const EMAIL_SUBJECT_MAX_LENGTH = 500;
+
+/**
+ * Sujet saisi par l'agence : sans retour a la ligne ni caractere de controle (injection d'en-tete),
+ * espaces compactes, borne a la taille de la colonne. Vide => null (retour au gabarit par defaut).
+ */
+export function sanitizeEmailSubject(value: unknown): string | null {
+  if (value === null) return null;
+  if (typeof value !== 'string') throw new BadRequestError('Sujet invalide');
+  const cleaned = value
+    .replace(/[\p{Cc}\p{Zl}\p{Zp}]+/gu, ' ')
+    .replace(/ {2,}/g, ' ')
+    .trim();
+  return cleaned ? cleaned.slice(0, EMAIL_SUBJECT_MAX_LENGTH) : null;
+}
+
+/**
+ * Corps HTML saisi par l'agence : assaini par la liste blanche commune (utils/sanitize-html).
+ * Import paresseux : jsdom/dompurify (ESM) ne doivent pas etre charges avec ce service par les
+ * modules qui ne font qu'envoyer des e-mails (ni par leurs tests).
+ */
+export async function sanitizeEmailBody(value: unknown): Promise<string | null> {
+  if (value === null) return null;
+  if (typeof value !== 'string') throw new BadRequestError('Corps invalide');
+  const { sanitizeHtml } = await import('../utils/sanitize-html');
+  const cleaned = sanitizeHtml(value).trim();
+  return cleaned ? cleaned : null;
+}
 
 export interface EmailNotificationConfigItem {
   key: EmailNotificationKey;
@@ -133,6 +164,10 @@ export async function updateEmailNotificationConfig(
     throw new Error(`Invalid notification key: ${notificationKey}`);
   }
 
+  const subjectOverride = data.subjectOverride !== undefined ? sanitizeEmailSubject(data.subjectOverride) : undefined;
+  const bodyHtmlOverride =
+    data.bodyHtmlOverride !== undefined ? await sanitizeEmailBody(data.bodyHtmlOverride) : undefined;
+
   const updated = await prisma.emailNotificationConfig.upsert({
     where: {
       tenant_id_notification_key: { tenant_id: tenantId, notification_key: notificationKey }
@@ -141,13 +176,13 @@ export async function updateEmailNotificationConfig(
       tenant_id: tenantId,
       notification_key: notificationKey,
       enabled: data.enabled ?? true,
-      subject_override: data.subjectOverride ?? null,
-      body_html_override: data.bodyHtmlOverride ?? null
+      subject_override: subjectOverride ?? null,
+      body_html_override: bodyHtmlOverride ?? null
     },
     update: {
       ...(data.enabled !== undefined && { enabled: data.enabled }),
-      ...(data.subjectOverride !== undefined && { subject_override: data.subjectOverride }),
-      ...(data.bodyHtmlOverride !== undefined && { body_html_override: data.bodyHtmlOverride })
+      ...(subjectOverride !== undefined && { subject_override: subjectOverride }),
+      ...(bodyHtmlOverride !== undefined && { body_html_override: bodyHtmlOverride })
     },
     select: {
       id: true,

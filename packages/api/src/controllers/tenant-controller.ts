@@ -6,7 +6,6 @@ import {
   getTenantClients,
   getUserTenantMemberships,
   listActiveTenants,
-  updateTenantClientDetails,
   removeTenantClient,
   updateTenant,
   listTenants as listTenantsService,
@@ -608,33 +607,6 @@ export async function getMyMemberships(req: Request, res: Response): Promise<voi
 
     const memberships = await getUserTenantMemberships(req.user.userId);
     res.status(200).json({ success: true, data: memberships });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue.';
-    res.status(400).json({ success: false, message: errorMessage });
-  }
-}
-
-/**
- * Update tenant client details
- * PATCH /api/tenants/:tenantId/client-details
- */
-export async function updateClientDetails(req: Request, res: Response): Promise<void> {
-  try {
-    if (!req.user?.userId) {
-      res.status(401).json({ success: false, message: 'Authentification requise.' });
-      return;
-    }
-
-    const { tenantId } = req.params;
-    const { details } = req.body;
-
-    if (!details || typeof details !== 'object') {
-      res.status(400).json({ success: false, message: 'Détails invalides.' });
-      return;
-    }
-
-    const updated = await updateTenantClientDetails(req.user.userId, tenantId, details);
-    res.status(200).json({ success: true, data: updated });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue.';
     res.status(400).json({ success: false, message: errorMessage });

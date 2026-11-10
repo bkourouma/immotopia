@@ -15,7 +15,8 @@ import {
   Collapse,
   Select,
   Divider,
-  Checkbox
+  Checkbox,
+  Alert
 } from 'antd';
 import { EditOutlined, MailOutlined, CodeOutlined, TeamOutlined, UserOutlined } from '@ant-design/icons';
 import { HtmlCodeEditor } from '../../components/HtmlCodeEditor';
@@ -29,6 +30,7 @@ import { VARIABLES_BY_EVENT_KEY, getEventGroupKey } from '../../constants/email-
 import { getVariablePlaceholder } from '../../constants/template-variables';
 import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion } from '../../utils/list-search';
+import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
@@ -62,6 +64,10 @@ export function EmailNotificationsUnifiedPage() {
   const [applyToOtherKeys, setApplyToOtherKeys] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm();
+  // Mêmes droits que l'API (écriture = TENANT_SETTINGS_EDIT). `permissions === null` : aucune restriction
+  // (administrateur d'agence, super-admin, échec réseau).
+  const { permissions } = useMyMenuAccess(tenantId);
+  const canEdit = permissions === null || permissions.has('TENANT_SETTINGS_EDIT');
 
   const load = async () => {
     if (!tenantId) return;
@@ -167,7 +173,7 @@ export function EmailNotificationsUnifiedPage() {
   };
 
   const handleToggleEnabled = async (key: string, enabled: boolean) => {
-    if (!tenantId) return;
+    if (!tenantId || !canEdit) return;
     try {
       await emailNotificationConfigService.update(tenantId, key, { enabled });
       setItems(prev => prev.map(i => (i.key === key ? { ...i, enabled } : i)));
@@ -188,7 +194,7 @@ export function EmailNotificationsUnifiedPage() {
   };
 
   const handleSaveTemplate = async () => {
-    if (!tenantId || !selectedItem) return;
+    if (!canEdit || !tenantId || !selectedItem) return;
     try {
       const values = await form.validateFields();
       const payload: UpdateEmailNotificationPayload = {
@@ -220,7 +226,7 @@ export function EmailNotificationsUnifiedPage() {
   };
 
   const handleReset = async () => {
-    if (!tenantId || !selectedItem) return;
+    if (!canEdit || !tenantId || !selectedItem) return;
     try {
       await emailNotificationConfigService.reset(tenantId, selectedItem.key);
       message.success(t('Template réinitialisé'));
@@ -270,7 +276,7 @@ export function EmailNotificationsUnifiedPage() {
       width: 90,
       exportValue: (record: EmailNotificationConfigItem) => record.enabled,
       render: (enabled: boolean, record: EmailNotificationConfigItem) => (
-        <Switch checked={enabled} onChange={checked => handleToggleEnabled(record.key, checked)} />
+        <Switch checked={enabled} disabled={!canEdit} onChange={checked => handleToggleEnabled(record.key, checked)} />
       )
     },
     {
@@ -323,6 +329,14 @@ export function EmailNotificationsUnifiedPage() {
           <Text strong style={{ display: 'block', marginBottom: 8 }}>
             {t('Choisir un événement déclencheur')}
           </Text>
+          {!canEdit && (
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+              message={t("Lecture seule : vous n'avez pas le droit de modifier ces modèles d'e-mail")}
+            />
+          )}
           <Select
             showSearch
             optionFilterProp="label"
@@ -481,10 +495,12 @@ export function EmailNotificationsUnifiedPage() {
                     )}
 
                     <Space>
-                      <Button type="primary" onClick={handleSaveTemplate} loading={saving}>
+                      <Button type="primary" onClick={handleSaveTemplate} loading={saving} disabled={!canEdit}>
                         {t('Enregistrer')}
                       </Button>
-                      <Button onClick={handleReset}>{t('Réinitialiser au modèle par défaut')}</Button>
+                      <Button onClick={handleReset} disabled={!canEdit}>
+                        {t('Réinitialiser au modèle par défaut')}
+                      </Button>
                     </Space>
                   </Form>
                 </>

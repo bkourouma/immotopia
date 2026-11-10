@@ -15,6 +15,7 @@ import {
 import { assertBelongsToTenant } from '../utils/tenant-ownership';
 import crypto from 'crypto';
 import { t } from '../i18n';
+import { TENANT_ADMIN_ROLE_KEY, assertActorMayTouchAdmin } from './tenant-admin-guard';
 
 export function getFrontendBaseUrl(): string {
   return (process.env.FRONTEND_URL || process.env.CLIENT_URL || 'http://localhost:3000').replace(/\/$/, '');
@@ -42,7 +43,7 @@ const TENANT_ROLE_LABELS_FR: Record<string, string> = {
  * Sans ce controle, l'endpoint d'invitation permettrait d'attribuer un role
  * PLATFORM a un simple collaborateur.
  */
-async function assertTenantRoles(roleIds: string[]): Promise<void> {
+async function assertTenantRoles(roleIds: string[], tenantId: string, actorUserId: string | undefined): Promise<void> {
   if (!roleIds || roleIds.length === 0) return;
   const roles = await prisma.role.findMany({
     where: { id: { in: roleIds } },
@@ -54,6 +55,11 @@ async function assertTenantRoles(roleIds: string[]): Promise<void> {
   }
   if (roles.some(role => role.scope !== 'TENANT')) {
     throw new BadRequestError("Seuls les roles d'agence peuvent etre attribues par invitation.");
+  }
+  // Inviter avec TENANT_ADMIN = attribuer ce rôle : réservé au super-admin et aux
+  // administrateurs de l'agence (un gestionnaire USERS_CREATE ne s'élève pas ainsi).
+  if (roles.some(role => role.key === TENANT_ADMIN_ROLE_KEY)) {
+    await assertActorMayTouchAdmin(actorUserId, tenantId);
   }
 }
 
@@ -271,7 +277,7 @@ export async function inviteCollaborator(data: InviteCollaboratorRequest) {
     }
   }
 
-  await assertTenantRoles(data.roleIds);
+  await assertTenantRoles(data.roleIds, data.tenantId, data.invitedByUserId);
 
   // Create invitation in database (write core shared with tenant-provisioning-service)
   const { invitation, token } = await prisma.$transaction(tx =>
@@ -636,6 +642,14 @@ export async function acceptInvitation(data: AcceptInvitationRequest) {
     // permissions sont calculees uniquement a partir de user_roles : sans
     // cette etape, le collaborateur arrive sans aucun droit.
     if (invitation.roleIds.length > 0) {
+      // Une invitation TENANT_ADMIN posée par un non-administrateur (avant le
+      // correctif, ou inviteur rétrogradé depuis) n'élève personne à l'acceptation.
+      const adminRoleCount = await tx.role.count({
+        where: { id: { in: invitation.roleIds }, key: TENANT_ADMIN_ROLE_KEY }
+      });
+      if (adminRoleCount > 0) {
+        await assertActorMayTouchAdmin(invitation.invitedBy ?? undefined, invitation.tenantId);
+      }
       await tx.userRole.createMany({
         data: invitation.roleIds.map(roleId => ({
           userId: activatedUser.id,

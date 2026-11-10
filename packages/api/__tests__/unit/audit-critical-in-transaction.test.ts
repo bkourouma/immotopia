@@ -6,10 +6,12 @@
  * Un evenement non critique reste sur la file asynchrone `logAuditEvent`.
  */
 const tx: any = {
-  userRole: { deleteMany: jest.fn(), createMany: jest.fn() },
-  membership: { update: jest.fn() },
+  userRole: { deleteMany: jest.fn(), createMany: jest.fn(), count: jest.fn() },
+  membership: { update: jest.fn(), count: jest.fn() },
   refreshToken: { updateMany: jest.fn() },
-  user: { update: jest.fn() },
+  user: { update: jest.fn(), findUnique: jest.fn() },
+  // Prédicat « compte partagé » (tenant-admin-guard) relu dans la transaction.
+  tenantClient: { count: jest.fn() },
   passwordResetToken: { updateMany: jest.fn(), create: jest.fn() },
   tenant: { update: jest.fn() },
   subscription: { update: jest.fn() },
@@ -76,6 +78,10 @@ beforeEach(() => {
   prismaMock.membership.count.mockResolvedValue(0);
   prismaMock.tenantClient.count.mockResolvedValue(0);
   prismaMock.user.findUnique.mockResolvedValue({ globalRole: 'USER' });
+  tx.user.findUnique.mockResolvedValue({ globalRole: 'USER' });
+  tx.membership.count.mockResolvedValue(0);
+  tx.userRole.count.mockResolvedValue(0);
+  tx.tenantClient.count.mockResolvedValue(0);
   tx.refreshToken.updateMany.mockResolvedValue({ count: 2 });
   prismaMock.membership.findUnique.mockResolvedValue({
     id: 'm1',
@@ -150,6 +156,14 @@ describe('membership-service : actions critiques dans la transaction', () => {
     await revokeMemberSessions(USER, TENANT, ACTOR);
     expect(tx.refreshToken.updateMany).toHaveBeenCalledTimes(1);
     expectRecorded('SESSIONS_REVOKED');
+  });
+
+  it('SESSIONS_REVOKED : compte partagé, refreshToken.updateMany non appelé et aucun audit mensonger', async () => {
+    tx.membership.count.mockResolvedValue(1);
+    const result = await revokeMemberSessions(USER, TENANT, ACTOR);
+    expect(result.sessionsRevoked).toBe(false);
+    expect(tx.refreshToken.updateMany).not.toHaveBeenCalled();
+    expect(mockRecordAudit).not.toHaveBeenCalled();
   });
 
   it("l'echec de l'audit fait echouer l'action (aucune trace, pas de succes)", async () => {

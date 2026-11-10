@@ -4,7 +4,10 @@
  * (lien de réinitialisation seul) ; select minimal.
  */
 const tx: any = {
-  user: { update: jest.fn() },
+  user: { update: jest.fn(), findUnique: jest.fn() },
+  membership: { count: jest.fn() },
+  userRole: { count: jest.fn() },
+  tenantClient: { count: jest.fn() },
   refreshToken: { updateMany: jest.fn() },
   passwordResetToken: { updateMany: jest.fn(), create: jest.fn() }
 };
@@ -48,6 +51,10 @@ beforeEach(() => {
   prismaMock.tenantClient.count.mockResolvedValue(0);
   prismaMock.user.findUnique.mockResolvedValue({ globalRole: 'USER' });
   tx.refreshToken.updateMany.mockResolvedValue({ count: 1 });
+  tx.user.findUnique.mockResolvedValue({ globalRole: 'USER' });
+  tx.membership.count.mockResolvedValue(0);
+  tx.userRole.count.mockResolvedValue(0);
+  tx.tenantClient.count.mockResolvedValue(0);
 });
 
 describe('resetMemberPassword', () => {

@@ -632,41 +632,6 @@ export async function getUserTenantMemberships(userId: string) {
 }
 
 /**
- * Update a tenant client's details
- * @param userId - User ID
- * @param tenantId - Tenant ID
- * @param details - New details
- * @returns Updated tenant client
- */
-export async function updateTenantClientDetails(userId: string, tenantId: string, details: Prisma.InputJsonValue) {
-  return prisma.tenantClient.update({
-    where: {
-      userId_tenantId: {
-        userId,
-        tenantId
-      }
-    },
-    data: { details },
-    include: {
-      user: {
-        select: {
-          id: true,
-          email: true,
-          fullName: true
-        }
-      },
-      tenant: {
-        select: {
-          id: true,
-          name: true,
-          slug: true
-        }
-      }
-    }
-  });
-}
-
-/**
  * Remove a client from a tenant
  * @param userId - User ID
  * @param tenantId - Tenant ID
