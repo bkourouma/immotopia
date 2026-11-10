@@ -2,7 +2,7 @@
 
 ## Environnement
 
-Node 20 (voir `.nvmrc`), npm 10. Une seule installation depuis la racine :
+Node 22 (voir `.nvmrc`), npm 10. Une seule installation depuis la racine :
 `npm install`. N'installez pas dans `apps/web` ou `packages/api` séparément :
 le dépôt est un monorepo npm workspaces avec un unique `package-lock.json`.
 

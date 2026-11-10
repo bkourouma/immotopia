@@ -6,12 +6,12 @@ locataire et propriétaire.
 
 ## Stack
 
-| | |
-|---|---|
-| Backend | Node 20, TypeScript, Express 4, Prisma 5, PostgreSQL 16 |
-| Frontend | React 18, TypeScript, Ant Design 6, Vite 6 (tests : Vitest) |
-| Auth | JWT en cookies httpOnly, refresh tokens rotatifs, Google OAuth |
-| Intégrations | WaSender / Twilio (WhatsApp), SMTP (e-mail) |
+|              |                                                                |
+| ------------ | -------------------------------------------------------------- |
+| Backend      | Node 22, TypeScript, Express 4, Prisma 5, PostgreSQL 16        |
+| Frontend     | React 18, TypeScript, Ant Design 6, Vite 6 (tests : Vitest)    |
+| Auth         | JWT en cookies httpOnly, refresh tokens rotatifs, Google OAuth |
+| Intégrations | WaSender / Twilio (WhatsApp), SMTP (e-mail)                    |
 
 Monorepo en npm workspaces :
 
@@ -26,7 +26,7 @@ specs/                spécifications fonctionnelles par module
 
 ## Démarrage
 
-Prérequis : Node 20 (`.nvmrc`), npm 10, et PostgreSQL 16 — soit installé
+Prérequis : Node 22 (`.nvmrc`), npm 10, et PostgreSQL 16 — soit installé
 localement, soit via Docker.
 
 ```bash
@@ -34,6 +34,11 @@ localement, soit via Docker.
 npm install
 
 # 2. Base de données
+# POSTGRES_PASSWORD est obligatoire (aucune valeur par défaut) : l'exporter, ou le
+# poser dans un fichier .env à la racine (ignoré par git). Il doit correspondre au
+# mot de passe de DATABASE_URL à l'étape 3 (choisissez-le sans / + = @ : par exemple
+# `openssl rand -hex 24`). Postgres n'écoute que sur 127.0.0.1.
+export POSTGRES_PASSWORD='<mot-de-passe-de-votre-choix>'
 docker compose up -d db          # ou votre PostgreSQL local
 
 # 3. Configuration
@@ -66,18 +71,19 @@ sur la base ciblée par `DATABASE_URL`. Il refuse de s'exécuter sans
 
 ## Commandes
 
-| Commande | Effet |
-|---|---|
-| `npm run dev` | API + frontend en parallèle |
-| `npm run dev:api` / `npm run dev:web` | Un seul des deux |
-| `npm run build` | Compile l'API puis le frontend |
-| `npm run typecheck` | `tsc --noEmit` sur les deux paquets |
-| `npm run lint` | ESLint sur les deux paquets |
-| `npm test` | Tests backend (Jest) |
-| `npm run test:web` | Tests frontend |
+| Commande                              | Effet                               |
+| ------------------------------------- | ----------------------------------- |
+| `npm run dev`                         | API + frontend en parallèle         |
+| `npm run dev:api` / `npm run dev:web` | Un seul des deux                    |
+| `npm run build`                       | Compile l'API puis le frontend      |
+| `npm run typecheck`                   | `tsc --noEmit` sur les deux paquets |
+| `npm run lint`                        | ESLint sur les deux paquets         |
+| `npm test`                            | Tests backend (Jest)                |
+| `npm run test:web`                    | Tests frontend                      |
 
-Docker : `docker compose up -d` lance PostgreSQL et l'API. `JWT_SECRET` est
-obligatoire dans l'environnement.
+Docker : `docker compose up -d` lance PostgreSQL et l'API. `JWT_SECRET` et
+`POSTGRES_PASSWORD` sont obligatoires dans l'environnement (aucune valeur par
+défaut) ; PostgreSQL est publié sur `127.0.0.1` seulement.
 
 ## Documentation
 

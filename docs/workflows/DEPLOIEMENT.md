@@ -100,8 +100,9 @@ Dans ce document : [éprouvé ou non](#éprouvé-et-non-éprouvé) ·
     tables et 80 migrations restaurées, conteneur et volume supprimés : le nombre
     de volumes Docker est le même avant et après) ;
   - en-têtes de sécurité de `infra/nginx/spa.conf` sur une image web réelle avec
-    un faux upstream imitant Helmet : `nginx -t` valide, les trois en-têtes sur le
-    SPA, les assets, `/healthz` et les icônes, un seul jeu (sans doublon) sur
+    un faux upstream imitant Helmet : `nginx -t` valide, les trois premiers
+    en-têtes (les deux ajoutés depuis, CSP en Report-Only et Permissions-Policy,
+    ne figuraient pas dans cet essai) sur le SPA, les assets, `/healthz` et les icônes, un seul jeu (sans doublon) sur
     `/api/`, `/uploads/` et `/health` ;
   - le refus, par le seed, d'un mot de passe ou d'un e-mail que la connexion
     modifierait : test unitaire (64 cas) qui exécute le vrai middleware de
@@ -243,8 +244,12 @@ données. Six d'entre eux refusent désormais `NODE_ENV=production` (code de sor
 `create-super-admin.ts`, `seed-quick-login-users.ts`, `seed-comprehensive-data.ts`,
 `seed-crm-data.ts`, `seed-tenant-members.ts` et `seed-users.ts`. Les fichiers de
 secrets posent `NODE_ENV=production` (contrôlé par `deploy.sh`) : c'est ce qui
-rend la garde effective dans l'image. **Les `seed-demo-*.ts` ne sont pas gardés**
-([points ouverts](#points-ouverts)) ; `bootstrap.sh` n'en lance aucun.
+rend la garde effective dans l'image. Les `seed-demo-*.ts`
+(`affaires`, `documents`, `locative`, `maintenance`, `syndic`, `visites`),
+`fix-amadou-kone.ts`, `assign-tenant-admin.ts` et `assign-rbac-roles.ts` sont
+gardés eux aussi par `assertNotProduction` ; seuls `syndic-demo-seed.ts` et
+`syndic-demo-fund-movements.ts` ne le sont pas ([points ouverts](#points-ouverts)).
+`bootstrap.sh` n'en lance aucun.
 
 ## Première mise en service de la production
 
@@ -813,14 +818,23 @@ dans [Sauvegarde et restauration](#sauvegarde-et-restauration).
 **Copie hors serveur provisoire, sur le poste de travail.** En attendant un stockage
 distant chiffré (rclone), `./infra/scripts/pull-backups.sh prod [--fresh]`, lancé
 depuis un terminal bash du poste (Git Bash sous Windows), rapatrie par SSH la
-dernière sauvegarde (base et documents) et le fichier de secrets dans
-`backups-serveur/prod/AAAA-MM-JJ-HHMM/` du projet. Ce dossier est **ignoré par git**
+dernière sauvegarde (base et documents) dans
+`backups-serveur/prod/AAAA-MM-JJ-HHMM/` du projet. **Par défaut, le fichier de
+secrets de la pile (`.env`) n'est plus rapatrié** : il faut l'option explicite
+`--with-env` (`pull-backups.sh prod --with-env`), à réserver au cas où la copie
+des secrets hors serveur est voulue (étape 1) ; `--no-env` reste accepté, sans
+effet. Ce dossier est **ignoré par git**
 (`.gitignore`, `.dockerignore`) et le script **refuse de tourner** si la destination
 ne l'est pas : le dépôt est public. Chaque fichier est vérifié (somme sha256
 comparée à celle du serveur, `gzip -t`, `tar -tzf`) et les 7 copies les plus
-récentes sont gardées (`--keep N`). Ces copies contiennent toutes les données et
-tous les secrets **en clair** : chiffrer le disque (BitLocker), ne pas les placer
-dans un dossier synchronisé non chiffré. Éprouvé le 2026-09-30 sur la production
+récentes sont gardées (`--keep N`). Ces copies contiennent toutes les données
+(et, avec `--with-env`, tous les secrets) **en clair** : chiffrer le disque
+(BitLocker), ne pas les placer dans un dossier synchronisé non chiffré.
+**Recommandation, non implémentée** : chiffrer aussi chaque copie dès sa réception
+avec `age` (`age -r <clé publique> -o db-….sql.gz.age db-….sql.gz`) ou `gpg`
+(`gpg --encrypt` ou `--symmetric`), puis supprimer le fichier en clair ; il en va
+de même pour les sauvegardes du serveur (`backup.sh` les écrit en clair) tant
+qu'une copie distante chiffrée (rclone `crypt`) n'est pas en place. Éprouvé le 2026-09-30 sur la production
 (sauvegarde fraîche, trois fichiers, sommes identiques).
 
 Le cron, dans la crontab de `deployer` :
@@ -2141,10 +2155,17 @@ ls -lh /home/deployer/backups/immotopia-prod
   `db-*.sql.gz` de moins de 24 heures, `deploy.sh prod` s'arrête juste avant les
   migrations, donc après plusieurs minutes de build : sauvegarder d'abord.
 - **En-têtes de sécurité du nginx embarqué (`infra/nginx/spa.conf`).** Le serveur
-  pose `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN` et
-  `Referrer-Policy: strict-origin-when-cross-origin` sur les deux piles. Dans
+  pose cinq en-têtes sur les deux piles : `X-Content-Type-Options: nosniff`,
+  `X-Frame-Options: SAMEORIGIN`,
+  `Referrer-Policy: strict-origin-when-cross-origin`,
+  `Content-Security-Policy-Report-Only` (politique de départ, en observation
+  seule : rien n'est bloqué) et `Permissions-Policy` (caméra et micro réservés à
+  l'application, géolocalisation, paiement et USB coupés). `frame-ancestors` est
+  volontairement absent de la CSP Report-Only, où le navigateur l'ignore : à
+  ajouter (`frame-ancestors 'self'`) quand la CSP passera en
+  `Content-Security-Policy` (enforce). Dans
   nginx, **un `add_header` défini dans un `location` annule tout l'héritage** des
-  `add_header` du niveau supérieur : ces trois lignes sont donc répétées dans
+  `add_header` du niveau supérieur : ces cinq lignes sont donc répétées dans
   chaque `location` qui en définit déjà un (`/healthz`, `/assets/`, `/fonts/`,
   icônes, `/index.html`), et tout nouveau `location` avec `add_header` doit faire
   de même, sous peine de perdre silencieusement les en-têtes sur ses réponses.
@@ -2162,8 +2183,11 @@ ls -lh /home/deployer/backups/immotopia-prod
 - **Les seeds de développement refusent la production** (`NODE_ENV=production`,
   code de sortie 1) : `create-super-admin.ts`, `seed-quick-login-users.ts`,
   `seed-comprehensive-data.ts`, `seed-crm-data.ts`, `seed-tenant-members.ts`,
-  `seed-users.ts`. Ne pas tenter de les contourner ; amorcer avec
-  `bootstrap.sh`. Les `seed-demo-*.ts` ne sont pas gardés (points ouverts).
+  `seed-users.ts`, ainsi que les `seed-demo-*.ts`, `fix-amadou-kone.ts`,
+  `assign-tenant-admin.ts` et `assign-rbac-roles.ts` (garde
+  `assertNotProduction`). Ne pas tenter de les contourner ; amorcer avec
+  `bootstrap.sh`. Seuls `syndic-demo-seed.ts` et `syndic-demo-fund-movements.ts`
+  ne sont pas gardés (points ouverts).
 - **Un seul checkout pour deux piles** : déplacer le dépôt sur un autre commit
   pour le staging change ce que le prochain déploiement de la production
   construirait. Avant la production, toujours revenir au commit validé.
@@ -2243,10 +2267,21 @@ neutralise le DOCX avant conversion (relations externes, champs `INCLUDEPICTURE`
 
 Le lien `/signer/<jeton>` et l'API publique `/api/public/signatures/<jeton>`
 portent un jeton secret dans le chemin. Les trois fichiers `infra/nginx/*.conf`
-déclarent un `map` + un `log_format` (`immotopia_staging_masked`,
+déclarent des `map` + un `log_format` (`immotopia_staging_masked`,
 `immotopia_prod_masked`, `immotopia_web_masked`) qui remplacent le jeton par
 `[masque]` dans la ligne de requête ET dans le Referer, et branchent
-`access_log` dessus. Les fichiers de `sites-enabled` sont inclus dans le
+`access_log` dessus. Les jetons en query string (`?token=`, `?refresh_token=`,
+tout nom finissant par `token`) sont masqués aussi : par fichier, 8 `map`
+chaînés, soit 2 pour le chemin `/signer/` et `/api/public/signatures/` (URI et
+Referer) puis **trois passes** de masquage de jeton pour l'URI et trois pour le
+Referer (variables `*_uri_t1`, `*_uri_t2`, `*_uri_logged` et
+`*_referer_t1`, `*_referer_t2`, `*_referer_logged`, préfixées `web_`,
+`staging_` ou `prod_` pour n'avoir aucun doublon dans le contexte `http`).
+Chaque passe masque la première occurrence pas encore masquée. **Limite :** au-delà
+de trois paramètres dont le nom finit par `token` dans une même URL, les suivants
+restent en clair dans le journal. `bash infra/scripts/check-infra.sh` vérifie la
+présence des `map`, l'absence de doublon de variables et la présence des cinq
+en-têtes de sécurité dans chaque `location` de `spa.conf`. Les fichiers de `sites-enabled` sont inclus dans le
 contexte `http` : ces directives y sont valides sans toucher à `nginx.conf`.
 
 Actions sur le serveur (non éprouvées, `nginx -t` non exécuté ici) :
@@ -2347,7 +2382,7 @@ Non résolus à la date de rédaction :
   surface locale inutile (tout processus de l'hôte peut atteindre ce port). À
   retirer par un override Compose propre à la production, le compose étant
   partagé par les deux piles ; non fait ici.
-- **Images de base flottantes** : `node:20-alpine`, `nginx:1.27-alpine`,
+- **Images de base flottantes** : `node:22-alpine`, `nginx:1.27-alpine`,
   `postgres:16-alpine` et `alpine` sont référencées par étiquette, pas par
   empreinte (`@sha256:…`). Un build ou un `--pull` peut changer leur contenu sans
   qu'aucun fichier du dépôt ne change. À épingler par digest, avec une mise à jour
@@ -2369,13 +2404,14 @@ Non résolus à la date de rédaction :
   l'environnement des conteneurs (`env_file`) : `docker inspect` et
   `docker exec … env` les affichent à tout membre du groupe `docker` de l'hôte,
   ce qui équivaut à un accès administrateur, pour les deux piles à la fois.
-- **`seed-demo-*.ts` non gardés.** La garde `assert-not-production.ts` protège
-  six seeds de développement ; les `seed-demo-*.ts` (`affaires`, `documents`,
-  `locative`, `maintenance`, `syndic`, `visites`) sont pourtant dans l'image
-  `migrate` et n'ont pas cette garde, pas plus que `syndic-demo-seed.ts` et
-  `syndic-demo-fund-movements.ts` (recherche de `assertNotProduction` dans
-  `packages/api/prisma/seeds/`). Aucun script de déploiement ne les lance ; c'est
-  un manque de défense en profondeur, non résolu ici.
+- **Deux seeds de démonstration syndic non gardés.** La garde
+  `assert-not-production.ts` (`assertNotProduction`) protège les seeds de
+  développement, les `seed-demo-*.ts`, `fix-amadou-kone.ts`,
+  `assign-tenant-admin.ts` et `assign-rbac-roles.ts`. Restent sans garde
+  `syndic-demo-seed.ts` et `syndic-demo-fund-movements.ts` (recherche de
+  `assertNotProduction` dans `packages/api/prisma/seeds/`), pourtant présents
+  dans l'image `migrate`. Aucun script de déploiement ne les lance ; c'est un
+  manque de défense en profondeur, non résolu ici.
 
 ## Renvois
 

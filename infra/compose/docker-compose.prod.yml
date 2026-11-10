@@ -68,6 +68,13 @@ services:
     image: ${STACK_NAME}-api:latest
     container_name: ${STACK_NAME}-api
     restart: *restart
+    # Durcissement (FRI-14) : aucun processus du conteneur ne peut gagner de
+    # privileges (pas de setuid/su-exec dans l'image, qui tourne en USER node), et
+    # le nombre de processus est borne (LibreOffice en lance quelques-uns).
+    # cap_drop et limites memoire/CPU : volontairement non poses (a evaluer).
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 512
     depends_on:
       postgres:
         condition: service_healthy
@@ -107,6 +114,11 @@ services:
     image: ${STACK_NAME}-web:latest
     container_name: ${STACK_NAME}-web
     restart: *restart
+    # Durcissement (FRI-14). nginx demarre en root puis abaisse ses workers
+    # (setuid) : no-new-privileges ne l'empeche pas. Pas de cap_drop ici.
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
     depends_on:
       api:
         condition: service_healthy

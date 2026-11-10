@@ -1,27 +1,34 @@
 #!/usr/bin/env bash
 #
-# Rapatrie sur CE poste (donc HORS du serveur) la derniere sauvegarde d'une pile et
-# son fichier de secrets, dans un dossier du projet EXCLU de git.
+# Rapatrie sur CE poste (donc HORS du serveur) la derniere sauvegarde d'une pile
+# (base et documents), dans un dossier du projet EXCLU de git. Le fichier de secrets
+# de la pile n'est rapatrie QUE sur demande explicite (--with-env).
 #
-#   ./infra/scripts/pull-backups.sh <staging|prod> [--fresh] [--no-env] [--keep N] [--dest DOSSIER]
+#   ./infra/scripts/pull-backups.sh <staging|prod> [--fresh] [--with-env] [--keep N] [--dest DOSSIER]
 #
 #   --fresh     lance d'abord backup.sh sur le serveur, puis rapatrie le resultat
-#   --no-env    ne rapatrie pas le fichier de secrets (seulement la base et les documents)
+#   --with-env  rapatrie AUSSI le fichier de secrets de la pile (.env), en clair : a ne
+#               faire qu'en connaissance de cause (defaut : NON). --no-env reste
+#               accepte, sans effet (c'est le comportement par defaut).
 #   --keep N    garde les N copies locales les plus recentes (defaut 7)
 #   --dest D    dossier de destination (defaut : <depot>/backups-serveur)
 #
 # Resultat : <dest>/<env>/AAAA-MM-JJ-HHMM/ contenant
-#   db-….sql.gz  uploads-….tar.gz  immotopia-<env>.env   (mode 600)
+#   db-….sql.gz  uploads-….tar.gz  [immotopia-<env>.env avec --with-env]   (mode 600)
 #
 # A executer depuis un terminal bash (Git Bash sous Windows), sur le poste de
 # travail. Connexion au serveur par SSH sans mot de passe (cle) : IMMOTOPIA_SSH_TARGET
 # (defaut deployer@147.93.44.169) et IMMOTOPIA_SSH_PORT (defaut 2222).
 #
-# SECURITE. Ces copies contiennent TOUTES les donnees et TOUS les secrets, en clair :
+# SECURITE. Ces copies contiennent TOUTES les donnees (et, avec --with-env, TOUS les
+# secrets de la pile), en clair :
 #  - le script REFUSE de tourner si la destination n'est pas ignoree par git (le depot
 #    est public : un commit par erreur exposerait tout) ;
 #  - ne jamais placer la destination dans un dossier synchronise (OneDrive, Dropbox...)
 #    sans chiffrement ; chiffrer le disque (BitLocker) ;
+#  - RECOMMANDE (non implemente ici) : chiffrer chaque copie des sa reception, par
+#    exemple avec age (age -r <cle publique> -o fichier.age fichier) ou gpg
+#    (gpg --symmetric / --encrypt), puis supprimer le clair ;
 #  - c'est un COMPLEMENT, pas un remplacement : une copie chiffree automatique vers un
 #    stockage distant (BACKUP_RCLONE_REMOTE de backup.sh) reste recommandee.
 #
@@ -31,7 +38,7 @@
 set -Eeuo pipefail
 
 usage() {
-  echo "Usage : $0 <staging|prod> [--fresh] [--no-env] [--keep N] [--dest DOSSIER]" >&2
+  echo "Usage : $0 <staging|prod> [--fresh] [--with-env] [--keep N] [--dest DOSSIER]" >&2
   exit 2
 }
 
@@ -42,11 +49,12 @@ case "$ENV_NAME" in
   *) echo "Environnement absent ou inconnu : '${ENV_NAME}'." >&2; usage ;;
 esac
 
-FRESH=0; WITH_ENV=1; KEEP=7; DEST_ARG=""
+FRESH=0; WITH_ENV=0; KEEP=7; DEST_ARG=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --fresh) FRESH=1 ;;
-    --no-env) WITH_ENV=0 ;;
+    --with-env) WITH_ENV=1 ;;
+    --no-env) WITH_ENV=0 ;;  # conserve pour compatibilite : c'est desormais le defaut
     --keep) shift; [[ "${1:-}" =~ ^[1-9][0-9]*$ ]] || { echo "--keep attend un entier >= 1." >&2; usage; }; KEEP="$1" ;;
     --dest) shift; [[ -n "${1:-}" ]] || usage; DEST_ARG="$1" ;;
     *) echo "Option inconnue : $1" >&2; usage ;;
@@ -130,7 +138,7 @@ while read -r NAME SUM MTIME; do
   chmod 600 "$TARGET_DIR/$NAME" 2>/dev/null || true
 done <<< "$LIST"
 
-# --- 3. Fichier de secrets (optionnel) --------------------------------------------------
+# --- 3. Fichier de secrets (UNIQUEMENT avec --with-env) --------------------------------------------------
 if (( WITH_ENV )); then
   ENV_BASENAME="$(basename "$IMMOTOPIA_ENV_FILE")"
   log "telechargement du fichier de secrets ($ENV_BASENAME)..."
@@ -162,5 +170,9 @@ echo
 log "copie hors serveur terminee : $TARGET_DIR"
 du -h "$TARGET_DIR"/* 2>/dev/null | sed 's/^/    /'
 echo
-echo "Ces fichiers contiennent toutes les donnees et tous les secrets, en clair."
-echo "Ne les synchronise pas vers un dossier non chiffre ; chiffre le disque (BitLocker)."
+if (( WITH_ENV )); then
+  echo "Ces fichiers contiennent toutes les donnees ET les secrets de la pile, en clair."
+else
+  echo "Ces fichiers contiennent toutes les donnees, en clair (fichier de secrets non rapatrie : --with-env)."
+fi
+echo "Ne les synchronise pas vers un dossier non chiffre ; chiffre le disque (BitLocker) ou chiffre chaque copie (age, gpg)."

@@ -294,6 +294,18 @@ ok "DATABASE_URL vise ${STACK_NAME}-postgres"
 [[ "$(envval NODE_ENV)" == "production" ]] || fail "NODE_ENV doit valoir production dans $ENV_FILE (staging compris)."
 ok "NODE_ENV=production"
 
+# Garde d'isolation multi-tenant (FRI-06). L'API prend `warn` par defaut quand la
+# variable est absente (packages/api/src/config/env.ts). `warn` et `off` ne
+# bloquent aucune requete hors perimetre : on AVERTIT, sans bloquer, la valeur
+# etant une decision de l'operateur (passer en `enforce` apres une periode de
+# surveillance des journaux).
+tenant_guard_mode="$(envval TENANT_GUARD_MODE)"
+case "${tenant_guard_mode:-warn}" in
+  enforce) ok "TENANT_GUARD_MODE=enforce (garde d'isolation bloquante)" ;;
+  *) warn "TENANT_GUARD_MODE=${tenant_guard_mode:-absent, defaut warn} : filet d'isolation non bloquant (les requetes hors agence sont journalisees mais pas refusees). Passer a TENANT_GUARD_MODE=enforce dans $ENV_FILE apres revue des journaux." ;;
+esac
+tenant_guard_mode=""
+
 check_port "$WEB_PORT" "web"
 check_port "$PG_PORT" "postgres"
 
@@ -461,7 +473,7 @@ if (( BUILD )); then
   else
     fail "bcrypt est inutilisable dans l'image d'API : aucune connexion ne fonctionnerait.
        Corriger packages/api/Dockerfile (npm rebuild bcrypt --build-from-source avec
-       python3/make/g++, ou bascule sur node:20-bookworm-slim) avant de relancer."
+       python3/make/g++, ou bascule sur node:22-bookworm-slim) avant de relancer."
   fi
 else
   step "Construction ignoree (--no-build)"

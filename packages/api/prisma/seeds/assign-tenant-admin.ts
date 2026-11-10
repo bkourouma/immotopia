@@ -1,15 +1,17 @@
 import { PrismaClient, MembershipStatus } from '@prisma/client';
+import { assertNotProduction } from './assert-not-production';
 
 const prisma = new PrismaClient();
 
 /**
  * Script to assign TENANT_ADMIN role to a user for a specific tenant
- * Usage: 
+ * Usage:
  *   ts-node prisma/seeds/assign-tenant-admin.ts <email|userId> <tenantId>
  * Example:
  *   ts-node prisma/seeds/assign-tenant-admin.ts user@example.com e3e428d1-364b-42c9-a102-a22daa9329c5
  */
 async function main() {
+  assertNotProduction('assign-tenant-admin.ts');
   const args = process.argv.slice(2);
 
   if (args.length < 2) {
@@ -28,10 +30,7 @@ async function main() {
   // Find user by email or ID
   const user = await prisma.user.findFirst({
     where: {
-      OR: [
-        { email: userIdentifier },
-        { id: userIdentifier }
-      ]
+      OR: [{ email: userIdentifier }, { id: userIdentifier }]
     }
   });
 
@@ -44,7 +43,7 @@ async function main() {
 
   // Verify tenant exists
   const tenant = await prisma.tenant.findUnique({
-    where: { id: tenantId },
+    where: { id: tenantId }
   });
 
   if (!tenant) {
@@ -56,7 +55,7 @@ async function main() {
 
   // Get TENANT_ADMIN role
   const tenantAdminRole = await prisma.role.findUnique({
-    where: { key: 'TENANT_ADMIN' },
+    where: { key: 'TENANT_ADMIN' }
   });
 
   if (!tenantAdminRole) {
@@ -71,9 +70,9 @@ async function main() {
     where: {
       userId_tenantId: {
         userId: user.id,
-        tenantId: tenantId,
-      },
-    },
+        tenantId: tenantId
+      }
+    }
   });
 
   if (!membership) {
@@ -83,8 +82,8 @@ async function main() {
         userId: user.id,
         tenantId: tenantId,
         status: MembershipStatus.ACTIVE,
-        acceptedAt: new Date(),
-      },
+        acceptedAt: new Date()
+      }
     });
     console.log('✓ Membership created\n');
   } else {
@@ -96,8 +95,8 @@ async function main() {
     where: {
       userId: user.id,
       roleId: tenantAdminRole.id,
-      tenantId: tenantId,
-    },
+      tenantId: tenantId
+    }
   });
 
   if (!existingRole) {
@@ -106,8 +105,8 @@ async function main() {
       data: {
         userId: user.id,
         roleId: tenantAdminRole.id,
-        tenantId: tenantId,
-      },
+        tenantId: tenantId
+      }
     });
     console.log('✅ TENANT_ADMIN role assigned successfully!\n');
   } else {
@@ -120,11 +119,10 @@ async function main() {
 }
 
 main()
-  .catch((e) => {
+  .catch(e => {
     console.error('❌ Error:', e);
     process.exit(1);
   })
   .finally(async () => {
     await prisma.$disconnect();
   });
-

@@ -1,5 +1,6 @@
 import { PrismaClient, GlobalRole } from '@prisma/client';
 import { hashPassword } from '../../src/utils/password-utils';
+import { normalizeAdminEmail, validateBootstrapPassword } from '../../src/utils/bootstrap-admin-input';
 
 import { assertNotProduction } from './assert-not-production';
 
@@ -11,15 +12,20 @@ const prisma = new PrismaClient();
 async function createSuperAdmin() {
   console.log('👤 Creating SUPER_ADMIN account...');
 
-  // Default credentials - CHANGE THESE IN PRODUCTION!
-  const email = process.env.SUPER_ADMIN_EMAIL || 'admin@immobillier.com';
-  const password = process.env.SUPER_ADMIN_PASSWORD || 'Admin@123456';
+  // Aucun mot de passe par défaut : il doit être fourni explicitement.
+  const rawPassword = process.env.SUPER_ADMIN_PASSWORD;
+  if (!rawPassword) {
+    throw new Error(
+      "La variable SUPER_ADMIN_PASSWORD est obligatoire : aucun mot de passe par défaut n'est utilisé. " +
+        'Définissez-la avant de relancer ce script.'
+    );
+  }
+  const email = normalizeAdminEmail(process.env.SUPER_ADMIN_EMAIL || 'admin@immobillier.com');
   const fullName = process.env.SUPER_ADMIN_NAME || 'Super Administrator';
 
-  // Validate password strength
-  if (password.length < 8) {
-    throw new Error('Password must be at least 8 characters long');
-  }
+  // Mêmes règles que le bootstrap de production (longueur, robustesse, liste de refus).
+  validateBootstrapPassword(rawPassword);
+  const password = rawPassword;
 
   // Hash password
   const passwordHash = await hashPassword(password);
@@ -79,14 +85,9 @@ async function createSuperAdmin() {
 
   console.log('✅ SUPER_ADMIN account created successfully!');
   console.log(`   Email: ${email}`);
-  console.log(`   Password: ${password}`);
   console.log(`   User ID: ${superAdmin.id}`);
   console.log('');
-  console.log('⚠️  IMPORTANT: Change the default password after first login!');
-  console.log('   You can set custom credentials using environment variables:');
-  console.log('   - SUPER_ADMIN_EMAIL');
-  console.log('   - SUPER_ADMIN_PASSWORD');
-  console.log('   - SUPER_ADMIN_NAME');
+  console.log('   Variables : SUPER_ADMIN_PASSWORD (obligatoire), SUPER_ADMIN_EMAIL, SUPER_ADMIN_NAME');
 
   return superAdmin;
 }
