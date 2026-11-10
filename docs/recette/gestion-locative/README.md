@@ -72,7 +72,7 @@ locale ou staging seulement).
 Les cas utilisent des rôles symboliques ; la table ci-dessous les associe à des
 comptes de la base de recette.
 
-Mot de passe de tous ces comptes : `PackTest@2026`, mot de passe **public de
+Mot de passe de tous ces comptes : `<mot de passe local>`, mot de passe **public de
 test** des agences par pack (`prisma/seeds/pack-test-tenants.ts`), valable
 seulement sur une base locale ou le staging.
 

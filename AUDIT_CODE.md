@@ -12,13 +12,13 @@ Le projet est fonctionnellement riche (CRM, gestion locative, syndic, patrimoine
 
 En revanche, plusieurs problèmes bloquent une mise en production sereine :
 
-| Domaine | État | Points majeurs |
-|---|---|---|
-| Sécurité | **Critique** | Secret JWT avec valeur par défaut codée en dur et `.env` contenant le placeholder ; fichiers uploadés (preuves de paiement, baux) servis publiquement sans authentification ; IDOR inter-tenant sur médias/documents de propriétés ; routes de création de tenant et de listing des clients sans contrôle de droits. |
-| Dépôt / DevOps | **Critique** | Aucun commit dans l'historique git (5 789 blobs orphelins) ; `.gitignore` racine inadapté (218 Mo d'uploads utilisateurs et documents générés seraient commités) ; aucune CI, aucun Docker, aucun hook. |
-| Base de données | **Élevé** | 43 modèles porteurs de données tenant sans `tenantId` ; contraintes uniques globales qui entrent en collision entre tenants ; migrations désordonnées avec dérive détectée ; `prisma/seed.ts` destructif ; prix stockés en `Float`. |
-| Architecture backend | **Élevé** | Pipeline d'erreurs central jamais utilisé (385 try/catch, 59 détections par `includes('not found')`) ; écritures multi-étapes sans transaction ; fichier de 3 846 lignes avec son propre `PrismaClient` ; 549 `any`. |
-| Frontend | **Moyen-élevé** | Aucun code-splitting (bundle unique de 3,9 Mo) ; ESLint non configuré (ne s'exécute pas) ; 7 suites de tests sur 11 en échec ; dépendances mortes (`next`, `puppeteer`, `moment`) ; `xlsx` vulnérable non corrigeable sur npm. |
+| Domaine              | État            | Points majeurs                                                                                                                                                                                                                                                                                                       |
+| -------------------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Sécurité             | **Critique**    | Secret JWT avec valeur par défaut codée en dur et `.env` contenant le placeholder ; fichiers uploadés (preuves de paiement, baux) servis publiquement sans authentification ; IDOR inter-tenant sur médias/documents de propriétés ; routes de création de tenant et de listing des clients sans contrôle de droits. |
+| Dépôt / DevOps       | **Critique**    | Aucun commit dans l'historique git (5 789 blobs orphelins) ; `.gitignore` racine inadapté (218 Mo d'uploads utilisateurs et documents générés seraient commités) ; aucune CI, aucun Docker, aucun hook.                                                                                                              |
+| Base de données      | **Élevé**       | 43 modèles porteurs de données tenant sans `tenantId` ; contraintes uniques globales qui entrent en collision entre tenants ; migrations désordonnées avec dérive détectée ; `prisma/seed.ts` destructif ; prix stockés en `Float`.                                                                                  |
+| Architecture backend | **Élevé**       | Pipeline d'erreurs central jamais utilisé (385 try/catch, 59 détections par `includes('not found')`) ; écritures multi-étapes sans transaction ; fichier de 3 846 lignes avec son propre `PrismaClient` ; 549 `any`.                                                                                                 |
+| Frontend             | **Moyen-élevé** | Aucun code-splitting (bundle unique de 3,9 Mo) ; ESLint non configuré (ne s'exécute pas) ; 7 suites de tests sur 11 en échec ; dépendances mortes (`next`, `puppeteer`, `moment`) ; `xlsx` vulnérable non corrigeable sur npm.                                                                                       |
 
 **Les cinq actions à faire cette semaine** :
 
@@ -35,40 +35,47 @@ En revanche, plusieurs problèmes bloquent une mise en production sereine :
 ### 2.1 Critique
 
 **S1 — Secret JWT par défaut et placeholder en production**
+
 - `packages/api/src/utils/jwt-utils.ts:5` : `process.env.JWT_SECRET || 'changeme_in_production_secret_key_12345'`.
 - `packages/api/.env:5` contient la valeur d'exemple publique (`your-access-token-secret-...`).
 - Conséquence : n'importe qui ayant lu `env.example` peut forger un token `SUPER_ADMIN`, rôle qui contourne tous les contrôles tenant (`tenant-middleware.ts:44-53`, `permission-service.ts:53-60`).
 - Correctif : supprimer le fallback, échouer au démarrage si le secret est absent ou fait moins de 32 caractères, épingler `algorithms: ['HS256']` dans `jwt.verify`, régénérer via `openssl rand -base64 48`.
 
 **S2 — Identifiants tiers réels dans `packages/api/.env`**
+
 - Le fichier contient des valeurs réelles pour Postgres, SMTP, `GOOGLE_CLIENT_SECRET`, `TWILIO_AUTH_TOKEN`, `OPENAI_API_KEY`, `WASENDER_API_KEY`.
 - Le fichier est bien ignoré par git, mais il a été lu par plusieurs outils d'assistance IA (dossiers `.serena`, `.cursor`, `.codex`, `.agent`) : il faut considérer ces secrets comme exposés et les faire tourner.
 - `OPENAI_API_KEY` n'est référencée nulle part dans `src` : clé inutile à supprimer.
 
 **S3 — Mot de passe Postgres codé en dur dans trois scripts non ignorés**
+
 - `packages/api/create-tenant-user.js:7`, `create-tenant-portal-test-data.js:6`, `create-test-tenant-and-client.js:7` : DSN complet avec mot de passe en fallback.
 - Correctif : supprimer ces scripts (non référencés) et changer le mot de passe local.
 
 ### 2.2 Élevé
 
 **S4 — Uploads servis publiquement sans authentification**
+
 - `packages/api/src/index.ts:85-107` : `express.static(uploadsPath)` avec `Access-Control-Allow-Origin: *`, sans `authenticate`.
 - Contenu concerné : documents de bail (`property-document-service.ts:105`), pièces jointes maintenance, **preuves de paiement des locataires** (`tenant-portal-service.ts:854`), justificatifs de pénalités.
 - Noms de fichiers devinables : `Date.now() + Math.random()` (`property-media-service.ts:68`, `property-document-service.ts:90`).
 - Correctif : ne laisser en statique que les photos marketing des biens ; servir le reste via un endpoint authentifié et scopé par tenant (modèle existant : `maintenance-attachment-service.ts:141-176 downloadAttachment`) ; nommer avec `crypto.randomUUID()`.
 
 **S5 — IDOR inter-tenant sur médias et documents de propriété**
+
 - Les middlewares de `property-ownership-middleware.ts` ne sont utilisés par aucune route.
 - `property-media-service.ts:29-31, 151, 238` et `property-document-service.ts:61, 150, 171` vérifient que la propriété existe, pas qu'elle appartient au tenant.
 - Exploitation : un utilisateur du tenant A avec `PROPERTIES_EDIT` peut uploader ou supprimer des documents sur une propriété du tenant B.
 - Correctif : exiger `property.tenantId === tenantId` dans chaque service, ou brancher `requirePropertyManagement()` dans `property-routes.ts:140-213`.
 
 **S6 — Routes tenant sans contrôle de droits**
+
 - `tenant-routes.ts:54` : `GET /:tenantId/clients` renvoie e-mails et noms de tous les clients d'un tenant à tout utilisateur authentifié.
 - `tenant-routes.ts:60` : `POST /` permet à n'importe quel utilisateur de créer un tenant (le commentaire dit "Admin only").
 - Correctif : ajouter `requireTenantAccess` + permission adéquate, ou supprimer la route publique (l'équivalent admin existe dans `admin-routes.ts:35`).
 
 **S7 — Uploads : type vérifié uniquement via le `mimetype` client**
+
 - `upload-middleware.ts:26, 50`, `maintenance-routes.ts:43`, `document-routes.ts:28-31`. L'extension est prise telle quelle depuis `originalname` : un fichier déclaré `image/png` nommé `x.html` est stocké en `.html` sous un chemin public (combinaison avec S4 = phishing/XSS stocké sur l'origine API).
 - Correctif : détection par magic bytes (`file-type`), extension dérivée du type détecté, liste blanche.
 
@@ -120,15 +127,15 @@ bcrypt coût 12, refresh tokens stockés hashés (SHA-256), tokens de reset UUID
 
 ### 3.4 Fichiers géants et module hors architecture
 
-| Lignes | Fichier |
-|---|---|
-| 3 846 | `src/lib/syndics/queries.ts` (80 fonctions, 145 appels Prisma, **son propre `new PrismaClient()`**) |
-| 2 581 | `src/services/owner-portal-service.ts` |
-| 2 314 | `src/controllers/syndic-controller.ts` (75 handlers, 87 `any`) |
-| 1 845 | `src/services/tenant-portal-service.ts` |
-| 1 268 | `src/services/maintenance-ticket-service.ts` |
-| 1 253 | `src/services/rental-lease-service.ts` |
-| 1 203 | `src/services/crm-contact-service.ts` |
+| Lignes | Fichier                                                                                             |
+| ------ | --------------------------------------------------------------------------------------------------- |
+| 3 846  | `src/lib/syndics/queries.ts` (80 fonctions, 145 appels Prisma, **son propre `new PrismaClient()`**) |
+| 2 581  | `src/services/owner-portal-service.ts`                                                              |
+| 2 314  | `src/controllers/syndic-controller.ts` (75 handlers, 87 `any`)                                      |
+| 1 845  | `src/services/tenant-portal-service.ts`                                                             |
+| 1 268  | `src/services/maintenance-ticket-service.ts`                                                        |
+| 1 253  | `src/services/rental-lease-service.ts`                                                              |
+| 1 203  | `src/services/crm-contact-service.ts`                                                               |
 
 Le découpage routes → contrôleurs → services est globalement respecté (13 appels Prisma dans les contrôleurs contre 732 dans les services), mais les modules syndic et patrimoine vivent dans `src/lib/*/queries.ts` avec leur propre système d'erreurs et de validation : une seconde architecture dans le même paquet.
 
@@ -178,13 +185,13 @@ Le découpage routes → contrôleurs → services est globalement respecté (13
 
 ### 4.2 Contraintes uniques en collision entre tenants
 
-| Ligne | Contrainte | Problème |
-|---|---|---|
-| 1198 | `Property.internalReference @unique` | La référence "REF-001" de l'agence A bloque l'agence B |
-| 1995 | `RentalDocument.document_number @unique` | Compteurs par tenant mais numéro globalement unique |
-| 1809 | `RentalPayment.idempotency_key @unique` | La clé du tenant A peut rejeter ou dédupliquer un paiement du tenant B |
-| 2058 | `DocumentTemplate @@unique([tenant_id, doc_type, is_default])` | N'autorise qu'un seul template **non** défaut par type ; contournée par `tenant_id` NULL |
-| 1429 | `PropertyMandate @@unique([propertyId, tenantId, isActive])` | Un seul mandat inactif possible : la seconde révocation échoue |
+| Ligne | Contrainte                                                     | Problème                                                                                 |
+| ----- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| 1198  | `Property.internalReference @unique`                           | La référence "REF-001" de l'agence A bloque l'agence B                                   |
+| 1995  | `RentalDocument.document_number @unique`                       | Compteurs par tenant mais numéro globalement unique                                      |
+| 1809  | `RentalPayment.idempotency_key @unique`                        | La clé du tenant A peut rejeter ou dédupliquer un paiement du tenant B                   |
+| 2058  | `DocumentTemplate @@unique([tenant_id, doc_type, is_default])` | N'autorise qu'un seul template **non** défaut par type ; contournée par `tenant_id` NULL |
+| 1429  | `PropertyMandate @@unique([propertyId, tenantId, isActive])`   | Un seul mandat inactif possible : la seconde révocation échoue                           |
 
 Correctif type :
 
@@ -243,7 +250,7 @@ Les deux contraintes conditionnelles (`is_default`, `isActive`) doivent devenir 
 ### 4.7 Seeds
 
 - **`prisma/seed.ts` (cible de `prisma db seed`) fait `deleteMany()` sur `user`, `tenant`, `tenantClient`** : avec 156 cascades, cela efface toutes les données. Documenté comme commande standard dans deux guides.
-- Mots de passe fixes dans 6 seeds (`Test@123456`, `Admin@123456`, `P@ssw0rd_2025`...), rôles `Instructor`/`Student` copiés d'un autre projet.
+- Mots de passe fixes dans 6 seeds (`Test@123456`, `<mot de passe de démo>`, `P@ssw0rd_2025`...), rôles `Instructor`/`Student` copiés d'un autre projet.
 - `package.json` `db:assign:rbac` pointe vers un fichier inexistant.
 - Scripts de diagnostic (`list-*.ts`, `fix-*.ts`) mélangés au dossier seeds.
 
@@ -259,54 +266,61 @@ Les deux contraintes conditionnelles (`is_default`, `isActive`) doivent devenir 
 ### 5.1 Élevé
 
 **F1 — Aucun code-splitting**
+
 - `App.tsx` : 118 routes, 110 imports statiques, **0 `React.lazy`**. Le `<Suspense>` de `dashboard-layout.tsx:35` n'enveloppe rien de paresseux.
 - Build : un seul `main.*.js` de **3,9 Mo brut / 1,07 Mo gzip**.
 - `xlsx`, `react-big-calendar` + `moment`, `recharts`, `framer-motion`, `prismjs` chargés au démarrage.
 - Correctif : `React.lazy` par domaine (syndics, patrimoine, crm, rental, portails, admin), `import('xlsx')` dynamique dans `exportToExcel`.
 
 **F2 — ESLint non configuré**
+
 - Aucun `.eslintrc*` ni clé `eslintConfig` : `npx eslint src` échoue immédiatement. Les plugins sont installés mais jamais branchés.
 - Conséquence : `react-hooks/exhaustive-deps` n'a jamais tourné sur 209 `useEffect` (ex. `Properties.tsx:110-114` omet `loadProperties` et `filters`).
 
 **F3 — Tests cassés et peu significatifs**
+
 - 7 suites sur 11 en échec (12 tests sur 27). Causes : dérive d'accents (`'Comptabilite syndic'` attendu vs `Comptabilité syndic` rendu), mock `antd` sans `Form`, un spy jamais appelé.
 - Les 11 fichiers ne couvrent que syndics et patrimoine ; 0 test pour auth, client API, CRM, locatif, portails. 10 sur 11 remplacent tout `antd` par des `div` et vérifient que du JSON mocké apparaît.
 - `jest.config.js` déclare `ts-jest` (non installé) et 80 % de couverture, mais `react-scripts test` l'ignore ; `jest ^29` en devDeps entre en conflit avec le Jest 27 de CRA.
 
 **F4 — Dépendances mortes ou dupliquées**
 
-| Paquet | Fichiers l'important | Verdict |
-|---|---|---|
-| `next` ^16 | 0 | Mort. Exige React 19, conflit masqué par `legacy-peer-deps=true`. |
-| `puppeteer` (web devDep et racine prod) | 0 | Mort. Source des 10 vulnérabilités `npm audit` racine (2 critiques, 8 hautes). |
-| `moment` + `@types/moment` | 2 | Remplacer par `dayjsLocalizer` ; `@types/moment` est un stub obsolète. |
-| `date-fns` | 4 | Migrer vers `dayjs` (39 fichiers). |
-| `@types/xlsx` | — | Stub obsolète. |
-| `xlsx` 0.18.5 | 1 | Dernière version npm ; CVE-2023-30533 et CVE-2024-22363 corrigées uniquement sur le CDN SheetJS. Remplacer par `exceljs` (déjà utilisé côté API). |
-| `@radix-ui/*` + `components/ui` (16 fichiers) | 7 consommateurs | Couche shadcn quasi inutilisée à côté d'antd (173 fichiers). Supprimer ou s'y engager. |
-| `lucide-react` | 34 | Second jeu d'icônes à côté de `@ant-design/icons` (129). |
+| Paquet                                        | Fichiers l'important | Verdict                                                                                                                                           |
+| --------------------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `next` ^16                                    | 0                    | Mort. Exige React 19, conflit masqué par `legacy-peer-deps=true`.                                                                                 |
+| `puppeteer` (web devDep et racine prod)       | 0                    | Mort. Source des 10 vulnérabilités `npm audit` racine (2 critiques, 8 hautes).                                                                    |
+| `moment` + `@types/moment`                    | 2                    | Remplacer par `dayjsLocalizer` ; `@types/moment` est un stub obsolète.                                                                            |
+| `date-fns`                                    | 4                    | Migrer vers `dayjs` (39 fichiers).                                                                                                                |
+| `@types/xlsx`                                 | —                    | Stub obsolète.                                                                                                                                    |
+| `xlsx` 0.18.5                                 | 1                    | Dernière version npm ; CVE-2023-30533 et CVE-2024-22363 corrigées uniquement sur le CDN SheetJS. Remplacer par `exceljs` (déjà utilisé côté API). |
+| `@radix-ui/*` + `components/ui` (16 fichiers) | 7 consommateurs      | Couche shadcn quasi inutilisée à côté d'antd (173 fichiers). Supprimer ou s'y engager.                                                            |
+| `lucide-react`                                | 34                   | Second jeu d'icônes à côté de `@ant-design/icons` (129).                                                                                          |
 
 Trois systèmes de style coexistent : tokens antd, Tailwind (52 fichiers), `style={{}}` inline.
 
 ### 5.2 Moyen
 
 **F5 — Couche API contournée**
+
 - `utils/api-client.ts` (axios, `withCredentials`) est bien centralisé (54 imports, 0 axios sauvage), mais **13 `fetch()` bruts dans 8 fichiers** le contournent (`TeamPage.tsx`, `TenantRegisterForm.tsx`, `Deposits.tsx`, `Documents.tsx`, newsletter...). Sept utilisent des URLs relatives `/api/...` sans `proxy` CRA : en dev elles reçoivent `index.html`. Deux omettent `credentials: 'include'`.
 - Refresh sur 401 sans mutex : N requêtes concurrentes en 401 déclenchent N `POST /auth/refresh`. En cas d'échec, `window.location.href = '/login'` perd le `?redirect=` construit par `ProtectedRoute`.
 - 16 fallbacks `http://localhost:8001` dans 15 fichiers ; `env.example` indique le port 8000.
 - Gestion d'erreur par site d'appel : 400 `catch`, 193 `message.error`, 46 `alert()/confirm()` natifs ; `utils/error-handler.ts` existe mais est peu utilisé.
 
 **F6 — Data fetching artisanal**
+
 - 209 `useEffect`, **0 `AbortController`**, 0 flag `isMounted`, 331 `useState` booléens, 269 `setLoading` : la machine loading/error est réécrite dans chaque page.
 - Waterfalls : `AuthContext.tsx:84-122` (`getMe` puis memberships en séquence, bloquant toutes les pages protégées) ; `Deposits.tsx:55-57` où `loadMovements` s'arrête sur `!deposit?.id` au premier rendu.
 - Recommandation : `@tanstack/react-query` ; les 24 modules `services/` ont déjà la forme de `queryFn`.
 
 **F7 — Sécurité client**
+
 - `NewsletterCampaignsPage.tsx:383` injecte `preview.html` (HTML édité par l'utilisateur) via `dangerouslySetInnerHTML` sans sanitisation côté client : XSS stocké. Rendre dans un `<iframe sandbox srcdoc>`.
 - `ProtectedRoute.tsx:94-96` : `requirePermission` est un TODO ; l'UI affiche des actions que le serveur refusera.
 - `Penalties.tsx:278` `window.open` sans `noopener`.
 
 **F8 — Composants surdimensionnés et dupliqués**
+
 - > 800 lignes : `PropertyFormWizard` 1 205, `LeaseFormWizard` 1 072, `PropertyPatrimoineTab` 1 033, `DealForm` 1 018, `App.tsx` 868, `PropertyForm` 844, `ContactForm` 801.
 - Doublons : `PropertyForm` (édition) vs `PropertyFormWizard` (création) ; `LeaseForm` vs `LeaseFormWizard` importés tous deux dans `LeaseFormPage` ; `DocumentVault.tsx` dans `patrimoine/` et `syndics/` ; `useAuth` exporté deux fois.
 - 0 `React.memo`, 8 `useCallback` sur 72k lignes ; 15 tables `pagination={false}` sans virtualisation.
@@ -325,10 +339,12 @@ Trois systèmes de style coexistent : tokens antd, Tailwind (52 fichiers), `styl
 ### 6.1 Critique
 
 **D1 — Aucun historique git**
+
 - `git log --all` vide, aucune branche, aucun remote, pas d'index. `.git/objects` contient 5 789 blobs orphelins (53 Mo) issus d'un `git add` jamais commité ; ces blobs sont périmés.
 - Conséquence : zéro traçabilité, zéro rollback, aucune branche `main` pour ouvrir des PR. Les 16 dossiers de `specs/` décrivent un workflow par branche qui n'a jamais existé.
 
 **D2 — `.gitignore` racine inadapté**
+
 - Le fichier racine (279 octets) n'ignore que `node_modules` et des règles byterover. Seraient commités : `uploads/` (5 Mo, preuves de paiement), `packages/uploads/` (**211 Mo**, 136 fichiers), `packages/api/uploads/`, `assets/generated_documents/` (34 Mo de baux `.docx` par tenant), `dist_test/`, `.serena/` (cache pickle), `*.log`, `temp_migration.sql`, `missing-lease-data-report.json`.
 - Trois dossiers d'uploads existent parce que `index.ts:73-77` calcule `projectRoot` depuis `process.cwd()`.
 - `packages/api/.gitignore:32` contient `prisma/migrations/*.sql` (ne matche pas par chance, un niveau trop haut) et les deux sous-`.gitignore` ignorent `package-lock.json` (perte de reproductibilité).
@@ -336,15 +352,18 @@ Trois systèmes de style coexistent : tokens antd, Tailwind (52 fichiers), `styl
 ### 6.2 Élevé
 
 **D3 — Aucune chaîne qualité**
+
 - Pas de `.github/workflows`, `Dockerfile`, `docker-compose`, `husky`, `lint-staged`, `commitlint`, `.nvmrc`, `.editorconfig`, champ `engines`. Node local v24 avec `react-scripts@5` (non testé au-delà de Node 20).
 
 **D4 — Code mort et étranger au projet**
+
 - `lib/` racine (errors, syndics) : copies anciennes de `packages/api/src/lib`, 0 import.
 - `app/api/whatsapp/webhook/route.ts` : handler Next.js App Router alors que le front est CRA ; reliquat d'une direction abandonnée (`specs/013-syndic-module/plan.md:15`).
 - `packages/api/dist_test/`, `packages/api/npm` (0 octet), `temp_migration.sql`, `missing-lease-data-report.json`, 8 modules `src` jamais importés (831 lignes : `communication-rbac-middleware`, `property-ownership-middleware`, `pagination-helper`, `error-utils`...).
 - Scripts racine : `001 stop-services.bat` tue **tous** les processus Node de la machine et porte le titre "OphtaClinic Pro" ; `start-dev.bat` utilise le port 8000 (l'API écoute sur 8001) ; `.cursorrules` décrit un projet "UdemyClone" ; `seed-users.ts` crée des rôles Instructor/Student.
 
 **D5 — Documentation éclatée et contradictoire**
+
 - 21 fichiers `.md` à la racine, 17 écrits à la même minute (2026-01-14). Six docs OAuth qui se recouvrent, quatre vues d'architecture, `CONFIGURATION_WASENDER_COMPLETE.md` en double avec `docs/communication/`.
 - Port backend documenté comme 8000, 5000, 3001 ou 8001 selon le fichier. Trois identités de projet (`@standard-app`, UdemyClone, OphtaClinic Pro).
 - Trois dossiers d'outils IA identiques (`.agent/`, `.codex/`, `.cursor/` avec les mêmes 9 prompts spec-kit) ; `AGENTS.md`/`GEMINI.md` sont des stubs auto-générés décrivant une structure `backend/ frontend/` inexistante.
@@ -406,18 +425,18 @@ Trois systèmes de style coexistent : tokens antd, Tailwind (52 fichiers), `styl
 
 ## 8. Annexe — chiffres clés
 
-| Indicateur | API | Web |
-|---|---|---|
-| Fichiers / lignes | 200 / 61 400 | 300 / 72 500 |
-| `any` | 549 (92 fichiers) | 568 |
-| `try/catch` dans les contrôleurs | 385 | — |
-| `useEffect` / `AbortController` | — | 209 / 0 |
-| `React.lazy` / routes | — | 0 / 118 |
-| Bundle principal | — | 3,9 Mo (1,07 Mo gzip) |
-| Fichiers de test / en échec | 25 (4 vides, 2 non exécutables) | 11 / 7 |
-| Instances `PrismaClient` | 3 | — |
-| `$transaction` | 28 (18 dans le syndic) | — |
-| Modèles Prisma / avec `tenantId` | 112 / 55 | — |
-| FK sans index | 42 | — |
-| Vulnérabilités `npm audit` racine | 2 critiques, 8 hautes (toutes via puppeteer) | — |
-| Commits git | 0 | — |
+| Indicateur                        | API                                          | Web                   |
+| --------------------------------- | -------------------------------------------- | --------------------- |
+| Fichiers / lignes                 | 200 / 61 400                                 | 300 / 72 500          |
+| `any`                             | 549 (92 fichiers)                            | 568                   |
+| `try/catch` dans les contrôleurs  | 385                                          | —                     |
+| `useEffect` / `AbortController`   | —                                            | 209 / 0               |
+| `React.lazy` / routes             | —                                            | 0 / 118               |
+| Bundle principal                  | —                                            | 3,9 Mo (1,07 Mo gzip) |
+| Fichiers de test / en échec       | 25 (4 vides, 2 non exécutables)              | 11 / 7                |
+| Instances `PrismaClient`          | 3                                            | —                     |
+| `$transaction`                    | 28 (18 dans le syndic)                       | —                     |
+| Modèles Prisma / avec `tenantId`  | 112 / 55                                     | —                     |
+| FK sans index                     | 42                                           | —                     |
+| Vulnérabilités `npm audit` racine | 2 critiques, 8 hautes (toutes via puppeteer) | —                     |
+| Commits git                       | 0                                            | —                     |

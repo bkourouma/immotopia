@@ -88,12 +88,12 @@ deux boutons par ligne :
 Si ce panneau n'apparaît pas, c'est que `VITE_SHOW_DEMO_ACCOUNTS` n'est pas à
 `true`.
 
-| Rôle                                                                 | Compte                        | Mot de passe   | Utilisé dans        |
-| -------------------------------------------------------------------- | ----------------------------- | -------------- | ------------------- |
-| Collaborateur de l'agence (Kouassi N'Guessan, **Ivoire Résidences**) | `devaccrocs@gmail.com`        | `DevMick@2003` | Parties A à E, H, J |
-| Locataire (Mariam Diomandé)                                          | `scolarflow@gmail.com`        | `DevMick@2003` | Partie F            |
-| Propriétaire (Séraphin Koffi)                                        | `mickael.andjui.21@gmail.com` | `DevMick@2003` | Partie G            |
-| Super-administrateur plateforme                                      | `admin@immobillier.com`       | `Admin@123456` | Partie I            |
+| Rôle                                                                 | Compte                              | Mot de passe                                 | Utilisé dans        |
+| -------------------------------------------------------------------- | ----------------------------------- | -------------------------------------------- | ------------------- |
+| Collaborateur de l'agence (Kouassi N'Guessan, **Ivoire Résidences**) | `<e-mail du collaborateur de démo>` | `<mot de passe de démo, voir le seed local>` | Parties A à E, H, J |
+| Locataire (Mariam Diomandé)                                          | `<e-mail du locataire de démo>`     | `<mot de passe de démo, voir le seed local>` | Partie F            |
+| Propriétaire (Séraphin Koffi)                                        | `<e-mail du propriétaire de démo>`  | `<mot de passe de démo, voir le seed local>` | Partie G            |
+| Super-administrateur plateforme                                      | `admin@immobillier.com`             | `<mot de passe local>`                       | Partie I            |
 
 Changer de compte suppose de se déconnecter, ou d'ouvrir une fenêtre de
 navigation privée — c'est plus sûr pour comparer deux vues du même bail.
@@ -1047,8 +1047,8 @@ navigation privée.
 
 ## Partie F — Portail locataire
 
-Se déconnecter et se reconnecter avec `scolarflow@gmail.com` /
-`DevMick@2003` (Mariam Diomandé). L'adresse de base devient
+Se déconnecter et se reconnecter avec `<e-mail du locataire de démo>` /
+`<mot de passe de démo, voir le seed local>` (Mariam Diomandé). L'adresse de base devient
 `http://localhost:3000/tenant`, **sans identifiant d'agence**.
 
 > Ce portail est conçu pour le téléphone : quatre onglets en bas — « Accueil »,
@@ -1186,7 +1186,7 @@ Se déconnecter et se reconnecter avec `scolarflow@gmail.com` /
 
 ## Partie G — Portail propriétaire
 
-Se reconnecter avec `mickael.andjui.21@gmail.com` / `DevMick@2003`
+Se reconnecter avec `<e-mail du propriétaire de démo>` / `<mot de passe de démo, voir le seed local>`
 (Séraphin Koffi). Adresse de base : `http://localhost:3000/owner`.
 
 Cinq onglets : « Accueil », « Biens », « Revenus », « Incidents », « Plus »
@@ -1453,7 +1453,7 @@ vers une adresse relevable par le testeur.
 ## Partie I — Administration de la plateforme
 
 Se déconnecter et se reconnecter avec `admin@immobillier.com` /
-`Admin@123456`. Ces écrans sont réservés au super-administrateur : ouverts avec
+`<mot de passe local>`. Ces écrans sont réservés au super-administrateur : ouverts avec
 un autre compte, ils doivent refuser l'accès.
 
 > **Trois gestes à ne pas faire sur l'agence de démonstration** — ils coupent
@@ -1466,7 +1466,7 @@ un autre compte, ils doivent refuser l'accès.
 
 #### Ce qu'on doit faire
 
-1. Connecté en **collaborateur** (`devaccrocs@gmail.com`), ouvrir directement
+1. Connecté en **collaborateur** (`<e-mail du collaborateur de démo>`), ouvrir directement
    `http://localhost:3000/admin/tenants`.
 2. Se reconnecter en super-administrateur et rouvrir la même adresse.
 
@@ -1615,7 +1615,7 @@ le menu.
 
 ## Partie J — Les écrans laissés de côté par le parcours chantier
 
-Revenir sur le compte collaborateur (`devaccrocs@gmail.com`).
+Revenir sur le compte collaborateur (`<e-mail du collaborateur de démo>`).
 
 Le scénario chantier couvre déjà budget, bons de commande, factures
 fournisseurs, règlements, retenues, caisse, salaires, tâcherons, stock,

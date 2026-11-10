@@ -21,6 +21,29 @@ export const DEFAULT_ADMIN_NAME = 'Super Administrateur';
 const MAX_EMAIL_LENGTH = 254;
 const MAX_NAME_LENGTH = 120;
 
+/**
+ * Comptes et mots de passe de démonstration connus (seeds de développement, panneau de
+ * connexion rapide du web, docs de recette). Refusés UNIQUEMENT en production : un
+ * super-admin créé avec l'un d'eux serait ouvert à quiconque lit le dépôt.
+ * Comparaison insensible à la casse. Ne jamais afficher ces valeurs dans un message.
+ */
+const DEMO_ADMIN_EMAILS: readonly string[] = ['admin@immobillier.com', 'admin@immotopia.com'];
+const DEMO_PASSWORDS: readonly string[] = [
+  'Admin@123456',
+  'DevMick@2003',
+  'PackTest@2026',
+  'Test@123456',
+  'P@ssw0rd_2025',
+  'P@ssw0rd_2026',
+  'Instructor@123456',
+  'Student@123456'
+].map(value => value.toLowerCase());
+
+/** Lu à chaque appel (et non à l'import) pour que les tests puissent basculer NODE_ENV. */
+function isProductionEnv(): boolean {
+  return process.env.NODE_ENV === 'production';
+}
+
 // Même validation que la connexion (loginSchema, middleware/validation-middleware.ts).
 const LOGIN_EMAIL_SCHEMA = z.string().email().toLowerCase().trim();
 
@@ -55,6 +78,11 @@ export function normalizeAdminEmail(raw: string): string {
   if (!parsed.success || parsed.data !== email) {
     throw new BootstrapInputError("L'adresse e-mail n'a pas un format valide.");
   }
+  if (isProductionEnv() && DEMO_ADMIN_EMAILS.includes(email)) {
+    throw new BootstrapInputError(
+      "Cette adresse e-mail est celle d'un compte de démonstration connu : elle est refusée en production. Choisir une adresse réelle."
+    );
+  }
   return email;
 }
 
@@ -62,6 +90,11 @@ export function normalizeAdminEmail(raw: string): string {
 export function validateBootstrapPassword(password: string): void {
   if (typeof password !== 'string' || password.length === 0) {
     throw new BootstrapInputError('Le mot de passe est obligatoire.');
+  }
+  if (isProductionEnv() && DEMO_PASSWORDS.includes(password.toLowerCase())) {
+    throw new BootstrapInputError(
+      'Ce mot de passe est un mot de passe de démonstration connu : il est refusé en production. Choisir un mot de passe unique et secret.'
+    );
   }
   if (password.length < BOOTSTRAP_MIN_PASSWORD_LENGTH) {
     throw new BootstrapInputError(

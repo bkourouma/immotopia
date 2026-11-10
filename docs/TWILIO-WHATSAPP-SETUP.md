@@ -64,10 +64,10 @@ TWILIO_AUTH_TOKEN=votre_auth_token
 TWILIO_WHATSAPP_FROM=+14155238886
 ```
 
-- **TWILIO_ACCOUNT_SID** : Account SID de la console Twilio.  
-- **TWILIO_AUTH_TOKEN** : Auth Token de la console Twilio.  
-- **TWILIO_WHATSAPP_FROM** :  
-  - **Sandbox** : le numéro du Sandbox (ex. `+14155238886`).  
+- **TWILIO_ACCOUNT_SID** : Account SID de la console Twilio.
+- **TWILIO_AUTH_TOKEN** : Auth Token de la console Twilio.
+- **TWILIO_WHATSAPP_FROM** :
+  - **Sandbox** : le numéro du Sandbox (ex. `+14155238886`).
   - **Production** : le numéro WhatsApp Business fourni par Twilio.
 
 Redémarrez l’API après modification des variables.
@@ -88,7 +88,7 @@ Redémarrez l’API après modification des variables.
 
 ## 6. Message initié par l'entreprise (template)
 
-Pour envoyer sans que le client ait répondu, Twilio exige un **template pré-approuvé**. Dans **Communication** → **Notifications WhatsApp**, ouvrez « Template Twilio » et renseignez le **Content SID** (ex. Sandbox Rappels de rendez-vous : `HXb5b62575e6e4ff6129ad7c8efe1f983e`) et le **mapping JSON** (ex. `{"1":"appointmentDate","2":"appointmentTime"}`).
+Pour envoyer sans que le client ait répondu, Twilio exige un **template pré-approuvé**. Dans **Communication** → **Notifications WhatsApp**, ouvrez « Template Twilio » et renseignez le **Content SID** (ex. Sandbox Rappels de rendez-vous : `HX00000000000000000000000000000000`) et le **mapping JSON** (ex. `{"1":"appointmentDate","2":"appointmentTime"}`).
 
 ---
 
@@ -104,13 +104,13 @@ Pour recevoir les statuts d’envoi (delivered, read, etc.) ou les réponses des
 
 ## 8. Résumé des étapes côté Twilio
 
-| Étape | Action |
-|-------|--------|
-| 1 | Créer un compte sur twilio.com |
-| 2 | Récupérer **Account SID** et **Auth Token** dans la console |
-| 3 | Activer le **WhatsApp Sandbox** (ou un compte WhatsApp Business) et noter le numéro d’envoi |
-| 4 | Configurer **TWILIO_ACCOUNT_SID**, **TWILIO_AUTH_TOKEN** et **TWILIO_WHATSAPP_FROM** sur le serveur / dans `.env` |
-| 5 | Redémarrer l’API et tester depuis **Communication** → **Notifications WhatsApp** |
+| Étape | Action                                                                                                            |
+| ----- | ----------------------------------------------------------------------------------------------------------------- |
+| 1     | Créer un compte sur twilio.com                                                                                    |
+| 2     | Récupérer **Account SID** et **Auth Token** dans la console                                                       |
+| 3     | Activer le **WhatsApp Sandbox** (ou un compte WhatsApp Business) et noter le numéro d’envoi                       |
+| 4     | Configurer **TWILIO_ACCOUNT_SID**, **TWILIO_AUTH_TOKEN** et **TWILIO_WHATSAPP_FROM** sur le serveur / dans `.env` |
+| 5     | Redémarrer l’API et tester depuis **Communication** → **Notifications WhatsApp**                                  |
 
 Une fois ces éléments en place, les notifications WhatsApp configurées dans le menu Communication (et déclenchées par les événements, ex. création de ticket) seront envoyées via Twilio.
 
@@ -144,8 +144,9 @@ LOCATAIRE_PHONE=+2250700000001 AGENCY_PHONES=+2250700000002,+2250700000003 npm r
 ```
 
 Par défaut le script cible :
-- **Locataire** : `devaccrocs@gmail.com` (celui qui crée le ticket, reçoit « Votre ticket a bien été enregistré » + WhatsApp).
-- **Agence** : `collab1.kouamé.diabaté@agence-mali.com` et `scolarflow@gmail.com` (reçoivent « Nouveau ticket de maintenance » + WhatsApp).
+
+- **Locataire** : `<e-mail du locataire de démo>` (celui qui crée le ticket, reçoit « Votre ticket a bien été enregistré » + WhatsApp).
+- **Agence** : `collab1.kouamé.diabaté@agence-mali.com` et `<e-mail du collaborateur de démo>` (reçoivent « Nouveau ticket de maintenance » + WhatsApp).
 
 Variables d’environnement optionnelles : `LOCATAIRE_EMAIL`, `LOCATAIRE_PHONE`, `AGENCY_EMAILS`, `AGENCY_PHONES` (voir en-tête du script `scripts/ensure-whatsapp-contacts-maintenance.ts`).
 
@@ -162,6 +163,7 @@ Avec **WhatsApp Business**, vous n’avez plus à faire rejoindre le Sandbox à 
 **Important :** L’enregistrement d’un **expéditeur WhatsApp** (votre propre numéro) nécessite un **compte Twilio payant**. Avec un compte d’essai (trial), Twilio affiche « Veuillez mettre à niveau votre compte pour soumettre un expéditeur WhatsApp ». Il faut cliquer sur **Mettre à niveau son compte Twilio** et passer au forfait payant. Le **Sandbox** (section 3, option A) reste lui utilisable en essai gratuit.
 
 **Prérequis :**
+
 - Un compte Twilio **payant** (Console → **Upgrade** en haut, ou Admin → Billing → Upgrade account).
 - Un compte **Facebook** (pour lier Meta Business).
 - Un **numéro de téléphone** qui n’est **pas déjà** enregistré sur WhatsApp (ou WhatsApp Business app). Ce numéro peut être un numéro Twilio que vous achetez, ou votre propre numéro (il devra recevoir un SMS ou un appel pour le code de vérification).
@@ -287,7 +289,7 @@ Pour chaque type de notification que vous voulez envoyer en WhatsApp Business :
    - **Mapping des variables (JSON)** : objet qui associe le **numéro de variable du template** (clé) au **nom de variable ImmoTopia** (valeur).
 
 **Format du mapping :**  
-`{"1": "tenantName", "2": "ticketTitle", "3": "agencyName", "4": "propertyReference"}`  
+`{"1": "tenantName", "2": "ticketTitle", "3": "agencyName", "4": "propertyReference"}`
 
 Cela signifie : dans le template, la place `{{1}}` reçoit la valeur de `tenantName`, `{{2}}` celle de `ticketTitle`, etc. Les noms de variables possibles sont listés dans `docs/WHATSAPP-BUSINESS-TEMPLATES-REFERENCE.md`.
 
@@ -295,12 +297,11 @@ Cela signifie : dans le template, la place `{{1}}` reçoit la valeur de `tenantN
 
 ### 10.4 Résumé
 
-| Étape | Où | Action |
-|-------|-----|--------|
-| 1 | Twilio | Activer WhatsApp Business, obtenir un numéro d’envoi → **TWILIO_WHATSAPP_FROM** |
-| 2 | Twilio Content Editor | Créer les templates (texte + variables {{1}}, {{2}}, …), les soumettre à WhatsApp |
-| 3 | Twilio | Après approbation, noter le **Content SID** de chaque template |
-| 4 | ImmoTopia | Communication → Notifications WhatsApp → pour chaque type : **Content SID** + **Mapping JSON** |
+| Étape | Où                    | Action                                                                                         |
+| ----- | --------------------- | ---------------------------------------------------------------------------------------------- |
+| 1     | Twilio                | Activer WhatsApp Business, obtenir un numéro d’envoi → **TWILIO_WHATSAPP_FROM**                |
+| 2     | Twilio Content Editor | Créer les templates (texte + variables {{1}}, {{2}}, …), les soumettre à WhatsApp              |
+| 3     | Twilio                | Après approbation, noter le **Content SID** de chaque template                                 |
+| 4     | ImmoTopia             | Communication → Notifications WhatsApp → pour chaque type : **Content SID** + **Mapping JSON** |
 
 Une fois cette configuration faite, les notifications WhatsApp partent sans que les destinataires aient à « rejoindre » quoi que ce soit.
-

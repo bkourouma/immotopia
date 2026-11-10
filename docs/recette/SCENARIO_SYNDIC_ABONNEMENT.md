@@ -126,10 +126,10 @@ de cette instance locale pour que l'agent ne les prenne pas pour des bogues.
 
 ### 2.2 Comptes
 
-| Rôle                    | Compte                               | Mot de passe                                        |
-| ----------------------- | ------------------------------------ | --------------------------------------------------- |
-| Super-admin             | `admin@immobillier.com`              | `Admin@123456` (`apps/web/src/dev/dev-accounts.ts`) |
-| Administrateur d'agence | `admin.syndic.recette2@exemple.test` | `SyndicTest#2026` (donnée de test)                  |
+| Rôle                    | Compte                               | Mot de passe                                                |
+| ----------------------- | ------------------------------------ | ----------------------------------------------------------- |
+| Super-admin             | `admin@immobillier.com`              | `<mot de passe local>` (`apps/web/src/dev/dev-accounts.ts`) |
+| Administrateur d'agence | `admin.syndic.recette2@exemple.test` | `SyndicTest#2026` (donnée de test)                          |
 
 Le mot de passe de l'administrateur d'agence est saisi par l'agent à
 l'acceptation de l'invitation (étape B.1) — ce n'est pas un mot de passe déjà
@@ -195,7 +195,7 @@ les jauges — voir partie D.
 
 #### Ce qu'on doit faire
 
-1. Se connecter en super-admin (`admin@immobillier.com` / `Admin@123456`).
+1. Se connecter en super-admin (`admin@immobillier.com` / `<mot de passe local>`).
 2. Ouvrir **Administration › Agences**, cliquer « Nouvelle agence » (le tiroir
    s'ouvre à droite).
 3. Remplir « Nom de l'agence », « Nom de l'administrateur », « E-mail de
@@ -485,7 +485,7 @@ Palmiers.` → « Envoyer la demande ».
 - [ ] Après la seconde extension, la copropriété 4 est **créée** (4 / 4).
 - [ ] La demande passe **Traitée** côté super-admin et côté agence.
 - [ ] Aperçu de facture (super-admin) : `Syndic 49 900`, `Bloc de 10 lots
-  1 500`, deux lignes `Copropriété supplémentaire 10 000`, TVA `12 852` ;
+1 500`, deux lignes `Copropriété supplémentaire 10 000`, TVA `12 852` ;
       Total HT **71 400**, Total TTC **84 252** ; plus aucune ligne de
       dépassement.
 

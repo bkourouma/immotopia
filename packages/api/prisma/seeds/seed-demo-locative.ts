@@ -54,6 +54,7 @@ import { generateInstallments, recalculateInstallmentStatuses } from '../../src/
 import { createPayment, allocatePayment } from '../../src/services/rental-payment-service';
 import { createDeposit, createDepositMovement } from '../../src/services/rental-deposit-service';
 import { calculatePenaltiesForOverdueInstallments } from '../../src/services/rental-penalty-service';
+import { assertNotProduction } from './assert-not-production';
 
 const prisma = new PrismaClient();
 
@@ -413,6 +414,7 @@ function alea(max: number): number {
 }
 
 async function main() {
+  assertNotProduction('seed-demo-locative.ts');
   const tenant = await prisma.tenant.findUnique({ where: { id: TENANT_ID }, select: { name: true } });
   if (!tenant) throw new Error(`Agence ${TENANT_ID} introuvable`);
 
