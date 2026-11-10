@@ -113,7 +113,11 @@ jest.mock('../../src/lib/receiving-accounts/notifications', () => ({
 }));
 
 import { AppError, errorHandler, NotFoundError } from '../../src/middleware/error-middleware';
-import { createReceivingAccountBodySchema } from '../../src/lib/receiving-accounts/schemas';
+import { ZodError } from 'zod';
+import {
+  createReceivingAccountBodySchema,
+  updateReceivingAccountBodySchema
+} from '../../src/lib/receiving-accounts/schemas';
 import {
   createReceivingAccount,
   deleteReceivingAccount,
@@ -129,7 +133,8 @@ import {
 } from '../../src/lib/receiving-accounts/portal';
 import {
   listTenantPortalReceivingAccountsHandler,
-  readTenantPortalReceivingAccountQrHandler
+  readTenantPortalReceivingAccountQrHandler,
+  updateAgencyReceivingAccountHandler
 } from '../../src/controllers/receiving-account-controller';
 import type { ReceivingAccountTarget } from '../../src/lib/receiving-accounts/types';
 
@@ -295,7 +300,13 @@ describe('création', () => {
     });
     expect(JSON.stringify(auditEvents[0])).not.toMatch(/uploads|sha256/i);
     expect(notified).toHaveLength(1);
-    expect(notified[0]).toMatchObject({ tenantId: TENANT_A, changes: ['CREATED'], scope: 'AGENCY' });
+    expect(notified[0]).toMatchObject({
+      tenantId: TENANT_A,
+      changes: ['CREATED'],
+      scope: 'AGENCY',
+      previousHolderName: null,
+      newHolderName: 'Agence Soleil'
+    });
   });
 
   it('limite de 10 comptes par agence ; une copropriété a sa propre limite', async () => {
@@ -441,7 +452,11 @@ describe('modification et suppression', () => {
     expect(store.accounts).toHaveLength(0);
     await expect(fs.access(path.join(tmpRoot, url.replace(/^\//, '')))).rejects.toBeDefined();
     expect(auditEvents[0]).toMatchObject({ actionKey: 'RECEIVING_ACCOUNT_DELETED', entityId: created.id });
-    expect(notified[0].changes).toEqual(['DELETED']);
+    expect(notified[0]).toMatchObject({
+      changes: ['DELETED'],
+      previousHolderName: 'Agence Soleil',
+      newHolderName: null
+    });
   });
 });
 
@@ -521,6 +536,158 @@ describe('modification concurrente (409)', () => {
     expect(files).toHaveLength(1);
     expect(auditEvents).toHaveLength(0);
     expect(notified).toHaveLength(0);
+  });
+
+  const updateWith = (accountId: string, body: Row, file?: Buffer) =>
+    updateReceivingAccount({
+      tenantId: TENANT_A,
+      target: AGENCY,
+      actorUserId: ACTOR,
+      accountId,
+      body: body as any,
+      file: file ? { buffer: file } : undefined
+    });
+
+  it('version du formulaire périmée (expectedUpdatedAt) : 409 sans écriture, ni fichier, ni audit, ni e-mail', async () => {
+    const created = await createAccount(AGENCY, {}, pngWithMetadata());
+    const openedVersion = created.updatedAt;
+    // Un premier formulaire, ouvert sur la même version, enregistre : la version change.
+    const first = await updateWith(created.id, { instructions: 'Premier', expectedUpdatedAt: openedVersion });
+    expect(first.updatedAt).not.toBe(openedVersion);
+    const original = store.accounts[0].qrFileUrl as string;
+    auditEvents.length = 0;
+    notified.length = 0;
+    mockPrisma.receivingAccount.updateMany.mockClear();
+
+    // Le second formulaire, resté sur l'ancienne version, ne doit rien écraser.
+    const error = await rejection(
+      updateWith(created.id, { alias: '0701020304', expectedUpdatedAt: openedVersion }, pngWithMetadata())
+    );
+    expect(error.statusCode).toBe(409);
+    expect(error.message).toMatch(/modifié par quelqu’un d’autre/);
+    expect(mockPrisma.receivingAccount.updateMany).not.toHaveBeenCalled();
+    expect(store.accounts[0]).toMatchObject({ alias: UUID_V4.toLowerCase(), instructions: 'Premier' });
+    expect(store.accounts[0].qrFileUrl).toBe(original);
+    const files = await fs.readdir(path.join(tmpRoot, 'uploads', 'receiving-accounts', TENANT_A));
+    expect(files).toHaveLength(1);
+    expect(auditEvents).toHaveLength(0);
+    expect(notified).toHaveLength(0);
+  });
+
+  it('version à jour : succès, et `updatedAt` est posé explicitement dans l’écriture', async () => {
+    const created = await createAccount(AGENCY);
+    mockPrisma.receivingAccount.updateMany.mockClear();
+    const updated = await updateWith(created.id, { alias: '0701020304', expectedUpdatedAt: created.updatedAt });
+    expect(updated.alias).toBe('0701020304');
+    const [{ data, where }] = mockPrisma.receivingAccount.updateMany.mock.calls[0];
+    expect(data.updatedAt).toBeInstanceOf(Date);
+    expect(data.updatedAt.getTime()).toBeGreaterThan(new Date(created.updatedAt).getTime());
+    expect(where.updatedAt).toEqual(new Date(created.updatedAt));
+    expect(auditEvents[auditEvents.length - 1].payload.changedFields).toEqual(['alias']);
+  });
+
+  it('les millisecondes comptent : une version qui diffère d’une milliseconde est périmée', async () => {
+    const created = await createAccount(AGENCY);
+    const shifted = new Date(new Date(created.updatedAt).getTime() + 1).toISOString();
+    const error = await rejection(updateWith(created.id, { instructions: 'X', expectedUpdatedAt: shifted }));
+    expect(error.statusCode).toBe(409);
+    // Même instant écrit avec un décalage horaire : même version.
+    const sameInstant = '2026-11-01T11:00:00.000+01:00';
+    await expect(updateWith(created.id, { instructions: 'X', expectedUpdatedAt: sameInstant })).resolves.toMatchObject({
+      instructions: 'X'
+    });
+  });
+
+  it('activer/désactiver depuis la liste (isActive + expectedUpdatedAt + removeQr=false) ne touche à rien d’autre', async () => {
+    const created = await createAccount(
+      AGENCY,
+      { scannableWith: 'Application Wave', instructions: 'Texte', sortOrder: 2 },
+      pngWithMetadata()
+    );
+    const before = { ...store.accounts[0] };
+    notified.length = 0;
+    const updated = await updateWith(created.id, {
+      isActive: 'false',
+      expectedUpdatedAt: created.updatedAt,
+      removeQr: 'false'
+    });
+    expect(updated).toMatchObject({
+      isActive: false,
+      alias: UUID_V4.toLowerCase(),
+      scannableWith: 'Application Wave',
+      instructions: 'Texte',
+      holderName: 'Agence Soleil',
+      institution: 'Wave',
+      sortOrder: 2,
+      hasQr: true
+    });
+    for (const field of ['alias', 'scannableWith', 'instructions', 'holderName', 'institution', 'qrFileUrl']) {
+      expect(store.accounts[0][field]).toBe(before[field]);
+    }
+    expect(notified[0].changes).toEqual(['DEACTIVATED']);
+  });
+
+  it('expectedUpdatedAt invalide : refusé par le schéma (400 VALIDATION_ERROR)', async () => {
+    const created = await createAccount(AGENCY);
+    for (const bad of ['hier', '2026-11-01', '2026-13-01T10:00:00Z', 12]) {
+      expect(() => updateReceivingAccountBodySchema.parse({ expectedUpdatedAt: bad })).toThrow(ZodError);
+    }
+    expect(updateReceivingAccountBodySchema.parse({ expectedUpdatedAt: created.updatedAt }).expectedUpdatedAt).toBe(
+      created.updatedAt
+    );
+    const app = express();
+    app.use(express.json());
+    app.put('/:accountId', (req: any, _res, next) => {
+      req.tenantContext = { tenantId: TENANT_A };
+      req.user = { userId: ACTOR };
+      next();
+    });
+    app.put('/:accountId', updateAgencyReceivingAccountHandler);
+    app.use(errorHandler);
+    const res = await request(app).put(`/${created.id}`).send({ isActive: false, expectedUpdatedAt: 'hier' });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('VALIDATION_ERROR');
+    expect(store.accounts[0].isActive).toBe(true);
+  });
+
+  it('suppression pendant un remplacement concurrent du QR : 409, aucun fichier supprimé', async () => {
+    const created = await createAccount(AGENCY, {}, pngWithMetadata());
+    const folder = path.join(tmpRoot, 'uploads', 'receiving-accounts', TENANT_A);
+    const original = store.accounts[0].qrFileUrl as string;
+    const replacement = `/uploads/receiving-accounts/${TENANT_A}/remplacant.png`;
+    await fs.writeFile(path.join(folder, 'remplacant.png'), pngWithMetadata());
+    auditEvents.length = 0;
+    notified.length = 0;
+    // Un autre utilisateur remplace le QR juste après la lecture de la transaction de suppression.
+    mockPrisma.receivingAccount.findFirst.mockImplementationOnce(async ({ where }: Row) => {
+      const found = store.accounts.find(r => matches(r, where));
+      const snapshot = found ? { ...found } : null;
+      if (found) found.qrFileUrl = replacement;
+      return snapshot;
+    });
+    const error = await rejection(
+      deleteReceivingAccount({ tenantId: TENANT_A, target: AGENCY, actorUserId: ACTOR, accountId: created.id })
+    );
+    expect(error.statusCode).toBe(409);
+    expect(store.accounts).toHaveLength(1);
+    await expect(fs.access(path.join(folder, 'remplacant.png'))).resolves.toBeUndefined();
+    await expect(fs.access(path.join(tmpRoot, original.replace(/^\//, '')))).resolves.toBeUndefined();
+    expect(auditEvents).toHaveLength(0);
+    expect(notified).toHaveLength(0);
+  });
+
+  it('la suppression lit et supprime dans une transaction, en exigeant le fichier lu', async () => {
+    const created = await createAccount(AGENCY, {}, pngWithMetadata());
+    const url = store.accounts[0].qrFileUrl as string;
+    mockPrisma.$transaction.mockClear();
+    mockPrisma.receivingAccount.deleteMany.mockClear();
+    await deleteReceivingAccount({ tenantId: TENANT_A, target: AGENCY, actorUserId: ACTOR, accountId: created.id });
+    expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.receivingAccount.deleteMany.mock.calls[0][0].where).toMatchObject({
+      id: created.id,
+      tenantId: TENANT_A,
+      qrFileUrl: url
+    });
   });
 
   it('la création prend le verrou consultatif de la cible avant de compter', async () => {

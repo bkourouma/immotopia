@@ -43,11 +43,21 @@ export interface ReceivingAccountInput {
   sortOrder: number;
 }
 
+/** Portail copropriétaire : la copropriété du compte, pour regrouper l'affichage. */
+export interface CoOwnerReceivingAccountPublic extends ReceivingAccountPublic {
+  syndicateId: string;
+}
+
 export interface ReceivingAccountWriteOptions {
   /** Image du QR téléversée (champ `qr`). */
   qrFile?: File | null;
   /** Modification seulement : retire l'image existante. */
   removeQr?: boolean;
+  /**
+   * Modification seulement : `updatedAt` de la ligne lue. L'API refuse (409)
+   * si le compte a changé depuis, sans rien écrire.
+   */
+  expectedUpdatedAt?: string | null;
 }
 
 /** Où vivent les comptes : réglages de l'agence ou une copropriété. */
@@ -64,17 +74,29 @@ function base(scope: ReceivingAccountScope): string {
     : `/tenants/${scope.tenantId}/syndics/${scope.syndicId}/receiving-accounts`;
 }
 
-function toFormData(input: ReceivingAccountInput, options: ReceivingAccountWriteOptions, update: boolean): FormData {
+const TEXT_FIELDS = ['institution', 'scannableWith', 'alias', 'holderName', 'instructions'] as const;
+
+/**
+ * Corps multipart. Seuls les champs présents dans `input` partent : une
+ * modification partielle (ex. `{ isActive }`) ne touche pas aux autres champs
+ * côté serveur. Un champ facultatif à `null` part en chaîne vide, qui l'efface.
+ */
+function toFormData(
+  input: Partial<ReceivingAccountInput>,
+  options: ReceivingAccountWriteOptions,
+  update: boolean
+): FormData {
   const form = new FormData();
-  form.append('institution', input.institution);
-  // Une chaîne vide efface le champ facultatif côté serveur.
-  form.append('scannableWith', input.scannableWith ?? '');
-  form.append('alias', input.alias ?? '');
-  form.append('holderName', input.holderName);
-  form.append('instructions', input.instructions ?? '');
-  form.append('isActive', String(input.isActive));
-  form.append('sortOrder', String(input.sortOrder));
-  if (update) form.append('removeQr', String(Boolean(options.removeQr)));
+  for (const field of TEXT_FIELDS) {
+    const value = input[field];
+    if (value !== undefined) form.append(field, value ?? '');
+  }
+  if (input.isActive !== undefined) form.append('isActive', String(input.isActive));
+  if (input.sortOrder !== undefined) form.append('sortOrder', String(input.sortOrder));
+  if (update) {
+    form.append('removeQr', String(Boolean(options.removeQr)));
+    if (options.expectedUpdatedAt) form.append('expectedUpdatedAt', options.expectedUpdatedAt);
+  }
   if (options.qrFile) form.append('qr', options.qrFile);
   return form;
 }
@@ -100,7 +122,7 @@ export async function createReceivingAccount(
 export async function updateReceivingAccount(
   scope: ReceivingAccountScope,
   accountId: string,
-  input: ReceivingAccountInput,
+  input: Partial<ReceivingAccountInput>,
   options: ReceivingAccountWriteOptions = {}
 ): Promise<ReceivingAccountAdmin> {
   const response = await apiClient.put<Envelope<ReceivingAccountAdmin>>(

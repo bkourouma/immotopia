@@ -1,6 +1,6 @@
 import apiClient from '../utils/api-client';
 import { filenameFromDisposition } from '../utils/save-blob';
-import type { ReceivingAccountPublic } from './receiving-account-service';
+import type { CoOwnerReceivingAccountPublic } from './receiving-account-service';
 
 /**
  * Portail copropriétaire — `/api/portal/copropriete/*`. Lecture seule, sauf
@@ -747,8 +747,11 @@ export async function cancelDeclaration(declarationId: string): Promise<CoOwnerD
 // Spec 048, lot Q — comptes de réception de la copropriété (lecture seule)
 // ---------------------------------------------------------------------------
 
-/** `GET /receiving-accounts` : comptes actifs de la copropriété (contrat lot Q §3). */
-export async function listMyReceivingAccounts(): Promise<ReceivingAccountPublic[]> {
-  const response = await apiClient.get<ApiResponse<ReceivingAccountPublic[]>>(`${BASE}/receiving-accounts`);
+/**
+ * `GET /receiving-accounts` : comptes actifs des copropriétés du copropriétaire
+ * (contrat lot Q §3), chacun avec sa `syndicateId` pour les regrouper.
+ */
+export async function listMyReceivingAccounts(): Promise<CoOwnerReceivingAccountPublic[]> {
+  const response = await apiClient.get<ApiResponse<CoOwnerReceivingAccountPublic[]>>(`${BASE}/receiving-accounts`);
   return response.data.data;
 }

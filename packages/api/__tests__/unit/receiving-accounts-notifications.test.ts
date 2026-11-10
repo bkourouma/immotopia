@@ -38,7 +38,7 @@ const mockPrisma: Record<string, any> = {
 };
 jest.mock('../../src/utils/database', () => ({ prisma: mockPrisma }));
 
-import { sendReceivingAccountChangedAlert } from '../../src/lib/receiving-accounts/notifications';
+import { holderSentence, sendReceivingAccountChangedAlert } from '../../src/lib/receiving-accounts/notifications';
 
 const alert = {
   tenantId: 'tenant-a',
@@ -79,6 +79,66 @@ describe('alerte de changement de compte de réception', () => {
   it('ne lit même pas la configuration des notifications', async () => {
     await sendReceivingAccountChangedAlert(alert);
     expect(getConfig).not.toHaveBeenCalled();
+  });
+
+  /** Corps envoyé à l'administrateur francophone. */
+  async function frenchBody(overrides: Record<string, unknown>): Promise<string> {
+    sendEmail.mockClear();
+    await sendReceivingAccountChangedAlert({ ...alert, ...overrides } as any);
+    const call = sendEmail.mock.calls.find(([options]) => options.to === 'admin1@agence.test');
+    return call?.[0].html as string;
+  }
+
+  it('création : la ligne « Titulaire » donne le nouveau titulaire seul, jamais « aucun devient aucun »', async () => {
+    const html = await frenchBody({
+      changes: ['CREATED'],
+      previousAlias: null,
+      newAlias: 'nouveau',
+      previousHolderName: null,
+      newHolderName: 'Agence Soleil'
+    });
+    expect(html).toContain('Titulaire : Agence Soleil.');
+    expect(html).not.toMatch(/Titulaire : aucun|devient Agence Soleil/);
+  });
+
+  it('modification du titulaire : ancien et nouveau ; titulaire inchangé : nommé une fois', async () => {
+    const changed = await frenchBody({ changes: ['HOLDER_CHANGED'] });
+    expect(changed).toContain('Titulaire : Agence Soleil devient Autre.');
+    const unchanged = await frenchBody({
+      changes: ['ALIAS_CHANGED'],
+      previousHolderName: 'Agence Soleil',
+      newHolderName: 'Agence Soleil'
+    });
+    expect(unchanged).toContain('Titulaire : Agence Soleil.');
+    expect(unchanged).not.toContain('Agence Soleil devient');
+  });
+
+  it('suppression : le titulaire supprimé seul', async () => {
+    const html = await frenchBody({
+      changes: ['DELETED'],
+      newAlias: null,
+      hasQr: false,
+      previousHolderName: 'Agence Soleil',
+      newHolderName: null
+    });
+    expect(html).toContain('Titulaire : Agence Soleil.');
+    expect(html).not.toContain('Titulaire : aucun');
+    expect(html).toContain('compte supprimé');
+  });
+
+  it('aucun titulaire connu : pas de ligne « Titulaire » ; le titulaire est échappé', async () => {
+    const none = await frenchBody({ previousHolderName: undefined, newHolderName: undefined });
+    expect(none).not.toContain('Titulaire');
+    expect(holderSentence(null, '  ')).toBe('');
+    const escaped = await frenchBody({ previousHolderName: null, newHolderName: '<script>x</script>' });
+    expect(escaped).toContain('Titulaire : &lt;script&gt;x&lt;/script&gt;.');
+  });
+
+  it('la ligne « Titulaire » suit la langue de l’administrateur', async () => {
+    sendEmail.mockClear();
+    await sendReceivingAccountChangedAlert(alert);
+    const english = sendEmail.mock.calls.find(([options]) => options.to === 'admin2@agence.test')?.[0].html as string;
+    expect(english).toContain('Holder: Agence Soleil becomes Autre.');
   });
 
   it('une panne d’e-mail n’empêche pas les autres envois et ne lève pas', async () => {

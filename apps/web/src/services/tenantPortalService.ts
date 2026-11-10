@@ -24,6 +24,13 @@ export const tenantPortalService = {
     params?: PortalListParams & { search?: string; status?: string; startDate?: string; endDate?: string }
   ) => api.get('/portal/tenant/installments', { params }),
 
+  /**
+   * Premières échéances non soldées de tous les baux, sans filtre d'écran
+   * (motif suggéré de « Payer l'agence », spec 048 lot Q). Même route que la liste.
+   */
+  getUnpaidInstallments: (limit = 10) =>
+    api.get('/portal/tenant/installments', { params: { status: 'DUE,OVERDUE,PARTIAL', page: 1, limit } }),
+
   getInstallmentDetails: (id: string) => api.get(`/portal/tenant/installments/${id}`),
 
   // Payments

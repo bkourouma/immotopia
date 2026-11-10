@@ -341,6 +341,26 @@ function SuiviPaiementEnLigne({
   );
 }
 
+/** Quelques lignes suffisent : l'API les trie par échéance, on retrie quand même ici. */
+const UNPAID_LOOKAHEAD = 10;
+
+/**
+ * Motif « Loyer <période> » de la plus ancienne échéance non soldée (triée par
+ * date d'échéance ici, sans supposer l'ordre reçu). Lecture en échec : motif
+ * générique sans période plutôt qu'une période fausse. Rien à payer : aucun motif.
+ */
+function rentReason(installments: InstallmentItem[] | undefined, failed: boolean, withLease: boolean): string | null {
+  if (failed) return t('Loyer');
+  if (!installments) return null;
+  const next = installments
+    .filter(item => item.balance > 0 && item.status !== 'PAID')
+    .sort((a, b) => Date.parse(a.dueDate) - Date.parse(b.dueDate))[0];
+  if (!next) return null;
+  return withLease && next.leaseNumber
+    ? t('Loyer {{period}} — {{lease}}', { period: next.period, lease: next.leaseNumber })
+    : t('Loyer {{period}}', { period: next.period });
+}
+
 export default function TenantPayments() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { ongletActif, ongletRef, changerOnglet } = useOngletPaiements();
@@ -402,13 +422,20 @@ export default function TenantPayments() {
   });
   const hasSeveralLeases = (leases?.length ?? 0) > 1;
 
-  // Motif à recopier, composé avec les échéances déjà chargées : la plus ancienne non soldée.
-  const nextDue = data?.installments.find(item => item.balance > 0 && item.status !== 'PAID');
-  const suggestedReason = nextDue
-    ? hasSeveralLeases && nextDue.leaseNumber
-      ? t('Loyer {{period}} — {{lease}}', { period: nextDue.period, lease: nextDue.leaseNumber })
-      : t('Loyer {{period}}', { period: nextDue.period })
-    : null;
+  // Motif à recopier : la plus ancienne échéance non soldée de TOUTES les échéances, pas
+  // seulement de la page affichée (filtrée, paginée). Requête légère dédiée, revue quand
+  // le total dû change ; sans réponse fiable, motif générique sans période.
+  const { data: unpaidInstallments, isError: unpaidError } = useQuery({
+    queryKey: ['tenant-portal', 'unpaid-installments', data?.summary?.due ?? null],
+    queryFn: async () => {
+      const response = await tenantPortalService.getUnpaidInstallments(UNPAID_LOOKAHEAD);
+      return (response.data?.data?.installments ?? []) as InstallmentItem[];
+    },
+    enabled: Boolean(data),
+    staleTime: 30_000,
+    retry: false
+  });
+  const suggestedReason = rentReason(unpaidInstallments, unpaidError, hasSeveralLeases);
 
   // Payment history state
   const [paymentHistoryLoading, setPaymentHistoryLoading] = useState(false);

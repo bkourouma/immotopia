@@ -93,6 +93,20 @@ function changeLabel(changes: ReceivingAccountChange[]): string {
   return changes.map(change => labels[change]).join(', ');
 }
 
+/**
+ * Phrase « Titulaire » de l'alerte, dans la langue courante, précédée d'une espace ; vide si aucun titulaire
+ * n'est connu. Création : le nouveau seul ; suppression : le supprimé seul ; changement : ancien et nouveau.
+ */
+export function holderSentence(previous: string | null | undefined, next: string | null | undefined): string {
+  const before = previous?.trim() || null;
+  const after = next?.trim() || null;
+  if (before && after && before !== after) {
+    return ` ${t('Titulaire : {{previous}} devient {{next}}.', { previous: before, next: after })}`;
+  }
+  const holder = after ?? before;
+  return holder ? ` ${t('Titulaire : {{holder}}.', { holder })}` : '';
+}
+
 /** Envoie l'alerte ; renvoie le nombre d'envois réussis. Ne lève jamais. */
 export async function sendReceivingAccountChangedAlert(alert: ReceivingAccountAlert): Promise<number> {
   const { tenantId } = alert;
@@ -123,8 +137,7 @@ export async function sendReceivingAccountChangedAlert(alert: ReceivingAccountAl
             newAlias: alert.newAlias ?? none,
             previousQr: alert.hadQr ? present : absent,
             newQr: alert.hasQr ? present : absent,
-            previousHolder: alert.previousHolderName ?? none,
-            newHolder: alert.newHolderName ?? none
+            holderLine: holderSentence(alert.previousHolderName, alert.newHolderName)
           };
           const escaped = Object.fromEntries(Object.entries(variables).map(([k, v]) => [k, escapeHtml(v)]));
           await emailService.sendEmail({

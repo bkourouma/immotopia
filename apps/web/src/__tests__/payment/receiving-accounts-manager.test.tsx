@@ -162,6 +162,174 @@ describe('ReceivingAccountsManagerCard', () => {
     expect(screen.getByRole('button', { name: /Ajouter un compte/ })).toBeDisabled();
   });
 
+  it('modification : envoie la version lue (expectedUpdatedAt)', async () => {
+    updateReceivingAccount.mockResolvedValue(row());
+    mount();
+    await screen.findByText('agence-soleil');
+    fireEvent.click(screen.getByRole('button', { name: /Modifier/ }));
+    await fill(/Établissement/, 'Wave CI');
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+    await waitFor(() => expect(updateReceivingAccount).toHaveBeenCalledTimes(1));
+    const [, id, input, options] = updateReceivingAccount.mock.calls[0];
+    expect(id).toBe('a1');
+    expect(input).toMatchObject({ institution: 'Wave CI', alias: 'agence-soleil' });
+    expect(options).toMatchObject({ removeQr: false, expectedUpdatedAt: '2026-11-01T00:00:00.000Z' });
+  });
+
+  it('activer : n’envoie que isActive, removeQr=false et la version', async () => {
+    listReceivingAccounts.mockResolvedValue([row({ isActive: false })]);
+    updateReceivingAccount.mockResolvedValue(row());
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Activer' }));
+    await waitFor(() => expect(updateReceivingAccount).toHaveBeenCalledTimes(1));
+    expect(updateReceivingAccount.mock.calls[0].slice(1)).toEqual([
+      'a1',
+      { isActive: true },
+      { removeQr: false, expectedUpdatedAt: '2026-11-01T00:00:00.000Z' }
+    ]);
+  });
+
+  it('409 : affiche le message du serveur et recharge la liste', async () => {
+    listReceivingAccounts.mockResolvedValue([row({ isActive: false })]);
+    updateReceivingAccount.mockRejectedValue({
+      response: { status: 409, data: { message: 'Compte modifié par quelqu’un d’autre : rechargez la page.' } }
+    });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Activer' }));
+    expect(await screen.findByText('Compte modifié par quelqu’un d’autre : rechargez la page.')).toBeInTheDocument();
+    await waitFor(() => expect(listReceivingAccounts).toHaveBeenCalledTimes(2));
+  });
+
+  it('409 à l’enregistrement du formulaire : fenêtre fermée, message affiché, liste rechargée', async () => {
+    updateReceivingAccount.mockRejectedValue({
+      response: { status: 409, data: { message: 'Compte modifié par quelqu’un d’autre : rechargez la page.' } }
+    });
+    mount();
+    await screen.findByText('agence-soleil');
+    fireEvent.click(screen.getByRole('button', { name: /Modifier/ }));
+    await screen.findByLabelText(/Établissement/);
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+    expect(await screen.findByText('Compte modifié par quelqu’un d’autre : rechargez la page.')).toBeInTheDocument();
+    await waitFor(() => expect(listReceivingAccounts).toHaveBeenCalledTimes(2));
+  });
+
+  it('affiche le premier détail de validation plutôt que le message général', async () => {
+    createReceivingAccount.mockRejectedValue({
+      response: {
+        status: 422,
+        data: {
+          message: 'Les données fournies sont invalides.',
+          errors: [
+            { field: 'institution', message: '' },
+            { field: 'alias', message: 'Alias refusé par le serveur.' }
+          ]
+        }
+      }
+    });
+    mount();
+    await screen.findByText('agence-soleil');
+    fireEvent.click(screen.getByRole('button', { name: /Ajouter un compte/ }));
+    await fill(/Établissement/, 'Wave');
+    await fill(/Alias/, 'agence-om');
+    await fill(/Nom attendu du bénéficiaire/, 'Agence Soleil');
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+    expect(await screen.findByText('Alias refusé par le serveur.')).toBeInTheDocument();
+    expect(screen.queryByText('Les données fournies sont invalides.')).not.toBeInTheDocument();
+  });
+
+  it('refuse avant envoi un alias en forme d’UUID qui n’est pas un v4', async () => {
+    mount();
+    await screen.findByText('agence-soleil');
+    fireEvent.click(screen.getByRole('button', { name: /Ajouter un compte/ }));
+    await fill(/Établissement/, 'Wave');
+    await fill(/Alias/, '341c3e1b-1111-1111-8111-111111111111');
+    await fill(/Nom attendu du bénéficiaire/, 'Agence Soleil');
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+    expect(
+      await screen.findByText("L'alias a la forme d'un identifiant PI-SPI mais n'est pas un UUID v4 valide.")
+    ).toBeInTheDocument();
+    expect(createReceivingAccount).not.toHaveBeenCalled();
+  });
+
+  it('accepte un alias UUID v4 et mesure le nom après retrait des espaces', async () => {
+    createReceivingAccount.mockResolvedValue(row());
+    mount();
+    await screen.findByText('agence-soleil');
+    fireEvent.click(screen.getByRole('button', { name: /Ajouter un compte/ }));
+    await fill(/Établissement/, 'Wave');
+    await fill(/Alias/, '341c3e1b-1111-4111-8111-111111111111');
+    await fill(/Nom attendu du bénéficiaire/, '  A  ');
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+    expect(await screen.findByText('Le nom doit comporter de 2 à 80 caractères')).toBeInTheDocument();
+    expect(createReceivingAccount).not.toHaveBeenCalled();
+    await fill(/Nom attendu du bénéficiaire/, '  Agence Soleil  ');
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+    await waitFor(() => expect(createReceivingAccount).toHaveBeenCalledTimes(1));
+    expect(createReceivingAccount.mock.calls[0][1]).toMatchObject({
+      alias: '341c3e1b-1111-4111-8111-111111111111',
+      holderName: 'Agence Soleil'
+    });
+  });
+
+  it('double clic : Activer et Supprimer sont bloqués pendant la requête', async () => {
+    listReceivingAccounts.mockResolvedValue([row({ isActive: false })]);
+    let release: (value: ReceivingAccountAdmin) => void = () => undefined;
+    updateReceivingAccount.mockReturnValue(new Promise(resolve => (release = resolve)));
+    mount();
+    const activate = await screen.findByRole('button', { name: 'Activer' });
+    fireEvent.click(activate);
+    fireEvent.click(activate);
+    await waitFor(() => expect(activate).toBeDisabled());
+    expect(screen.getByRole('button', { name: /Supprimer/ })).toBeDisabled();
+    expect(updateReceivingAccount).toHaveBeenCalledTimes(1);
+    release(row());
+    await waitFor(() => expect(screen.getByRole('button', { name: /Supprimer/ })).not.toBeDisabled());
+  });
+
+  it('enregistrement réussi mais rechargement en échec : avertissement visible malgré la liste', async () => {
+    updateReceivingAccount.mockResolvedValue(row());
+    mount();
+    await screen.findByText('agence-soleil');
+    listReceivingAccounts.mockRejectedValueOnce({ response: { data: { message: 'Réseau coupé.' } } });
+    fireEvent.click(screen.getByRole('button', { name: /Modifier/ }));
+    await screen.findByLabelText(/Établissement/);
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+    expect(await screen.findByText('Réseau coupé.')).toBeInTheDocument();
+    expect(
+      screen.getByText('La liste n’a pas pu être actualisée : elle peut ne pas refléter le dernier enregistrement.')
+    ).toBeInTheDocument();
+    expect(screen.getByText('agence-soleil')).toBeInTheDocument();
+  });
+
+  it('aperçu du QR rechargé quand updatedAt change, ancienne URL objet révoquée', async () => {
+    let n = 0;
+    const createObjectURL = vi.fn(() => `blob:qr-${++n}`);
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(URL, 'createObjectURL', { value: createObjectURL, configurable: true });
+    Object.defineProperty(URL, 'revokeObjectURL', { value: revokeObjectURL, configurable: true });
+    fetchReceivingAccountQr.mockResolvedValue(new Blob(['png'], { type: 'image/png' }));
+    const qrPath = '/api/tenants/tenant-1/settings/receiving-accounts/a1/qr';
+    listReceivingAccounts.mockResolvedValueOnce([row({ hasQr: true, qrPath })]);
+    listReceivingAccounts.mockResolvedValue([row({ hasQr: true, qrPath, updatedAt: '2026-11-02T00:00:00.000Z' })]);
+    updateReceivingAccount.mockResolvedValue(row());
+    mount();
+    const first = await screen.findByAltText('QR de paiement Wave');
+    expect(first).toHaveAttribute('src', 'blob:qr-1');
+
+    fireEvent.click(screen.getByRole('button', { name: /Modifier/ }));
+    await screen.findByLabelText(/Établissement/);
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+
+    await waitFor(() => expect(revokeObjectURL).toHaveBeenCalledWith('blob:qr-1'));
+    await waitFor(() =>
+      expect(screen.getAllByAltText('QR de paiement Wave').some(img => img.getAttribute('src') === 'blob:qr-1')).toBe(
+        false
+      )
+    );
+    expect(fetchReceivingAccountQr.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(fetchReceivingAccountQr).toHaveBeenLastCalledWith(qrPath);
+  });
+
   it('affiche une erreur de chargement avec un bouton Réessayer', async () => {
     listReceivingAccounts.mockRejectedValueOnce({ response: { data: { message: 'Panne.' } } });
     mount();

@@ -79,6 +79,15 @@ const sortOrderField = z
   .pipe(z.number().int().min(0).max(100000))
   .optional();
 
+/**
+ * Version lue par le formulaire (`updatedAt` de la réponse, ISO 8601). Gardée en chaîne pour que le
+ * corps reste valide à une seconde validation (contrôleur puis service) ; comparée en millisecondes.
+ */
+const expectedUpdatedAtField = z
+  .string()
+  .datetime({ offset: true, message: t('Version du compte invalide : rechargez la page.') })
+  .optional();
+
 export const createReceivingAccountBodySchema = z
   .object({
     institution: line(1, 60),
@@ -100,7 +109,8 @@ export const updateReceivingAccountBodySchema = z
     instructions: instructionsField,
     isActive: booleanField,
     sortOrder: sortOrderField,
-    removeQr: booleanField
+    removeQr: booleanField,
+    expectedUpdatedAt: expectedUpdatedAtField
   })
   .strict();
 

@@ -11,9 +11,16 @@ export interface ReceivingAccountQrState {
 /**
  * Charge l'image d'un QR par la route authentifiée (blob via `utils/api-client`),
  * jamais par une balise `<img>` pointant un chemin `/uploads`. L'URL objet est
- * révoquée au changement de chemin et au démontage.
+ * révoquée au changement de chemin ou de version et au démontage.
+ *
+ * `version` (l'`updatedAt` du compte côté gestion) force le rechargement quand
+ * l'image a été remplacée : la route, elle, ne change pas.
  */
-export function useReceivingAccountQr(qrPath: string | null | undefined, enabled = true): ReceivingAccountQrState {
+export function useReceivingAccountQr(
+  qrPath: string | null | undefined,
+  enabled = true,
+  version?: string | null
+): ReceivingAccountQrState {
   const [state, setState] = useState<ReceivingAccountQrState>({ url: null, loading: false, failed: false });
 
   useEffect(() => {
@@ -37,7 +44,7 @@ export function useReceivingAccountQr(qrPath: string | null | undefined, enabled
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [qrPath, enabled]);
+  }, [qrPath, enabled, version]);
 
   return state;
 }

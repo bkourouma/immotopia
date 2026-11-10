@@ -11,6 +11,8 @@ export interface ReceivingAccountQrProps {
   /** Faux : image simple, sans bouton d'agrandissement. */
   zoomable?: boolean;
   size?: number;
+  /** Version de l'image (`updatedAt` côté gestion) : un changement la recharge. */
+  version?: string | null;
 }
 
 /**
@@ -21,9 +23,10 @@ export function ReceivingAccountQr({
   qrPath,
   institution,
   zoomable = true,
-  size = 160
+  size = 160,
+  version
 }: ReceivingAccountQrProps): React.ReactElement | null {
-  const { url, loading, failed } = useReceivingAccountQr(qrPath);
+  const { url, loading, failed } = useReceivingAccountQr(qrPath, true, version);
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
 

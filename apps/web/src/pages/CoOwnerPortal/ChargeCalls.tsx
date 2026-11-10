@@ -5,7 +5,11 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { MoneyValue, SkeletonList, StateBlock } from '../../components/primitives';
 import { CoOwnerReceivingAccountsSection } from '../../components/coowner-portal/ReceivingAccountsSection';
-import { DeclaredPaymentSection } from '../../components/coowner-portal/declared-payment/DeclaredPaymentSection';
+import {
+  DeclaredPaymentSection,
+  declaredSyndicateAnchorId
+} from '../../components/coowner-portal/declared-payment/DeclaredPaymentSection';
+import { syndicateNamesFromCalls } from '../../components/coowner-portal/receiving-account-groups';
 import { useDeclaredAvailabilities } from '../../components/coowner-portal/declared-payment/useDeclaredAvailabilities';
 import { t } from '../../i18n/t';
 import {
@@ -23,7 +27,6 @@ import { redirectToExternalUrl } from '../../utils/external-redirect';
 import { ChargeCallsTable, isCallSelectable } from './ChargeCallsTable';
 import { OnlinePaymentReturn, isPaymentCode } from './OnlinePaymentReturn';
 import { portalErrorMessage } from './portal-error';
-import { formatChargePeriod } from '../../utils/charge-period';
 
 const { Title, Text } = Typography;
 
@@ -171,19 +174,18 @@ export default function CoOwnerChargeCalls() {
   const availabilityKnown = !availabilityQuery.isPending;
   const hasSomethingToPay = calls.some(call => call.outstanding > 0);
 
-  // Motif à recopier, composé avec les appels déjà chargés : le plus ancien appel non soldé.
-  const nextCall = calls.find(call => call.outstanding > 0);
-  const suggestedReason = nextCall
-    ? nextCall.lot
-      ? t('Appel de charges {{period}} — Lot {{lotNumber}}', {
-          period: formatChargePeriod(nextCall),
-          lotNumber: nextCall.lot.lotNumber
-        })
-      : t('Appel de charges {{period}}', { period: formatChargePeriod(nextCall) })
-    : null;
+  // « Payer l'agence » : noms des copropriétés tirés des données déjà chargées (appels, déclaration).
+  const syndicateNames = syndicateNamesFromCalls(
+    calls,
+    declaredEntries.map(entry => entry.syndicate)
+  );
+  const declarableSyndicateIds = declaredEntries.map(entry => entry.syndicate.id);
 
-  const scrollToDeclaration = () =>
-    document.getElementById(DECLARED_SECTION_ID)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // Vers la déclaration de la copropriété du compte, à défaut vers la section entière.
+  const scrollToDeclaration = (syndicateId: string) =>
+    (
+      document.getElementById(declaredSyndicateAnchorId(syndicateId)) ?? document.getElementById(DECLARED_SECTION_ID)
+    )?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   // Sélection valide : un appel disparu ou devenu non payable (liste rechargée) en sort.
   const selectedCalls: CoOwnerChargeCall[] = [];
@@ -329,7 +331,9 @@ export default function CoOwnerChargeCalls() {
       ) : null}
 
       <CoOwnerReceivingAccountsSection
-        suggestedReason={suggestedReason}
+        calls={calls}
+        syndicateNames={syndicateNames}
+        declarableSyndicateIds={declarableSyndicateIds}
         onDeclare={declaredAvailable ? scrollToDeclaration : undefined}
       />
 

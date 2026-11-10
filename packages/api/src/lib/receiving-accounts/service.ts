@@ -209,7 +209,9 @@ export async function createReceivingAccount(
     previousAlias: null,
     newAlias: created.alias,
     hadQr: false,
-    hasQr
+    hasQr,
+    previousHolderName: null,
+    newHolderName: created.holderName
   });
   return loadAdminView(tenantId, target, created.id);
 }
@@ -279,9 +281,16 @@ function conflict(): ConflictError {
   );
 }
 
+/** Le formulaire a été ouvert sur une version périmée : un autre utilisateur a écrit depuis. */
+function isStale(current: ReceivingAccount, expectedUpdatedAt: string | undefined): boolean {
+  if (expectedUpdatedAt === undefined) return false;
+  return new Date(expectedUpdatedAt).getTime() !== current.updatedAt.getTime();
+}
+
 /**
- * Lecture et écriture dans UNE transaction ; l'écriture exige que la ligne n'ait pas bougé depuis la lecture
- * (`updatedAt`), sinon 409. `null` : rien à changer.
+ * Lecture et écriture dans UNE transaction. 409 sans rien écrire si la version envoyée par le formulaire
+ * (`expectedUpdatedAt`) n'est plus celle de la ligne, ou si la ligne a bougé entre la lecture et l'écriture
+ * (`updatedAt` dans le `where`). `null` : rien à changer.
  */
 async function applyUpdate(
   tenantId: string,
@@ -293,11 +302,14 @@ async function applyUpdate(
   return prisma.$transaction(async tx => {
     const current = await tx.receivingAccount.findFirst({ where: { id: accountId, ...whereTarget(tenantId, target) } });
     if (!current) throw notFound();
+    if (isStale(current, body.expectedUpdatedAt)) throw conflict();
     const plan = planUpdate(current, body, stored);
     if (Object.keys(plan.data).length === 0) return null;
     const result = await tx.receivingAccount.updateMany({
       where: { id: current.id, ...whereTarget(tenantId, target), updatedAt: current.updatedAt },
-      data: plan.data
+      // Posé explicitement : `updateMany` ne doit pas dépendre du comportement implicite de `@updatedAt`.
+      // Toujours postérieur à la version lue, même dans la même milliseconde : sinon la version ne bougerait pas.
+      data: { ...plan.data, updatedAt: new Date(Math.max(Date.now(), current.updatedAt.getTime() + 1)) }
     });
     if (result.count === 0) throw conflict();
     return plan;
@@ -372,15 +384,32 @@ export async function updateReceivingAccount(
   return loadAdminView(tenantId, target, current.id);
 }
 
+/**
+ * Lecture et suppression dans UNE transaction. Le `deleteMany` exige le `qrFileUrl` lu : si un remplacement
+ * concurrent du QR a changé le fichier entre-temps, rien n'est supprimé (409) ; sinon le fichier supprimé
+ * ensuite est bien celui de la ligne supprimée, et aucun fichier ne reste orphelin.
+ */
+async function removeRow(
+  tenantId: string,
+  target: ReceivingAccountTarget,
+  accountId: string
+): Promise<ReceivingAccount> {
+  return prisma.$transaction(async tx => {
+    const current = await tx.receivingAccount.findFirst({ where: { id: accountId, ...whereTarget(tenantId, target) } });
+    if (!current) throw notFound();
+    const result = await tx.receivingAccount.deleteMany({
+      where: { id: current.id, ...whereTarget(tenantId, target), qrFileUrl: current.qrFileUrl }
+    });
+    if (result.count === 0) throw conflict();
+    return current;
+  });
+}
+
 /** Suppression de la ligne et du fichier ; l'audit garde l'historique. */
 export async function deleteReceivingAccount(params: Actor & { accountId: string }): Promise<void> {
   const { tenantId, target, actorUserId, accountId } = params;
   await assertTarget(tenantId, target);
-  const current = await loadOwned(tenantId, target, accountId);
-  const result = await prisma.receivingAccount.deleteMany({
-    where: { id: current.id, ...whereTarget(tenantId, target) }
-  });
-  if (result.count === 0) throw notFound();
+  const current = await removeRow(tenantId, target, accountId);
   await deleteQrQuietly(tenantId, current.qrFileUrl);
 
   const hadQr = current.qrFileUrl !== null;
@@ -410,7 +439,9 @@ export async function deleteReceivingAccount(params: Actor & { accountId: string
     previousAlias: current.alias,
     newAlias: null,
     hadQr,
-    hasQr: false
+    hasQr: false,
+    previousHolderName: current.holderName,
+    newHolderName: null
   });
 }
 
