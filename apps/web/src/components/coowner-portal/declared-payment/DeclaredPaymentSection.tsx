@@ -5,6 +5,7 @@ import { MobileOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useBreakpoint } from '../../../hooks/useBreakpoint';
 import { t } from '../../../i18n/t';
+import { COOWNER_PAYER_PHONE_KEY } from '../../../utils/personal-local-data';
 import { listMyLots, type CoOwnerChargeCall, type CoOwnerDeclaration } from '../../../services/coowner-portal-service';
 import { DeclarationForm } from './DeclarationForm';
 import { ReceivingNumbersCard } from './ReceivingNumbersCard';
@@ -16,7 +17,8 @@ import type { DeclaredAvailabilityEntry } from './useDeclaredAvailabilities';
  * ouverte et bouton qui ouvre le formulaire de déclaration.
  */
 
-const PAYER_PHONE_KEY = 'coowner-portal:payer-phone';
+// Clé purgée à la déconnexion : voir `utils/personal-local-data.ts`.
+const PAYER_PHONE_KEY = COOWNER_PAYER_PHONE_KEY;
 
 function readPayerPhone(): string | undefined {
   try {

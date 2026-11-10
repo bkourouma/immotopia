@@ -14,6 +14,8 @@ import { isPublicTokenPath } from '../utils/public-routes';
 import { userHasPermission } from '../utils/permissions';
 import { t } from '../i18n/t';
 import { LANGUAGE_STORAGE_KEY } from '../i18n/config';
+import { getSafeRedirectPath } from '../utils/safe-redirect';
+import { purgePersonalLocalData } from '../utils/personal-local-data';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -385,9 +387,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       } catch {
         // Stockage refusé : rien à nettoyer.
       }
-      // Chemin interne uniquement : jamais d'URL absolue ni de "//" (redirection ouverte).
-      const target = options?.redirectTo;
-      window.location.href = target && /^\/(?![/\\])/.test(target) ? target : '/login';
+      // Données personnelles locales (brouillons d'états des lieux, téléphone
+      // du payeur, hypothèses de rendement) : à ne pas laisser au compte suivant.
+      purgePersonalLocalData();
+      // Chemin interne uniquement : jamais d'URL absolue, de "//" ni de "\\" (redirection ouverte).
+      window.location.href = getSafeRedirectPath(options?.redirectTo, '/login');
     }
   };
 
