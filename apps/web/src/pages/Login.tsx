@@ -8,6 +8,7 @@ import { API_ORIGIN } from '../config/api';
 import logoImmoTopia from '../assets/logo-immotopia.png';
 import { t } from '../i18n/t';
 import { InstallAppButton } from '../components/pwa/InstallAppButton';
+import { getSafeRedirectPath } from '../utils/safe-redirect';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -30,13 +31,8 @@ const showDemoAccounts = import.meta.env.DEV || import.meta.env.VITE_SHOW_DEMO_A
 const DevAccountsSelect = showDemoAccounts ? lazy(() => import('../dev/DevAccountsSelect')) : null;
 
 function getRedirectTarget(searchParams: URLSearchParams): string {
-  const redirect = searchParams.get('redirect');
-  if (!redirect) return '/dashboard';
-  // Sécurité : uniquement des chemins relatifs (ni protocole, ni double slash).
-  if (redirect.startsWith('/') && !redirect.startsWith('//')) {
-    return redirect;
-  }
-  return '/dashboard';
+  // Sécurité : uniquement un chemin interne de l'application (voir `safe-redirect`).
+  return getSafeRedirectPath(searchParams.get('redirect'), '/dashboard');
 }
 
 function googleOAuthErrorMessage(reason: string | null): string | null {

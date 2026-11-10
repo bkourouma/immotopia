@@ -15,7 +15,11 @@
  *   administrateur) et un Chef de chantier inscrit au bot WhatsApp du lot 041
  *   (`PACK_TEST_MEMBERS` côté API) ;
  *   le contrat des données est partagé avec le seed du staging côté API ;
- * - les comptes historiques (plateforme, Ivoire Résidences).
+ * - les comptes historiques (Ivoire Résidences).
+ *
+ * Aucun compte de la plateforme (PLATFORM_SUPER_ADMIN) n'est listé ici : ce
+ * fichier part dans le bundle du staging public (constat FRI-01). Le test
+ * `dev-accounts.test.ts` le garantit.
  *
  * Le garde-fou de `infra/compose/Dockerfile.web` cherche ces mots de passe et
  * le domaine `packs.immotopia.test` dans le bundle de production : mettre à
@@ -33,7 +37,7 @@ export interface DevAccount {
 export interface DevTenantAccounts {
   /**
    * Identifiant stable du groupe : `pack-*` pour une agence de test par pack,
-   * `platform` pour les comptes hors agence, ou l'identifiant de l'agence.
+   * ou l'identifiant de l'agence. Jamais de compte hors agence.
    */
   id: string;
   name: string;
@@ -141,19 +145,6 @@ export const DEV_TENANT_ACCOUNTS: DevTenantAccounts[] = [
     'patrimoine-essentiel'
   ),
   ...packGroups('patrimoine-pro', 'Pack Patrimoine Pro', 'Admin Test Patrimoine Pro', 'patrimoine-pro'),
-  {
-    id: 'platform',
-    name: 'Plateforme (hors agence)',
-    accounts: [
-      {
-        email: 'admin@immobillier.com',
-        password: 'Admin@123456',
-        fullName: 'Super Administrator',
-        // Rôle PLATFORM_SUPER_ADMIN, rattaché à aucune agence.
-        persona: 'Super-admin'
-      }
-    ]
-  },
   {
     id: '385a1e76-ac08-4db5-9802-8b2ddfb1672b',
     name: 'Ivoire Résidences',

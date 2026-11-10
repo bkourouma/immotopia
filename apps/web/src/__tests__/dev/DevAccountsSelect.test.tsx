@@ -33,7 +33,10 @@ describe('DevAccountsSelect', () => {
     );
     expect(groupLabels).toHaveLength(DEV_TENANT_ACCOUNTS.length);
     expect(screen.getByText('Admin Test Syndic (6 mois)')).toBeInTheDocument();
-    expect(screen.getByText('Super Administrator')).toBeInTheDocument();
+    // Aucun compte de plateforme dans le menu (FRI-01).
+    expect(screen.queryByText('Super Administrator')).not.toBeInTheDocument();
+    expect(screen.queryByText(/admin@immobillier\.com/)).not.toBeInTheDocument();
+    expect(screen.getByText("Kouassi N'Guessan")).toBeInTheDocument();
   });
 
   it('affiche le texte d’invite et un nom accessible', () => {
