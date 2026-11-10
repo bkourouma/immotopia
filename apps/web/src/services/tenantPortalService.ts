@@ -4,6 +4,7 @@
  */
 
 import api from '../utils/api-client';
+import type { ReceivingAccountPublic } from './receiving-account-service';
 
 /** Paramètres de liste : filtres (valeurs multiples en CSV), `search`, pagination. */
 type PortalListParams = { [key: string]: string | number | undefined };
@@ -23,6 +24,13 @@ export const tenantPortalService = {
     params?: PortalListParams & { search?: string; status?: string; startDate?: string; endDate?: string }
   ) => api.get('/portal/tenant/installments', { params }),
 
+  /**
+   * Premières échéances non soldées de tous les baux, sans filtre d'écran
+   * (motif suggéré de « Payer l'agence », spec 048 lot Q). Même route que la liste.
+   */
+  getUnpaidInstallments: (limit = 10) =>
+    api.get('/portal/tenant/installments', { params: { status: 'DUE,OVERDUE,PARTIAL', page: 1, limit } }),
+
   getInstallmentDetails: (id: string) => api.get(`/portal/tenant/installments/${id}`),
 
   // Payments
@@ -37,6 +45,14 @@ export const tenantPortalService = {
       headers: { 'Content-Type': 'multipart/form-data' },
       params: leaseId ? { leaseId } : undefined
     }),
+
+  // Comptes de réception de l'agence (spec 048, lot Q) : comptes actifs seulement
+  getReceivingAccounts: async (): Promise<ReceivingAccountPublic[]> => {
+    const response = await api.get<{ success: boolean; data: ReceivingAccountPublic[] }>(
+      '/portal/tenant/receiving-accounts'
+    );
+    return response.data.data;
+  },
 
   // Deposit
   getDepositInfo: (leaseId?: string) =>

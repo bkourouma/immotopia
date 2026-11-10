@@ -2850,6 +2850,28 @@
       "sensitive": true
     },
     {
+      "id": "GET /api/tenants/:tenantId/settings/receiving-accounts",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/settings/receiving-accounts",
+      "pathParams": [],
+      "module": "settings",
+      "summary": "settings / receiving-accounts",
+      "permissions": ["TENANT_SETTINGS_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/settings/receiving-accounts/:accountId/qr",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/settings/receiving-accounts/:accountId/qr",
+      "pathParams": ["accountId"],
+      "module": "settings",
+      "summary": "settings / receiving-accounts / {accountId} / qr",
+      "permissions": ["TENANT_SETTINGS_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
       "id": "GET /api/tenants/:tenantId/subscription/checkouts/:codePaiement",
       "method": "GET",
       "path": "/api/tenants/:tenantId/subscription/checkouts/:codePaiement",
@@ -3813,6 +3835,28 @@
       "pathParams": ["syndicId"],
       "module": "syndics",
       "summary": "syndics / {syndicId} / quittances / impression",
+      "permissions": null,
+      "anyOfPermissions": [["SYNDIC_VIEW"]],
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/receiving-accounts",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/receiving-accounts",
+      "pathParams": ["syndicId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / receiving-accounts",
+      "permissions": null,
+      "anyOfPermissions": [["SYNDIC_VIEW"]],
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/receiving-accounts/:accountId/qr",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/receiving-accounts/:accountId/qr",
+      "pathParams": ["syndicId", "accountId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / receiving-accounts / {accountId} / qr",
       "permissions": null,
       "anyOfPermissions": [["SYNDIC_VIEW"]],
       "sensitive": false
@@ -7065,6 +7109,17 @@
       "sensitive": true
     },
     {
+      "id": "POST /api/tenants/:tenantId/settings/receiving-accounts",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/settings/receiving-accounts",
+      "pathParams": [],
+      "module": "settings",
+      "summary": "settings / receiving-accounts",
+      "permissions": ["TENANT_SETTINGS_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
       "id": "POST /api/tenants/:tenantId/subscription/extension-requests",
       "method": "POST",
       "path": "/api/tenants/:tenantId/subscription/extension-requests",
@@ -8165,6 +8220,17 @@
       "sensitive": false
     },
     {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/receiving-accounts",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/receiving-accounts",
+      "pathParams": ["syndicId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / receiving-accounts",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
       "id": "POST /api/tenants/:tenantId/syndics/:syndicId/relances/batch",
       "method": "POST",
       "path": "/api/tenants/:tenantId/syndics/:syndicId/relances/batch",
@@ -8594,6 +8660,17 @@
       "sensitive": true
     },
     {
+      "id": "PUT /api/tenants/:tenantId/settings/receiving-accounts/:accountId",
+      "method": "PUT",
+      "path": "/api/tenants/:tenantId/settings/receiving-accounts/:accountId",
+      "pathParams": ["accountId"],
+      "module": "settings",
+      "summary": "settings / receiving-accounts / {accountId}",
+      "permissions": ["TENANT_SETTINGS_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
       "id": "PUT /api/tenants/:tenantId/syndic-mandating-agencies/:agencyId/images/:kind",
       "method": "PUT",
       "path": "/api/tenants/:tenantId/syndic-mandating-agencies/:agencyId/images/:kind",
@@ -8680,6 +8757,17 @@
       "permissions": ["SYNDIC_DIRECT_DEBIT_MANAGE"],
       "anyOfPermissions": null,
       "sensitive": true
+    },
+    {
+      "id": "PUT /api/tenants/:tenantId/syndics/:syndicId/receiving-accounts/:accountId",
+      "method": "PUT",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/receiving-accounts/:accountId",
+      "pathParams": ["syndicId", "accountId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / receiving-accounts / {accountId}",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": false
     }
   ]
 }

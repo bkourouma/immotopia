@@ -373,6 +373,40 @@ describe('portail locataire — aucune réponse ne porte de chemin disque', () =
     expect(mockPrisma.rentalPaymentDeclaration.rows[0].proof_file_url).toMatch(/^\/uploads\/portal\/payments\//);
   });
 
+  it('comptes de réception (spec 048, lot Q) : ni qrFileUrl, ni empreinte, ni /uploads/', async () => {
+    const account = {
+      tenantId: TENANT_A,
+      scope: 'AGENCY',
+      syndicateId: null,
+      institution: 'Wave',
+      scannableWith: 'Application Wave',
+      alias: '341c3e1b-8f2a-4b6d-9c1e-5a7d2f0b3c44',
+      holderName: 'Agence Soleil',
+      instructions: null,
+      qrFileUrl: `/uploads/receiving-accounts/${TENANT_A}/qr.png`,
+      qrMimeType: 'image/png',
+      qrSha256: 'a'.repeat(64),
+      isActive: true,
+      sortOrder: 0,
+      createdAt: new Date('2026-11-01'),
+      updatedAt: new Date('2026-11-01')
+    };
+    mockPrisma.receivingAccount.rows.push({ ...account, id: id(61) }, { ...account, id: id(62), isActive: false });
+
+    const data = await expectClean(USER_AWA, '/api/portal/tenant/receiving-accounts');
+    expect(data).toEqual([
+      expect.objectContaining({
+        id: id(61),
+        hasQr: true,
+        qrPath: `/api/portal/tenant/receiving-accounts/${id(61)}/qr`
+      })
+    ]);
+    const serialized = JSON.stringify(data);
+    for (const forbidden of ['qrFileUrl', 'qrSha256', 'qrMimeType', '/uploads/', 'a'.repeat(64)]) {
+      expect(serialized).not.toContain(forbidden);
+    }
+  });
+
   it('détail d’un ticket : pièces jointes sans URL de stockage', async () => {
     const data = await expectClean(USER_AWA, `/api/portal/tenant/maintenance/${TICKET}`);
     expect(data.attachments).toEqual([
