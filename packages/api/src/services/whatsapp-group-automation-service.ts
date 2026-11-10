@@ -6,6 +6,7 @@ import { WHATSAPP_NOTIFICATION_DEFAULT_TEMPLATES } from '../constants/whatsapp-n
 import { configureWhatsAppProvider, sendImage, sendText } from './providers/whatsapp.provider';
 import crypto from 'crypto';
 import * as fs from 'fs/promises';
+import { env } from '../config/env';
 
 interface PropertyBroadcastOptions {
   tenantId: string;
@@ -235,29 +236,21 @@ function normalizePhone(phone: string, defaultCountryCode = '33'): string {
 }
 
 function getDefaultCountryCode(): string {
-  const value = process.env.WHATSAPP_DEFAULT_COUNTRY_CODE?.trim();
+  const value = env.WHATSAPP_DEFAULT_COUNTRY_CODE?.trim();
   return value && /^\d{1,4}$/.test(value) ? value : '33';
 }
 
 function getPropertyPublicUrl(propertyId: string): string {
   const template = process.env.WHATSAPP_GROUP_PROPERTY_URL_TEMPLATE?.trim();
   if (!template) {
-    const apiBaseUrl = (
-      process.env.API_URL?.trim() ||
-      process.env.BACKEND_URL?.trim() ||
-      `http://localhost:${process.env.PORT || '8001'}`
-    ).replace(/\/+$/, '');
+    const apiBaseUrl = (env.API_URL || env.BACKEND_URL || `http://localhost:${env.PORT || 8001}`).replace(/\/+$/, '');
     return `${apiBaseUrl}/api/public/properties/${propertyId}`;
   }
   return template.replace(/\{\{\s*propertyId\s*\}\}/gi, propertyId);
 }
 
 function getApiBaseUrl(): string {
-  return (
-    process.env.API_URL?.trim() ||
-    process.env.BACKEND_URL?.trim() ||
-    `http://localhost:${process.env.PORT || '8001'}`
-  ).replace(/\/+$/, '');
+  return (env.API_URL || env.BACKEND_URL || `http://localhost:${env.PORT || 8001}`).replace(/\/+$/, '');
 }
 
 function toAbsoluteMediaUrl(url: string | null | undefined): string {

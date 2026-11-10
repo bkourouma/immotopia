@@ -193,8 +193,8 @@ export async function resolveGoogleUser(profile: GoogleProfileLike): Promise<Goo
 }
 
 export function configurePassport() {
-  const GOOGLE_CLIENT_ID = (process.env.GOOGLE_CLIENT_ID || '').trim();
-  const GOOGLE_CLIENT_SECRET = (process.env.GOOGLE_CLIENT_SECRET || '').trim();
+  const GOOGLE_CLIENT_ID = (env.GOOGLE_CLIENT_ID || '').trim();
+  const GOOGLE_CLIENT_SECRET = (env.GOOGLE_CLIENT_SECRET || '').trim();
 
   // Déduite de BACKEND_URL quand elle n'est pas fournie. L'ancien repli était
   // `http://localhost:3000/api/auth/google/callback` : en production, renseigner
@@ -202,7 +202,7 @@ export function configurePassport() {
   // pointant sur la machine du visiteur, et Google refusait l'échange avec un
   // `redirect_uri_mismatch` impossible à relier à sa cause.
   const GOOGLE_CALLBACK_URL =
-    (process.env.GOOGLE_CALLBACK_URL || '').trim() || `${env.BACKEND_URL.replace(/\/$/, '')}/api/auth/google/callback`;
+    (env.GOOGLE_CALLBACK_URL || '').trim() || `${env.BACKEND_URL.replace(/\/$/, '')}/api/auth/google/callback`;
 
   if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
     logger.warn(

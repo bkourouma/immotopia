@@ -7,7 +7,7 @@
 
 ## Prerequis
 
-- Les prerequis du lot 1 (Node 20, PostgreSQL, `npm install` a la racine) restent valables.
+- Les prerequis du lot 1 (Node 22, PostgreSQL, `npm install` a la racine) restent valables.
 - Le lot 1 doit etre fusionne et sa migration appliquee : le grand livre (`lib/finance/ledger.ts`) et les comptes de tiers locataires sont reutilises par ce lot.
 - **Prealable specifique a ce lot** : verifier l'etat reel des migrations Prisma sur l'environnement cible avant de commencer (`npx prisma migrate status` depuis `packages/api`). Sur l'environnement deja verifie pour cette specification, la chaine compte 32 migrations a jour, `20260907120000_tenant_scoping_and_money_precision` comprise (voir `research.md` §1.5/§4.4) ; revalider ce point sur tout autre environnement avant d'interpreter un ecart de schema inattendu.
 

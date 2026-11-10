@@ -15,21 +15,28 @@ les sauvegardes et la restauration sont dans
 
 ## Prérequis
 
-- **Node 20** — `.nvmrc` à la racine contient `20`. `engines.node` du
-  `package.json` racine exige `>=20`.
+- **Node 22** — `.nvmrc` à la racine contient `22`. `engines.node` du
+  `package.json` racine (et de `packages/api` et `apps/web`) exige `>=22`.
 - **npm 10** — `engines.npm` exige `>=10`.
 - **PostgreSQL** — 16 en local via `docker-compose.yml`
   (`postgres:16-alpine`) ; la doc archivée mentionne `>=14`, à vérifier si
   une contrainte de version stricte existe ailleurs (aucune trouvée dans le
   code applicatif).
 - **`docker-compose.yml`** (racine) lance :
-  - `db` : PostgreSQL 16, port `5432` par défaut (`POSTGRES_PORT`),
-    utilisateur/mot de passe/`POSTGRES_DB` par défaut `immotopia`.
+  - `db` : PostgreSQL 16, publié sur la boucle locale seulement
+    (`127.0.0.1:5432` par défaut, `POSTGRES_PORT`), utilisateur et
+    `POSTGRES_DB` par défaut `immotopia`. **`POSTGRES_PASSWORD` est
+    obligatoire et n'a aucune valeur par défaut** : `docker compose` refuse de
+    démarrer sans lui. L'exporter dans le shell ou le poser dans un fichier
+    `.env` à la racine (ignoré par git), par exemple avec
+    `openssl rand -hex 24`, et utiliser la même valeur dans `DATABASE_URL`.
+    `scripts/setup-dev-env.ps1` le pose lui-même pour l'appel, avec le mot de
+    passe qu'il écrit dans `DATABASE_URL`.
   - `api` (optionnel) : construit l'image depuis `packages/api/Dockerfile`
     avec pour contexte la racine du monorepo (un seul lockfile) ; exige
     `JWT_SECRET` (pas de valeur par défaut, la commande échoue sans elle) ;
     expose le port `8001`.
-  - Usage courant : `docker compose up -d db` (base seule — le cas le plus
+  - Usage courant : `POSTGRES_PASSWORD=<valeur> docker compose up -d db` (base seule — le cas le plus
     fréquent, l'API tournant en local avec `npm run dev:api`).
   - C'est un outil de développement : ne jamais le déployer. Les piles du
     serveur (staging, production) utilisent

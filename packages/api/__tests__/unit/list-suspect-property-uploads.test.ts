@@ -8,7 +8,7 @@ import { promises as fs } from 'fs';
 
 jest.mock('../../src/config/env', () => ({ env: { UPLOADS_DIR: undefined } }));
 
-import { listSuspectFiles, formatReport } from '../../src/scripts/list-suspect-property-uploads';
+import { listSuspectFiles, formatReport, readDirSafe } from '../../src/scripts/list-suspect-property-uploads';
 
 const PNG = Buffer.from('89504e470d0a1a0a0000', 'hex');
 let root: string;
@@ -79,5 +79,23 @@ describe('listSuspectFiles', () => {
 
   it('racine sans dossier properties : liste vide', async () => {
     expect(await listSuspectFiles(root)).toEqual([]);
+  });
+});
+
+describe('readDirSafe', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('reste silencieux sur un dossier absent (ENOENT)', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    expect(await readDirSafe(path.join(root, 'absent'))).toEqual([]);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('avertit sur une erreur autre que ENOENT et renvoie une liste vide', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    jest.spyOn(fs, 'readdir').mockRejectedValueOnce(Object.assign(new Error('refusé'), { code: 'EACCES' }));
+    expect(await readDirSafe(root)).toEqual([]);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toContain('EACCES');
   });
 });

@@ -14,6 +14,7 @@ import { syncDirectRentPaymentEntryTx } from '../lib/finance/rental-direct-ledge
 import { t } from '../i18n';
 import { ConflictError, NotFoundError } from '../middleware/error-middleware';
 import { applyDeclarationListExtras, type DeclarationListExtras } from '../lib/rental/payment-list-filters';
+import { env } from '../config/env';
 
 interface PaymentDeclarationFilters {
   status?: PaymentDeclarationStatus;
@@ -277,7 +278,7 @@ export async function approvePaymentDeclaration(
 
     // Notify tenant by email (en dur, like account creation)
     try {
-      const baseUrl = process.env.FRONTEND_URL || process.env.CLIENT_URL || 'http://localhost:3000';
+      const baseUrl = env.FRONTEND_URL || env.CLIENT_URL || 'http://localhost:3000';
       const portalPath = '/tenant/payments';
       const portalUrl = `${baseUrl}/login?redirect=${encodeURIComponent(portalPath)}`;
 
@@ -499,7 +500,7 @@ export async function rejectPaymentDeclaration(
 
     // Notify tenant by email (en dur, like account creation)
     try {
-      const baseUrl = process.env.FRONTEND_URL || process.env.CLIENT_URL || 'http://localhost:3000';
+      const baseUrl = env.FRONTEND_URL || env.CLIENT_URL || 'http://localhost:3000';
       const portalPath = '/tenant/payments';
       const portalUrl = `${baseUrl}/login?redirect=${encodeURIComponent(portalPath)}`;
 

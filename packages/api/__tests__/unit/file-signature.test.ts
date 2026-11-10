@@ -8,7 +8,8 @@ import {
   extensionForKind,
   detectVideoKind,
   detectUploadKind,
-  assertUploadMatchesDeclaredType
+  assertUploadMatchesDeclaredType,
+  contentMatchesDeclaredType
 } from '../../src/utils/file-signature';
 
 const ZIP_MAGIC = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
@@ -145,5 +146,43 @@ describe('T-B : médias légitimes', () => {
     expect(detectDocumentKind(pdf(100))).toBe('pdf');
     expect(detectUploadKind(pdf(100))).toBe('pdf');
     expect(detectDocumentKind(pdf(2000))).toBeNull();
+  });
+});
+
+describe('PDF : bourrage et signatures strictes', () => {
+  const PDF_META = Buffer.from('<x:xmpmeta>%PDF-1.4</x:xmpmeta>', 'latin1');
+  const webp = Buffer.concat([Buffer.from('RIFF'), Buffer.from([0, 0, 0, 0]), Buffer.from('WEBP'), PDF_META]);
+  const mp4 = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from('ftypisom'), PDF_META]);
+  const tiff = Buffer.concat([Buffer.from([0x49, 0x49, 0x2a, 0x00]), PDF_META]);
+
+  it('un WebP, un MP4 ou un TIFF contenant %PDF-1.4 en métadonnées garde son vrai type', () => {
+    expect(detectUploadKind(webp)).toBe('webp');
+    expect(detectUploadKind(mp4)).toBe('mp4');
+    expect(detectUploadKind(tiff)).toBe('tiff');
+    expect(detectDocumentKind(webp)).toBeNull();
+    expect(detectDocumentKind(mp4)).toBeNull();
+    expect(detectDocumentKind(tiff)).toBeNull();
+  });
+  it('accepte un PDF précédé de BOM et de sauts de ligne', () => {
+    const pdf = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf, 0x0d, 0x0a, 0x0a]), Buffer.from('%PDF-1.7\n')]);
+    expect(detectDocumentKind(pdf)).toBe('pdf');
+    expect(detectUploadKind(pdf)).toBe('pdf');
+  });
+  it("accepte un PDF 2.0 à l'offset 0", () => {
+    expect(detectUploadKind(Buffer.from('%PDF-2.0\n%%EOF'))).toBe('pdf');
+  });
+  it('refuse un HTML qui cite %PDF-1.4', () => {
+    const html = Buffer.from('<html><body>%PDF-1.4</body></html>');
+    expect(detectDocumentKind(html)).toBeNull();
+    expect(detectUploadKind(html)).toBeNull();
+  });
+  it('refuse %PDF- sans version', () => {
+    expect(detectDocumentKind(Buffer.from('%PDF-'))).toBeNull();
+    expect(detectDocumentKind(Buffer.from('\n\n%PDF-x.y'))).toBeNull();
+    expect(detectUploadKind(Buffer.from('%PDF-1'))).toBeNull();
+  });
+  it('contentMatchesDeclaredType refuse un WebP déclaré application/pdf', () => {
+    expect(contentMatchesDeclaredType(webp, 'application/pdf')).toBe(false);
+    expect(contentMatchesDeclaredType(Buffer.from('%PDF-1.4'), 'application/pdf')).toBe(true);
   });
 });

@@ -7,7 +7,8 @@ import {
   coOwnerDeclarationCreateLimiter,
   coOwnerProofReadLimiter,
   coOwnerMeetingAccessRateLimiter,
-  coOwnerPortalPdfRateLimiter
+  coOwnerPortalPdfRateLimiter,
+  clientIpKey
 } from '../middleware/rate-limit-middleware';
 import {
   downloadCoOwnerDocumentHandler,
@@ -52,7 +53,7 @@ const onlinePaymentLimiter = (name: string, max: number) =>
   rateLimit({
     windowMs: 60 * 1000,
     max,
-    keyGenerator: (req: Request) => `coowner-online-${name}:${req.user?.userId ?? req.ip ?? 'anonyme'}`,
+    keyGenerator: (req: Request) => `coowner-online-${name}:${req.user?.userId ?? clientIpKey(req)}`,
     message: { success: false, message: 'Trop de requêtes. Veuillez réessayer dans une minute.' },
     standardHeaders: true,
     legacyHeaders: false

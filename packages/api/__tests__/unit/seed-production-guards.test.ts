@@ -15,6 +15,7 @@ const SEEDS = [
   'seed-demo-maintenance',
   'seed-demo-syndic',
   'seed-demo-visites',
+  'syndic-demo-seed',
   'fix-amadou-kone',
   'assign-tenant-admin',
   'assign-rbac-roles',

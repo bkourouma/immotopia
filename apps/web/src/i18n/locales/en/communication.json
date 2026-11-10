@@ -42,6 +42,7 @@
   "Image trop volumineuse (max 5MB)": "Image too large (max 5MB)",
   "Italique": "Italic",
   "Le message part vers votre destination groupe configuree sur WaSender.": "The message is sent to the group destination configured on WaSender.",
+  "Lecture seule : vous n'avez pas le droit de modifier ces modèles d'e-mail": "Read-only: you do not have permission to modify these email templates",
   "Liste": "List",
   "Liste des notifications email": "Email notification list",
   "Liste des notifications WhatsApp": "WhatsApp notification list",

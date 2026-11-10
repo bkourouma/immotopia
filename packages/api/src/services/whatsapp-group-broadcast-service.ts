@@ -11,6 +11,7 @@ import {
   sendText,
   type WhatsAppProviderKind
 } from './providers/whatsapp.provider';
+import { env } from '../config/env';
 
 const ALLOWED_IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/jpg', 'image/png']);
 
@@ -29,11 +30,7 @@ export interface SendManualGroupBroadcastResult {
 }
 
 function getApiBaseUrl(): string {
-  return (
-    process.env.API_URL?.trim() ||
-    process.env.BACKEND_URL?.trim() ||
-    `http://localhost:${process.env.PORT || '8001'}`
-  ).replace(/\/+$/, '');
+  return (env.API_URL || env.BACKEND_URL || `http://localhost:${env.PORT || 8001}`).replace(/\/+$/, '');
 }
 
 function getGroupBroadcastTarget(): string {

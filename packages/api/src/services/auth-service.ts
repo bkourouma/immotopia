@@ -99,8 +99,8 @@ async function sendQuietly(userId: string, what: string, send: () => Promise<unk
  * du serveur d'e-mails (anti-sondage des comptes). Une erreur, y compris
  * synchrone, est journalisée et ne remonte jamais (aucune rejection non gérée).
  */
-function sendDetached(userId: string, what: string, send: () => Promise<void> | void): void {
-  let pending: Promise<void | undefined>;
+function sendDetached(userId: string, what: string, send: () => Promise<unknown> | unknown): void {
+  let pending: Promise<unknown>;
   try {
     pending = Promise.resolve(send());
   } catch (error) {

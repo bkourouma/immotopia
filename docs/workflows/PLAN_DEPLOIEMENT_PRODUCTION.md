@@ -348,7 +348,7 @@ distincte de la base de développement courante **[dépôt : RUNBOOK, sections �
 « Commandes quotidiennes » et « Assistant IA »]** ; adaptation **[à confirmer]**.
 
 ```bash
-docker compose up -d db                      # PostgreSQL 16 local (docker-compose.yml racine)
+POSTGRES_PASSWORD=<valeur jetable> docker compose up -d db   # PostgreSQL 16 local (docker-compose.yml racine) ; mot de passe obligatoire, sans défaut
 # créer une base jetable, y restaurer le dump (pg_restore -d <base_jetable> --no-owner)
 cd packages/api
 DATABASE_URL="<url de la base jetable>" npx prisma migrate deploy

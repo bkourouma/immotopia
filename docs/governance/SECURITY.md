@@ -55,6 +55,53 @@ démarre pas sinon.
 masse les refresh tokens actifs d'une agence, utilisé à la suspension d'un
 tenant.
 
+**Durée du jeton d'accès.** `JWT_EXPIRES_IN` (`config/env.ts`) exige une unité
+(`15m`, `900s`, `1800000ms` : un `900` nu est refusé, `jsonwebtoken` le lirait
+comme 900 millisecondes), ne peut pas dépasser 30 minutes (`MAX_JWT_LIFETIME_MS`)
+et vaut `15m` par défaut ; le process ne démarre pas sinon. Le jeton d'accès
+n'est pas révocable avant son expiration, mais `requireTenantAccess` relit en
+base `globalRole` et `isActive` d'un compte qui se réclame SUPER_ADMIN
+(`middleware/tenant-middleware.ts`). Le cookie `refreshToken` est posé sur le
+chemin `/api/auth` (`utils/auth-cookies.ts`) : le navigateur ne l'envoie plus
+qu'aux routes d'authentification.
+
+**Verrou de connexion.** `services/login-throttle-service.ts` complète le
+limiteur par IP : verrou par paire (e-mail, IP) à partir de 10 échecs dans la
+fenêtre de 15 minutes (durée `15 s × 2^(n − 10)`, plafonnée à 15 minutes), plus
+un plafond global par e-mail, toutes IP confondues (50 échecs, puis un verrou
+court et fixe de 15 s, sans escalade). La paire est voulue : un tiers qui
+martèle un compte depuis sa propre connexion ne verrouille que sa paire, pas le
+titulaire. L'IP est normalisée comme à l'inscription (IPv6 regroupée par /64).
+Les clés sont des HMAC de l'e-mail et de l'IP, jamais en clair. **L'état est en
+mémoire, par processus** : perdu au redémarrage, non partagé entre instances
+(voir §13).
+
+**CSRF.** `middleware/csrf-origin-middleware.ts`, monté globalement après CORS
+et avant tout routeur, refuse (403, code `CSRF_REJECTED`) toute requête
+POST/PUT/PATCH/DELETE authentifiée par le seul cookie `accessToken` (sans en-tête
+`Authorization`) quand le navigateur indique qu'elle ne vient pas de
+l'interface : `Sec-Fetch-Site: cross-site`, ou, pour `same-site` ou sans
+`Sec-Fetch-Site`, une origine (`Origin`, à défaut celle du `Referer`) différente
+de `FRONTEND_URL`. Un client sans `Origin`, `Referer` ni `Sec-Fetch-Site`
+(scripts, tests) et un client à `Authorization: Bearer` ne sont pas visés. Sont
+exclus : les webhooks signés (WhatsApp Cloud, Twilio/WaSender, LiveKit,
+prestataire de signature, IPN PaySecureHub), les routes publiques à jeton
+(`/api/public/signatures`, `secure-links`, `external-access`, `assemblees`),
+la newsletter publique (`/api/newsletter`, jamais les routes connectées sous
+`/api/tenants/:tenantId/newsletter`), le simulateur de paiement et les routes
+d'authentification sans session (`login`, `register`, `forgot-password`,
+`reset-password`, `resend-verification`, `refresh`).
+
+**Journaux et jetons.** `requestLogger` (`middleware/logging-middleware.ts`) et
+le garde CSRF passent l'URL par `utils/sensitive-path.ts` : la valeur du
+paramètre `token` (vérification d'e-mail, newsletter, tous chemins), de
+`hub.verify_token` et `hub.challenge` (webhook Meta) et le jeton de chemin des
+signatures publiques sont remplacés par `[masqué]` avant écriture. Côté nginx,
+les journaux d'accès (nginx embarqué `infra/nginx/spa.conf` et vhosts
+`infra/nginx/*.immotopia.cloud.conf`) masquent de la même façon l'URI et le
+`Referer` pour tout paramètre dont le nom finit par `token`, avec une limite :
+au-delà de trois tels paramètres dans une même URL, les suivants restent en clair.
+
 ## 4. Isolation multi-tenant et IDOR
 
 Trois lignes de défense, dans l'ordre où une requête les traverse :
@@ -122,6 +169,22 @@ le journal lui-même :
   réécrire peut recalculer la chaîne. Ancrer la tête de chaîne hors de la base
   ([RUNBOOK](../workflows/RUNBOOK.md), « Journal d'audit »).
 
+**Droits d'administration dans l'agence.** Attribuer ou retirer le rôle
+`TENANT_ADMIN`, ou agir sur le compte d'un administrateur, est réservé à un
+administrateur de la même agence ou à un SUPER_ADMIN
+(`services/tenant-admin-guard.ts`, `actorMayTouchAdmin`) : un gestionnaire
+(`USERS_EDIT`, `USERS_CREATE`) ne peut pas se promouvoir. Agir sur un compte
+SUPER_ADMIN est réservé à un SUPER_ADMIN (`assertActorMayTouchSuperAdmin`). Ces
+gardes sont appliquées par `services/membership-service.ts` (rôles,
+désactivation, réactivation, réinitialisation de mot de passe, révocation des
+sessions) et par `services/invitation-service.ts` (invitation avec le rôle
+administrateur). L'écriture des gabarits d'e-mail de notification exige
+`TENANT_SETTINGS_EDIT` (`routes/email-notification-config-routes.ts`) : le
+gabarit part tel quel aux clients de l'agence, et son HTML est assaini à
+l'écriture (`utils/sanitize-html`) ; la lecture reste ouverte aux
+collaborateurs. Un gestionnaire sans ce droit ne peut donc plus modifier ces
+gabarits.
+
 ## 5. Fichiers privés
 
 `middleware/uploads-access-middleware.ts` s'exécute avant
@@ -132,6 +195,32 @@ réponse qu'un fichier inexistant, pour ne rien laisser deviner. Chaque
 document privé (bail, preuve de paiement, pièce jointe de maintenance,
 document syndic) sort par une route authentifiée qui vérifie le droit de
 l'appelant sur l'objet précis, jamais par le mont statique.
+
+**Type réel des fichiers déposés.** Le type déclaré par le client (`mimetype`,
+nom du fichier) n'est jamais cru seul : `assertUploadMatchesDeclaredType`
+(`utils/file-signature.ts`) lit les octets d'en-tête (PDF, DOC, DOCX, PNG, JPEG,
+WebP, MP4/MOV, WebM, TIFF, DWG), refuse un contenu qui ne correspond pas au type
+déclaré ou qui n'est pas dans la liste de types autorisés de la route, et
+**dérive l'extension du fichier enregistré du type détecté**, pas du nom envoyé.
+Il est appelé notamment pour les médias et documents de bien, les pièces jointes
+de maintenance, le logo d'agence, les pièces de syndic, les images de diffusion
+WhatsApp, l'image de configuration WhatsApp et les justificatifs de facturation
+plateforme. Les modèles DOCX sont bornés avant d'être confiés à PizZip
+(`utils/docx-limits.ts`, appelé par `services/document-template-service.ts`,
+`services/docx-renderer.ts` et `lib/pdf-convert/sanitize-docx.ts`) : 2000
+entrées au plus, 50 Mo décompressés au total et par entrée, répertoire central
+relu strictement, chaque entrée réellement décompressée avec un plafond de
+sortie (une taille annoncée mensongère n'alloue donc rien).
+
+**Service de `/uploads`.** En plus de la liste blanche de chemins, le garde
+n'accepte que les extensions `jpg, jpeg, png, webp, gif, mp4, webm, mov` : un
+`.html`, `.svg`, `.js` ou `.xml` déjà présent sous un dossier public répond 404
+au lieu de s'exécuter dans l'origine de l'application. Les réponses statiques
+portent `X-Content-Type-Options: nosniff` et une `Content-Security-Policy`
+restrictive avec `sandbox` (`applyUploadsResponseHeaders`). Un pourcentage mal
+formé dans l'URL répond 404. L'inventaire des anciens fichiers de bien concernés
+se fait avec `npm run ops:list-suspect-uploads` (lecture seule ; voir le
+[RUNBOOK](../workflows/RUNBOOK.md)).
 
 Une réponse de portail ne porte jamais de chemin disque ni d'identifiant
 de stockage `/uploads/...` d'un fichier privé : les services de portail
@@ -390,13 +479,39 @@ créer : un e-mail déjà présent est refusé, sans promotion ni changement de 
 passe (règles de validation : §7).
 
 **Seeds de développement.** L'image `migrate` embarque tout
-`packages/api/prisma/seeds/`. Six seeds à comptes ou mots de passe connus, ou à
+`packages/api/prisma/seeds/`. Les seeds à comptes ou mots de passe connus, ou à
 suppressions, refusent `NODE_ENV=production` (code de sortie 1) par la garde
-`prisma/seeds/assert-not-production.ts` : `create-super-admin.ts`,
-`seed-quick-login-users.ts`, `seed-comprehensive-data.ts`, `seed-crm-data.ts`,
-`seed-tenant-members.ts`, `seed-users.ts`. Les `seed-demo-*.ts` ne sont **pas**
-gardés (§13). Le bundle web de production est, lui, refusé au build s'il contient
-un identifiant de démonstration (`infra/compose/Dockerfile.web`).
+`prisma/seeds/assert-not-production.ts`, appelée avant tout accès à la base :
+`create-super-admin.ts`, `seed-quick-login-users.ts`, `seed-comprehensive-data.ts`,
+`seed-crm-data.ts`, `seed-tenant-members.ts`, `seed-users.ts`, les
+`seed-demo-*.ts`, `syndic-demo-seed.ts`, `fix-amadou-kone.ts`,
+`assign-tenant-admin.ts` et `assign-rbac-roles.ts`. `seed-pack-test-tenants.ts` a
+sa propre garde, adaptée au staging (drapeau `ALLOW_PACK_TEST_TENANTS=1`, refus
+de l'origine de la production), et `scripts/fix-demo-login-account.cjs` refuse
+aussi `NODE_ENV=production`. `syndic-demo-fund-movements.ts` n'a pas de garde :
+ce sont des fonctions pures, sans accès à la base. Le bundle web de production
+est, lui, refusé au build s'il contient un identifiant de démonstration
+(`infra/compose/Dockerfile.web`).
+
+**Comptes de démonstration.** Le menu « Choisir un compte de test » du web
+(`apps/web/src/dev/dev-accounts.ts`, affiché en développement et quand
+`VITE_SHOW_DEMO_ACCOUNTS=true`, donc sur le staging) ne liste plus aucun compte
+de la plateforme (`PLATFORM_SUPER_ADMIN`) ; un test le garantit. Il liste encore
+les comptes d'agence de démonstration (voir §13). Le seed du premier
+SUPER_ADMIN (`utils/bootstrap-admin-input.ts`) refuse, **en production**, les
+e-mails et mots de passe de démonstration connus (comparaison insensible à la
+casse).
+
+**Runtime et dépendances.** Node 22 est le runtime du projet (`.nvmrc`,
+`engines`, images `node:22-alpine` de `packages/api/Dockerfile` et
+`infra/compose/Dockerfile.web`, CI). Le lockfile a reçu des montées de
+correctifs lors de l'audit du 2026-11-09 ; ce qui reste vulnérable relève de
+montées majeures non faites (voir §13 et
+[AUDIT_SECURITE_2026-11-09.md](AUDIT_SECURITE_2026-11-09.md)). Un fichier
+`.github/dependabot.yml` ouvre des PR hebdomadaires de mise à jour, et
+`.github/CODEOWNERS` désigne le propriétaire de `.github/`, `infra/`, des
+Dockerfile, de `docs/governance/` et des gardes d'isolation (la revue exigée
+dépend d'un réglage GitHub de la branche `main`).
 
 ## 9. Réseau
 
@@ -408,7 +523,10 @@ API direct) reçoit un CORS ouvert sans identifiants. Helmet est actif
 de passe oublié/réinitialisé, renvoi de vérification, acceptation
 d'invitation, rafraîchissement de session — `middleware/rate-limit-middleware.ts`)
 plus un plancher global (`globalApiRateLimiter`) et le limiteur webhook
-dédié (§6).
+dédié (§6). Les limiteurs par IP s'appuient sur `clientIpKey` : l'adresse IPv6
+est regroupée par /64 (une machine peut disposer de tout un préfixe), l'IPv4
+mappée ramenée à son IPv4, comme au garde des inscriptions. Le contrôle CSRF par
+origine est décrit en §3.
 
 Les deux environnements sont cloisonnés : chaque pile a sa base, ses volumes et
 son réseau Docker, ses ports ne sont publiés que sur `127.0.0.1` (le nginx de
@@ -422,7 +540,15 @@ sur l'autre. Le CORS n'autorise que le `FRONTEND_URL` de la pile.
 
 **En-têtes HTTP du nginx embarqué** (`infra/nginx/spa.conf`, les deux piles) :
 `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN` et
-`Referrer-Policy: strict-origin-when-cross-origin`. Dans nginx, un `add_header`
+`Referrer-Policy: strict-origin-when-cross-origin`, plus, depuis l'audit du
+2026-11-09, `Permissions-Policy` (caméra et micro réservés à l'application ;
+géolocalisation, paiement navigateur et USB coupés) et une
+`Content-Security-Policy-Report-Only` qui **n'observe que** : aucune ressource
+n'est bloquée et aucun `report-uri` n'est configuré (§13).
+`Strict-Transport-Security` n'est pas posé par ce fichier (servi en HTTP clair
+derrière le nginx de l'hôte) : il se pose à la main dans le bloc TLS (443) de
+chaque vhost de l'hôte (consigne en commentaire dans
+`infra/nginx/*.immotopia.cloud.conf`). Dans nginx, un `add_header`
 défini dans un `location` annule l'héritage de ceux du niveau supérieur : les
 trois lignes sont répétées dans chaque `location` qui en définit un, et tout
 nouveau `location` avec `add_header` doit faire de même. Pour `/api/`, `/uploads/`
@@ -901,7 +1027,7 @@ la chaîne de requête.
 | Énumération et mesure de temps              | Refus **uniforme** : inconnu, expiré, révoqué, mauvaise portée, agence inactive, objet disparu donnent la même 404 « Lien invalide ou expiré. » (statut, corps, en-têtes). Recherche par hash : la protection principale est la **préimage** (le serveur ne compare que le SHA-256 d'un jeton de 256 bits, impossible à deviner ni à reconstruire par mesure de temps) ; la comparaison à temps constant (`timingSafeEqual`) n'est qu'une défense en profondeur                                                                                                                                                                                                |
 | Rejeu après révocation ou expiration        | `revokedAt`, `expiresAt`, portée et statut de l'agence contrôlés côté serveur à chaque appel ; aucun cache du verdict                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | Abus et déni de service                     | Limiteur de débit par IP, 30 requêtes par minute, appliqué avant toute vérification, **un seul budget partagé par toutes les routes publiques à jeton** (en mémoire, par instance : voir « Limites » et 12 ter) ; corps **borné à 1 Ko** par un parseur JSON propre à la route (les parseurs globaux de 10 Mo l'ignorent : `app.ts`), toute erreur de corps (JSON invalide, trop gros, encodage refusé) devient la même 404 uniforme avec les mêmes en-têtes, sans journaliser le message du parseur ; seul `token` est lu ; la 429 du limiteur de la route porte les mêmes en-têtes que les autres réponses (voir « Limites » pour la 429 du plancher global) |
-| Journaux d'accès et journaux applicatifs    | Le jeton n'est jamais dans l'URL : le fragment ne part pas au serveur et le `POST` le porte en corps. `requestLogger` journalise `req.url` (voir « Points ouverts ») : un jeton en URL y serait écrit, donc interdit                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| Journaux d'accès et journaux applicatifs    | Le jeton n'est jamais dans l'URL : le fragment ne part pas au serveur et le `POST` le porte en corps. `requestLogger` journalise l'URL avec la valeur de `token` masquée (§3) : un jeton en URL est masqué dans les journaux de l'API, mais reste interdit par conception                                                                                                                                                                                                                                                                                                                                                                                      |
 | Cache, `Referer`, indexation                | `Cache-Control: no-store`, `Referrer-Policy: no-referrer`, `X-Robots-Tag: noindex, nofollow` sur **toutes** les réponses publiques, refus compris ; la page n'a aucun lien sortant ; un fragment n'est jamais transmis dans `Referer`                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | Accès inter-agences (IDOR)                  | La route publique n'accepte **aucun** identifiant : seul le jeton compte. L'objet est chargé par `id` ET `tenantId` du lien. Côté agence, `linkId` est vérifié contre le relevé et l'agence ; `NotFoundError` uniforme                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | Base de données compromise                  | Seul le hash est stocké : il ne permet pas de reconstruire une URL valide. Aucun jeton, ni hash, dans `AuditLog`, journaux ni réponses de liste                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
@@ -1271,67 +1397,130 @@ messages sont conservés avec l'AG, sans purge automatique (même régime que R1
 
 Ce qui suit n'a pas pu être vérifié comme couvert dans le code au moment
 de la rédaction, ou est un point explicitement documenté comme non traité
-ailleurs dans le dépôt — à ne pas présenter comme résolu :
+ailleurs dans le dépôt — à ne pas présenter comme résolu. Les points corrigés
+par l'audit du 2026-11-09 sont décrits dans les sections 3, 4, 5, 8 et 9, et leur
+bilan dans [AUDIT_SECURITE_2026-11-09.md](AUDIT_SECURITE_2026-11-09.md).
 
+### Authentification et sessions
+
+- **Pas d'authentification multifacteur (MFA/TOTP)**, même pour un SUPER_ADMIN.
+  Chantier à part (migration, interface, risque de verrouillage), différé.
+- **Pré-détournement de compte (AUTH-09).** `verifyEmail` ne révoque ni mot de
+  passe ni session déjà posés avant la vérification : quelqu'un qui s'inscrit avec
+  l'adresse d'un tiers avant lui garde son mot de passe sur le compte. Seule
+  mitigation en place : la connexion Google d'un compte non vérifié ou jamais
+  connecté (`lastLoginAt` nul) efface le `passwordHash` existant
+  (`config/passport.ts`). Refonte du flux d'inscription à faire.
+- **Verrou de connexion et limiteurs de débit en mémoire, par processus**
+  (`services/login-throttle-service.ts`, `middleware/rate-limit-middleware.ts`) :
+  remis à zéro à chaque redémarrage, plafonds multipliés par le nombre
+  d'instances de l'API. Sans conséquence tant qu'il n'y a qu'une instance par
+  pile. Une attaque distribuée sur de très nombreuses IP n'est freinée que par le
+  verrou global court (15 s par tranche de 50 échecs).
+- **`express.json` et `express.urlencoded` globaux à 10 Mo** (`app.ts`) : le
+  plafond est large pour toutes les routes qui n'ont pas de parseur propre
+  (certaines routes publiques ont le leur, de 1 à 4 Ko). La migration vers Zod 4,
+  qui corrige un déni de service mémoire de Zod 3, n'est pas faite.
+- **Pas de limiteur de débit dédié aux dépôts de fichiers** : seuls le plancher
+  global (1000 requêtes par 15 minutes et par IP) et les limites propres de
+  multer (taille, nombre de fichiers) s'appliquent aux routes d'upload.
+- **Pas de blocage par la CSP.** La `Content-Security-Policy-Report-Only` du nginx
+  embarqué ne bloque rien et ne remonte nulle part (aucun `report-uri`) : les
+  violations ne se lisent que dans la console du navigateur. La passer en
+  `Content-Security-Policy` suppose une période d'observation, puis l'ajout de
+  `frame-ancestors 'self'`. L'API garde sa propre CSP bloquante (Helmet).
+- **HSTS à poser aux vhosts.** `Strict-Transport-Security` n'est posé par aucun
+  fichier actif du dépôt (seule la consigne figure en commentaire dans les
+  vhosts) : il se pose à la main dans le bloc 443 de chaque vhost de l'hôte (§9),
+  faute de quoi il manque.
 - **Signature et filtrage IP des IPN PaySecureHub** — non implémentés,
   documenté comme tel dans `docs/integrations/paysecurehub.md` (§6).
-- **`middleware/logging-middleware.ts` journalise `req.url` en entier**,
-  y compris la chaîne de requête. `middleware/error-middleware.ts` évite
-  délibérément la chaîne de requête dans ses propres logs pour cette
-  raison (un jeton à usage unique de vérification d'e-mail ou de
-  désinscription newsletter y transite) ; `requestLogger` ne fait pas la
-  même exclusion. À vérifier avant de considérer ce risque clos.
+- **Mode réel PaySecureHub** — signalé comme non validé en mémoire de
+  session de l'équipe ; ce document ne porte que sur le mode simulateur et
+  le contrat d'API tel que lu dans le code. Un paiement confirmé par le
+  prestataire **sans montant** n'est plus encaissé : il passe en `REVIEW`
+  (`lib/payment-gateway/checkout-core.ts`, `services/platform-payment-service.ts`).
+  Si le mode réel omet systématiquement le montant, tout paiement partira en revue.
+
+### Isolation multi-tenant
+
+- **`TENANT_GUARD_MODE=warn` et `SUBSCRIPTION_ENFORCEMENT=warn`** —
+  `make-env.sh` livre ces valeurs dans les deux environnements : tant qu'on ne
+  passe pas à `enforce` (d'abord sur le staging), l'extension Prisma d'isolation
+  journalise sans bloquer, et les quotas d'abonnement ne sont pas appliqués.
+  `deploy.sh` avertit si `TENANT_GUARD_MODE` n'est pas `enforce`, sans rien
+  changer : le passage à `enforce` est une décision de l'opérateur, après revue
+  des journaux. L'extension ne couvre de toute façon pas `SyndicateLot`,
+  `ChargeCall`, `$queryRaw` ni les `connect`/`include` imbriqués (§4).
+- **`lockFundsTx` sans `tenantId`** (`lib/syndics/fund-credits.ts`) :
+  `SELECT … FOR UPDATE` sur `syndicate_funds` par identifiant seul, sans filtre
+  d'agence. Les appelants reçoivent des identifiants déjà vérifiés ; le verrou
+  lui-même n'a pas de filtre. Même constat pour `lib/lease-lifecycle/period-overlap.ts`
+  et `lib/signature/events.ts` (`FOR UPDATE` sans agence).
+- **`containerChildren` sans `tenantId`** (`services/property-service.ts`, lecture
+  de la liste des biens) : les compteurs d'enfants d'un immeuble sont lus par
+  relation, sans filtre d'agence sur les enfants. La création d'un bien refuse
+  désormais un parent d'une autre agence ; des données antérieures à ce
+  correctif ne sont pas vérifiées.
 - **Dernier administrateur d'agence.** `disableMember` refuse (409) l'auto-désactivation et la désactivation du
   dernier administrateur actif (`TENANT_ADMIN`, membre ACTIF, compte actif) ; `updateMemberRoles` refuse de lui retirer
   le rôle. Contrôle avant la transaction, sans verrou : deux désactivations simultanées des deux seuls
   administrateurs peuvent théoriquement passer. Les autres chemins qui suppriment un administrateur (désactivation
   du compte utilisateur au niveau plateforme, suspension de l'agence) ne sont pas couverts par cette règle.
-- **Procédure formelle de réponse à incident** (astreinte, notification
-  aux agences, obligations réglementaires locales) — aucun document dédié
-  trouvé dans le dépôt ; la section 11 ci-dessus est une conduite par
-  défaut, pas une procédure validée.
-- **Mode réel PaySecureHub** — signalé comme non validé en mémoire de
-  session de l'équipe ; ce document ne porte que sur le mode simulateur et
-  le contrat d'API tel que lu dans le code.
-- **Politique de conservation / suppression des données personnelles**
-  (droit à l'oubli, durée de rétention des pièces jointes de portail) —
-  aucun mécanisme dédié trouvé dans le code à la date de rédaction.
+
+### Fichiers
+
+- **Nom d'entrée DOCX.** `utils/docx-limits.ts` lit le nom des entrées de l'archive
+  en `latin1` ; PizZip peut lire un nom Unicode du champ d'extension `0x7075`.
+  Sans effet connu sur la sécurité (les noms utiles sont en ASCII), mais les deux
+  lectures ne sont pas identiques.
+- **Fichiers antérieurs au correctif.** Un média de bien déposé avant le contrôle
+  du type réel peut porter une extension hors liste blanche : il répond 404 sur
+  `/uploads` (l'inventaire est dans le RUNBOOK), mais reste sur le disque.
+
+### Exploitation et infrastructure
+
 - **Sauvegardes de la production** — les scripts existent
   (`infra/scripts/backup.sh`, `restore-check.sh`) mais n'ont jamais tourné sur
   le serveur : copie hors serveur, cron et restauration réelle restent à
-  éprouver avant toute donnée réelle. Les sauvegardes contiennent toutes les
-  données personnelles de la production : les chiffrer hors serveur (remote
-  rclone chiffré recommandé) et en restreindre l'accès. Aucune alerte n'avertit
-  d'un échec de sauvegarde ; `deploy.sh prod` refuse sans dump de moins de 24
-  heures, mais ne contrôle que l'existence d'un fichier récent, pas sa validité.
-  Les copies `rclone` ne connaissent ni rotation (la copie hors serveur n'est
-  jamais purgée) ni contrôle du type de remote (rien ne vérifie qu'il est de
-  type `crypt`). Voir [DEPLOIEMENT.md](../workflows/DEPLOIEMENT.md).
-- **Garde-fous du filet multi-tenant et des quotas en `warn`** —
-  `make-env.sh` livre `TENANT_GUARD_MODE=warn` et `SUBSCRIPTION_ENFORCEMENT=warn`
-  dans les deux environnements : tant qu'on ne passe pas à `enforce` (d'abord sur
-  le staging), l'extension Prisma d'isolation journalise sans bloquer, et les
-  quotas d'abonnement ne sont pas appliqués.
+  éprouver avant toute donnée réelle. Les sauvegardes sont **en clair** et
+  contiennent toutes les données personnelles de la production : les chiffrer hors
+  serveur (remote rclone chiffré recommandé) et en restreindre l'accès. Aucune
+  alerte n'avertit d'un échec de sauvegarde ; `deploy.sh prod` refuse sans dump de
+  moins de 24 heures, mais ne contrôle que l'existence d'un fichier récent, pas
+  sa validité. Les copies `rclone` ne connaissent ni rotation (la copie hors
+  serveur n'est jamais purgée) ni contrôle du type de remote (rien ne vérifie
+  qu'il est de type `crypt`). Voir [DEPLOIEMENT.md](../workflows/DEPLOIEMENT.md).
 - **Staging accessible publiquement** avec le panneau de comptes de démonstration
-  et le simulateur de paiement (`app.immotopia.cloud`). L'en-tête `X-Robots-Tag`
-  évite l'indexation, pas l'accès. À envisager : `auth_basic` ou une liste
-  d'adresses IP dans le vhost du staging.
+  (comptes d'agence uniquement, sans compte de la plateforme) et le simulateur de
+  paiement (`app.immotopia.cloud`). L'en-tête `X-Robots-Tag` évite l'indexation,
+  pas l'accès. À envisager : `auth_basic` ou une liste d'adresses IP dans le
+  vhost du staging.
 - **Secrets visibles de l'intérieur de l'hôte** — le fichier de secrets alimente
   l'environnement des conteneurs : `docker inspect` et `docker exec` les affichent
   à tout membre du groupe `docker` de l'hôte.
 - **Postgres de la production publié sur `127.0.0.1:5437` sans usage** : tous les
   scripts passent par `docker exec`, aucun par ce port. Surface locale inutile, à
   retirer par un override Compose propre à la production.
-- **Images de base flottantes** (`node:20-alpine`, `nginx:1.27-alpine`,
+- **Images de base flottantes** (`node:22-alpine`, `nginx:1.27-alpine`,
   `postgres:16-alpine`, `alpine`) : référencées par étiquette, pas par digest ;
-  leur contenu peut changer à un `--pull` sans qu'un fichier du dépôt change.
-- **Seeds de démonstration non gardés** — `seed-demo-*.ts` (et, d'après une
-  recherche de `assertNotProduction`, `syndic-demo-seed.ts` et
-  `syndic-demo-fund-movements.ts`) ne refusent pas `NODE_ENV=production`, alors
-  qu'ils sont dans l'image `migrate` : la garde `assert-not-production.ts` ne
-  couvre que six seeds de développement (§8). Aucun script de déploiement ne les
-  lance ; défense en profondeur non résolue.
-- **Limiteurs de débit en mémoire, par instance**
-  (`middleware/rate-limit-middleware.ts`, aucun magasin partagé) : remis à zéro
-  à chaque redémarrage, multipliés par le nombre d'instances de l'API. Sans
-  conséquence tant qu'il n'y a qu'une instance par pile.
+  leur contenu peut changer à un `--pull` sans qu'un fichier du dépôt change. Le
+  passage à Node 22 n'a pas été éprouvé par un `docker build` complet.
+- **Dépendances vulnérables restantes.** Le dernier `npm audit` relevé par l'audit
+  du 2026-11-09 (lot « infra et dépendances ») portait sur 1 critique, 3 élevées et
+  4 modérées, qui relèvent de montées majeures non faites (`tar`/`node-pre-gyp`,
+  `exceljs`, `nodemailer`, `zod`, `uuid`, `react-router`). À relancer avant toute
+  mise en production.
+- **Comptes de démonstration d'agence** : `dev-accounts.ts` liste encore les
+  comptes d'agence de démonstration à mot de passe commun, visibles dans le bundle
+  du staging.
+
+### Organisation
+
+- **Procédure formelle de réponse à incident** (astreinte, notification
+  aux agences, obligations réglementaires locales) — aucun document dédié
+  trouvé dans le dépôt ; la section 11 ci-dessus est une conduite par
+  défaut, pas une procédure validée.
+- **Politique de conservation / suppression des données personnelles**
+  (droit à l'oubli, durée de rétention des pièces jointes de portail) —
+  aucun mécanisme dédié trouvé dans le code à la date de rédaction.
