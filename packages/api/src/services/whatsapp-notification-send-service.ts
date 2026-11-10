@@ -75,7 +75,7 @@ function normalizePhone(phone: string, defaultCountryCode = '33'): string {
 }
 
 function getDefaultCountryCode(): string {
-  const value = process.env.WHATSAPP_DEFAULT_COUNTRY_CODE?.trim();
+  const value = env.WHATSAPP_DEFAULT_COUNTRY_CODE?.trim();
   return value && /^\d{1,4}$/.test(value) ? value : '33';
 }
 

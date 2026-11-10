@@ -53,6 +53,7 @@ const TENANT = 'tenant-1';
 const PROPERTY = 'prop-1';
 const PNG = Buffer.from('89504e470d0a1a0a0000000d', 'hex');
 const MP4 = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from('ftypisom')]);
+const JPEG = Buffer.from('ffd8ffe000104a4649460001', 'hex');
 const HTML = Buffer.from('<html><script>alert(document.cookie)</script></html>');
 const uploadDir = path.join(mockRoot, 'uploads', 'properties', PROPERTY);
 
@@ -109,6 +110,36 @@ describe('uploadMedia — contrôle du contenu', () => {
 
   it('mime image/jpeg mais octets PNG : 400', async () => {
     const res = await post('PHOTO', PNG, 'p.jpg', 'image/jpeg');
+    expect(res.status).toBe(400);
+    expect(await writtenFiles()).toEqual([]);
+  });
+
+  it('TOUR_360 + vrai JPEG : accepté', async () => {
+    const res = await post('TOUR_360', JPEG, 't.html', 'image/jpeg');
+    expect(res.status).toBe(201);
+    expect(res.body.data.fileUrl).toMatch(/\.jpg$/);
+  });
+
+  it('TOUR_360 + vrai MP4 : accepté', async () => {
+    const res = await post('TOUR_360', MP4, 't.html', 'video/mp4');
+    expect(res.status).toBe(201);
+    expect(res.body.data.fileUrl).toMatch(/\.mp4$/);
+  });
+
+  it('TOUR_360 + HTML : refusé, rien écrit', async () => {
+    const res = await post('TOUR_360', HTML, 't.jpg', 'image/jpeg');
+    expect(res.status).toBe(400);
+    expect(await writtenFiles()).toEqual([]);
+  });
+
+  it('PHOTO + MP4 : refusé', async () => {
+    const res = await post('PHOTO', MP4, 'p.jpg', 'image/jpeg');
+    expect(res.status).toBe(400);
+    expect(await writtenFiles()).toEqual([]);
+  });
+
+  it('VIDEO + JPEG : refusé', async () => {
+    const res = await post('VIDEO', JPEG, 'v.mp4', 'video/mp4');
     expect(res.status).toBe(400);
     expect(await writtenFiles()).toEqual([]);
   });

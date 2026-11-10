@@ -10,7 +10,33 @@ export type DocumentKind = 'pdf' | 'png' | 'jpg' | 'doc' | 'docx';
  * de mandat ; DOC (conteneur OLE) et DOCX (archive ZIP) s'y ajoutent.
  */
 export function detectDocumentKind(buffer: Buffer): DocumentKind | null {
+  const strict = detectStrictDocumentKind(buffer);
+  if (strict) return strict;
+  // PDF avec bourrage : seulement si aucune signature stricte (WebP, vidéo, TIFF, DWG) ne correspond.
+  return detectUploadKind(buffer) === 'pdf' ? 'pdf' : null;
+}
+
+/** En-tête PDF valide : `%PDF-` suivi d'une version `\d.\d` (1.7, 2.0…). */
+const PDF_HEADER = /%PDF-\d\.\d/;
+
+/**
+ * PDF dont l'en-tête n'est pas à l'offset 0 : les lecteurs tolèrent du bourrage
+ * (BOM, sauts de ligne) dans les 1024 premiers octets. Les octets qui précèdent
+ * ne doivent pas contenir `<` : un HTML qui cite `%PDF-1.4` n'est pas un PDF.
+ * À tenter EN DERNIER, après toutes les signatures strictes (WebP, MP4, TIFF…
+ * peuvent porter `%PDF-` dans leurs métadonnées).
+ */
+function hasPaddedPdfHeader(buffer: Buffer): boolean {
+  const head = buffer.subarray(0, 1024 + 8).toString('latin1');
+  const match = PDF_HEADER.exec(head);
+  if (!match || match.index > 1024) return false;
+  return !head.slice(0, match.index).includes('<');
+}
+
+/** Types de justificatif reconnus sans tolérance de bourrage PDF. */
+function detectStrictDocumentKind(buffer: Buffer): DocumentKind | null {
   const image = detectMandateScanKind(buffer);
+  if (image === 'pdf') return /^%PDF-\d\.\d/.test(buffer.subarray(0, 8).toString('latin1')) ? 'pdf' : null;
   if (image) return image;
   const ole = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1];
   // DOC : en-tête OLE ET flux « WordDocument » (UTF-16LE) : un autre fichier OLE
@@ -36,9 +62,6 @@ export function detectDocumentKind(buffer: Buffer): DocumentKind | null {
   ) {
     return 'docx';
   }
-  // PDF : les lecteurs tolèrent du bourrage (BOM, sauts de ligne) avant `%PDF-`,
-  // dans les 1024 premiers octets.
-  if (buffer.subarray(0, 1024 + 5).includes(Buffer.from('%PDF-', 'latin1'))) return 'pdf';
   return null;
 }
 
@@ -141,7 +164,8 @@ const UPLOAD_KIND_MIME_TYPES: Record<UploadKind, readonly string[]> = {
 
 /** Type réel d'un fichier déposé d'après ses octets magiques, jamais d'après son nom ni son type déclaré. */
 export function detectUploadKind(buffer: Buffer): UploadKind | null {
-  const document = detectDocumentKind(buffer);
+  // Signatures strictes d'abord ; le PDF avec bourrage vient en dernier.
+  const document = detectStrictDocumentKind(buffer);
   if (document) return document;
   const image = detectImageKind(buffer);
   if (image) return image;
@@ -154,7 +178,7 @@ export function detectUploadKind(buffer: Buffer): UploadKind | null {
   }
   // DWG : « AC10xx » (versions 2.x à 2018).
   if (buffer.length >= 6 && buffer.subarray(0, 4).toString('latin1') === 'AC10') return 'dwg';
-  return null;
+  return hasPaddedPdfHeader(buffer) ? 'pdf' : null;
 }
 
 export interface VerifiedUpload {

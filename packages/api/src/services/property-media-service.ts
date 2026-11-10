@@ -71,13 +71,26 @@ export async function uploadMedia(
   // (XSS stockée). Le contenu doit être une vraie image ou vidéo, et le nom
   // stocké porte l'extension du type réel, jamais celle de `originalname`.
   // Ce contrôle précède toute écriture sur le disque.
-  const isPhoto = mediaType === PropertyMediaType.PHOTO;
-  const allowedKinds: UploadKind[] = isPhoto ? ['jpg', 'png', 'webp'] : ['mp4', 'mov', 'webm'];
+  // PHOTO : image seule ; VIDEO : vidéo seule ; TOUR_360 : photo OU vidéo.
+  const imageKinds: UploadKind[] = ['jpg', 'png', 'webp'];
+  const videoKinds: UploadKind[] = ['mp4', 'mov', 'webm'];
+  let allowedKinds: UploadKind[];
+  let mismatchMessage: string;
+  if (mediaType === PropertyMediaType.PHOTO) {
+    allowedKinds = imageKinds;
+    mismatchMessage = 'Le contenu du fichier ne correspond pas à une photo valide. Formats acceptés : JPEG, PNG, WebP.';
+  } else if (mediaType === PropertyMediaType.VIDEO) {
+    allowedKinds = videoKinds;
+    mismatchMessage =
+      'Le contenu du fichier ne correspond pas à une vidéo valide. Formats acceptés : MP4, WebM, QuickTime.';
+  } else {
+    allowedKinds = [...imageKinds, ...videoKinds];
+    mismatchMessage =
+      'Le contenu du fichier ne correspond pas à une image ou une vidéo valide. Formats acceptés : JPEG, PNG, WebP, MP4, WebM, QuickTime.';
+  }
   const { extension: fileExtension } = assertUploadMatchesDeclaredType(file, {
     allowedKinds,
-    message: isPhoto
-      ? 'Le contenu du fichier ne correspond pas à une photo valide. Formats acceptés : JPEG, PNG, WebP.'
-      : 'Le contenu du fichier ne correspond pas à une vidéo valide. Formats acceptés : MP4, WebM, QuickTime.'
+    message: mismatchMessage
   });
 
   // Generate file path (store in property-specific directory)

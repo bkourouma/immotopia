@@ -36,10 +36,16 @@ export interface SuspectFile {
   detectedKind: string;
 }
 
-async function readDirSafe(dir: string) {
+/** Dossier absent (ENOENT) : silencieux. Toute autre erreur est signalée : un dossier illisible ne doit pas donner un rapport vide en silence. */
+export async function readDirSafe(dir: string) {
   try {
     return await fs.readdir(dir, { withFileTypes: true });
-  } catch {
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') {
+      console.warn(
+        `Dossier illisible, ignoré : ${dir} (${(error as NodeJS.ErrnoException)?.code ?? ''} ${(error as Error)?.message ?? String(error)})`
+      );
+    }
     return [];
   }
 }

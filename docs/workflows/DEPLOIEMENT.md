@@ -238,7 +238,7 @@ refuse de tourner en production.
 **Seeds de développement dans l'image `migrate`.** L'image `migrate` embarque
 tout le dossier `packages/api/prisma/seeds/`, donc aussi des seeds de
 développement qui créent des comptes à mots de passe connus ou suppriment des
-données. Six d'entre eux refusent désormais `NODE_ENV=production` (code de sortie
+données. Six d'entre eux refusent `NODE_ENV=production` (code de sortie
 1, message qui renvoie à `bootstrap.sh`), par la garde
 `prisma/seeds/assert-not-production.ts` appelée en tête de script :
 `create-super-admin.ts`, `seed-quick-login-users.ts`, `seed-comprehensive-data.ts`,
@@ -246,10 +246,12 @@ données. Six d'entre eux refusent désormais `NODE_ENV=production` (code de sor
 secrets posent `NODE_ENV=production` (contrôlé par `deploy.sh`) : c'est ce qui
 rend la garde effective dans l'image. Les `seed-demo-*.ts`
 (`affaires`, `documents`, `locative`, `maintenance`, `syndic`, `visites`),
-`fix-amadou-kone.ts`, `assign-tenant-admin.ts` et `assign-rbac-roles.ts` sont
-gardés eux aussi par `assertNotProduction` ; seuls `syndic-demo-seed.ts` et
-`syndic-demo-fund-movements.ts` ne le sont pas ([points ouverts](#points-ouverts)).
-`bootstrap.sh` n'en lance aucun.
+`fix-amadou-kone.ts`, `assign-tenant-admin.ts`, `assign-rbac-roles.ts` et
+`syndic-demo-seed.ts` sont gardés eux aussi par `assertNotProduction`.
+(`seed-pack-test-tenants.ts` a sa propre garde, adaptée au staging : drapeau
+`ALLOW_PACK_TEST_TENANTS=1` et refus de l'origine de la production.) `syndic-demo-fund-movements.ts` n'a pas de garde : c'est
+un module de fonctions pures, sans accès à la base, que `syndic-demo-seed.ts`
+importe (il n'a rien à protéger). `bootstrap.sh` n'en lance aucun.
 
 ## Première mise en service de la production
 
@@ -2184,10 +2186,10 @@ ls -lh /home/deployer/backups/immotopia-prod
   code de sortie 1) : `create-super-admin.ts`, `seed-quick-login-users.ts`,
   `seed-comprehensive-data.ts`, `seed-crm-data.ts`, `seed-tenant-members.ts`,
   `seed-users.ts`, ainsi que les `seed-demo-*.ts`, `fix-amadou-kone.ts`,
-  `assign-tenant-admin.ts` et `assign-rbac-roles.ts` (garde
-  `assertNotProduction`). Ne pas tenter de les contourner ; amorcer avec
-  `bootstrap.sh`. Seuls `syndic-demo-seed.ts` et `syndic-demo-fund-movements.ts`
-  ne sont pas gardés (points ouverts).
+  `assign-tenant-admin.ts`, `assign-rbac-roles.ts` et `syndic-demo-seed.ts`
+  (garde `assertNotProduction`). Ne pas tenter de les
+  contourner ; amorcer avec `bootstrap.sh`. `syndic-demo-fund-movements.ts`
+  n'est pas gardé : fonctions pures, sans accès à la base.
 - **Un seul checkout pour deux piles** : déplacer le dépôt sur un autre commit
   pour le staging change ce que le prochain déploiement de la production
   construirait. Avant la production, toujours revenir au commit validé.
@@ -2404,14 +2406,13 @@ Non résolus à la date de rédaction :
   l'environnement des conteneurs (`env_file`) : `docker inspect` et
   `docker exec … env` les affichent à tout membre du groupe `docker` de l'hôte,
   ce qui équivaut à un accès administrateur, pour les deux piles à la fois.
-- **Deux seeds de démonstration syndic non gardés.** La garde
+- **Seeds de démonstration et garde de production.** La garde
   `assert-not-production.ts` (`assertNotProduction`) protège les seeds de
-  développement, les `seed-demo-*.ts`, `fix-amadou-kone.ts`,
-  `assign-tenant-admin.ts` et `assign-rbac-roles.ts`. Restent sans garde
-  `syndic-demo-seed.ts` et `syndic-demo-fund-movements.ts` (recherche de
-  `assertNotProduction` dans `packages/api/prisma/seeds/`), pourtant présents
-  dans l'image `migrate`. Aucun script de déploiement ne les lance ; c'est un
-  manque de défense en profondeur, non résolu ici.
+  développement, les `seed-demo-*.ts`, `syndic-demo-seed.ts`,
+  `fix-amadou-kone.ts`, `assign-tenant-admin.ts` et `assign-rbac-roles.ts`.
+  `seed-pack-test-tenants.ts` a sa propre garde (staging seulement, drapeau
+  `ALLOW_PACK_TEST_TENANTS=1`). `syndic-demo-fund-movements.ts` n'en a pas besoin
+  (fonctions pures, sans base).
 
 ## Renvois
 
