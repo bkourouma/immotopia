@@ -6,6 +6,7 @@ import { BadRequestError, NotFoundError } from '../middleware/error-middleware';
 import { t } from '../i18n';
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
+import { env } from '../config/env';
 import { sanitizeHtml } from '../utils/sanitize-html';
 import { emailService } from './email-service';
 import { configureWhatsAppProvider, getConfiguredWhatsAppProvider, sendText } from './providers/whatsapp.provider';
@@ -18,19 +19,44 @@ export { sanitizeHtml };
  */
 
 function getBaseUrl(): string {
-  return process.env.FRONTEND_URL || process.env.CLIENT_URL || 'http://localhost:3000';
+  return env.FRONTEND_URL || env.CLIENT_URL || 'http://localhost:3000';
 }
 
 function getApiBaseUrl(): string {
-  return process.env.API_URL || process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 8001}`;
+  return env.API_URL || env.BACKEND_URL || `http://localhost:${env.PORT || 8001}`;
 }
 
 function replaceVariables(text: string, vars: Record<string, string>): string {
   return text.replace(/\{\{(\w+)\}\}/g, (_, key) => String(vars[key] ?? ''));
 }
 
+/** Echappe `& < > " '` : une valeur d'abonne ne doit jamais devenir du balisage (SUR-07). */
+export function escapeHtml(value: string): string {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/** Variables dont la valeur est construite cote serveur (URL maitrisee) : jamais echappees. */
+const TRUSTED_HTML_VARIABLES = new Set(['lien_desinscription']);
+
+/**
+ * Substitue les variables dans un HTML : les valeurs issues de l'abonne
+ * (prenom, nom, e-mail...) sont echappees, les variables de confiance non.
+ */
+export function replaceVariablesInHtml(html: string, vars: Record<string, string>): string {
+  const safe: Record<string, string> = {};
+  for (const [key, value] of Object.entries(vars)) {
+    safe[key] = TRUSTED_HTML_VARIABLES.has(key) ? value : escapeHtml(value);
+  }
+  return replaceVariables(html, safe);
+}
+
 function getDefaultCountryCode(): string {
-  const value = process.env.WHATSAPP_DEFAULT_COUNTRY_CODE?.trim();
+  const value = env.WHATSAPP_DEFAULT_COUNTRY_CODE?.trim();
   return value && /^\d{1,4}$/.test(value) ? value : '33';
 }
 
@@ -45,9 +71,7 @@ function normalizePhone(phone: string, defaultCountryCode = '33'): string {
 }
 
 function isNewsletterWhatsappEnabled(): boolean {
-  const value = process.env.NEWSLETTER_WHATSAPP_ENABLED?.trim().toLowerCase();
-  if (!value) return true;
-  return value === '1' || value === 'true' || value === 'yes' || value === 'on';
+  return env.NEWSLETTER_WHATSAPP_ENABLED;
 }
 
 function htmlToWhatsappText(html: string): string {
@@ -304,7 +328,7 @@ export async function getPreviewHtml(tenantId: string, campaignId: string): Prom
   };
   return {
     subject: replaceVariables(campaign.subject, vars),
-    html: replaceVariables(html, vars)
+    html: replaceVariablesInHtml(html, vars)
   };
 }
 
@@ -361,7 +385,7 @@ export async function sendCampaign(tenantId: string, campaignId: string): Promis
       lien_desinscription: `${baseUrl}/newsletter/unsubscribe?token=${unsubscribeToken}`
     };
     const subject = replaceVariables(campaign.subject, vars);
-    const personalizedHtml = replaceVariables(bodyHtml, vars);
+    const personalizedHtml = replaceVariablesInHtml(bodyHtml, vars);
     const whatsappBody = buildWhatsappBody(subject, personalizedHtml);
     let html = personalizedHtml;
     const trackingPixel = `<img src="${apiBaseUrl}/api/newsletter/track/open?token=${openToken}" width="1" height="1" alt="" style="display:none" />`;
@@ -375,8 +399,10 @@ export async function sendCampaign(tenantId: string, campaignId: string): Promis
     let whatsappError: string | null = null;
 
     try {
-      await emailService.sendEmail({ to: r.email, subject, html });
-      emailSent = true;
+      // Adresse refusée (FRI-08) : rien n'est parti, le destinataire est compté en échec.
+      const result = await emailService.sendEmail({ to: r.email, subject, html });
+      emailSent = result?.sent !== false;
+      if (!emailSent) emailError = result?.reason ?? 'EMAIL_NOT_SENT';
     } catch (err) {
       emailError = err instanceof Error ? err.message : String(err);
     }

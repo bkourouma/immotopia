@@ -129,7 +129,7 @@ describe('e-mail / adresse masquée dans les journaux', () => {
   });
 
   it('la prénotification demande l adresse masquée', async () => {
-    const send = jest.spyOn(emailService, 'sendEmail').mockResolvedValue(undefined);
+    const send = jest.spyOn(emailService, 'sendEmail').mockResolvedValue({ sent: true });
     try {
       await emailService.sendDirectDebitPrenotification(
         'awa.traore@exemple.ci',

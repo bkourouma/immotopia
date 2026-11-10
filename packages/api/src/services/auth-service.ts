@@ -58,7 +58,7 @@ async function issueVerificationToken(userId: string): Promise<string> {
 }
 
 /** Envoie un e-mail sans jamais faire échouer l'inscription (l'utilisateur peut demander un renvoi). */
-async function sendQuietly(userId: string, what: string, send: () => Promise<void>): Promise<void> {
+async function sendQuietly(userId: string, what: string, send: () => Promise<unknown>): Promise<void> {
   try {
     await send();
     logger.info(`${what} sent`, { userId });
@@ -160,7 +160,7 @@ async function takeOverUnverifiedAccount(
 }
 
 /** E-mail sobre à une adresse déjà inscrite et vérifiée : ni lien de vérification ni création de compte. */
-function sendAccountAlreadyExistsEmail(to: string): Promise<void> {
+function sendAccountAlreadyExistsEmail(to: string): Promise<unknown> {
   const loginLink = `${frontendUrl}/login`;
   return emailService.sendEmail({
     to,

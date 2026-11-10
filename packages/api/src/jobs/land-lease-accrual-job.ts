@@ -78,8 +78,11 @@ export function startLandLeaseAccrualJob(): void {
       const periode = moisEchu(new Date());
       try {
         logger.info('Starting scheduled land lease accrual job', periode);
-        const compteRendu = await withJobLock('land-lease-accrual-monthly', 60 * 60 * 1000, () =>
-          runMonthlyLandLeaseAccruals(periode)
+        const compteRendu = await withJobLock(
+          'land-lease-accrual-monthly',
+          60 * 60 * 1000,
+          () => runMonthlyLandLeaseAccruals(periode),
+          { failOpen: false }
         );
         if (!compteRendu) return; // une autre instance a pris le passage
         logger.info('Land lease accrual job completed', {

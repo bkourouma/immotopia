@@ -1,6 +1,7 @@
 import { RESERVED_ROLE_KEYS } from '../lib/patrimoine/personal-permissions';
 import { prisma, PrismaTransactionClient } from '../utils/database';
 import { logger } from '../utils/logger';
+import { env } from '../config/env';
 import { GlobalRole, InvitationStatus, MembershipStatus } from '@prisma/client';
 import { emailService } from './email-service';
 import { hashPassword, validatePasswordStrength } from '../utils/password-utils';
@@ -17,7 +18,7 @@ import crypto from 'crypto';
 import { t } from '../i18n';
 
 export function getFrontendBaseUrl(): string {
-  return (process.env.FRONTEND_URL || process.env.CLIENT_URL || 'http://localhost:3000').replace(/\/$/, '');
+  return (env.FRONTEND_URL || env.CLIENT_URL || 'http://localhost:3000').replace(/\/$/, '');
 }
 
 /** URL d'acceptation d'une invitation, a partir du jeton en clair. Format partage par l'email et l'API. */
@@ -288,7 +289,7 @@ export async function inviteCollaborator(data: InviteCollaboratorRequest) {
   const roleLabels = await resolveRoleLabels(data.roleIds);
   let emailSent = true;
   try {
-    await emailService.sendInviteEmail(
+    const sendResult = await emailService.sendInviteEmail(
       email,
       token, // Send plain token, not hash
       tenant.name,
@@ -296,11 +297,21 @@ export async function inviteCollaborator(data: InviteCollaboratorRequest) {
       invitation.expiresAt,
       data.tenantId
     );
-    logger.info('Invitation email sent', {
-      invitationId: invitation.id,
-      email,
-      tenantId: data.tenantId
-    });
+    if (sendResult?.sent === false) {
+      // Adresse refusée (FRI-08) : aucun e-mail parti, l'invitation reste créée.
+      emailSent = false;
+      logger.warn('Invitation email not sent', {
+        invitationId: invitation.id,
+        reason: sendResult.reason,
+        tenantId: data.tenantId
+      });
+    } else {
+      logger.info('Invitation email sent', {
+        invitationId: invitation.id,
+        email,
+        tenantId: data.tenantId
+      });
+    }
   } catch (error) {
     emailSent = false;
     logger.error('Failed to send invitation email', {
@@ -739,9 +750,10 @@ export async function resendInvitation(invitationId: string, tenantId: string, a
   expiresAt.setDate(expiresAt.getDate() + 7); // Reset to 7 days
 
   // Send email
+  let emailSent = true;
   try {
     const roleLabels = await resolveRoleLabels(invitation.roleIds);
-    await emailService.sendInviteEmail(
+    const sendResult = await emailService.sendInviteEmail(
       invitation.email,
       token,
       invitation.tenant.name,
@@ -749,11 +761,17 @@ export async function resendInvitation(invitationId: string, tenantId: string, a
       expiresAt,
       invitation.tenantId
     );
-    logger.info('Invitation email resent', {
-      invitationId,
-      email: invitation.email,
-      actorUserId
-    });
+    if (sendResult?.sent === false) {
+      // Adresse refusée (FRI-08) : rien n'est parti ; le lien reste affiché au gestionnaire.
+      emailSent = false;
+      logger.warn('Invitation email not resent', { invitationId, reason: sendResult.reason, actorUserId });
+    } else {
+      logger.info('Invitation email resent', {
+        invitationId,
+        email: invitation.email,
+        actorUserId
+      });
+    }
   } catch (error) {
     logger.error('Failed to resend invitation email', {
       invitationId,
@@ -783,10 +801,10 @@ export async function resendInvitation(invitationId: string, tenantId: string, a
 
   // acceptUrl/emailSent : ajoutes pour F2 (le super-admin doit pouvoir copier
   // le lien et voir l'etat de l'envoi sans deviner). On atteint ce point
-  // uniquement si l'e-mail est parti (sinon le catch ci-dessus a deja leve) :
-  // emailSent vaut donc toujours true ici. Champs ajoutes en fin de reponse,
-  // aucun appelant existant ne lisait plus que `expiresAt`.
-  return { expiresAt, acceptUrl: buildInvitationAcceptUrl(token), emailSent: true };
+  // sans erreur de transport (sinon le catch ci-dessus a deja leve) ; emailSent
+  // vaut false si l'adresse a ete refusee (FRI-08). Champs ajoutes en fin de
+  // reponse, aucun appelant existant ne lisait plus que `expiresAt`.
+  return { expiresAt, acceptUrl: buildInvitationAcceptUrl(token), emailSent };
 }
 
 /**

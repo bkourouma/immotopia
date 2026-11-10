@@ -46,6 +46,64 @@ const secretSchema = z
 const optionalUrl = z.string().url().optional();
 
 /**
+ * Durée de vie maximale du jeton d'accès (AUTH-08) : le JWT n'est pas
+ * révocable, un jeton long prolonge donc l'accès d'un compte désactivé ou
+ * rétrogradé.
+ */
+export const MAX_JWT_LIFETIME_MS = 30 * 60 * 1000;
+
+const DURATION_UNIT_MS: Record<string, number> = {
+  ms: 1,
+  s: 1000,
+  m: 60 * 1000,
+  h: 60 * 60 * 1000,
+  d: 24 * 60 * 60 * 1000,
+  w: 7 * 24 * 60 * 60 * 1000
+};
+
+/**
+ * Analyse une durée au format de `jsonwebtoken` / `ms` (« 15m », « 900s »,
+ * « 1800000ms »). L'unité est OBLIGATOIRE : `env.JWT_EXPIRES_IN` est une chaîne et
+ * `jsonwebtoken` lirait « 900 » comme 900 millisecondes (piège), donc refusé.
+ * Renvoie `null` si la valeur n'est pas analysable.
+ */
+export function parseDurationMs(raw: string): number | null {
+  const match = /^\s*(\d+(?:\.\d+)?)\s*(ms|s|m|h|d|w)\s*$/i.exec(raw);
+  if (!match) return null;
+  const unit = match[2].toLowerCase();
+  return Number(match[1]) * DURATION_UNIT_MS[unit];
+}
+
+/** '' vaut variable absente (seule la chaîne vide : aucune autre normalisation). */
+function blankToUndefined<T extends z.ZodTypeAny>(schema: T) {
+  return z.preprocess(value => (value === '' ? undefined : value), schema);
+}
+
+/** Texte libre facultatif : '' => undefined, sinon la chaîne telle quelle (aucun défaut). */
+const optionalText = blankToUndefined(z.string().optional());
+
+/** Hôtes qui désignent la machine locale : interdits dans les URL publiques en production. */
+function isLocalHostname(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  return (
+    host === 'localhost' ||
+    host.endsWith('.localhost') ||
+    host === '0.0.0.0' ||
+    host === '[::1]' ||
+    host === '[::]' ||
+    /^127\.\d+\.\d+\.\d+$/.test(host)
+  );
+}
+
+function urlPointsToLocalhost(value: string): boolean {
+  try {
+    return isLocalHostname(new URL(value).hostname);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Variable facultative (lot 041) : une valeur vide (`KEY=""` dans le `.env`)
  * vaut une variable absente, au lieu de faire échouer le démarrage.
  */
@@ -212,20 +270,84 @@ export const SIGNATURE_DOCUMENT_KINDS = [
 const envSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-    PORT: z.coerce.number().int().positive().default(8001),
+    // '' vaut absent (le code historique faisait `process.env.PORT || 8001`).
+    PORT: blankToUndefined(z.coerce.number().int().positive().default(8001)),
 
     // Persistence
     DATABASE_URL: z.string({ required_error: 'variable requise' }).min(1),
 
     // Auth
     JWT_SECRET: secretSchema,
-    JWT_EXPIRES_IN: z.string().default('15m'),
+    // Borné à 30 minutes (AUTH-08). Formats de jsonwebtoken/ms : '15m', '900s', '1800000ms'.
+    JWT_EXPIRES_IN: blankToUndefined(
+      z
+        .string()
+        .default('15m')
+        .superRefine((value, ctx) => {
+          const ms = parseDurationMs(value);
+          if (ms === null || ms <= 0) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: `durée non analysable (« ${value} ») : utilisez par exemple 15m, 900s ou 1800000ms`
+            });
+          } else if (ms > MAX_JWT_LIFETIME_MS) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: `durée trop longue (« ${value} ») : le jeton d'accès n'est pas révocable, 30 minutes au maximum (ex. 15m)`
+            });
+          }
+        })
+    ),
 
     // Application URLs. FRONTEND_URL is the single source of truth for the
     // browser origin; CLIENT_URL is kept as a legacy alias.
-    FRONTEND_URL: z.string().url().default('http://localhost:3000'),
-    CLIENT_URL: optionalUrl,
-    BACKEND_URL: z.string().url().default('http://localhost:8001'),
+    // '' vaut absent partout (les appelants historiques font `process.env.X || défaut`).
+    // En production, ces URL ne peuvent pas désigner la machine locale (AUTH-11).
+    FRONTEND_URL: blankToUndefined(z.string().url().default('http://localhost:3000')),
+    CLIENT_URL: blankToUndefined(optionalUrl),
+    BACKEND_URL: blankToUndefined(z.string().url().default('http://localhost:8001')),
+    // Base publique de l'API pour les liens sortants (newsletter) ; repli : BACKEND_URL. Absent si vide.
+    API_URL: blankToUndefined(optionalUrl),
+
+    // Messagerie (SUR-05). AUCUN défaut ici : '' et absent valent `undefined`, et les appelants
+    // gardent leurs propres `|| 'défaut'` (ex. EMAIL_SMTP_HOST vide => smtp.hostinger.com).
+    // Aucun secret n'a de valeur par défaut.
+    EMAIL_SERVICE_TYPE: optionalText, // texte libre (l'appelant fait trim().toLowerCase())
+    EMAIL_SERVICE_API_KEY: optionalText, // secret
+    EMAIL_PROVIDER: optionalText, // texte libre ('smtp' | 'sendgrid' côté appelant)
+    EMAIL_SMTP_HOST: optionalText,
+    // Entier 1-65535 ; '' => undefined. Une valeur non numérique est désormais refusée au
+    // démarrage (avant : NaN silencieux via parseInt).
+    EMAIL_SMTP_PORT: blankToUndefined(z.coerce.number().int().min(1).max(65535).optional()),
+    EMAIL_SMTP_USER: optionalText,
+    EMAIL_SMTP_PASS: optionalText, // secret
+    // Au sens `=== 'true'` : tout autre texte (ou absent) => false, jamais refusé.
+    EMAIL_SMTP_SECURE: z
+      .string()
+      .optional()
+      .transform(value => value === 'true'),
+    EMAIL_FROM: optionalText,
+    SENDGRID_API_KEY: optionalText, // secret
+    SENDGRID_FROM_NAME: optionalText,
+    SENDGRID_FROM_EMAIL: optionalText,
+    // Booléen : '1' ou 'true' (insensible à la casse) => true ; sinon false. Force l'envoi réel
+    // d'e-mails même avec NODE_ENV=test.
+    ENABLE_EMAILS: z
+      .string()
+      .optional()
+      .transform(value => ['1', 'true'].includes(String(value ?? '').toLowerCase())),
+
+    // Newsletter. Indicatif pays par défaut : texte libre (l'appelant retombe sur '33' si invalide).
+    WHATSAPP_DEFAULT_COUNTRY_CODE: optionalText,
+    // true par défaut ; '' ou absent => true ; '1'/'true'/'yes'/'on' (casse libre) => true ; autre => false.
+    NEWSLETTER_WHATSAPP_ENABLED: z
+      .string()
+      .optional()
+      .transform(value => {
+        const trimmed = (value ?? '').trim().toLowerCase();
+        if (!trimmed) return true;
+        return ['1', 'true', 'yes', 'on'].includes(trimmed);
+      }),
 
     // Where user-uploaded files live. Defaults to <repo>/uploads (resolved in
     // index.ts) when unset, so existing installs keep working.
@@ -603,6 +725,19 @@ const envSchema = z
         message: 'doit être dédiée aux IBAN : elle ne peut pas être identique à PAYMENT_SECRETS_KEY'
       });
     }
+    if (value.NODE_ENV === 'production') {
+      // AUTH-11 : liens d'e-mail, CORS et rappels OAuth ne doivent jamais pointer sur la machine locale.
+      for (const key of ['FRONTEND_URL', 'BACKEND_URL', 'CLIENT_URL', 'API_URL'] as const) {
+        const url = value[key];
+        if (url && urlPointsToLocalhost(url)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [key],
+            message: `ne peut pas désigner localhost, 127.0.0.1, [::1] ou 0.0.0.0 en production (valeur : ${url})`
+          });
+        }
+      }
+    }
     if (value.AI_PROVIDER === 'anthropic' && !value.ANTHROPIC_API_KEY) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -944,10 +1079,6 @@ function loadEnv(): Env {
   }
 
   if (env.NODE_ENV === 'production') {
-    if (env.FRONTEND_URL.startsWith('http://localhost')) {
-      // eslint-disable-next-line no-console
-      console.warn('⚠️  FRONTEND_URL pointe encore sur localhost en production.');
-    }
     if (!env.BACKEND_URL.startsWith('https://')) {
       // eslint-disable-next-line no-console
       console.warn('⚠️  BACKEND_URL devrait utiliser HTTPS en production.');
@@ -961,6 +1092,9 @@ export const env = loadEnv();
 
 /** Browser origin allowed by CORS and referenced in e-mail links. */
 export const frontendUrl = env.CLIENT_URL || env.FRONTEND_URL;
+
+/** Envoi d'e-mails réel forcé (ENABLE_EMAILS=1|true), même avec NODE_ENV=test. */
+export const emailEnabledForced: boolean = env.ENABLE_EMAILS;
 
 export const isProduction = env.NODE_ENV === 'production';
 export const isTest = env.NODE_ENV === 'test';

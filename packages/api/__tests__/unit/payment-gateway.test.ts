@@ -1011,6 +1011,12 @@ describe('Client PaySecureHub réel (sans réseau)', () => {
     });
   });
 
+  it('status/transact : conserve la devise numérique 952 en chaîne', async () => {
+    mockFetch(200, { payments: { state: 'Successful', amount: 100, currency: 952 } });
+    const status = await paySecureHubClient.getStatus(credentials, 'IMT-ABC');
+    expect(status.currency).toBe('952');
+  });
+
   it('réponse en erreur : GatewayError dont le message ne porte jamais la clé', async () => {
     mockFetch(500, { error: 'boom' });
     await expect(paySecureHubClient.getStatus(credentials, 'IMT-ABC')).rejects.toMatchObject({
