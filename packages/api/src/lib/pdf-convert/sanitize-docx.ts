@@ -1,5 +1,6 @@
 import PizZip from 'pizzip';
 import { BadRequestError } from '../../middleware/error-middleware';
+import { assertDocxWithinLimits } from '../../utils/docx-limits';
 
 /**
  * Neutralise un DOCX AVANT de le confier à LibreOffice (audit sécurité) : le
@@ -39,6 +40,7 @@ function sanitizeWordXml(xml: string): string {
 }
 
 export function sanitizeDocx(docx: Buffer): Buffer {
+  assertDocxWithinLimits(docx);
   let zip: PizZip;
   try {
     zip = new PizZip(docx);

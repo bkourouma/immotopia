@@ -12,6 +12,7 @@ import { getPropertyForTenant } from '../utils/property-tenant-guard';
 import { getProjectRoot } from '../utils/project-root';
 import { t } from '../i18n';
 import { BadRequestError, NotFoundError } from '../middleware/error-middleware';
+import { assertUploadMatchesDeclaredType, type UploadKind } from '../utils/file-signature';
 
 export { PROPERTY_MEDIA_SELECT };
 
@@ -65,6 +66,20 @@ export async function uploadMedia(
     }
   }
 
+  // Le type déclaré par le client ne suffit pas : un HTML ou un SVG envoyé en
+  // `image/png` serait servi sous /uploads, même origine que l'application
+  // (XSS stockée). Le contenu doit être une vraie image ou vidéo, et le nom
+  // stocké porte l'extension du type réel, jamais celle de `originalname`.
+  // Ce contrôle précède toute écriture sur le disque.
+  const isPhoto = mediaType === PropertyMediaType.PHOTO;
+  const allowedKinds: UploadKind[] = isPhoto ? ['jpg', 'png', 'webp'] : ['mp4', 'mov', 'webm'];
+  const { extension: fileExtension } = assertUploadMatchesDeclaredType(file, {
+    allowedKinds,
+    message: isPhoto
+      ? 'Le contenu du fichier ne correspond pas à une photo valide. Formats acceptés : JPEG, PNG, WebP.'
+      : 'Le contenu du fichier ne correspond pas à une vidéo valide. Formats acceptés : MP4, WebM, QuickTime.'
+  });
+
   // Generate file path (store in property-specific directory)
   const projectRoot = getProjectRoot();
   const uploadDir = path.join(projectRoot, 'uploads', 'properties', propertyId);
@@ -72,7 +87,6 @@ export async function uploadMedia(
 
   // CSPRNG name: Date.now()+Math.random() is guessable, and these files sit
   // under a publicly served directory.
-  const fileExtension = path.extname(file.originalname).toLowerCase();
   const fileName = `${randomUUID()}${fileExtension}`;
   const filePath = path.join(uploadDir, fileName);
 

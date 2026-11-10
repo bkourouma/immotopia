@@ -3,6 +3,7 @@ import { runInFrench, t } from '../i18n';
 import { listMeetingsPage } from '../lib/syndics/meeting-reads';
 import { closeMeetingRoom } from '../lib/syndics/meeting-visio';
 import * as path from 'path';
+import { assertUploadMatchesDeclaredType } from '../utils/file-signature';
 import * as fs from 'fs/promises';
 import {
   listSyndicatesByTenant,
@@ -1507,10 +1508,15 @@ export const createDocumentHandler = asyncHandler(async (req: Request, res: Resp
     // `packages/uploads` : ces fichiers-la restent lus, voir
     // lib/syndics/document-files.ts. Le fichier n'est jamais servi en
     // statique, seulement par `downloadDocumentHandler` ci-dessous.
+    // Contenu contrôlé contre le type déclaré (types du filtre multer
+    // `documentFileFilter`) ; l'extension vient du type réel, jamais du nom
+    // d'origine. Avant toute écriture disque.
+    const { extension } = assertUploadMatchesDeclaredType(req.file, {
+      allowedKinds: ['pdf', 'doc', 'docx', 'jpg', 'png', 'tiff']
+    });
     const uploadDir = syndicateDocumentsDir(syndicateId);
     await fs.mkdir(uploadDir, { recursive: true });
 
-    const extension = path.extname(req.file.originalname) || '';
     const safeType = parsed.type.toLowerCase();
     const fileName = `${safeType}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${extension}`;
     const filePath = path.join(uploadDir, fileName);

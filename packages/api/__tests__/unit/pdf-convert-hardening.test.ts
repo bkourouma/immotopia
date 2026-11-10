@@ -79,10 +79,10 @@ describe('neutralisation du DOCX', () => {
   });
 
   it("refuse ce qui n'est pas une archive DOCX", () => {
-    expect(() => sanitizeDocx(Buffer.from('pas une archive'))).toThrow(/Word valide/);
+    expect(() => sanitizeDocx(Buffer.from('pas une archive'))).toThrow(/fichier Word/);
     const zip = new PizZip();
     zip.file('autre.txt', 'x');
-    expect(() => sanitizeDocx(zip.generate({ type: 'nodebuffer' }))).toThrow(/Word valide/);
+    expect(() => sanitizeDocx(zip.generate({ type: 'nodebuffer' }))).toThrow(/fichier Word/);
   });
 });
 

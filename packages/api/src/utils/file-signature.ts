@@ -1,4 +1,6 @@
 import { detectMandateScanKind } from '../lib/direct-debit/mandate-files';
+import { BadRequestError } from '../middleware/error-middleware';
+import { t } from '../i18n';
 
 export type DocumentKind = 'pdf' | 'png' | 'jpg' | 'doc' | 'docx';
 
@@ -34,11 +36,14 @@ export function detectDocumentKind(buffer: Buffer): DocumentKind | null {
   ) {
     return 'docx';
   }
+  // PDF : les lecteurs tolèrent du bourrage (BOM, sauts de ligne) avant `%PDF-`,
+  // dans les 1024 premiers octets.
+  if (buffer.subarray(0, 1024 + 5).includes(Buffer.from('%PDF-', 'latin1'))) return 'pdf';
   return null;
 }
 
 /** Extension (avec le point) d'un type détecté par signature. */
-export function extensionForKind(kind: DocumentKind | ImageKind): string {
+export function extensionForKind(kind: UploadKind): string {
   return kind === 'jpg' ? '.jpg' : `.${kind}`;
 }
 
@@ -70,4 +75,126 @@ const DECLARED_KIND: Record<string, DocumentKind> = {
 export function contentMatchesDeclaredType(buffer: Buffer, mimetype: string): boolean {
   const attendu = DECLARED_KIND[mimetype];
   return Boolean(attendu) && detectDocumentKind(buffer) === attendu;
+}
+
+// ---------------------------------------------------------------------------
+// Vidéos, TIFF, DWG : types réels des médias et plans déposés
+// ---------------------------------------------------------------------------
+
+export type VideoKind = 'mp4' | 'mov' | 'webm';
+
+/** Marques `ftyp` d'images (HEIC, HEIF, AVIF) : jamais des vidéos acceptées. */
+const IMAGE_FTYP_BRANDS = new Set(['heic', 'heix', 'heim', 'heis', 'hevm', 'hevs', 'avif', 'avis', 'mif1', 'msf1']);
+/** Premiers atomes d'un MOV QuickTime ancien (sans `ftyp`). */
+const QUICKTIME_ATOMS = new Set(['moov', 'wide', 'mdat', 'free', 'skip']);
+
+/**
+ * Vidéo MP4 / QuickTime (boîte ISO `ftyp` aux octets 4-8, marque aux octets
+ * 8-12 : `qt  ` pour QuickTime) ou WebM (en-tête EBML `1A 45 DF A3` dont le
+ * DocType est `webm` ; un conteneur Matroska n'est pas accepté).
+ */
+export function detectVideoKind(buffer: Buffer): VideoKind | null {
+  if (buffer.length >= 12 && buffer.subarray(4, 8).toString('latin1') === 'ftyp') {
+    const brand = buffer.subarray(8, 12).toString('latin1');
+    // HEIC/HEIF/AVIF partagent la boîte `ftyp` mais sont des images : refusées.
+    if (IMAGE_FTYP_BRANDS.has(brand)) return null;
+    return brand === 'qt  ' ? 'mov' : 'mp4';
+  }
+  // MOV ancien sans `ftyp` : premier atome QuickTime (taille > 0 puis type).
+  if (
+    buffer.length >= 8 &&
+    buffer.readUInt32BE(0) > 0 &&
+    QUICKTIME_ATOMS.has(buffer.subarray(4, 8).toString('latin1'))
+  ) {
+    return 'mov';
+  }
+  if (
+    buffer.length >= 4 &&
+    buffer[0] === 0x1a &&
+    buffer[1] === 0x45 &&
+    buffer[2] === 0xdf &&
+    buffer[3] === 0xa3 &&
+    buffer.subarray(0, 64).includes(Buffer.from('webm', 'latin1'))
+  ) {
+    return 'webm';
+  }
+  return null;
+}
+
+/** Type de fichier déposé reconnu par signature (document, image, vidéo, scan TIFF, plan DWG). */
+export type UploadKind = DocumentKind | ImageKind | VideoKind | 'tiff' | 'dwg';
+
+/** Types déclarés (`Content-Type` du dépôt) acceptés pour chaque type réel. */
+const UPLOAD_KIND_MIME_TYPES: Record<UploadKind, readonly string[]> = {
+  pdf: ['application/pdf'],
+  doc: ['application/msword'],
+  docx: ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+  jpg: ['image/jpeg', 'image/jpg'],
+  png: ['image/png'],
+  webp: ['image/webp'],
+  mp4: ['video/mp4'],
+  mov: ['video/quicktime'],
+  webm: ['video/webm'],
+  tiff: ['image/tiff'],
+  dwg: ['application/dwg']
+};
+
+/** Type réel d'un fichier déposé d'après ses octets magiques, jamais d'après son nom ni son type déclaré. */
+export function detectUploadKind(buffer: Buffer): UploadKind | null {
+  const document = detectDocumentKind(buffer);
+  if (document) return document;
+  const image = detectImageKind(buffer);
+  if (image) return image;
+  const video = detectVideoKind(buffer);
+  if (video) return video;
+  if (buffer.length >= 4) {
+    const tiffLittle = buffer[0] === 0x49 && buffer[1] === 0x49 && buffer[2] === 0x2a && buffer[3] === 0x00;
+    const tiffBig = buffer[0] === 0x4d && buffer[1] === 0x4d && buffer[2] === 0x00 && buffer[3] === 0x2a;
+    if (tiffLittle || tiffBig) return 'tiff';
+  }
+  // DWG : « AC10xx » (versions 2.x à 2018).
+  if (buffer.length >= 6 && buffer.subarray(0, 4).toString('latin1') === 'AC10') return 'dwg';
+  return null;
+}
+
+export interface VerifiedUpload {
+  /** Type réel, détecté dans les octets. */
+  kind: UploadKind;
+  /** Extension (avec le point) dérivée du type réel : à utiliser pour le nom stocké. */
+  extension: string;
+}
+
+export interface AssertUploadOptions {
+  /** Types réels acceptés ; absent = tout type reconnu. */
+  allowedKinds?: readonly UploadKind[];
+  /** Message de refus (français, traduit ici) ; défaut générique. */
+  message?: string;
+}
+
+const DEFAULT_MISMATCH_MESSAGE = 'Le contenu du fichier ne correspond pas à son type déclaré.';
+
+/**
+ * Refuse (400) un fichier déposé dont le contenu ne correspond pas à son type
+ * déclaré, ou dont le type réel n'est pas dans la liste autorisée : un HTML,
+ * un script ou un SVG déclaré `image/png` n'entre plus. Rend le type réel et
+ * l'extension à stocker (jamais celle de `originalname`, fournie par le client).
+ */
+export function assertUploadMatchesDeclaredType(
+  file: Pick<Express.Multer.File, 'buffer' | 'mimetype'>,
+  options: AssertUploadOptions = {}
+): VerifiedUpload {
+  const reject = (): never => {
+    throw new BadRequestError(t(options.message ?? DEFAULT_MISMATCH_MESSAGE));
+  };
+  if (!file.buffer || file.buffer.length === 0) return reject();
+  const kind = detectUploadKind(file.buffer);
+  if (!kind) return reject();
+  if (options.allowedKinds && !options.allowedKinds.includes(kind)) return reject();
+  const declared = (file.mimetype ?? '').toLowerCase();
+  const accepted =
+    kind === 'mp4' || kind === 'mov'
+      ? [...UPLOAD_KIND_MIME_TYPES.mp4, ...UPLOAD_KIND_MIME_TYPES.mov] // les téléphones échangent .mov et .mp4
+      : UPLOAD_KIND_MIME_TYPES[kind];
+  if (!accepted.includes(declared)) return reject();
+  return { kind, extension: extensionForKind(kind) };
 }

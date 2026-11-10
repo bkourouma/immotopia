@@ -28,5 +28,6 @@ function logoFileFilter(_req: Request, file: Express.Multer.File, cb: multer.Fil
 export const logoUpload = multer({
   storage: multer.memoryStorage(),
   fileFilter: logoFileFilter,
-  limits: { fileSize: LOGO_MAX_SIZE_BYTES }
+  // Aucun champ texte attendu : un seul fichier, quelques champs de marge.
+  limits: { fileSize: LOGO_MAX_SIZE_BYTES, files: 1, fields: 8, fieldSize: 100 * 1024 }
 });

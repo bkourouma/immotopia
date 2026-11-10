@@ -9,6 +9,7 @@ import * as path from 'path';
 import { createHash } from 'crypto';
 import PizZip from 'pizzip';
 import { getTemplatesWriteDir } from '../utils/assets-paths';
+import { assertDocxUpload, assertDocxWithinLimits } from '../utils/docx-limits';
 
 /**
  * Dossier d'ecriture des modeles importes (volume sous UPLOADS_DIR, sinon
@@ -29,6 +30,7 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 export async function extractPlaceholders(filePath: string): Promise<string[]> {
   try {
     const content = await fs.readFile(filePath);
+    assertDocxWithinLimits(content);
     const zip = new PizZip(content);
 
     // Extract placeholders from the main document XML
@@ -70,6 +72,8 @@ export async function extractPlaceholders(filePath: string): Promise<string[]> {
 
     return Array.from(placeholders).sort();
   } catch (error: any) {
+    // Archive refusée par les bornes DOCX : la 400 reste une 400.
+    if (error instanceof BadRequestError) throw error;
     logger.error('Error extracting placeholders', {
       error: error.message || error,
       stack: error.stack,
@@ -107,6 +111,9 @@ export async function uploadTemplate(
   if (!originalFilename.toLowerCase().endsWith('.docx')) {
     throw badRequest('Seuls les fichiers DOCX sont acceptés.');
   }
+
+  // Signature PK + bornes du ZIP (entrées, taille décompressée) avant tout traitement
+  assertDocxUpload(fileBuffer);
 
   // Calculate file hash
   const fileHash = calculateFileHash(fileBuffer);
