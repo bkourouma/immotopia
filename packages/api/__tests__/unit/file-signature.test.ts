@@ -68,6 +68,9 @@ describe('extensionForKind', () => {
 const PNG_BYTES = Buffer.from('89504e470d0a1a0a0000000d', 'hex');
 const MP4_BYTES = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from('ftypisom')]);
 const MOV_BYTES = Buffer.concat([Buffer.from([0, 0, 0, 0x14]), Buffer.from('ftypqt  ')]);
+const JPEG_BYTES = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]);
+const PDF_BYTES = Buffer.from('%PDF-1.4\n%contenu\n');
+const TIFF_BYTES = Buffer.from([0x49, 0x49, 0x2a, 0x00, 0x08, 0x00, 0x00, 0x00]);
 const EBML = Buffer.from([0x1a, 0x45, 0xdf, 0xa3]);
 
 describe('detectVideoKind', () => {
@@ -104,8 +107,59 @@ describe('assertUploadMatchesDeclaredType', () => {
       assertUploadMatchesDeclaredType({ buffer: Buffer.from('<html><script>1</script>'), mimetype: 'image/png' }, photo)
     ).toThrow(expect.objectContaining({ statusCode: 400 }));
   });
-  it('refuse un type déclaré différent du contenu', () => {
-    expect(() => assertUploadMatchesDeclaredType({ buffer: PNG_BYTES, mimetype: 'image/jpeg' }, photo)).toThrow();
+  it('accepte un type déclaré voisin de la même famille, extension du type RÉEL', () => {
+    // PNG nommé .jpg par le téléphone, déclaré image/jpeg : jpg et png sont autorisés.
+    expect(assertUploadMatchesDeclaredType({ buffer: PNG_BYTES, mimetype: 'image/jpeg' }, photo)).toEqual({
+      kind: 'png',
+      extension: '.png'
+    });
+    expect(assertUploadMatchesDeclaredType({ buffer: JPEG_BYTES, mimetype: 'image/png' }, photo)).toEqual({
+      kind: 'jpg',
+      extension: '.jpg'
+    });
+    expect(assertUploadMatchesDeclaredType({ buffer: JPEG_BYTES, mimetype: 'image/webp' }, photo).extension).toBe(
+      '.jpg'
+    );
+    const videos = { allowedKinds: ['mp4', 'webm'] as const };
+    expect(assertUploadMatchesDeclaredType({ buffer: MP4_BYTES, mimetype: 'video/webm' }, videos)).toEqual({
+      kind: 'mp4',
+      extension: '.mp4'
+    });
+  });
+  it('refuse un type déclaré voisin qui n’est pas autorisé, ou hors famille connue', () => {
+    // png seul autorisé : image/jpeg n'est le type d'aucun type autorisé.
+    expect(() =>
+      assertUploadMatchesDeclaredType({ buffer: PNG_BYTES, mimetype: 'image/jpeg' }, { allowedKinds: ['png'] })
+    ).toThrow(expect.objectContaining({ statusCode: 400 }));
+    expect(() => assertUploadMatchesDeclaredType({ buffer: PNG_BYTES, mimetype: 'image/svg+xml' }, photo)).toThrow();
+    expect(() => assertUploadMatchesDeclaredType({ buffer: PNG_BYTES, mimetype: 'image/gif' }, photo)).toThrow();
+  });
+  it('refuse toujours entre familles : image ↔ document, image ↔ vidéo', () => {
+    const mixed = { allowedKinds: ['pdf', 'doc', 'docx', 'jpg', 'png', 'tiff', 'mp4'] as const };
+    // Image déclarée pour un contenu document.
+    expect(() => assertUploadMatchesDeclaredType({ buffer: PDF_BYTES, mimetype: 'image/png' }, mixed)).toThrow();
+    // Document déclaré pour un contenu image.
+    expect(() => assertUploadMatchesDeclaredType({ buffer: PNG_BYTES, mimetype: 'application/pdf' }, mixed)).toThrow();
+    expect(() =>
+      assertUploadMatchesDeclaredType(
+        { buffer: PNG_BYTES, mimetype: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
+        mixed
+      )
+    ).toThrow();
+    // Vidéo déclarée image, image déclarée vidéo.
+    expect(() => assertUploadMatchesDeclaredType({ buffer: MP4_BYTES, mimetype: 'image/png' }, mixed)).toThrow();
+    expect(() => assertUploadMatchesDeclaredType({ buffer: PNG_BYTES, mimetype: 'video/mp4' }, mixed)).toThrow();
+    // Contenu exécutable / HTML déclaré image : aucun type réel reconnu.
+    expect(() =>
+      assertUploadMatchesDeclaredType({ buffer: Buffer.from('MZ\x90\x00binaire'), mimetype: 'image/jpeg' }, mixed)
+    ).toThrow();
+    // Entre documents, toujours l'appariement exact (PDF déclaré DOC).
+    expect(() =>
+      assertUploadMatchesDeclaredType({ buffer: PDF_BYTES, mimetype: 'application/msword' }, mixed)
+    ).toThrow();
+  });
+  it('refuse un type réel hors liste autorisée même si le déclaré l’est', () => {
+    expect(() => assertUploadMatchesDeclaredType({ buffer: TIFF_BYTES, mimetype: 'image/png' }, photo)).toThrow();
   });
   it('refuse un type réel hors liste autorisée', () => {
     expect(() => assertUploadMatchesDeclaredType({ buffer: MP4_BYTES, mimetype: 'video/mp4' }, photo)).toThrow();

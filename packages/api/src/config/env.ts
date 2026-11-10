@@ -66,9 +66,16 @@ const DURATION_UNIT_MS: Record<string, number> = {
  * « 1800000ms »). L'unité est OBLIGATOIRE : `env.JWT_EXPIRES_IN` est une chaîne et
  * `jsonwebtoken` lirait « 900 » comme 900 millisecondes (piège), donc refusé.
  * Renvoie `null` si la valeur n'est pas analysable.
+ *
+ * Même tolérance que `ms` (que `jsonwebtoken` appelle à chaque signature) :
+ * aucun blanc de bord, seuls des ESPACES entre le nombre et l'unité, 100
+ * caractères au plus. Une valeur acceptée ici l'est donc aussi par `ms`
+ * (contre-audit PR #205 : « 15m » précédé d'un espace passait le démarrage puis
+ * faisait échouer chaque `jwt.sign`).
  */
 export function parseDurationMs(raw: string): number | null {
-  const match = /^\s*(\d+(?:\.\d+)?)\s*(ms|s|m|h|d|w)\s*$/i.exec(raw);
+  if (raw.length > 100) return null;
+  const match = /^(\d+(?:\.\d+)?) *(ms|s|m|h|d|w)$/i.exec(raw);
   if (!match) return null;
   const unit = match[2].toLowerCase();
   return Number(match[1]) * DURATION_UNIT_MS[unit];
@@ -288,7 +295,7 @@ const envSchema = z
           if (ms === null || ms <= 0) {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
-              message: `durée non analysable (« ${value} ») : utilisez par exemple 15m, 900s ou 1800000ms`
+              message: `durée non analysable (« ${value} ») : utilisez par exemple 15m, 900s ou 1800000ms, sans espace ni tabulation au début ou à la fin`
             });
           } else if (ms > MAX_JWT_LIFETIME_MS) {
             ctx.addIssue({

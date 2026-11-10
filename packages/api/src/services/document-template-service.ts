@@ -51,9 +51,12 @@ export async function extractPlaceholders(filePath: string): Promise<string[]> {
     }
 
     // Extract all text content from XML by removing tags and decoding entities
-    // This handles placeholders that might be split across XML tags
+    // This handles placeholders that might be split across XML tags.
+    // `<[^<>]*>` et non `<[^>]+>` : sur une suite de `<` sans `>` (modèle
+    // importé piégé), la seconde forme repart de chaque `<` jusqu'à la fin du
+    // texte (temps quadratique, API figée) ; la première s'arrête au `<` suivant.
     const textContent = xmlContent
-      .replace(/<[^>]+>/g, ' ') // Remove all XML tags
+      .replace(/<[^<>]*>/g, ' ') // Remove all XML tags
       .replace(/&lt;/g, '<')
       .replace(/&gt;/g, '>')
       .replace(/&amp;/g, '&')

@@ -20,10 +20,22 @@
  *   d'exécuter (fermé). Par défaut : ouvert hors production, fermé en
  *   production. Les tâches qui écrivent de l'argent passent `failOpen: false`
  *   explicitement : sans verrou, deux instances les exécuteraient en double.
+ * - Mode fermé : un incident passager (base qui redémarre) ne doit pas faire
+ *   perdre un passage rare (ex. constatation mensuelle du 2 à 3 h). La prise
+ *   est retentée après chacun des délais `retryDelaysMs` (défaut : 2 nouvelles
+ *   tentatives à 5 s) avant de sauter la tâche avec `logger.error`.
  */
 import { randomUUID } from 'crypto';
+import { isProduction } from '../config/env';
 import { prisma } from './database';
 import { logger } from './logger';
+
+/** Délais avant chaque nouvelle tentative de prise en mode fermé (3 essais en tout). */
+export const CLOSED_LOCK_RETRY_DELAYS_MS: readonly number[] = [5_000, 5_000];
+
+function wait(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 /** Identité de ce processus, stable pour toute sa durée de vie. */
 const HOLDER = `${process.pid}-${randomUUID()}`;
@@ -107,10 +119,18 @@ export async function withJobLock<T>(
   name: string,
   ttlMs: number,
   fn: () => Promise<T>,
-  options?: { failOpen?: boolean }
+  options?: { failOpen?: boolean; retryDelaysMs?: readonly number[] }
 ): Promise<T | undefined> {
-  const failOpen = options?.failOpen ?? process.env.NODE_ENV !== 'production';
-  const state = await acquire(name, ttlMs, failOpen);
+  const failOpen = options?.failOpen ?? !isProduction;
+  let state = await acquire(name, ttlMs, failOpen);
+  if (state === 'unavailable' && !failOpen) {
+    // Mode fermé : quelques nouvelles tentatives espacées avant de renoncer.
+    for (const delayMs of options?.retryDelaysMs ?? CLOSED_LOCK_RETRY_DELAYS_MS) {
+      await wait(delayMs);
+      state = await acquire(name, ttlMs, failOpen);
+      if (state !== 'unavailable') break;
+    }
+  }
   if (state === 'unavailable') {
     if (!failOpen) {
       logger.error(`Tâche « ${name} » : verrou indisponible, exécution refusée (mode fermé)`);

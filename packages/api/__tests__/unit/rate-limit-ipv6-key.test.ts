@@ -39,6 +39,19 @@ describe('clientIpKey', () => {
   });
 });
 
+describe('authBruteForceIpKey (connexion, mot de passe oublié, réinitialisation) : IPv6 en /56', () => {
+  it('IPv4 et IPv4 mappée comme clientIpKey ; deux /64 du même /56 partagent la clé ; un autre /56 non', () => {
+    const { authBruteForceIpKey } = charger();
+    expect(authBruteForceIpKey({ ip: '203.0.113.7' })).toBe('203.0.113.7');
+    expect(authBruteForceIpKey({ ip: '::ffff:203.0.113.7' })).toBe('203.0.113.7');
+    expect(authBruteForceIpKey({})).toBe('inconnue');
+    expect(authBruteForceIpKey({ ip: '2001:db8:1:2::1' })).toBe('2001:db8:1:0::/56');
+    expect(authBruteForceIpKey({ ip: '2001:db8:1:ff::1' })).toBe(authBruteForceIpKey({ ip: '2001:db8:1:3::1' }));
+    expect(authBruteForceIpKey({ ip: '2001:db8:1:1ff::1' })).toBe('2001:db8:1:100::/56');
+    expect(authBruteForceIpKey({ ip: '2001:db8:1:100::1' })).not.toBe(authBruteForceIpKey({ ip: '2001:db8:1:ff::1' }));
+  });
+});
+
 describe('loginRateLimiter : regroupement IPv6', () => {
   it('deux adresses du même /64 partagent un seul seau (429 au 6e échec)', async () => {
     const app = appLogin();
@@ -49,11 +62,17 @@ describe('loginRateLimiter : regroupement IPv6', () => {
     expect((await echec(app, '2001:db8:1:2:ffff::42')).status).toBe(429);
   });
 
-  it('un autre /64 a son propre seau', async () => {
+  it('un autre /64 du même /56 partage le seau (contre-audit PR #205)', async () => {
+    const app = appLogin();
+    for (let i = 0; i < 5; i++) await echec(app, `2001:db8:1:${i}::1`);
+    expect((await echec(app, '2001:db8:1:ff::1')).status).toBe(429);
+  });
+
+  it('un autre /56 a son propre seau', async () => {
     const app = appLogin();
     for (let i = 0; i < 5; i++) await echec(app, `2001:db8:1:2:${i}::1`);
     expect((await echec(app, '2001:db8:1:2::1')).status).toBe(429);
-    expect((await echec(app, '2001:db8:1:3::1')).status).toBe(400);
+    expect((await echec(app, '2001:db8:1:100::1')).status).toBe(400);
   });
 
   it('IPv4 : seau par adresse, 5 échecs puis 429, une autre adresse passe', async () => {

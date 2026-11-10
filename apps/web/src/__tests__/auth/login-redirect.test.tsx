@@ -35,13 +35,20 @@ async function connectWithRedirect(redirect: string): Promise<void> {
 describe('Login : cible de redirection', () => {
   beforeEach(() => navigate.mockReset());
 
-  it.each([['/\\evil.com'], ['//evil.com'], ['/%5Cevil.com'], ['https://evil.com'], ['javascript:alert(1)']])(
-    'refuse %s et ouvre le tableau de bord',
-    async redirect => {
-      await connectWithRedirect(redirect);
-      expect(navigate).toHaveBeenCalledWith('/dashboard');
-    }
-  );
+  it.each([
+    ['/\\evil.com'],
+    ['//evil.com'],
+    ['/%5Cevil.com'],
+    ['https://evil.com'],
+    ['javascript:alert(1)'],
+    // Contre-audit A1 : chemins que `new URL` normalise en `//evil.com`.
+    ['/.//evil.com'],
+    ['/a/..//evil.com/x?y#z'],
+    ['/%2e%2e//evil.com']
+  ])('refuse %s et ouvre le tableau de bord', async redirect => {
+    await connectWithRedirect(redirect);
+    expect(navigate).toHaveBeenCalledWith('/dashboard');
+  });
 
   it('suit un chemin interne avec sa requête et son ancre', async () => {
     await connectWithRedirect('/owner/account?tab=docs#top');

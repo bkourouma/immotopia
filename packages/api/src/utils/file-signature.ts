@@ -219,6 +219,35 @@ export function assertUploadMatchesDeclaredType(
     kind === 'mp4' || kind === 'mov'
       ? [...UPLOAD_KIND_MIME_TYPES.mp4, ...UPLOAD_KIND_MIME_TYPES.mov] // les téléphones échangent .mov et .mp4
       : UPLOAD_KIND_MIME_TYPES[kind];
-  if (!accepted.includes(declared)) return reject();
+  if (!accepted.includes(declared) && !sameFamilyDeclared(kind, declared, options.allowedKinds)) return reject();
+  // Extension toujours celle du type RÉEL (un PNG déclaré image/jpeg est stocké en .png).
   return { kind, extension: extensionForKind(kind) };
+}
+
+/** Famille d'un type réel : seules images et vidéos tolèrent un type déclaré voisin. */
+function familyOf(kind: UploadKind): 'image' | 'video' | null {
+  if (kind === 'jpg' || kind === 'png' || kind === 'webp' || kind === 'tiff') return 'image';
+  if (kind === 'mp4' || kind === 'mov' || kind === 'webm') return 'video';
+  return null;
+}
+
+/**
+ * Tolérance de famille (contre-audit de la PR #205) : un PNG nommé `.jpg` par
+ * le téléphone arrive déclaré `image/jpeg`. Accepté quand l'appelant fixe une
+ * liste de types réels autorisés, que le type réel y figure (déjà vérifié) et
+ * que le type déclaré est celui d'un autre type autorisé de la MÊME famille
+ * (image pour une image, vidéo pour une vidéo). Jamais entre familles : une
+ * image déclarée pour un PDF, un PDF déclaré pour une image, un document
+ * déclaré image restent refusés. Sans liste autorisée, correspondance exacte.
+ */
+function sameFamilyDeclared(
+  kind: UploadKind,
+  declared: string,
+  allowedKinds: readonly UploadKind[] | undefined
+): boolean {
+  const family = familyOf(kind);
+  if (!family || !allowedKinds) return false;
+  return allowedKinds.some(
+    allowed => familyOf(allowed) === family && UPLOAD_KIND_MIME_TYPES[allowed].includes(declared)
+  );
 }

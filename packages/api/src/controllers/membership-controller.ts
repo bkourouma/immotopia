@@ -218,9 +218,13 @@ export const resetPasswordHandler = asyncHandler(async (req: Request, res: Respo
     success: true,
     message: result.password
       ? 'Mot de passe réinitialisé. Un lien de réinitialisation a également été envoyé au membre.'
-      : result.sessionsRevoked
+      : result.sessionsRevoked && result.passwordReplaced
         ? 'Un lien de réinitialisation a été envoyé au membre. Ses sessions ont été révoquées.'
-        : 'Un lien de réinitialisation a été envoyé au membre. Son mot de passe actuel reste valable tant qu’il ne l’a pas changé.'
+        : result.sessionsRevoked
+          ? t(
+              "Un lien de réinitialisation a été envoyé au membre. Ses sessions ont été révoquées ; son mot de passe actuel reste valable tant qu'il ne l'a pas changé."
+            )
+          : 'Un lien de réinitialisation a été envoyé au membre. Son mot de passe actuel reste valable tant qu’il ne l’a pas changé.'
   });
 });
 
@@ -234,13 +238,12 @@ export const revokeSessionsHandler = asyncHandler(async (req: Request, res: Resp
   }
 
   const { tenantId, userId } = req.params;
-  const { sessionsRevoked } = await revokeMemberSessions(userId, tenantId, req.user.userId);
+  const { sessionsRevoked, tokensRevoked } = await revokeMemberSessions(userId, tenantId, req.user.userId);
 
   res.status(200).json({
     success: true,
     sessionsRevoked,
-    message: sessionsRevoked
-      ? t('Sessions révoquées avec succès.')
-      : t("Les sessions ne sont pas révoquées : le compte est utilisé dans d'autres agences ou sur la plateforme.")
+    tokensRevoked,
+    message: t('Sessions révoquées avec succès.')
   });
 });

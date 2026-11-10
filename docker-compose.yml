@@ -49,7 +49,10 @@ services:
       NODE_ENV: ${NODE_ENV:-development}
       PORT: "8001"
     ports:
-      - "8001:8001"
+      # Boucle locale uniquement : hors production, le simulateur de paiement
+      # (validation d'un paiement sans argent) est servi par l'API ; il ne doit
+      # pas etre joignable depuis le reseau local.
+      - "127.0.0.1:8001:8001"
     volumes:
       - api-uploads:/data/uploads
 

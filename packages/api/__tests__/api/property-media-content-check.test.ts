@@ -108,9 +108,16 @@ describe('uploadMedia — contrôle du contenu', () => {
     expect(await writtenFiles()).toEqual([]);
   });
 
-  it('mime image/jpeg mais octets PNG : 400', async () => {
+  it('mime image/jpeg mais octets PNG (même famille, deux types autorisés) : accepté en .png', async () => {
+    // Contre-audit PR #205 : un téléphone nomme .jpg un PNG ; l'extension suit le type RÉEL.
     const res = await post('PHOTO', PNG, 'p.jpg', 'image/jpeg');
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(201);
+    expect(res.body.data.fileUrl).toMatch(/\.png$/);
+  });
+
+  it('mime image/jpeg mais octets HTML ou MP4 (autre famille) : 400', async () => {
+    expect((await post('PHOTO', HTML, 'p.jpg', 'image/jpeg')).status).toBe(400);
+    expect((await post('TOUR_360', MP4, 'p.jpg', 'image/jpeg')).status).toBe(400);
     expect(await writtenFiles()).toEqual([]);
   });
 

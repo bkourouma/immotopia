@@ -188,11 +188,15 @@ router.delete('/:tenantId/unregister', authenticate, unregisterFromTenant);
 // est desormais POST /api/admin/tenants uniquement (provisionTenantHandler),
 // qui remplace l'ancien `createTenantHandler` a comportement minimal.
 
-// Tenant user management routes (require tenant context and permissions)
+// Tenant user management routes (require tenant context and permissions).
+// `requireTenantCollaborator` : un membre désactivé resté client de l'agence
+// passe `requireTenantAccess` (en client) ; il n'atteint plus la gestion des
+// membres, quelles que soient ses anciennes lignes user_roles.
 router.get(
   '/:tenantId/invitations',
   authenticate,
   requireTenantAccess,
+  requireTenantCollaborator,
   requirePermission('USERS_VIEW'),
   listInvitationsHandler
 );
@@ -201,6 +205,7 @@ router.post(
   '/:tenantId/users/invite',
   authenticate,
   requireTenantAccess,
+  requireTenantCollaborator,
   requirePermission('USERS_CREATE'),
   inviteCollaboratorHandler
 );
@@ -209,6 +214,7 @@ router.post(
   '/:tenantId/users/invitations/:invitationId/resend',
   authenticate,
   requireTenantAccess,
+  requireTenantCollaborator,
   requirePermission('USERS_CREATE'),
   resendInvitationHandler
 );
@@ -217,6 +223,7 @@ router.delete(
   '/:tenantId/users/invitations/:invitationId',
   authenticate,
   requireTenantAccess,
+  requireTenantCollaborator,
   requirePermission('USERS_EDIT'),
   revokeInvitationHandler
 );
@@ -242,12 +249,20 @@ router.get(
 );
 
 // Member management routes
-router.get('/:tenantId/users', authenticate, requireTenantAccess, requirePermission('USERS_VIEW'), listMembersHandler);
+router.get(
+  '/:tenantId/users',
+  authenticate,
+  requireTenantAccess,
+  requireTenantCollaborator,
+  requirePermission('USERS_VIEW'),
+  listMembersHandler
+);
 
 router.get(
   '/:tenantId/users/:userId',
   authenticate,
   requireTenantAccess,
+  requireTenantCollaborator,
   requirePermission('USERS_VIEW'),
   getMemberHandler
 );
@@ -256,6 +271,7 @@ router.patch(
   '/:tenantId/users/:userId',
   authenticate,
   requireTenantAccess,
+  requireTenantCollaborator,
   requirePermission('USERS_EDIT'),
   updateMemberHandler
 );
@@ -264,6 +280,7 @@ router.post(
   '/:tenantId/users/:userId/disable',
   authenticate,
   requireTenantAccess,
+  requireTenantCollaborator,
   requirePermission('USERS_DISABLE'),
   disableMemberHandler
 );
@@ -272,6 +289,7 @@ router.post(
   '/:tenantId/users/:userId/enable',
   authenticate,
   requireTenantAccess,
+  requireTenantCollaborator,
   requirePermission('USERS_EDIT'),
   enableMemberHandler
 );
@@ -280,6 +298,7 @@ router.post(
   '/:tenantId/users/:userId/reset-password',
   authenticate,
   requireTenantAccess,
+  requireTenantCollaborator,
   requirePermission('USERS_EDIT'),
   resetPasswordHandler
 );
@@ -288,6 +307,7 @@ router.post(
   '/:tenantId/users/:userId/revoke-sessions',
   authenticate,
   requireTenantAccess,
+  requireTenantCollaborator,
   requirePermission('USERS_EDIT'),
   revokeSessionsHandler
 );

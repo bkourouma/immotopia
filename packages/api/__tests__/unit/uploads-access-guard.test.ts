@@ -82,6 +82,23 @@ describe('uploadsAccessGuard — requêtes invalides', () => {
     expect(await hit('/properties/prop-1/..%2Fdocuments%2Ftitre.pdf')).toEqual({ served: false, status: 400 });
   });
 
+  it.each([
+    // Sous Windows, `\` est un séparateur pour express.static : ces chemins
+    // ouvriraient le dossier privé `documents/` d'un bien.
+    '/properties/P1/documents%5Csecret.jpg',
+    '/properties/P1/documents\\secret.jpg',
+    '/properties/agency-logos/t1/..%5C..%5Cdocuments%5Cx.png',
+    // `:` ouvre un flux NTFS (`photo.jpg:secret`) ou désigne un lecteur.
+    '/properties/P1/photo.jpg%3Asecret.jpg',
+    '/properties/P1/C:secret.jpg',
+    '/whatsapp/a%3A%5Cb.jpg'
+  ])('%s : antislash ou deux-points, 404 uniforme', async path => {
+    const result = await hit(path, { session: true });
+    expect(result.served).toBe(false);
+    // `..` garde sa réponse 400 historique ; sinon le 404 d'un fichier absent.
+    expect(result.status).toBe(path.includes('..') ? 400 : 404);
+  });
+
   it('refuse une autre méthode que GET/HEAD (405)', async () => {
     expect(await hit('/properties/prop-1/photo.jpg', { method: 'POST' })).toEqual({ served: false, status: 405 });
   });

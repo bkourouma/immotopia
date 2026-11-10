@@ -78,6 +78,87 @@ describe('neutralisation du DOCX', () => {
     expect(clean.file('word/activeX/activeX1.xml')).toBeNull();
   });
 
+  it('neutralise une instruction coupée en plusieurs w:instrText (INCLUDE + PICTURE) et garde les champs voisins', () => {
+    const documentXml =
+      '<w:document xmlns:w="w"><w:body><w:p>' +
+      '<w:r><w:fldChar w:fldCharType="begin"/></w:r>' +
+      '<w:r><w:instrText xml:space="preserve"> INCLUDE</w:instrText></w:r>' +
+      '<w:r><w:instrText xml:space="preserve">PICTURE "http://attaquant.example/x.png" \\d </w:instrText></w:r>' +
+      '<w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>image</w:t></w:r>' +
+      '<w:r><w:fldChar w:fldCharType="end"/></w:r>' +
+      '<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText> PA</w:instrText></w:r>' +
+      '<w:r><w:instrText>GE </w:instrText></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r>' +
+      '</w:p></w:body></w:document>';
+    const zip = new PizZip();
+    zip.file('[Content_Types].xml', '<Types/>');
+    zip.file('word/document.xml', documentXml);
+    const xml = new PizZip(sanitizeDocx(zip.generate({ type: 'nodebuffer' }))).file('word/document.xml')!.asText();
+    expect(xml).not.toMatch(/INCLUDE|PICTURE|attaquant/);
+    expect(xml).toContain('<w:instrText> PA</w:instrText>');
+    expect(xml).toContain('<w:instrText>GE </w:instrText>');
+  });
+
+  it('neutralise une instruction écrite en entités, en CDATA ou coupée par un commentaire', () => {
+    const documentXml =
+      '<w:document xmlns:w="w"><w:body>' +
+      '<w:p><w:r><w:instrText>&#73;NCLUDETEXT "http://a.example/1"</w:instrText></w:r></w:p>' +
+      '<w:p><w:r><w:instrText><![CDATA[INCLUDEPICTURE "http://a.example/2"]]></w:instrText></w:r></w:p>' +
+      '<w:p><w:r><w:instrText>INCLUDE<!-- x -->TEXT "http://a.example/3"</w:instrText></w:r></w:p>' +
+      '<w:fldSimple w:instr="&#x44;DEAUTO a b"><w:r><w:t>x</w:t></w:r></w:fldSimple>' +
+      '<w:fldSimple w:instr=\'INCLUDETEXT "http://a.example/4"\'><w:r><w:t>y</w:t></w:r></w:fldSimple>' +
+      '</w:body></w:document>';
+    const zip = new PizZip();
+    zip.file('[Content_Types].xml', '<Types/>');
+    zip.file('word/document.xml', documentXml);
+    const xml = new PizZip(sanitizeDocx(zip.generate({ type: 'nodebuffer' }))).file('word/document.xml')!.asText();
+    expect(xml).not.toMatch(/a\.example|&#73;|&#x44;|CDATA/);
+    expect(xml).toContain("w:instr=' '");
+  });
+
+  it('retire les relations externes d’une partie `.RELS` en majuscules', () => {
+    const zip = new PizZip();
+    zip.file('[Content_Types].xml', '<Types/>');
+    zip.file('word/document.xml', '<w:document/>');
+    zip.file('word/_rels/DOCUMENT.XML.RELS', RELS);
+    const rels = new PizZip(sanitizeDocx(zip.generate({ type: 'nodebuffer' })))
+      .file('word/_rels/DOCUMENT.XML.RELS')!
+      .asText();
+    expect(rels).not.toMatch(/TargetMode|attaquant/i);
+    expect(rels).toContain('styles.xml');
+  });
+
+  it('retire une relation dont TargetMode est écrit en entités', () => {
+    const zip = new PizZip();
+    zip.file('[Content_Types].xml', '<Types/>');
+    zip.file('word/document.xml', '<w:document/>');
+    zip.file(
+      'word/_rels/document.xml.rels',
+      '<Relationships><Relationship Id="rId1" Type="styles" Target="styles.xml"/>' +
+        '<Relationship Id="rId2" Type="image" Target="http://attaquant.example/x" TargetMode="&#69;xternal"/></Relationships>'
+    );
+    const rels = new PizZip(sanitizeDocx(zip.generate({ type: 'nodebuffer' })))
+      .file('word/_rels/document.xml.rels')!
+      .asText();
+    expect(rels).not.toContain('attaquant');
+    expect(rels).toContain('styles.xml');
+  });
+
+  it('reste linéaire sur 4 Mo de balises ouvrantes non fermées', () => {
+    const MB = 1024 * 1024;
+    const zip = new PizZip();
+    zip.file('[Content_Types].xml', '<Types/>');
+    zip.file(
+      'word/document.xml',
+      '<w:instrText>'.repeat((2 * MB) / 13) + '<w:fldSimple w:instr="'.repeat((2 * MB) / 22)
+    );
+    zip.file('word/_rels/document.xml.rels', '<Relationship '.repeat((4 * MB) / 14));
+    const docx = zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' });
+    const start = Date.now();
+    sanitizeDocx(docx);
+    // L'ancienne forme (`[^>]*`, `[\s\S]*?`) prenait des minutes ; ici quelques centaines de ms.
+    expect(Date.now() - start).toBeLessThan(5000);
+  });
+
   it("refuse ce qui n'est pas une archive DOCX", () => {
     expect(() => sanitizeDocx(Buffer.from('pas une archive'))).toThrow(/fichier Word/);
     const zip = new PizZip();

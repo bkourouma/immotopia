@@ -105,5 +105,6 @@ export function whatsappPaymentVars<T extends PaymentTemplateVars>(vars: T): T {
  */
 export function stripEmptyPaymentParagraph(html: string, vars: PaymentTemplateVars, template: string): string {
   if (vars.paymentBlock || !template.includes('{{paymentBlock}}')) return html;
-  return html.replace(/<p\b[^>]*>\s*<\/p>/g, '');
+  // `[^<>]*` (linéaire) et non `[^>]*` : quadratique sur une suite de `<p` sans `>`.
+  return html.replace(/<p\b[^<>]*>\s*<\/p>/g, '');
 }

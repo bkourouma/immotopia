@@ -3,6 +3,7 @@ import rateLimit from 'express-rate-limit';
 import { env } from '../config/env';
 import { t } from '../i18n';
 import { assertSignupAllowed, normalizeSignupIp } from '../services/signup-guard-service';
+import { LOGIN_LOCKED_REASON } from '../services/login-throttle-service';
 import { hashToken } from '../lib/secure-links/token';
 
 /**
@@ -14,6 +15,44 @@ import { hashToken } from '../lib/secure-links/token';
  */
 export function clientIpKey(req: Request): string {
   return normalizeSignupIp(req.ip);
+}
+
+/**
+ * Clé plus large pour les limiteurs anti-force-brute de l'authentification
+ * (connexion, mot de passe oublié, réinitialisation) : IPv6 regroupée par /56
+ * au lieu de /64 (contre-audit PR #205 : un /48 donne 65 536 clés /64, mais
+ * seulement 256 clés /56 ; les FAI attribuent couramment un /56 par abonné).
+ * IPv4 et IPv4 mappée : comme `clientIpKey`. Les autres limiteurs et le garde
+ * des inscriptions gardent le /64.
+ */
+export function authBruteForceIpKey(req: Request): string {
+  const key = clientIpKey(req);
+  const suffix = '::/64';
+  if (!key.endsWith(suffix)) return key;
+  const groups = key.slice(0, -suffix.length).split(':');
+  if (groups.length !== 4) return key;
+  const fourth = parseInt(groups[3], 16);
+  if (!Number.isInteger(fourth)) return key;
+  groups[3] = (fourth & 0xff00).toString(16);
+  return `${groups.join(':')}::/56`;
+}
+
+/** Marqueur posé sur `res.locals` quand la connexion est refusée pendant un verrou. */
+const LOGIN_LOCKED_LOCAL = 'loginLockedRefusal';
+
+/**
+ * Le contrôleur de connexion signale ici un refus pendant un verrou
+ * (`LoginLockedError`, reconnu à son `reason` interne) : la réponse reste un
+ * 400 identique, mais `loginRateLimiter` ne le compte pas contre l'IP.
+ */
+export function markLoginLockedRefusal(res: Response, error: unknown): void {
+  if ((error as { reason?: unknown } | null | undefined)?.reason === LOGIN_LOCKED_REASON) {
+    res.locals[LOGIN_LOCKED_LOCAL] = true;
+  }
+}
+
+function isLoginLockedRefusal(res: Response): boolean {
+  return res.locals?.[LOGIN_LOCKED_LOCAL] === true;
 }
 
 /**
@@ -39,16 +78,44 @@ export function registrationRateLimiter(req: Request, _res: Response, next: Next
  * recette Syndic. La protection anti-force-brute reste intacte : un
  * attaquant qui devine juste ne produit que des 400 et reste plafonné à 5
  * essais par fenêtre.
+ *
+ * Un refus PENDANT un verrou du `login-throttle-service` (400 identique pour le
+ * client) n'est pas compté non plus (contre-audit PR #205) : sinon un tiers
+ * qui fait verrouiller un compte amène son titulaire, qui réessaie avec le bon
+ * mot de passe, à bloquer sa propre IP 15 minutes. Ces refus ont leur propre
+ * plafond (`loginLockedRefusalRateLimiter`), car chacun coûte une comparaison
+ * bcrypt factice. IPv6 regroupée par /56 (`authBruteForceIpKey`).
  */
+const LOGIN_RATE_LIMIT_MESSAGE = {
+  success: false,
+  message: 'Trop de tentatives de connexion. Veuillez réessayer dans 15 minutes.'
+};
+
 export const loginRateLimiter = rateLimit({
-  keyGenerator: req => clientIpKey(req),
+  keyGenerator: req => authBruteForceIpKey(req),
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 5, // 5 échecs par fenêtre
   skipSuccessfulRequests: true,
-  message: {
-    success: false,
-    message: 'Trop de tentatives de connexion. Veuillez réessayer dans 15 minutes.'
-  },
+  requestWasSuccessful: (_req, res) => res.statusCode < 400 || isLoginLockedRefusal(res),
+  message: LOGIN_RATE_LIMIT_MESSAGE,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/**
+ * Plafond des seuls refus « pendant un verrou » : 30 par 15 minutes et par IP
+ * (/56). Borne le coût (comparaison bcrypt factice par refus) que
+ * `loginRateLimiter` ne compte plus, tout en laissant au titulaire bien plus
+ * d'essais que les 5 du limiteur ordinaire. À monter juste après
+ * `loginRateLimiter` sur `POST /api/auth/login`.
+ */
+export const loginLockedRefusalRateLimiter = rateLimit({
+  keyGenerator: req => `login-locked:${authBruteForceIpKey(req)}`,
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  skipSuccessfulRequests: true,
+  requestWasSuccessful: (_req, res) => !isLoginLockedRefusal(res),
+  message: LOGIN_RATE_LIMIT_MESSAGE,
   standardHeaders: true,
   legacyHeaders: false
 });
@@ -63,7 +130,7 @@ export const loginRateLimiter = rateLimit({
  * compter aucune requête et désactiverait de fait ce limiteur.
  */
 export const forgotPasswordRateLimiter = rateLimit({
-  keyGenerator: req => clientIpKey(req),
+  keyGenerator: req => authBruteForceIpKey(req),
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 3, // 3 requests per window
   message: {
@@ -112,7 +179,7 @@ export const refreshRateLimiter = rateLimit({
  * The reset token is a UUID; this blocks guessing it.
  */
 export const resetPasswordRateLimiter = rateLimit({
-  keyGenerator: req => clientIpKey(req),
+  keyGenerator: req => authBruteForceIpKey(req),
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 10,
   message: {

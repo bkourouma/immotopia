@@ -20,19 +20,47 @@ const CONTROL_CHARS = /[\u0000-\u001f\u007f]/;
 const CONTROL_CHARS_NO_TAB = /[\u0000-\u0008\u000a-\u001f\u007f]/;
 
 /**
+ * Longueur BRUTE maximale examinée (avant rognage) : l'adresse utile fait au plus
+ * 254 caractères ; la marge couvre des blancs de bord collés par mégarde. Au-delà,
+ * refus immédiat, sans aucun traitement de la chaîne (contre-audit PR #205).
+ */
+const MAX_RAW_ADDRESS_LENGTH = 1024;
+
+const SPACE = 0x20;
+const TAB = 0x09;
+
+function isEdgeBlank(code: number): boolean {
+  return code === SPACE || code === TAB;
+}
+
+/**
+ * Retire espaces et tabulations de bord, en temps linéaire. L'ancienne
+ * expression `/^[ \t]+|[ \t]+$/g` était quadratique sur une longue suite de
+ * blancs internes (ReDoS).
+ */
+function trimEdgeBlanks(value: string): string {
+  let start = 0;
+  let end = value.length;
+  while (start < end && isEdgeBlank(value.charCodeAt(start))) start += 1;
+  while (end > start && isEdgeBlank(value.charCodeAt(end - 1))) end -= 1;
+  return value.slice(start, end);
+}
+
+/**
  * Adresse destinataire sure a transmettre a nodemailer (FRI-08) : une seule
  * adresse simple, sans retour ligne ni caractere de controle (injection
  * d'en-tetes), sans liste ni forme « Nom <adresse> ».
  */
 export function isSafeEmailAddress(address: unknown): address is string {
   if (typeof address !== 'string') return false;
+  if (address.length > MAX_RAW_ADDRESS_LENGTH) return false;
   // Les espaces et tabulations de BORD sont tolérés (copier-coller), mais
   // l'adresse à transmettre est alors `normalizeRecipientAddress(address)`
   // (version rognée), jamais la valeur brute. Tout autre caractère de contrôle
   // (CR, LF, NUL…) est rejeté AVANT le rognage, au bord comme à l'intérieur :
   // « a@b.com\r\n » est refusée. Une tabulation ou un espace INTERNE reste
   // refusé par SIMPLE_ADDRESS (« a@\tb.com »).
-  const edgeTrimmed = address.replace(/^[ \t]+|[ \t]+$/g, '');
+  const edgeTrimmed = trimEdgeBlanks(address);
   if (edgeTrimmed.length === 0 || edgeTrimmed.length > MAX_ADDRESS_LENGTH) return false;
   if (CONTROL_CHARS_NO_TAB.test(edgeTrimmed)) return false;
   if (!SIMPLE_ADDRESS.test(edgeTrimmed)) return false;
@@ -42,7 +70,7 @@ export function isSafeEmailAddress(address: unknown): address is string {
 
 /** Version à transmettre au transport : espaces/tabulations de bord retirés. */
 export function normalizeRecipientAddress(address: string): string {
-  return address.replace(/^[ \t]+|[ \t]+$/g, '');
+  return trimEdgeBlanks(address);
 }
 
 /** Masque la partie locale pour les journaux (`j***@domaine`). */

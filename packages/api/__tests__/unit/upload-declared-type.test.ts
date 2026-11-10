@@ -22,6 +22,7 @@ const mockPrisma: Record<string, any> = {
     create: jest.fn(async ({ data }: any) => ({ id: 'att-1', ...data }))
   },
   propertyDocument: { create: jest.fn(async ({ data }: any) => ({ id: 'doc-1', ...data })) },
+  syndicate: { findFirst: jest.fn(async () => ({ id: '11111111-1111-4111-8111-111111111111' })) },
   tenant: {
     findUnique: jest.fn(async () => ({ id: 'tenant-a' })),
     update: jest.fn(async () => ({}))
@@ -151,6 +152,21 @@ describe('documents de copropriété : createDocumentHandler', () => {
     expect(res.status).toHaveBeenCalledWith(201);
     expect(writtenNames()[0]).toMatch(/\.pdf$/);
     expect(writtenNames()[0]).not.toMatch(/html/);
+    expect(mockPrisma.syndicate.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: '11111111-1111-4111-8111-111111111111', tenantId: 'tenant-a' }
+      })
+    );
+  });
+
+  it("copropriété d'une autre agence (ou inexistante) : 404 sans rien écrire sur le disque", async () => {
+    mockPrisma.syndicate.findFirst.mockResolvedValueOnce(null);
+    const { error } = await post(file(PDF, 'application/pdf', 'carnet.pdf'));
+    // Même erreur que `createDocumentForSyndicate` (lib/errors `notFound` : status 404).
+    expect(error).toMatchObject({ status: 404, message: 'Copropriété introuvable ou inaccessible' });
+    expect(mockMkdir).not.toHaveBeenCalled();
+    expect(mockWriteFile).not.toHaveBeenCalled();
+    expect(mockCreateDocumentForSyndicate).not.toHaveBeenCalled();
   });
 });
 
@@ -163,8 +179,14 @@ describe("logo d'agence : uploadTenantLogo", () => {
     expect(mockWriteFile).not.toHaveBeenCalled();
   });
 
-  it('refuse un type déclaré différent du type réel (JPEG déclaré PNG)', async () => {
-    await expect(upload(file(JPEG, 'image/png', 'logo.png'))).rejects.toMatchObject({ statusCode: 400 });
+  it('accepte un JPEG déclaré PNG (même famille, deux types autorisés) : extension .jpg du type réel', async () => {
+    const { logoUrl } = await upload(file(JPEG, 'image/png', 'logo.png'));
+    expect(logoUrl).toMatch(/\.jpg$/);
+    expect(writtenNames()[0]).toMatch(/\.jpg$/);
+  });
+
+  it('refuse un PDF déclaré image/png (familles différentes)', async () => {
+    await expect(upload(file(PDF, 'image/png', 'logo.png'))).rejects.toMatchObject({ statusCode: 400 });
     expect(mockWriteFile).not.toHaveBeenCalled();
   });
 

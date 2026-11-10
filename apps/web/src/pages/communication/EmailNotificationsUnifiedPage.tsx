@@ -64,10 +64,13 @@ export function EmailNotificationsUnifiedPage() {
   const [applyToOtherKeys, setApplyToOtherKeys] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm();
-  // Mêmes droits que l'API (écriture = TENANT_SETTINGS_EDIT). `permissions === null` : aucune restriction
-  // (administrateur d'agence, super-admin, échec réseau).
-  const { permissions } = useMyMenuAccess(tenantId);
-  const canEdit = permissions === null || permissions.has('TENANT_SETTINGS_EDIT');
+  // Mêmes droits que l'API (écriture = TENANT_SETTINGS_EDIT). `permissions === null` une fois `ready` :
+  // aucune restriction (administrateur d'agence, super-admin, échec réseau : le serveur tranche).
+  // Avant `ready`, `permissions` vaut aussi `null` sans rien dire des droits : lecture seule tant que
+  // la réponse n'est pas arrivée (contre-audit A5), sans afficher « Lecture seule » pour autant.
+  const { permissions, ready } = useMyMenuAccess(tenantId);
+  const canEdit = ready && (permissions === null || permissions.has('TENANT_SETTINGS_EDIT'));
+  const showReadOnlyNotice = ready && !canEdit;
 
   const load = async () => {
     if (!tenantId) return;
@@ -185,7 +188,7 @@ export function EmailNotificationsUnifiedPage() {
   };
 
   const fillWithDefaultTemplate = () => {
-    if (!selectedItem) return;
+    if (!canEdit || !selectedItem) return;
     form.setFieldsValue({
       subjectOverride: selectedItem.defaultSubject || '',
       bodyHtmlOverride: selectedItem.defaultBodyHtml || ''
@@ -242,6 +245,7 @@ export function EmailNotificationsUnifiedPage() {
   };
 
   const insertVariable = (variableName: string) => {
+    if (!canEdit) return;
     const placeholder = getVariablePlaceholder(variableName);
     const body = form.getFieldValue('bodyHtmlOverride') ?? '';
     form.setFieldsValue({ bodyHtmlOverride: body + placeholder });
@@ -329,7 +333,7 @@ export function EmailNotificationsUnifiedPage() {
           <Text strong style={{ display: 'block', marginBottom: 8 }}>
             {t('Choisir un événement déclencheur')}
           </Text>
-          {!canEdit && (
+          {showReadOnlyNotice && (
             <Alert
               type="info"
               showIcon
@@ -419,6 +423,7 @@ export function EmailNotificationsUnifiedPage() {
                               type="dashed"
                               size="small"
                               onClick={fillWithDefaultTemplate}
+                              disabled={!canEdit}
                               style={{ marginTop: 8 }}
                             >
                               {t('Utiliser ce modèle dans les champs ci-dessous')}
@@ -429,7 +434,7 @@ export function EmailNotificationsUnifiedPage() {
                     ]}
                   />
 
-                  <Form form={form} layout="vertical">
+                  <Form form={form} layout="vertical" disabled={!canEdit}>
                     <Form.Item name="subjectOverride" label={t('Sujet personnalisé (vide = sujet par défaut)')}>
                       <Input placeholder="Ex: Nouveau ticket - {{ticketTitle}}" />
                     </Form.Item>
@@ -438,7 +443,11 @@ export function EmailNotificationsUnifiedPage() {
                       label={t('Corps personnalisé HTML (vide = contenu par défaut)')}
                       extra="Utilisez les variables ci-dessous avec la syntaxe {{nomVariable}}."
                     >
-                      <HtmlCodeEditor placeholder="<p>Bonjour {{contactName}}, ...</p>" minHeight={280} />
+                      <HtmlCodeEditor
+                        placeholder="<p>Bonjour {{contactName}}, ...</p>"
+                        minHeight={280}
+                        readOnly={!canEdit}
+                      />
                     </Form.Item>
 
                     <div style={{ marginBottom: 16 }}>
@@ -455,8 +464,8 @@ export function EmailNotificationsUnifiedPage() {
                         {variablesForEvent.map(name => (
                           <Tag
                             key={name}
-                            style={{ cursor: 'pointer', marginBottom: 4 }}
-                            onClick={() => insertVariable(name)}
+                            style={{ cursor: canEdit ? 'pointer' : 'default', marginBottom: 4 }}
+                            onClick={canEdit ? () => insertVariable(name) : undefined}
                           >
                             {`{{${name}}}`}
                           </Tag>

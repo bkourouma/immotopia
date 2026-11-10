@@ -72,7 +72,11 @@ describe('refreshAccessToken : rotation atomique', () => {
     expect(recordAuthEvent).not.toHaveBeenCalled();
     const successorQuery = mockPrisma.refreshToken.findFirst.mock.calls[2][0];
     expect(successorQuery.where).toEqual(
-      expect.objectContaining({ userId: 'u1', revoked: false, createdAt: { gte: expect.any(Date) } })
+      expect.objectContaining({
+        userId: 'u1',
+        revoked: false,
+        createdAt: { gte: expect.any(Date), lte: expect.any(Date) }
+      })
     );
   });
 

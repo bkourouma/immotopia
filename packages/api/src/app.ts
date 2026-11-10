@@ -205,15 +205,18 @@ app.use(
 // CORS
 app.use(corsMiddleware);
 
-// CSRF (audit AUTH-05) : refuse une requete qui modifie, portee par le cookie
-// accessToken sans Authorization, quand son origine n'est pas celle du front.
-// Apres cookieParser et CORS, avant tout routeur ; webhooks et routes publiques
-// exclus (voir le middleware).
-app.use(csrfOriginGuard);
-
 // Baseline rate limiting for the whole API (tighter per-endpoint limiters
-// remain on the sensitive auth routes).
+// remain on the sensitive auth routes). AVANT le garde CSRF (contre-audit
+// PR #205) : aucune requete anonyme n'atteint un traitement du chemin sans
+// avoir d'abord consomme le budget de son IP.
 app.use(globalApiRateLimiter);
+
+// CSRF (audit AUTH-05) : refuse une requete qui modifie, portee par le cookie
+// accessToken, quand son origine n'est pas celle du front ; controle aussi le
+// CSRF de connexion (login, register). Apres cookieParser, CORS et le
+// limiteur global, avant tout routeur ; webhooks et routes publiques exclus
+// (voir le middleware).
+app.use(csrfOriginGuard);
 
 // Request context (IP, User-Agent) for audit logs – must run before routes
 app.use(requestContextMiddleware);

@@ -216,3 +216,30 @@ describe('utils/email-utils : résultat explicite (booléen)', () => {
     expect((sendMailMock.mock.calls[0]![0] as any).to).toBe('a@b.com');
   });
 });
+
+describe('contre-audit PR #205 : rognage des blancs de bord en temps linéaire', () => {
+  const elapsedMs = (fn: () => void): number => {
+    const start = process.hrtime.bigint();
+    fn();
+    return Number(process.hrtime.bigint() - start) / 1e6;
+  };
+
+  it('100 000 espaces internes : refus immédiat (longueur brute) et rognage linéaire', () => {
+    const evil = `a${' '.repeat(100_000)}b`;
+    isSafeEmailAddress(evil);
+    expect(elapsedMs(() => expect(isSafeEmailAddress(evil)).toBe(false))).toBeLessThan(5);
+    expect(elapsedMs(() => expect(normalizeRecipientAddress(evil)).toBe(evil))).toBeLessThan(5);
+  });
+
+  it('blancs de bord sous la borne brute : rognés comme avant', () => {
+    const padded = `${' \t'.repeat(200)}a@b.com${'\t '.repeat(200)}`;
+    expect(isSafeEmailAddress(padded)).toBe(true);
+    expect(normalizeRecipientAddress(padded)).toBe('a@b.com');
+    expect(normalizeRecipientAddress(' \t a b \t ')).toBe('a b');
+    expect(normalizeRecipientAddress(' \t ')).toBe('');
+  });
+
+  it('au-delà de la borne brute (1024), refus même si l’adresse rognée est courte', () => {
+    expect(isSafeEmailAddress(`${' '.repeat(1100)}a@b.com`)).toBe(false);
+  });
+});

@@ -123,6 +123,12 @@ export const requireTenantAccess = async (req: Request, res: Response, next: Nex
         denyTenantAccess(res);
         return;
       }
+      // Compte désactivé depuis l'émission du jeton : refus uniforme, sans retomber
+      // sur une éventuelle adhésion (contre-audit PR #205).
+      if (account && !account.isActive) {
+        denyTenantAccess(res);
+        return;
+      }
       if (account?.globalRole === 'SUPER_ADMIN' && account.isActive) {
         req.tenantContext = {
           tenantId: tenantId as string,

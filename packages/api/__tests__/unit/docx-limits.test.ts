@@ -205,7 +205,38 @@ describe('assertDocxWithinLimits', () => {
     expect(() => assertDocxWithinLimits(manyEntries())).toThrow(TOO_BIG);
   });
 
-  it('refuse une bombe compressible (60 Mo > 50 Mo)', () => {
+  it('plafonne une partie XML à 5 Mo décompressés, une image à 20 Mo, le total à 20 Mo', () => {
+    // 6 Mo de XML (au-delà des 5 Mo d'une partie .xml / .rels) : refusé.
+    const bigXml = build(zip => zip.file('word/header1.xml', '<w:hdr>' + ' '.repeat(6 * MB) + '</w:hdr>'));
+    expect(() => assertDocxWithinLimits(bigXml)).toThrow(TOO_BIG);
+    const bigRels = build(zip => zip.file('word/_rels/HEADER1.XML.RELS', ' '.repeat(6 * MB)));
+    expect(() => assertDocxWithinLimits(bigRels)).toThrow(TOO_BIG);
+    // 6 Mo d'image : accepté (une photo n'est pas lue comme du XML).
+    expect(() =>
+      assertDocxWithinLimits(build(zip => zip.file('word/media/photo.png', Buffer.alloc(6 * MB))))
+    ).not.toThrow();
+    // Trois images de 8 Mo : 24 Mo au total > 20 Mo.
+    const heavy = build(zip => {
+      for (let i = 0; i < 3; i++) zip.file(`word/media/p${i}.png`, Buffer.alloc(8 * MB));
+    });
+    expect(() => assertDocxWithinLimits(heavy)).toThrow(TOO_BIG);
+    // Plafond XML fourni par l'appelant.
+    expect(() => assertDocxWithinLimits(build(), { maxXmlEntryUncompressedBytes: 10 })).toThrow(TOO_BIG);
+  });
+
+  it('refuse un nom local différent du nom du répertoire central (PizZip lit le nom local)', () => {
+    const forged = forgeZip(wordEntries());
+    // Même longueur : `word/document.xml` devient `evil/document.xml` dans l'en-tête local seulement.
+    const localDocument = forged.indexOf(Buffer.from('word/document.xml', 'latin1'));
+    const central = forged.lastIndexOf(Buffer.from('word/document.xml', 'latin1'));
+    expect(localDocument).toBeLessThan(central);
+    forged.write('evil', localDocument, 'latin1');
+    expect(Object.keys(new PizZip(forged).files)).toContain('evil/document.xml');
+    expect(() => assertDocxWithinLimits(forged)).toThrow(INVALID);
+    expect(() => assertDocxUpload(forged)).toThrow(INVALID);
+  });
+
+  it('refuse une bombe compressible (60 Mo > 20 Mo)', () => {
     const b = bomb();
     expect(b.length).toBeLessThan(MB);
     expect(() => assertDocxWithinLimits(b)).toThrow(BadRequestError);

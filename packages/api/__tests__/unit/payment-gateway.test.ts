@@ -66,6 +66,7 @@ function matches(row: Row, where: Row | undefined): boolean {
   if (!where) return true;
   return Object.entries(where).every(([key, condition]) => {
     if (condition === undefined) return true;
+    if (key === 'OR') return (condition as Row[]).some(branch => matches(row, branch));
     if (key === 'tenant') {
       const tenant = store.tenants.find(t => t.id === (row.tenantId ?? row.tenant_id));
       return tenant ? matches(tenant, condition) : false;
@@ -79,6 +80,7 @@ function matches(row: Row, where: Row | undefined): boolean {
       if ('lte' in condition) return value <= condition.lte;
       if ('hasSome' in condition) return (value ?? []).some((v: unknown) => condition.hasSome.includes(v));
       if ('equals' in condition) return String(value).toLowerCase() === String(condition.equals).toLowerCase();
+      if ('startsWith' in condition) return typeof value === 'string' && value.startsWith(condition.startsWith);
       return false;
     }
     return value === condition;
@@ -222,6 +224,11 @@ import {
   generateCodePaiement,
   findSimulatorCheckout
 } from '../../src/lib/payment-gateway/checkout';
+import {
+  AMOUNT_NOT_PROVIDED_REVIEW_REASON,
+  CURRENCY_MISMATCH_REVIEW_PREFIX,
+  REVIEW_RECHECK_ABANDONED_SUFFIX
+} from '../../src/lib/payment-gateway/checkout-core';
 import {
   getPaymentGatewaySettings,
   updatePaymentGatewaySettings,
@@ -745,14 +752,28 @@ describe('Rapprochement (contrat §2)', () => {
 
     const result = await reconcilePendingCheckouts();
 
-    expect(result).toEqual({ reconciled: 1, expired: 1, errors: 0 });
+    expect(result).toEqual({
+      reconciled: 1,
+      expired: 1,
+      errors: 0,
+      reviewRechecked: 0,
+      reviewSucceeded: 0,
+      reviewAbandoned: 0
+    });
     expect(row.status).toBe('EXPIRED');
     expect(payment.status).toBe('CANCELED');
   });
 
   it('tâche planifiée : ignore un checkout de moins de 2 minutes', async () => {
     await started();
-    expect(await reconcilePendingCheckouts()).toEqual({ reconciled: 0, expired: 0, errors: 0 });
+    expect(await reconcilePendingCheckouts()).toEqual({
+      reconciled: 0,
+      expired: 0,
+      errors: 0,
+      reviewRechecked: 0,
+      reviewSucceeded: 0,
+      reviewAbandoned: 0
+    });
   });
 
   it('agrégateur injoignable : 502, tentative comptée, statut inchangé', async () => {
@@ -766,6 +787,199 @@ describe('Rapprochement (contrat §2)', () => {
     expect(row.status).toBe('PENDING');
     expect(row.checkAttempts).toBe(1);
     spy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Contre-audit PAY M2 — revérification des REVIEW « montant non communiqué »
+// ---------------------------------------------------------------------------
+
+describe('Tâche planifiée : revérification des REVIEW sans montant ou autre devise (contre-audit PAY M2)', () => {
+  const MINUTES = 60 * 1000;
+
+  async function inReview(reason: string = AMOUNT_NOT_PROVIDED_REVIEW_REASON, ageMs = 10 * MINUTES) {
+    seedAgency(TENANT_A);
+    const installment = seedInstallment(TENANT_A, 'lease-a');
+    const dto = await startCheckout(TENANT_A, 'client-a', 'lease-a', [installment.id], 'user');
+    const row = store.checkouts.find(c => c.id === dto.id)!;
+    const payment = store.payments.find(p => p.id === dto.paymentId)!;
+    row.status = 'REVIEW';
+    row.reviewReason = reason;
+    row.createdAt = new Date(Date.now() - ageMs);
+    jest.clearAllMocks();
+    return { dto, row, payment };
+  }
+
+  function providerSays(overrides: Row) {
+    return jest.spyOn(simulatorClient, 'getStatus').mockResolvedValue({
+      rawState: 'SUCCESSFUL',
+      mappedState: 'SUCCESS',
+      transactionId: 'TX-R',
+      amount: null,
+      fees: 0,
+      serviceName: 'Wave',
+      error: null,
+      raw: {},
+      ...overrides
+    } as unknown as Awaited<ReturnType<typeof simulatorClient.getStatus>>);
+  }
+
+  afterEach(() => jest.restoreAllMocks());
+
+  it('montant et devise désormais communiqués et conformes : SUCCESS, encaissement unique', async () => {
+    const { row, payment } = await inReview();
+    providerSays({ amount: Number(row.amount), currency: 'XOF' });
+
+    const result = await reconcilePendingCheckouts();
+
+    expect(result).toMatchObject({ reviewRechecked: 1, reviewSucceeded: 1, reviewAbandoned: 0, errors: 0 });
+    expect(row.status).toBe('SUCCESS');
+    expect(payment.status).toBe('SUCCESS');
+    expect(updatePaymentStatusTx).toHaveBeenCalledTimes(1);
+    expect(allocatePaymentTx).toHaveBeenCalledTimes(1);
+
+    // Idempotent : un nouveau passage ne revérifie ni ne réencaisse rien.
+    const again = await reconcilePendingCheckouts();
+    expect(again).toMatchObject({ reviewRechecked: 0, reviewSucceeded: 0 });
+    expect(updatePaymentStatusTx).toHaveBeenCalledTimes(1);
+    expect(allocatePaymentTx).toHaveBeenCalledTimes(1);
+  });
+
+  it('toujours sans montant : reste REVIEW, motif inchangé, suivi mis à jour, aucun encaissement', async () => {
+    const { row, payment } = await inReview();
+    providerSays({ amount: null });
+
+    const result = await reconcilePendingCheckouts();
+
+    expect(result).toMatchObject({ reviewRechecked: 1, reviewSucceeded: 0, reviewAbandoned: 0 });
+    expect(row.status).toBe('REVIEW');
+    expect(row.reviewReason).toBe(AMOUNT_NOT_PROVIDED_REVIEW_REASON);
+    expect(row.checkAttempts).toBe(1);
+    expect(payment.status).toBe('PENDING');
+    expect(updatePaymentStatusTx).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['FAILED', 'FAILED'],
+    ['CANCELED', 'CANCEL'],
+    ['PENDING', 'INITIATED']
+  ])('l’agrégateur dit maintenant %s : la revue demeure (décision humaine), paiement intact', async (mapped, raw) => {
+    const { row, payment } = await inReview();
+    providerSays({ mappedState: mapped, rawState: raw, amount: null });
+
+    await reconcilePendingCheckouts();
+
+    expect(row.status).toBe('REVIEW');
+    expect(row.reviewReason).toBe(AMOUNT_NOT_PROVIDED_REVIEW_REASON);
+    expect(row.lastProviderState).toBe(raw);
+    expect(payment.status).toBe('PENDING');
+    expect(updatePaymentStatusTx).not.toHaveBeenCalled();
+  });
+
+  it('montant désormais communiqué mais divergent : reste REVIEW, motif précisé, plus revérifiée', async () => {
+    const { row } = await inReview();
+    const spy = providerSays({ amount: 1000 });
+
+    await reconcilePendingCheckouts();
+    expect(row.status).toBe('REVIEW');
+    expect(row.reviewReason).toContain('1000');
+    expect(updatePaymentStatusTx).not.toHaveBeenCalled();
+
+    spy.mockClear();
+    const again = await reconcilePendingCheckouts();
+    expect(again.reviewRechecked).toBe(0);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('revue « autre devise » : une réponse corrigée en XOF passe en SUCCESS', async () => {
+    const { row } = await inReview(`${CURRENCY_MISMATCH_REVIEW_PREFIX}EUR) différente de la devise attendue (XOF).`);
+    providerSays({ amount: Number(row.amount), currency: 'FCFA' });
+
+    await reconcilePendingCheckouts();
+    expect(row.status).toBe('SUCCESS');
+  });
+
+  it.each([
+    ['montant divergent', 'Montant reçu (1000) différent du montant attendu (160000).'],
+    ['état contraire', 'PaySecureHub rapporte maintenant « FAILED » pour un paiement déjà réussi.']
+  ])('revue d’un autre motif (%s) : jamais revérifiée', async (_label, reason) => {
+    const { row } = await inReview(reason);
+    const spy = providerSays({ amount: 160000, currency: 'XOF' });
+
+    const result = await reconcilePendingCheckouts();
+
+    expect(result.reviewRechecked).toBe(0);
+    expect(spy).not.toHaveBeenCalled();
+    expect(row.status).toBe('REVIEW');
+    expect(row.reviewReason).toBe(reason);
+  });
+
+  it('borne de 48 h : dernière vérification, puis arrêt marqué une seule fois, plus d’interrogation', async () => {
+    const { row, payment } = await inReview(AMOUNT_NOT_PROVIDED_REVIEW_REASON, 49 * 60 * MINUTES);
+    const spy = providerSays({ amount: null });
+
+    const first = await reconcilePendingCheckouts();
+    expect(first).toMatchObject({ reviewRechecked: 1, reviewAbandoned: 1, reviewSucceeded: 0 });
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(row.status).toBe('REVIEW');
+    expect(row.reviewReason).toBe(`${AMOUNT_NOT_PROVIDED_REVIEW_REASON}${REVIEW_RECHECK_ABANDONED_SUFFIX}`);
+    expect(payment.status).toBe('PENDING');
+
+    spy.mockClear();
+    const second = await reconcilePendingCheckouts();
+    expect(second).toMatchObject({ reviewRechecked: 0, reviewAbandoned: 0 });
+    expect(spy).not.toHaveBeenCalled();
+    expect(row.reviewReason).toBe(`${AMOUNT_NOT_PROVIDED_REVIEW_REASON}${REVIEW_RECHECK_ABANDONED_SUFFIX}`);
+  });
+
+  it('borne de 48 h « autre devise » : l’arrêt la sort aussi de la sélection', async () => {
+    const reason = `${CURRENCY_MISMATCH_REVIEW_PREFIX}EUR) différente de la devise attendue (XOF).`;
+    const { row } = await inReview(reason, 49 * 60 * MINUTES);
+    const spy = providerSays({ amount: 160000, currency: 'EUR' });
+
+    expect((await reconcilePendingCheckouts()).reviewAbandoned).toBe(1);
+    spy.mockClear();
+    expect((await reconcilePendingCheckouts()).reviewRechecked).toBe(0);
+    expect(spy).not.toHaveBeenCalled();
+    expect(row.reviewReason).toBe(`${reason}${REVIEW_RECHECK_ABANDONED_SUFFIX}`);
+  });
+
+  it('agrégateur injoignable : erreur comptée, revue intacte', async () => {
+    const { row } = await inReview();
+    jest
+      .spyOn(simulatorClient, 'getStatus')
+      .mockRejectedValue(
+        new (jest.requireActual('../../src/lib/payment-gateway/types').GatewayError)('PaySecureHub ne répond pas.')
+      );
+
+    const result = await reconcilePendingCheckouts();
+
+    expect(result).toMatchObject({ errors: 1, reviewRechecked: 0, reviewAbandoned: 0 });
+    expect(row.status).toBe('REVIEW');
+    expect(row.reviewReason).toBe(AMOUNT_NOT_PROVIDED_REVIEW_REASON);
+  });
+
+  it('interroge le client du mode de la TENTATIVE, pas le mode courant de l’agence', async () => {
+    // Tentative démarrée en réel ; l'agence est repassée depuis en simulateur.
+    const { row } = await inReview();
+    row.mode = 'LIVE';
+    const simulated = providerSays({ amount: Number(row.amount), currency: 'XOF' });
+    const live = jest.spyOn(paySecureHubClient, 'getStatus').mockResolvedValue({
+      rawState: 'SUCCESSFUL',
+      mappedState: 'SUCCESS',
+      transactionId: 'TX-LIVE',
+      amount: null,
+      fees: 0,
+      serviceName: 'Wave',
+      error: null,
+      raw: {}
+    } as unknown as Awaited<ReturnType<typeof simulatorClient.getStatus>>);
+
+    await reconcilePendingCheckouts();
+
+    expect(live).toHaveBeenCalledTimes(1);
+    expect(simulated).not.toHaveBeenCalled();
+    expect(row.status).toBe('REVIEW');
   });
 });
 

@@ -6,8 +6,12 @@
  * Un evenement non critique reste sur la file asynchrone `logAuditEvent`.
  */
 const tx: any = {
+  // Verrou consultatif des administrateurs (updateMemberRoles, disableMember).
+  $executeRaw: jest.fn().mockResolvedValue(1),
   userRole: { deleteMany: jest.fn(), createMany: jest.fn(), count: jest.fn() },
   membership: { update: jest.fn(), count: jest.fn() },
+  // Invitations en attente de l'auteur désactivé (disableMember).
+  invitation: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
   refreshToken: { updateMany: jest.fn() },
   user: { update: jest.fn(), findUnique: jest.fn() },
   // Prédicat « compte partagé » (tenant-admin-guard) relu dans la transaction.
@@ -90,6 +94,20 @@ beforeEach(() => {
   });
 });
 
+/**
+ * Plusieurs evenements critiques dans la meme transaction (ex. USER_DISABLED et
+ * SESSIONS_REVOKED) : tous ecrits avec `tx`, aucun via la file asynchrone.
+ */
+function expectAllRecorded(actionKeys: string[]) {
+  expect(mockLogAudit).not.toHaveBeenCalled();
+  expect(mockRecordAudit).toHaveBeenCalledTimes(actionKeys.length);
+  for (const [client, entry] of mockRecordAudit.mock.calls) {
+    expect(client).toBe(tx);
+    expect(entry).toMatchObject({ tenantId: TENANT });
+  }
+  expect(mockRecordAudit.mock.calls.map(call => call[1].actionKey).sort()).toEqual([...actionKeys].sort());
+}
+
 /** Le dernier evenement critique est ecrit avec `tx`, jamais via la file asynchrone. */
 function expectRecorded(actionKey: string) {
   expect(mockLogAudit).not.toHaveBeenCalled();
@@ -116,7 +134,7 @@ describe('membership-service : actions critiques dans la transaction', () => {
     await disableMember(USER, TENANT, ACTOR);
     expect(tx.membership.update).toHaveBeenCalledTimes(1);
     expect(tx.refreshToken.updateMany).toHaveBeenCalledTimes(1);
-    expectRecorded('USER_DISABLED');
+    expectAllRecorded(['USER_DISABLED', 'SESSIONS_REVOKED']);
   });
 
   it('USER_ENABLED : statut et audit dans la transaction', async () => {
@@ -131,7 +149,7 @@ describe('membership-service : actions critiques dans la transaction', () => {
     expect(tx.user.update).toHaveBeenCalledTimes(1);
     expect(tx.refreshToken.updateMany).toHaveBeenCalledTimes(1);
     expect(tx.passwordResetToken.create).toHaveBeenCalledTimes(1);
-    expectRecorded('PASSWORD_RESET');
+    expectAllRecorded(['PASSWORD_RESET', 'SESSIONS_REVOKED']);
   });
 
   it('PASSWORD_RESET sans mot de passe fourni : le mot de passe généré n’est jamais refusé par la politique', async () => {
@@ -144,7 +162,7 @@ describe('membership-service : actions critiques dans la transaction', () => {
     } finally {
       spy.mockRestore();
     }
-    expectRecorded('PASSWORD_RESET');
+    expectAllRecorded(['PASSWORD_RESET', 'SESSIONS_REVOKED']);
   });
 
   it('PASSWORD_RESET avec un mot de passe saisi trop faible : toujours refusé', async () => {
@@ -158,12 +176,13 @@ describe('membership-service : actions critiques dans la transaction', () => {
     expectRecorded('SESSIONS_REVOKED');
   });
 
-  it('SESSIONS_REVOKED : compte partagé, refreshToken.updateMany non appelé et aucun audit mensonger', async () => {
+  it('SESSIONS_REVOKED : compte partagé, sessions révoquées et auditées quand même (M1)', async () => {
     tx.membership.count.mockResolvedValue(1);
+    prismaMock.membership.count.mockResolvedValue(1);
     const result = await revokeMemberSessions(USER, TENANT, ACTOR);
-    expect(result.sessionsRevoked).toBe(false);
-    expect(tx.refreshToken.updateMany).not.toHaveBeenCalled();
-    expect(mockRecordAudit).not.toHaveBeenCalled();
+    expect(result).toEqual({ sessionsRevoked: true, tokensRevoked: 2 });
+    expect(tx.refreshToken.updateMany).toHaveBeenCalledTimes(1);
+    expectRecorded('SESSIONS_REVOKED');
   });
 
   it("l'echec de l'audit fait echouer l'action (aucune trace, pas de succes)", async () => {

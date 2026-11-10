@@ -83,7 +83,8 @@ sur la base ciblée par `DATABASE_URL`. Il refuse de s'exécuter sans
 
 Docker : `docker compose up -d` lance PostgreSQL et l'API. `JWT_SECRET` et
 `POSTGRES_PASSWORD` sont obligatoires dans l'environnement (aucune valeur par
-défaut) ; PostgreSQL est publié sur `127.0.0.1` seulement.
+défaut) ; PostgreSQL et l'API (port 8001) sont publiés sur `127.0.0.1`
+seulement.
 
 ## Documentation
 

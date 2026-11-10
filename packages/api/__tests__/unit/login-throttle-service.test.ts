@@ -13,13 +13,17 @@ import {
   LOGIN_THROTTLE_BASE_LOCK_MS,
   LOGIN_THROTTLE_GLOBAL_LOCK_MS,
   LOGIN_THROTTLE_GLOBAL_MAX_FAILURES,
+  LOGIN_THROTTLE_GLOBAL_MAX_LOCK_MS,
+  LOGIN_THROTTLE_TRUSTED_PAIR_MS,
   LOGIN_THROTTLE_MAX_ENTRIES,
   LOGIN_THROTTLE_MAX_FAILURES,
   LOGIN_THROTTLE_MAX_LOCK_MS,
   LOGIN_THROTTLE_WINDOW_MS,
   clearEmailThrottle,
   clearLoginFailures,
+  globalLockDurationMs,
   isLoginLocked,
+  loginTrustedPairCount,
   loginThrottleEmailCount,
   loginThrottleSize,
   recordLoginFailure,
@@ -153,18 +157,96 @@ describe('résistance au verrouillage par un tiers', () => {
     }
   });
 
-  it('attaque distribuée : verrou global court et fixe seulement, titulaire libre après 15 s', () => {
+  /** Une tranche de 50 échecs depuis 50 IP distinctes (attaque distribuée). */
+  const wave = (at: number, block: number) => {
     for (let i = 0; i < LOGIN_THROTTLE_GLOBAL_MAX_FAILURES; i++) {
-      recordLoginFailure('chef@agence.test', `198.51.100.${i + 1}`, T0);
+      recordLoginFailure('chef@agence.test', `198.51.${block}.${i + 1}`, at);
     }
+  };
+
+  it('attaque distribuée : premier verrou global de 15 s, titulaire libre ensuite', () => {
+    wave(T0, 100);
     expect(isLoginLocked('chef@agence.test', OWNER_IP, T0)).toBe(true);
     expect(isLoginLocked('chef@agence.test', OWNER_IP, T0 + LOGIN_THROTTLE_GLOBAL_LOCK_MS)).toBe(false);
-    // Pas d’escalade : une nouvelle tranche de 50 échecs redonne 15 s, pas davantage.
-    const t1 = T0 + LOGIN_THROTTLE_GLOBAL_LOCK_MS;
-    for (let i = 0; i < LOGIN_THROTTLE_GLOBAL_MAX_FAILURES; i++) {
-      recordLoginFailure('chef@agence.test', `198.51.101.${i + 1}`, t1);
+  });
+
+  it('le verrou global ESCALADE d’un engagement à l’autre (15 s, 30 s, 60 s…) jusqu’à 5 min', () => {
+    let now = T0;
+    const durations: number[] = [];
+    for (let engagement = 1; engagement <= 8; engagement++) {
+      wave(now, 100 + engagement);
+      let lockMs = 0;
+      while (isLoginLocked('chef@agence.test', OWNER_IP, now + lockMs)) lockMs += 1000;
+      durations.push(lockMs);
+      now += lockMs;
     }
-    expect(isLoginLocked('chef@agence.test', OWNER_IP, t1 + LOGIN_THROTTLE_GLOBAL_LOCK_MS)).toBe(false);
+    expect(durations).toEqual([15_000, 30_000, 60_000, 120_000, 240_000, 300_000, 300_000, 300_000]);
+    expect(globalLockDurationMs(1)).toBe(LOGIN_THROTTLE_GLOBAL_LOCK_MS);
+    expect(globalLockDurationMs(50)).toBe(LOGIN_THROTTLE_GLOBAL_MAX_LOCK_MS);
+  });
+
+  it('l’escalade retombe après une fenêtre entière sans échec', () => {
+    wave(T0, 100);
+    wave(T0 + LOGIN_THROTTLE_GLOBAL_LOCK_MS, 101); // 2e engagement : 30 s
+    const later = T0 + LOGIN_THROTTLE_GLOBAL_LOCK_MS + LOGIN_THROTTLE_WINDOW_MS + 1;
+    wave(later, 102);
+    expect(isLoginLocked('chef@agence.test', OWNER_IP, later + LOGIN_THROTTLE_GLOBAL_LOCK_MS)).toBe(false);
+  });
+
+  it('pendant le verrou global, aucun échec n’est compté ni ne prolonge le verrou', () => {
+    clearLoginFailures('chef@agence.test', OWNER_IP, T0 - 1000); // paire sûre, qui peut encore essayer
+    wave(T0, 100);
+    for (let i = 0; i < 3 * LOGIN_THROTTLE_GLOBAL_MAX_FAILURES; i++) {
+      recordLoginFailure('chef@agence.test', OWNER_IP, T0 + 1000);
+    }
+    expect(isLoginLocked('chef@agence.test', '192.0.2.200', T0 + LOGIN_THROTTLE_GLOBAL_LOCK_MS)).toBe(false);
+  });
+});
+
+describe('paire sûre : exemption du verrou global', () => {
+  const wave = (at: number) => {
+    for (let i = 0; i < LOGIN_THROTTLE_GLOBAL_MAX_FAILURES; i++) {
+      recordLoginFailure('chef@agence.test', `198.51.100.${i + 1}`, at);
+    }
+  };
+
+  it('une paire qui a réussi récemment n’est pas enfermée par le verrou global ; les autres le sont', () => {
+    clearLoginFailures('chef@agence.test', OWNER_IP, T0 - 24 * 3600_000);
+    wave(T0);
+    expect(isLoginLocked('chef@agence.test', OWNER_IP, T0)).toBe(false);
+    expect(isLoginLocked('chef@agence.test', '192.0.2.200', T0)).toBe(true);
+    expect(loginTrustedPairCount()).toBe(1);
+  });
+
+  it('l’exemption expire après 30 jours', () => {
+    clearLoginFailures('chef@agence.test', OWNER_IP, T0 - LOGIN_THROTTLE_TRUSTED_PAIR_MS);
+    wave(T0);
+    expect(isLoginLocked('chef@agence.test', OWNER_IP, T0)).toBe(true);
+  });
+
+  it('le verrou de la paire elle-même s’applique toujours', () => {
+    clearLoginFailures('chef@agence.test', OWNER_IP, T0 - 1000);
+    fail('chef@agence.test', LOGIN_THROTTLE_MAX_FAILURES);
+    expect(isLoginLocked('chef@agence.test', OWNER_IP, T0)).toBe(true);
+  });
+
+  it('la paire sûre est propre à l’e-mail et à l’IP (/64)', () => {
+    clearLoginFailures('chef@agence.test', OWNER_IP, T0 - 1000);
+    wave(T0);
+    expect(isLoginLocked('chef@agence.test', '203.0.113.8', T0)).toBe(true);
+    for (let i = 0; i < LOGIN_THROTTLE_GLOBAL_MAX_FAILURES; i++) {
+      recordLoginFailure('autre@agence.test', `198.51.100.${i + 1}`, T0);
+    }
+    expect(isLoginLocked('autre@agence.test', OWNER_IP, T0)).toBe(true);
+  });
+
+  it('clearEmailThrottle (mot de passe réinitialisé) retire aussi les paires sûres de l’e-mail', () => {
+    clearLoginFailures('chef@agence.test', OWNER_IP, T0 - 1000);
+    clearLoginFailures('autre@agence.test', OWNER_IP, T0 - 1000);
+    clearEmailThrottle('chef@agence.test');
+    expect(loginTrustedPairCount()).toBe(1);
+    wave(T0);
+    expect(isLoginLocked('chef@agence.test', OWNER_IP, T0)).toBe(true);
   });
 });
 

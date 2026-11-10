@@ -225,6 +225,17 @@ describe('requireTenantAccess : contournement super-admin relu en base (AUTH-08)
     expect(r.req.tenantContext?.isSuperAdmin).toBeUndefined();
   });
 
+  it('super-admin DESACTIVE en base mais membre actif : refus uniforme, pas de repli sur l’adhesion', async () => {
+    mockUserFind.mockResolvedValue({ globalRole: 'SUPER_ADMIN', isActive: false });
+    mockMembershipFind.mockResolvedValue({ status: 'ACTIVE' });
+    const r = run('SUPER_ADMIN');
+    await r.call();
+    expect(r.next).not.toHaveBeenCalled();
+    expect(r.out.status).toBe(403);
+    expect(r.out.body).toEqual({ success: false, message: "Vous n'avez pas accès à ce tenant." });
+    expect(mockMembershipFind).not.toHaveBeenCalled();
+  });
+
   it('erreur de lecture en base : refus uniforme (fail-closed), aucun detail', async () => {
     jest.spyOn(console, 'error').mockImplementation(() => undefined);
     mockUserFind.mockRejectedValue(new Error('connexion base: secret-detail'));

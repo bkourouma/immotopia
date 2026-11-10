@@ -15,6 +15,7 @@ import {
   groupBroadcastImageUpload
 } from '../../src/routes/whatsapp-notification-config-routes';
 import { paymentProofUpload, recordManualPaymentHandler } from '../../src/controllers/platform-billing-controller';
+import { tenantPortalUpload } from '../../src/routes/tenant-portal-routes';
 
 const mockRecord = jest.fn();
 jest.mock('../../src/services/platform-payment-service', () => ({
@@ -57,10 +58,16 @@ describe('diffusion de groupe WhatsApp : image', () => {
     expect(res.status).toBe(200);
     expect(res.body.hasFile).toBe(false);
   });
-  it('refuse un PNG declare image/jpeg (type incoherent)', async () => {
+  it('accepte un PNG declare image/jpeg (meme famille, jpg et png autorises)', async () => {
     const res = await request(whatsappApp())
       .post('/b')
       .attach('image', PNG, { filename: 'a.jpg', contentType: 'image/jpeg' });
+    expect(res.status).toBe(200);
+  });
+  it('refuse un PDF declare image/jpeg (familles differentes)', async () => {
+    const res = await request(whatsappApp())
+      .post('/b')
+      .attach('image', PDF, { filename: 'a.jpg', contentType: 'image/jpeg' });
     expect(res.status).toBe(400);
   });
 });
@@ -121,6 +128,26 @@ describe('limites multer', () => {
     const res = await r.attach('file', PNG, { filename: 'a.png', contentType: 'image/png' });
     expect(res.status).toBeGreaterThanOrEqual(400);
     expect(res.status).toBeLessThan(500);
+  });
+  it('portail locataire : files, fields et fieldSize bornés', async () => {
+    const limits = (tenantPortalUpload as unknown as { limits: Record<string, number> }).limits;
+    expect(limits).toEqual({ fileSize: 5 * 1024 * 1024, files: 10, fields: 10, fieldSize: 100 * 1024 });
+
+    const app = express();
+    app.post('/d', tenantPortalUpload.single('proof'), (_req, res) => res.json({ ok: true }));
+    app.use(errorHandler);
+    let tooManyFields = request(app).post('/d');
+    for (let i = 0; i < 11; i += 1) tooManyFields = tooManyFields.field(`f${i}`, 'x');
+    const a = await tooManyFields;
+    expect(a.status).toBeGreaterThanOrEqual(400);
+    expect(a.status).toBeLessThan(500);
+    const b = await request(app)
+      .post('/d')
+      .field('note', 'x'.repeat(100 * 1024 + 1));
+    expect(b.status).toBeGreaterThanOrEqual(400);
+    expect(b.status).toBeLessThan(500);
+    const ok = await request(app).post('/d').field('amount', '1000').attach('proof', PDF, 'p.pdf');
+    expect(ok.status).toBe(200);
   });
   it('les instances exposent files, fields et fieldSize', () => {
     for (const m of [logoUpload, brandingImageUpload, groupBroadcastImageUpload, paymentProofUpload]) {

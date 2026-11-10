@@ -518,7 +518,8 @@ export function dropEmptyVariableParagraphs(
   for (const key of optionalKeys) {
     if ((vars[key] ?? '').trim()) continue;
     output = output
-      .replace(new RegExp(`<p\\b[^>]*>[^<]*\\{\\{${key}\\}\\}[^<]*</p>\\s*`, 'g'), '')
+      // `[^<>]*` (linéaire) et non `[^>]*` : quadratique sur une suite de `<p` sans `>`.
+      .replace(new RegExp(`<p\\b[^<>]*>[^<]*\\{\\{${key}\\}\\}[^<]*</p>\\s*`, 'g'), '')
       .replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), '');
   }
   return output;

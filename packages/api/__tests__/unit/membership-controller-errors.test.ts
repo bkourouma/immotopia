@@ -44,11 +44,11 @@ describe('membership-controller : erreurs typées', () => {
     expect((await run(revokeSessionsHandler)).next.mock.calls[0][0]).toMatchObject({ statusCode: 404 });
   });
 
-  it('revoke-sessions : message explicite quand rien n’est révoqué', async () => {
-    mockRevoke.mockResolvedValue({ sessionsRevoked: false, tokensRevoked: 0 });
+  it('revoke-sessions : sessionsRevoked true et nombre de jetons révoqués (M1)', async () => {
+    mockRevoke.mockResolvedValue({ sessionsRevoked: true, tokensRevoked: 3 });
     const { res } = await run(revokeSessionsHandler);
     expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({ sessionsRevoked: false, message: expect.stringContaining('ne sont pas révoquées') })
+      expect.objectContaining({ success: true, sessionsRevoked: true, tokensRevoked: 3 })
     );
   });
 });

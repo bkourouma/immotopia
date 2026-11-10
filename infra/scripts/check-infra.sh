@@ -90,6 +90,9 @@ for conf in infra/nginx/spa.conf infra/nginx/app.immotopia.cloud.conf infra/ngin
 ' "$vars" | grep -c . || true)"
   ntoken="$(tr -d '' < "$conf" | grep -c 'token=' || true)"
   if (( nmaps >= 8 && ntoken >= 6 )); then ok "$conf : $nmaps map dont $ntoken passes de masquage de jeton"; else ko "$conf : map de masquage de jeton manquants ($nmaps map, $ntoken passes ; attendu >= 8 et >= 6)"; fi
+  # Contre-audit PR #205 : le nom du parametre peut contenir un point (hub.verify_token de Meta).
+  nnarrow="$(grep -c '\[a-z_\]\*token=' "$conf" || true)"
+  [[ "$nnarrow" == 0 ]] || ko "$conf : $nnarrow passe(s) de masquage en [a-z_]*token= (attendu [a-z_.]*token=, sinon hub.verify_token reste en clair)"
   dup="$(printf '%s
 ' "$vars" | sort | uniq -d | tr '
 ' ' ')"

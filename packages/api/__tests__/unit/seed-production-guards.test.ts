@@ -6,6 +6,7 @@
 import { spawnSync } from 'child_process';
 import { readFileSync } from 'fs';
 import path from 'path';
+import { assertNotProduction, isLocalDatabaseUrl } from '../../prisma/seeds/assert-not-production';
 
 const API_ROOT = path.resolve(__dirname, '../..');
 const SEEDS = [
@@ -115,5 +116,88 @@ describe('scripts/fix-demo-login-account.cjs', () => {
     expect(source.indexOf('process.exit(1)')).toBeLessThan(source.indexOf("require('@prisma/client')"));
     expect(source).not.toMatch(/Admin@123456/);
     expect(source).toMatch(/process\.env\.SUPER_ADMIN_PASSWORD/);
+  });
+});
+
+describe('assertNotProduction : hôte de DATABASE_URL (contre-audit PAY F5)', () => {
+  let saved: NodeJS.ProcessEnv;
+  let exitSpy: jest.SpyInstance;
+  let stderrSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    saved = { ...process.env };
+    exitSpy = jest.spyOn(process, 'exit').mockImplementation((() => undefined) as never);
+    stderrSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+  });
+  afterEach(() => {
+    process.env = saved;
+    exitSpy.mockRestore();
+    stderrSpy.mockRestore();
+  });
+
+  const runWith = (env: Record<string, string | undefined>) => {
+    for (const [key, value] of Object.entries(env)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    assertNotProduction('seed-test');
+    return stderrSpy.mock.calls.map(c => String(c[0])).join('');
+  };
+
+  it.each([
+    'postgresql://immotopia:S3cretPass@db.exemple.com:5432/immotopia?schema=public',
+    'postgresql://immotopia:S3cretPass@immotopia-saas-postgres:5432/immotopia',
+    'postgresql://immotopia:S3cretPass@10.0.0.12:5432/immotopia',
+    'pas une url'
+  ])('hôte distant refusé même hors production : %s', url => {
+    const output = runWith({ NODE_ENV: 'development', DATABASE_URL: url });
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(output).toContain('Refus');
+    expect(output).toContain('DATABASE_URL');
+    // Jamais l'identifiant ni le mot de passe de connexion dans le message.
+    expect(output).not.toContain('S3cretPass');
+    expect(output).not.toContain('immotopia:');
+  });
+
+  it.each([
+    'postgresql://user:password@localhost:5432/immotopia?schema=public',
+    'postgresql://user:password@127.0.0.1:5433/immotopia',
+    'postgresql://user:password@[::1]:5432/immotopia',
+    'postgresql://user:password@LOCALHOST:5432/immotopia',
+    'postgresql://user:password@host.docker.internal:5432/immotopia',
+    'postgresql:///immotopia?host=/var/run/postgresql'
+  ])('hôte local accepté : %s', url => {
+    runWith({ NODE_ENV: 'development', DATABASE_URL: url });
+    expect(exitSpy).not.toHaveBeenCalled();
+    expect(stderrSpy).not.toHaveBeenCalled();
+  });
+
+  it('DATABASE_URL absente : comportement inchangé (pas de refus hors production)', () => {
+    runWith({ NODE_ENV: 'development', DATABASE_URL: undefined });
+    expect(exitSpy).not.toHaveBeenCalled();
+  });
+
+  it('production : toujours refusée, même avec une base locale', () => {
+    const output = runWith({ NODE_ENV: 'production', DATABASE_URL: 'postgresql://u:p@localhost:5432/db' });
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(output).toContain('jamais tourner en production');
+  });
+
+  it('aucune variable de contournement : ALLOW_REMOTE_DEMO_SEED=1 ne change rien', () => {
+    runWith({
+      NODE_ENV: 'development',
+      ALLOW_REMOTE_DEMO_SEED: '1',
+      DATABASE_URL: 'postgresql://u:p@db.exemple.com/db'
+    });
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    const source = readFileSync(path.join(API_ROOT, 'prisma/seeds/assert-not-production.ts'), 'utf8');
+    expect(source).not.toMatch(/process\.env\.ALLOW_/);
+  });
+
+  it('isLocalDatabaseUrl : un sous-domaine de localhost piégé ne passe pas', () => {
+    expect(isLocalDatabaseUrl('postgresql://u:p@localhost.evil.example:5432/db')).toBe(false);
+    expect(isLocalDatabaseUrl('postgresql://u:p@127.0.0.1.nip.io:5432/db')).toBe(false);
+    // Socket Unix : local seulement si le chemin est absolu.
+    expect(isLocalDatabaseUrl('postgresql:///db?host=db.exemple.com')).toBe(false);
   });
 });

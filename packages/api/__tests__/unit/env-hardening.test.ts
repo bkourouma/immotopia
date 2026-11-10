@@ -89,6 +89,32 @@ describe('AUTH-08 : JWT_EXPIRES_IN borné à 30 minutes', () => {
     expect(exited).toBe(true);
     expect(errors).toContain('JWT_EXPIRES_IN');
   });
+
+  // Contre-audit PR #205 : `ms` (appelé par jsonwebtoken) refuse les blancs de bord.
+  it.each([' 15m', '15m ', '\t15m', '15m\n', '15\tm'])('refuse %j au démarrage (blanc refusé par ms)', value => {
+    const { exited, errors } = loadWith({ JWT_EXPIRES_IN: value });
+    expect(exited).toBe(true);
+    expect(errors).toContain('JWT_EXPIRES_IN');
+    expect(errors).toContain('sans espace');
+  });
+
+  it('toute valeur acceptée est lisible par ms (jamais undefined pour jwt.sign)', () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const ms = require('ms') as (value: string) => number | undefined;
+    process.env = { ...saved, ...BASE_ENV, NODE_ENV: 'test' };
+    delete process.env.JWT_EXPIRES_IN;
+    let parseDurationMs: (raw: string) => number | null = () => null;
+    jest.isolateModules(() => {
+      parseDurationMs = (require('../../src/config/env') as typeof import('../../src/config/env')).parseDurationMs;
+    });
+    const candidates = ['15m', '15 m', '15M', '1.5m', '900s', '1800000ms', '30m', '2w', ' 15m', '15m ', '15\tm', 'x'];
+    for (const value of candidates) {
+      const parsed = parseDurationMs(value);
+      if (parsed !== null) expect(ms(value)).toBe(parsed);
+    }
+    expect(parseDurationMs('15m')).toBe(15 * 60 * 1000);
+    expect(parseDurationMs(`${'1'.repeat(100)}m`)).toBeNull();
+  });
 });
 
 describe('AUTH-11 : URL locales refusées en production', () => {

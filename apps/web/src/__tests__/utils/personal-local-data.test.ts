@@ -1,5 +1,6 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-import { purgePersonalLocalData } from '../../utils/personal-local-data';
+import { LAST_ACCOUNT_KEY, purgeIfAccountChanged, purgePersonalLocalData } from '../../utils/personal-local-data';
+import { ACTIVE_TENANT_STORAGE_KEY } from '../../utils/active-tenant';
 import { LANGUAGE_STORAGE_KEY } from '../../i18n/config';
 import {
   loadLocalDraft,
@@ -85,5 +86,79 @@ describe('purgePersonalLocalData', () => {
       throw new Error('SecurityError');
     });
     expect(() => purgePersonalLocalData()).not.toThrow();
+  });
+
+  it("efface l'agence active mémorisée et garde les préférences non personnelles (contre-audit A4)", () => {
+    seed();
+    window.localStorage.setItem(ACTIVE_TENANT_STORAGE_KEY, 'tenant-1');
+    for (const key of NON_PERSONAL_KEYS) window.localStorage.setItem(key, 'x');
+
+    purgePersonalLocalData();
+
+    expect(window.localStorage.getItem(ACTIVE_TENANT_STORAGE_KEY)).toBeNull();
+    for (const key of NON_PERSONAL_KEYS) expect(window.localStorage.getItem(key)).toBe('x');
+    expect(window.localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe('ar');
+  });
+});
+
+/**
+ * Préférences par agence, non personnelles : jamais purgées. Écrites en dur
+ * (et non importées des écrans, trop lourds pour ce test) : `useTenantType`,
+ * `navigation/resolve.lastSyndicKey`, `StockMagasin.cleLieuMagasin`.
+ */
+const NON_PERSONAL_KEYS = ['immotopia.tenant-type:tenant-1', 'last-syndic:tenant-1', 'immotopia.stock.lieu.tenant-1'];
+
+describe('purgeIfAccountChanged (contre-audit A4)', () => {
+  beforeEach(() => window.localStorage.clear());
+  afterEach(() => {
+    window.localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  it('premier compte connu : mémorise une empreinte opaque sans rien purger', () => {
+    seed();
+    expect(purgeIfAccountChanged('user-a-uuid')).toBe(false);
+    expect(loadLocalDraft('insp-1')).not.toBeNull();
+    const stored = window.localStorage.getItem(LAST_ACCOUNT_KEY);
+    expect(stored).toBeTruthy();
+    // Jamais l'identifiant en clair.
+    expect(stored).not.toContain('user-a-uuid');
+  });
+
+  it('même compte : ne purge rien', () => {
+    purgeIfAccountChanged('user-a-uuid');
+    seed();
+    window.localStorage.setItem(ACTIVE_TENANT_STORAGE_KEY, 'tenant-1');
+    expect(purgeIfAccountChanged('user-a-uuid')).toBe(false);
+    expect(loadLocalDraft('insp-1')).not.toBeNull();
+    expect(window.localStorage.getItem(ACTIVE_TENANT_STORAGE_KEY)).toBe('tenant-1');
+  });
+
+  it('autre compte : purge les données du précédent, garde langue et préférences', () => {
+    purgeIfAccountChanged('user-a-uuid');
+    seed();
+    window.localStorage.setItem(ACTIVE_TENANT_STORAGE_KEY, 'tenant-1');
+    for (const key of NON_PERSONAL_KEYS) window.localStorage.setItem(key, 'x');
+
+    expect(purgeIfAccountChanged('user-b-uuid')).toBe(true);
+
+    expect(loadLocalDraft('insp-1')).toBeNull();
+    expect(window.localStorage.getItem(PAYER_PHONE_KEY)).toBeNull();
+    expect(readYieldAssumptions('tenant-1', 'prop-1')).toBeUndefined();
+    expect(window.localStorage.getItem(ACTIVE_TENANT_STORAGE_KEY)).toBeNull();
+    expect(window.localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe('ar');
+    for (const key of NON_PERSONAL_KEYS) expect(window.localStorage.getItem(key)).toBe('x');
+    // Le nouveau compte devient la référence : se reconnecter ne repurge pas.
+    seed();
+    expect(purgeIfAccountChanged('user-b-uuid')).toBe(false);
+    expect(loadLocalDraft('insp-1')).not.toBeNull();
+  });
+
+  it('ne lève jamais quand le stockage est refusé', () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('SecurityError');
+    });
+    expect(() => purgeIfAccountChanged('user-a-uuid')).not.toThrow();
+    expect(purgeIfAccountChanged(null)).toBe(false);
   });
 });

@@ -8,7 +8,7 @@ import { env } from '../config/env';
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
 import { emailService } from './email-service';
-import { resolveRecipients } from './newsletter-campaign.service';
+import { escapeHtml, resolveRecipients } from './newsletter-campaign.service';
 
 /** Parse CSV buffer to array of { email?, name? } */
 function parseCsvBuffer(buffer: Buffer): Array<{ email?: string; name?: string }> {
@@ -404,8 +404,10 @@ export async function subscribePublic(input: SubscribePublicInput): Promise<Subs
 }
 
 async function sendConfirmationEmail(to: string, token: string, name?: string): Promise<boolean> {
-  const confirmUrl = `${getBaseUrl()}/newsletter/confirm?token=${token}`;
-  const prenom = name?.split(/\s+/)[0] || 'Cher abonné';
+  // Toute valeur du gabarit est échappée : le prénom vient d'un formulaire public
+  // (hameçonnage depuis notre domaine), l'URL est échappée par principe.
+  const confirmUrl = escapeHtml(`${getBaseUrl()}/newsletter/confirm?token=${encodeURIComponent(token)}`);
+  const prenom = escapeHtml(name?.trim().split(/\s+/)[0] || 'Cher abonné');
   const result = await emailService.sendEmail({
     to,
     subject: 'Confirmez votre inscription à notre newsletter',

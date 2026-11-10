@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { App as AntApp } from 'antd';
 import { EmailNotificationsUnifiedPage } from '../../pages/communication/EmailNotificationsUnifiedPage';
@@ -57,6 +57,8 @@ const T = { timeout: 8000 };
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // jsdom n'implémente pas `scrollIntoView` (appelé par « Modifier »).
+  Element.prototype.scrollIntoView = vi.fn();
   listEmail.mockResolvedValue([item]);
 });
 
@@ -80,15 +82,56 @@ describe('Notifications e-mail — droit d’écriture', () => {
     });
     mount();
     const sw = await screen.findByRole('switch', undefined, T);
-    await waitFor(() => expect(getMyMenuAccess).toHaveBeenCalled());
-    expect(sw).not.toBeDisabled();
+    await waitFor(() => expect(sw).not.toBeDisabled(), T);
     expect(screen.queryByText(/Lecture seule/)).not.toBeInTheDocument();
   });
 
   it('ne restreint pas un administrateur (permissionKeys nul)', async () => {
     getMyMenuAccess.mockResolvedValue({ disabledMenuKeys: [], enabledMenuKeys: [], permissionKeys: null });
     mount();
-    expect(await screen.findByRole('switch', undefined, T)).not.toBeDisabled();
+    const sw = await screen.findByRole('switch', undefined, T);
+    await waitFor(() => expect(sw).not.toBeDisabled(), T);
     expect(screen.queryByText(/Lecture seule/)).not.toBeInTheDocument();
+  });
+
+  // Contre-audit A5 : avant la réponse des droits, `permissions` vaut null sans
+  // vouloir dire « aucune restriction ».
+  it('reste en lecture seule tant que les droits sont en cours de chargement', async () => {
+    getMyMenuAccess.mockReturnValue(new Promise(() => undefined));
+    mount();
+    const sw = await screen.findByRole('switch', undefined, T);
+    expect(sw).toBeDisabled();
+    // Pas d'avertissement « Lecture seule » prématuré : on ne sait encore rien.
+    expect(screen.queryByText(/Lecture seule/)).not.toBeInTheDocument();
+  });
+
+  it('désactive aussi les champs du modèle sans TENANT_SETTINGS_EDIT', async () => {
+    getMyMenuAccess.mockResolvedValue({
+      disabledMenuKeys: [],
+      enabledMenuKeys: [],
+      permissionKeys: ['TENANT_SETTINGS_VIEW']
+    });
+    mount();
+    await screen.findByText(/Lecture seule/, undefined, T);
+    fireEvent.click(screen.getByRole('button', { name: /Modifier/ }));
+    const sujet = await screen.findByPlaceholderText(/Nouveau ticket/, undefined, T);
+    expect(sujet).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Enregistrer/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Utiliser ce modèle/ })).toBeDisabled();
+  });
+
+  it('laisse les champs du modèle modifiables avec TENANT_SETTINGS_EDIT', async () => {
+    getMyMenuAccess.mockResolvedValue({
+      disabledMenuKeys: [],
+      enabledMenuKeys: [],
+      permissionKeys: ['TENANT_SETTINGS_VIEW', 'TENANT_SETTINGS_EDIT']
+    });
+    mount();
+    const sw = await screen.findByRole('switch', undefined, T);
+    await waitFor(() => expect(sw).not.toBeDisabled(), T);
+    fireEvent.click(screen.getByRole('button', { name: /Modifier/ }));
+    const sujet = await screen.findByPlaceholderText(/Nouveau ticket/, undefined, T);
+    expect(sujet).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: /Enregistrer/ })).not.toBeDisabled();
   });
 });

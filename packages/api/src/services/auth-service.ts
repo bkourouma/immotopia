@@ -13,7 +13,13 @@ import { AuditActionKey } from '../types/audit-types';
 import { legacySanitizedPassword } from '../middleware/validation-middleware';
 import { getUserPermissions } from './permission-service';
 import type { Language } from '../i18n';
-import { isLoginLocked, recordLoginFailure, clearLoginFailures, clearEmailThrottle } from './login-throttle-service';
+import {
+  isLoginLocked,
+  recordLoginFailure,
+  clearLoginFailures,
+  clearEmailThrottle,
+  LOGIN_LOCKED_REASON
+} from './login-throttle-service';
 
 /** Entity type used for every authentication event. */
 const AUTH_ENTITY = 'User';
@@ -24,6 +30,22 @@ export const REGISTRATION_ACCEPTED_MESSAGE =
 
 /** Réponse unique d'un échec de connexion tant que le mot de passe n'est pas correct. */
 const INVALID_CREDENTIALS_MESSAGE = 'Email ou mot de passe incorrect.';
+
+/**
+ * Refus d'une connexion pendant un verrou (`login-throttle-service`). Pour le client, la
+ * réponse est EXACTEMENT celle d'un échec ordinaire (400, même message, même `code`,
+ * même nom d'erreur) : seul le serveur sait qu'il s'agit d'un verrou, via `reason`, que le
+ * contrôleur transmet à `loginRateLimiter` pour que ce refus ne soit pas compté contre
+ * l'IP (contre-audit PR #205 : 5 essais du titulaire pendant les verrous bloquaient son IP).
+ */
+export class LoginLockedError extends BadRequestError {
+  readonly reason: string = LOGIN_LOCKED_REASON;
+
+  constructor() {
+    super(INVALID_CREDENTIALS_MESSAGE);
+    this.name = 'BadRequestError';
+  }
+}
 
 /**
  * Hash bcrypt (coût 12, comme `hashPassword`) d'une valeur aléatoire jetée :
@@ -394,7 +416,7 @@ export async function loginUser(data: LoginRequest, context?: { ip?: string }) {
   // qu'un échec ordinaire. Un `comparePassword` factice égalise le temps de réponse.
   if (isLoginLocked(data.email, context?.ip)) {
     await verifyLoginPassword(data.password, null);
-    throw new BadRequestError(INVALID_CREDENTIALS_MESSAGE);
+    throw new LoginLockedError();
   }
 
   // Find user by email
@@ -556,8 +578,15 @@ export async function issueGoogleSession(
   return { accessToken, refreshToken };
 }
 
-/** Marge (ms) entre la révocation du jeton présenté et la création de son successeur (même transaction en pratique). */
-const ROTATION_SUCCESSOR_SKEW_MS = 5_000;
+/**
+ * Marge (ms), de part et d'autre, entre la révocation du jeton présenté et la
+ * création de son successeur. La rotation pose le MÊME horodatage sur les deux
+ * (`revokedAt` de l'ancien, `createdAt` du nouveau, dans une transaction) : la
+ * marge ne couvre que des écarts d'arrondi. Sans borne haute, une session
+ * ouverte peu après une déconnexion ou une réinitialisation passait pour le
+ * successeur d'un jeton volé (contre-audit PR #205).
+ */
+export const ROTATION_SUCCESSOR_SKEW_MS = 1_000;
 
 type RefreshTokenRecord = {
   userId: string;
@@ -571,8 +600,9 @@ type RefreshTokenRecord = {
  *
  * Garde-fous : compte actif et vérifié ; et le jeton doit avoir été révoqué par une ROTATION,
  * c'est-à-dire qu'un autre jeton non révoqué et non expiré du même utilisateur a été créé
- * à partir de la révocation (moins `ROTATION_SUCCESSOR_SKEW_MS`). Un jeton révoqué par
- * déconnexion, réinitialisation ou révocation de session n'a pas de successeur : refus 401.
+ * au moment même de la révocation (à `ROTATION_SUCCESSOR_SKEW_MS` près, des deux côtés). Un
+ * jeton révoqué par déconnexion, réinitialisation ou révocation de session n'a pas de
+ * successeur, même si une nouvelle session s'ouvre quelques secondes après : refus 401.
  */
 async function toleratedRefresh(tokenRecord: RefreshTokenRecord, revokedAt: Date, reason: string) {
   if (!tokenRecord.user.isActive || !tokenRecord.user.emailVerified) {
@@ -583,7 +613,10 @@ async function toleratedRefresh(tokenRecord: RefreshTokenRecord, revokedAt: Date
       userId: tokenRecord.userId,
       revoked: false,
       expiresAt: { gt: new Date() },
-      createdAt: { gte: new Date(revokedAt.getTime() - ROTATION_SUCCESSOR_SKEW_MS) }
+      createdAt: {
+        gte: new Date(revokedAt.getTime() - ROTATION_SUCCESSOR_SKEW_MS),
+        lte: new Date(revokedAt.getTime() + ROTATION_SUCCESSOR_SKEW_MS)
+      }
     },
     select: { id: true }
   });
@@ -705,16 +738,20 @@ export async function refreshAccessToken(refreshToken: string, deviceInfo?: stri
   // Rotation atomique : `updateMany` conditionnel sur `revoked: false`. Si une requête
   // concurrente a déjà tourné ce jeton (count 0), aucun jeton n'est créé et la requête est
   // refusée comme un doublon (la gagnante vient de le révoquer : dans le délai de grâce).
+  // Un seul horodatage pour la révocation et la création du successeur : c'est ce lien
+  // que vérifie `toleratedRefresh` (borne basse ET haute).
+  const rotatedAt = new Date();
   const rotated = await prisma.$transaction(async tx => {
     const { count } = await tx.refreshToken.updateMany({
       where: { id: tokenRecord.id, revoked: false },
-      data: { revoked: true, revokedAt: new Date() }
+      data: { revoked: true, revokedAt: rotatedAt }
     });
     if (count !== 1) return false;
     await tx.refreshToken.create({
       data: {
         token: newRefreshTokenHash,
         userId: tokenRecord.userId,
+        createdAt: rotatedAt,
         expiresAt,
         deviceInfo: deviceInfo || tokenRecord.deviceInfo || 'Web Browser'
       }

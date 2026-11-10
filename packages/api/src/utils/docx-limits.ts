@@ -20,16 +20,30 @@ import { t } from '../i18n';
 
 /** Nombre maximal d'entrées d'une archive DOCX (un vrai modèle en compte quelques dizaines). */
 export const DOCX_MAX_ENTRIES = 2000;
-/** Taille décompressée maximale cumulée d'une archive DOCX. */
-export const DOCX_MAX_UNCOMPRESSED_BYTES = 50 * 1024 * 1024;
-/** Taille décompressée maximale d'une seule entrée. */
-export const DOCX_MAX_ENTRY_UNCOMPRESSED_BYTES = 50 * 1024 * 1024;
+/**
+ * Taille décompressée maximale cumulée d'une archive DOCX. Un vrai modèle du
+ * dépôt pèse moins de 0,3 Mo décompressé ; 20 Mo laissent la place à quelques
+ * images (logo, photos) sans laisser docxtemplater saturer la mémoire.
+ */
+export const DOCX_MAX_UNCOMPRESSED_BYTES = 20 * 1024 * 1024;
+/** Taille décompressée maximale d'une seule entrée binaire (image, police…). */
+export const DOCX_MAX_ENTRY_UNCOMPRESSED_BYTES = 20 * 1024 * 1024;
+/**
+ * Taille décompressée maximale d'une partie XML (`.xml`, `.rels`) : c'est elle
+ * que lisent les expressions régulières et docxtemplater (≈ 692 Mo de mémoire
+ * pour 400 000 balises). Le plus gros XML d'un vrai modèle fait ~160 Ko.
+ */
+export const DOCX_MAX_XML_ENTRY_UNCOMPRESSED_BYTES = 5 * 1024 * 1024;
 
 export interface DocxLimits {
   maxEntries?: number;
   maxUncompressedBytes?: number;
   maxEntryUncompressedBytes?: number;
+  maxXmlEntryUncompressedBytes?: number;
 }
+
+/** Parties lues comme du texte XML (casse ignorée, comme le fait la neutralisation). */
+const XML_PART = /\.(xml|rels)$/i;
 
 const LOCAL_SIGNATURE = 0x04034b50;
 const CENTRAL_SIGNATURE = 0x02014b50;
@@ -156,6 +170,7 @@ function inspectDocx(buffer: Buffer, limits: DocxLimits): string[] {
   const maxEntries = limits.maxEntries ?? DOCX_MAX_ENTRIES;
   const maxTotal = limits.maxUncompressedBytes ?? DOCX_MAX_UNCOMPRESSED_BYTES;
   const maxEntry = limits.maxEntryUncompressedBytes ?? DOCX_MAX_ENTRY_UNCOMPRESSED_BYTES;
+  const maxXmlEntry = Math.min(maxEntry, limits.maxXmlEntryUncompressedBytes ?? DOCX_MAX_XML_ENTRY_UNCOMPRESSED_BYTES);
 
   const { entries, directoryOffset } = readCentralDirectory(buffer, maxEntries);
 
@@ -170,12 +185,21 @@ function inspectDocx(buffer: Buffer, limits: DocxLimits): string[] {
     if (buffer.readUInt32LE(offset) !== LOCAL_SIGNATURE) return invalidDocx();
     // Comme PizZip : longueurs du nom et de l'extra LOCALES, taille compressée
     // du répertoire central (fiable même avec un descripteur de données, bit 3).
-    const dataStart = offset + LOCAL_HEADER_SIZE + buffer.readUInt16LE(offset + 26) + buffer.readUInt16LE(offset + 28);
+    const localNameLength = buffer.readUInt16LE(offset + 26);
+    const dataStart = offset + LOCAL_HEADER_SIZE + localNameLength + buffer.readUInt16LE(offset + 28);
     const dataEnd = dataStart + entry.compressedSize;
     if (dataEnd > directoryOffset) return invalidDocx();
     previousEnd = dataEnd;
+    // PizZip 3.2 nomme l'entrée d'après l'en-tête LOCAL : un nom local
+    // différent du nom central (`evil/document.xml` sous `word/document.xml`)
+    // échapperait aux contrôles faits sur le répertoire central.
+    const localName = buffer
+      .toString('latin1', offset + LOCAL_HEADER_SIZE, offset + LOCAL_HEADER_SIZE + localNameLength)
+      .replace(/\\/g, '/');
+    if (localName !== entry.name) return invalidDocx();
 
-    if (entry.uncompressedSize > maxEntry || entry.uncompressedSize > budget) return docxTooBig();
+    const entryLimit = XML_PART.test(entry.name) ? maxXmlEntry : maxEntry;
+    if (entry.uncompressedSize > entryLimit || entry.uncompressedSize > budget) return docxTooBig();
     const actual = measureEntry(buffer.subarray(dataStart, dataEnd), entry.method, entry.uncompressedSize);
     // Taille déclarée ≠ taille réelle : PizZip échouerait, mais après coup.
     if (actual !== entry.uncompressedSize) return invalidDocx();
@@ -187,8 +211,10 @@ function inspectDocx(buffer: Buffer, limits: DocxLimits): string[] {
 /**
  * Contrôle une archive DOCX AVANT de la confier à PizZip : structure ZIP
  * stricte (voir `readCentralDirectory`), au plus `DOCX_MAX_ENTRIES` entrées,
- * méthodes « stockée » ou « deflate » seulement, et décompression réelle
- * plafonnée à `DOCX_MAX_ENTRY_UNCOMPRESSED_BYTES` par entrée et
+ * méthodes « stockée » ou « deflate » seulement, noms locaux identiques aux
+ * noms du répertoire central, et décompression réelle plafonnée à
+ * `DOCX_MAX_XML_ENTRY_UNCOMPRESSED_BYTES` par partie `.xml`/`.rels`,
+ * `DOCX_MAX_ENTRY_UNCOMPRESSED_BYTES` par autre entrée et
  * `DOCX_MAX_UNCOMPRESSED_BYTES` au total. Lève une 400 sinon ; le ZIP64 est
  * refusé (trop gros pour un modèle).
  */

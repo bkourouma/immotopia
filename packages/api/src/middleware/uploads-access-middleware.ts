@@ -126,6 +126,15 @@ export async function uploadsAccessGuard(req: Request, res: Response, next: Next
       return;
     }
 
+    // Sous Windows, express.static traite `\` comme un séparateur et `:` ouvre
+    // un flux NTFS (`photo.jpg:secret`) : `documents%5Csecret.jpg` passait le
+    // découpage sur `/` ci-dessous comme un fichier public. Aucun nom stocké
+    // n'en contient : même 404 qu'un fichier absent.
+    if (decodedPath.includes('\\') || decodedPath.includes(':')) {
+      deny(res, 404, 'Fichier introuvable.');
+      return;
+    }
+
     const segments = decodedPath.split('/').filter(Boolean);
     if (segments.length > 0 && isPublic(segments)) {
       next();

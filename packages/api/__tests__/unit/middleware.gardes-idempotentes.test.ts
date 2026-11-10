@@ -245,12 +245,13 @@ describe('requireTenantAccess — agence suspendue', () => {
   });
 
   it.each([
-    ['rétrogradé', { globalRole: 'USER', isActive: true }],
-    ['inactif', { globalRole: 'SUPER_ADMIN', isActive: false }],
-    ['introuvable', null]
+    // Inactif : refus uniforme immédiat, sans repli sur l'adhésion (contre-audit PR #205).
+    ['rétrogradé', { globalRole: 'USER', isActive: true }, 1],
+    ['inactif', { globalRole: 'SUPER_ADMIN', isActive: false }, 0],
+    ['introuvable', null, 1]
   ])(
     "super-admin %s depuis l'émission du jeton : pas de contournement, refus uniforme si non membre",
-    async (_libelle, compte) => {
+    async (_libelle, compte, lecturesAdhesion) => {
       userFindUnique.mockResolvedValue(compte);
       findUnique.mockResolvedValue(null);
       tenantClientFindUnique.mockResolvedValue(null);
@@ -263,7 +264,7 @@ describe('requireTenantAccess — agence suspendue', () => {
 
       expect(userFindUnique).toHaveBeenCalledTimes(1);
       // Chemin normal : l'adhésion est vérifiée, et à défaut c'est le refus uniforme.
-      expect(findUnique).toHaveBeenCalledTimes(1);
+      expect(findUnique).toHaveBeenCalledTimes(lecturesAdhesion as number);
       expect(next).not.toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(403);
       expect(res.json.mock.calls[0][0]).not.toHaveProperty('code');

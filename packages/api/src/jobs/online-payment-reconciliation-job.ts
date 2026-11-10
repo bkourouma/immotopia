@@ -11,7 +11,9 @@ import { reconcilePendingSyndicCheckouts } from '../lib/syndics/online-payment/c
  * Toutes les 5 minutes : rapproche les checkouts PENDING créés il y a plus de
  * 2 minutes (le temps que le locataire choisisse son moyen de paiement sur la
  * page PaySecureHub), et expire ceux de plus de 48 heures après une dernière
- * vérification.
+ * vérification. En location, revérifie aussi (48 h au plus) les checkouts en
+ * REVIEW pour un succès annoncé sans montant ou dans une autre devise : seule
+ * une réponse désormais conforme les passe en SUCCESS.
  */
 let onlinePaymentReconciliationJob: cron.ScheduledTask | null = null;
 

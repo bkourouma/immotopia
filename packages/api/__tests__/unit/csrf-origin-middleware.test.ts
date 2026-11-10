@@ -19,7 +19,12 @@ jest.mock('../../src/utils/logger', () => ({
   logger: { warn: jest.fn(), error: jest.fn(), info: jest.fn(), debug: jest.fn() }
 }));
 
-import { csrfOriginGuard, isCsrfExemptPath } from '../../src/middleware/csrf-origin-middleware';
+import {
+  CSRF_MAX_PATH_LENGTH,
+  csrfOriginGuard,
+  isCsrfExemptPath,
+  normalizeCsrfPath
+} from '../../src/middleware/csrf-origin-middleware';
 
 const app = express();
 app.use(cookieParser());
@@ -55,8 +60,12 @@ describe('csrfOriginGuard : requêtes autorisées', () => {
   it('client non navigateur (sans Origin, Referer ni Sec-Fetch-Site)', async () => {
     expect((await post()).status).toBe(200);
   });
-  it('Origin étranger mais avec Authorization', async () => {
-    expect((await post().set('Origin', EVIL).set('Authorization', 'Bearer x')).status).toBe(200);
+  it('Origin étranger avec Authorization SANS cookie (client API, passerelle IA)', async () => {
+    const res = await request(app)
+      .post('/api/tenants/t1/contacts')
+      .set('Origin', EVIL)
+      .set('Authorization', 'Bearer x');
+    expect(res.status).toBe(200);
   });
   it('Origin étranger sans cookie accessToken', async () => {
     expect((await request(app).post('/api/tenants/t1/contacts').set('Origin', EVIL)).status).toBe(200);
@@ -108,6 +117,10 @@ describe('csrfOriginGuard : requêtes refusées', () => {
     const b = await post().set('Sec-Fetch-Site', 'cross-site');
     expect(a.body).toEqual(b.body);
   });
+  it('cookie ET Authorization : le garde reste armé (authenticate lit le cookie en premier)', async () => {
+    expectRejected(await post().set('Origin', EVIL).set('Authorization', 'Bearer x'));
+    expectRejected(await post().set('Sec-Fetch-Site', 'cross-site').set('Authorization', 'Bearer x'));
+  });
   it('logout et me/language ne sont PAS exclus (connectés)', async () => {
     expectRejected(await post('/api/auth/logout').set('Origin', EVIL));
     expectRejected(await request(app).patch('/api/auth/me/language').set('Cookie', COOKIE).set('Origin', EVIL));
@@ -133,8 +146,6 @@ describe('csrfOriginGuard : exclusions', () => {
     '/api/newsletter/subscribe',
     '/api/newsletter/confirm',
     '/api/newsletter/unsubscribe',
-    '/api/auth/login',
-    '/api/auth/register',
     '/api/auth/forgot-password',
     '/api/auth/reset-password',
     '/api/auth/resend-verification',
@@ -167,13 +178,78 @@ describe('csrfOriginGuard : exclusions', () => {
     for (const prefix of found) expect(isCsrfExemptPath(`${prefix}/x`)).toBe(true);
   });
 
-  it('app.ts monte le garde après CORS et avant les routeurs', () => {
+  it('app.ts monte le garde après CORS et le limiteur global, avant les routeurs', () => {
     const source = fs.readFileSync(path.join(__dirname, '../../src/app.ts'), 'utf8');
     const cors = source.indexOf('app.use(corsMiddleware)');
+    const limiter = source.indexOf('app.use(globalApiRateLimiter)');
     const guard = source.indexOf('app.use(csrfOriginGuard)');
     const firstRouter = source.indexOf("app.use('/api'");
     expect(cors).toBeGreaterThan(0);
-    expect(guard).toBeGreaterThan(cors);
+    expect(limiter).toBeGreaterThan(cors);
+    expect(guard).toBeGreaterThan(limiter);
     expect(guard).toBeLessThan(firstRouter);
+  });
+});
+
+describe('csrfOriginGuard : CSRF de connexion (login, register), cookie présent ou non', () => {
+  const expectRejected = (res: request.Response) => {
+    expect(res.status).toBe(403);
+    expect(res.body).toMatchObject({ success: false, code: 'CSRF_REJECTED' });
+  };
+  it.each(['/api/auth/login', '/api/auth/register', '/API/Auth/Login/'])('%s : cross-site refusé', async url => {
+    expectRejected(await request(app).post(url).set('Sec-Fetch-Site', 'cross-site'));
+    expectRejected(await post(url).set('Sec-Fetch-Site', 'cross-site'));
+  });
+  it.each(['/api/auth/login', '/api/auth/register'])('%s : Origin étrangère ou null refusée', async url => {
+    expectRejected(await request(app).post(url).set('Origin', EVIL));
+    expectRejected(await request(app).post(url).set('Origin', 'null'));
+    expectRejected(await request(app).post(url).set('Origin', EVIL).set('Sec-Fetch-Site', 'same-site'));
+    expectRejected(await post(url).set('Origin', EVIL));
+  });
+  it.each(['/api/auth/login', '/api/auth/register'])(
+    '%s : front, same-origin et clients sans en-tête passent',
+    async url => {
+      expect((await request(app).post(url).set('Origin', FRONT)).status).toBe(200);
+      expect((await request(app).post(url).set('Origin', FRONT).set('Sec-Fetch-Site', 'same-site')).status).toBe(200);
+      expect((await request(app).post(url).set('Sec-Fetch-Site', 'same-origin')).status).toBe(200);
+      expect((await request(app).post(url)).status).toBe(200);
+      expect((await post(url)).status).toBe(200);
+    }
+  );
+  it('les autres routes auth exclues restent exclues sans cookie', async () => {
+    const res = await request(app).post('/api/auth/forgot-password').set('Origin', EVIL);
+    expect(res.status).toBe(200);
+  });
+});
+
+describe('csrfOriginGuard : chemin et performance (ReDoS)', () => {
+  it('normalizeCsrfPath : même résultat que l’ancienne expression', () => {
+    const legacy = (p: string) => p.toLowerCase().replace(/\/+$/, '');
+    for (const p of ['', '/', '//', '/api/Auth/Login', '/api/auth/login/', '/api/auth/login///', '/a//b/', 'x']) {
+      expect(normalizeCsrfPath(p)).toBe(legacy(p));
+    }
+  });
+  it('isCsrfExemptPath : 16 000 « / » puis « a » traités en moins de 5 ms', () => {
+    const evil = `${'/'.repeat(16_000)}a`;
+    isCsrfExemptPath(evil);
+    const start = process.hrtime.bigint();
+    expect(isCsrfExemptPath(evil)).toBe(false);
+    expect(normalizeCsrfPath(evil)).toBe(evil);
+    const elapsedMs = Number(process.hrtime.bigint() - start) / 1e6;
+    expect(elapsedMs).toBeLessThan(5);
+  });
+  it('normalizeCsrfPath : longue suite de « / » finaux en temps linéaire', () => {
+    const evil = `/api/auth/login${'/'.repeat(100_000)}`;
+    const start = process.hrtime.bigint();
+    expect(normalizeCsrfPath(evil)).toBe('/api/auth/login');
+    expect(Number(process.hrtime.bigint() - start) / 1e6).toBeLessThan(5);
+  });
+  it('chemin plus long que la limite : jamais exclu ; écriture avec cookie refusée, sans cookie laissée passer', async () => {
+    const long = `/api/newsletter/${'a'.repeat(CSRF_MAX_PATH_LENGTH)}`;
+    expect(isCsrfExemptPath(long)).toBe(false);
+    const withCookie = await request(app).post(long).set('Cookie', COOKIE).set('Origin', FRONT);
+    expect(withCookie.status).toBe(403);
+    expect(withCookie.body).toMatchObject({ code: 'CSRF_REJECTED' });
+    expect((await request(app).post(long)).status).toBe(200);
   });
 });

@@ -2,7 +2,7 @@ import { escapeLike } from '../utils/like-escape';
 import { RESERVED_ROLE_KEYS } from '../lib/patrimoine/personal-permissions';
 import { prisma, PrismaTransactionClient } from '../utils/database';
 import { logger } from '../utils/logger';
-import { MembershipStatus } from '@prisma/client';
+import { InvitationStatus, MembershipStatus } from '@prisma/client';
 import { hashPassword, validatePasswordStrength } from '../utils/password-utils';
 import { recordAuditEvent, AuditActionKey } from './audit-service';
 import { invalidateAllUserPermissionCache } from './permission-service';
@@ -29,12 +29,13 @@ async function assertNotLastActiveAdmin(
   userId: string,
   tenantId: string,
   message: string,
-  targetIsAdmin?: boolean
+  targetIsAdmin?: boolean,
+  client: Pick<PrismaTransactionClient, 'userRole'> = prisma
 ): Promise<void> {
-  const isAdmin = targetIsAdmin ?? (await isTenantAdmin(userId, tenantId));
+  const isAdmin = targetIsAdmin ?? (await isTenantAdmin(userId, tenantId, client));
   if (!isAdmin) return;
 
-  const otherActiveAdmins = await prisma.userRole.count({
+  const otherActiveAdmins = await client.userRole.count({
     where: {
       tenantId,
       userId: { not: userId },
@@ -48,25 +49,47 @@ async function assertNotLastActiveAdmin(
 }
 
 /**
+ * Verrou consultatif de transaction propre aux administrateurs d'une agence :
+ * deux changements qui peuvent retirer un administrateur (rôles, désactivation)
+ * se suivent, et la règle « au moins un administrateur actif » est rejouée sous
+ * ce verrou (sinon deux administrateurs se rétrogradant l'un l'autre en même
+ * temps laissaient l'agence sans administrateur). Relâché au commit/rollback.
+ */
+async function lockTenantAdminsTx(tx: PrismaTransactionClient, tenantId: string): Promise<void> {
+  const key = `tenant-admins:${tenantId}`;
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`;
+}
+
+/**
  * Revoke every active refresh token of a user inside the caller's transaction,
- * so the revocation commits together with its audit trace. Mirrors
- * `revokeUserSessions` (middleware/session-invalidation), which uses the global
- * client and cannot join a transaction.
- * Un super-admin ou un compte actif dans une autre agence n'est PAS déconnecté
- * (sessions communes à toutes les agences) : `skipped` vaut alors true.
+ * so the revocation and its SESSIONS_REVOKED audit trace commit together.
+ * Mirrors `revokeUserSessions` (middleware/session-invalidation), which uses the
+ * global client and cannot join a transaction.
+ * Toujours faite, compte partagé ou non (une déconnexion forcée est sans danger
+ * pour les autres agences, et un compte qui se fabriquerait une appartenance
+ * ailleurs ne doit pas y échapper) ; seule exception : un super-admin, dont les
+ * sessions sont de portée plateforme (`skipped` vaut alors true).
  */
 async function revokeUserSessionsInTx(
   tx: PrismaTransactionClient,
-  userId: string,
-  tenantId: string
+  params: { userId: string; tenantId: string; targetGlobalRole: string | null | undefined; actorUserId?: string }
 ): Promise<{ skipped: boolean; count: number }> {
-  if (await isSharedOrPlatformAccount(tx, userId, tenantId)) {
-    logger.info('Session revocation skipped for shared or platform account', { userId, tenantId });
+  const { userId, tenantId, targetGlobalRole, actorUserId } = params;
+  if (targetGlobalRole === 'SUPER_ADMIN') {
+    logger.info('Session revocation skipped for platform account', { userId, tenantId });
     return { skipped: true, count: 0 };
   }
   const result = await tx.refreshToken.updateMany({
     where: { userId, revoked: false },
     data: { revoked: true, revokedAt: new Date() }
+  });
+  await recordAuditEvent(tx, {
+    actorUserId: actorUserId ?? null,
+    tenantId,
+    actionKey: AuditActionKey.SESSIONS_REVOKED,
+    entityType: 'User',
+    entityId: userId,
+    payload: { tokensRevoked: result.count }
   });
   logger.info('Revoked user sessions', { userId, tokensRevoked: result.count });
   return { skipped: false, count: result.count };
@@ -334,6 +357,24 @@ export async function updateMemberRoles(
 
   // Critical action: roles swap and audit trace commit together or not at all.
   await prisma.$transaction(async tx => {
+    // Contrôles rejoués sous le verrou des administrateurs de l'agence : entre
+    // la lecture ci-dessus et l'écriture, un autre administrateur a pu être
+    // rétrogradé, la cible promue ou l'acteur rétrogradé (TOCTOU).
+    await lockTenantAdminsTx(tx, tenantId);
+    const targetIsAdminNow = await isTenantAdmin(userId, tenantId, tx);
+    if (targetIsAdminNow || grantsAdmin) {
+      await assertActorMayTouchAdmin(actorUserId, tenantId);
+    }
+    if (!grantsAdmin) {
+      await assertNotLastActiveAdmin(
+        userId,
+        tenantId,
+        "Impossible de retirer le rôle d'administrateur au dernier administrateur actif de l'agence.",
+        targetIsAdminNow,
+        tx
+      );
+    }
+
     // Remove existing tenant roles for this user in this tenant
     await tx.userRole.deleteMany({
       where: {
@@ -425,6 +466,22 @@ export async function disableMember(userId: string, tenantId: string, actorUserI
 
   // Update membership status (critical action: audit trace in the same transaction)
   const updated = await prisma.$transaction(async tx => {
+    // Contrôles rejoués sous le verrou des administrateurs (même verrou que
+    // `updateMemberRoles`) : statut d'administrateur de la cible, droit de
+    // l'acteur, règle du dernier administrateur actif.
+    await lockTenantAdminsTx(tx, tenantId);
+    const targetIsAdminNow = await isTenantAdmin(userId, tenantId, tx);
+    if (targetIsAdminNow) {
+      await assertActorMayTouchAdmin(actorUserId, tenantId);
+    }
+    await assertNotLastActiveAdmin(
+      userId,
+      tenantId,
+      "Impossible de désactiver le dernier administrateur actif de l'agence.",
+      targetIsAdminNow,
+      tx
+    );
+
     const result = await tx.membership.update({
       where: {
         userId_tenantId: {
@@ -437,8 +494,21 @@ export async function disableMember(userId: string, tenantId: string, actorUserI
       }
     });
 
-    // Revoke all sessions for this user (sauf compte partagé / super-admin)
-    await revokeUserSessionsInTx(tx, userId, tenantId);
+    // Les invitations encore en attente émises par ce membre tombent avec lui :
+    // une invitation (administrateur ou non) ne survit pas à la désactivation
+    // de son auteur.
+    await tx.invitation.updateMany({
+      where: { tenantId, invitedBy: userId, status: InvitationStatus.PENDING },
+      data: { status: InvitationStatus.REVOKED, revokedAt: new Date() }
+    });
+
+    // Revoke all sessions for this user (sauf super-admin, portée plateforme)
+    await revokeUserSessionsInTx(tx, {
+      userId,
+      tenantId,
+      targetGlobalRole: membership.user?.globalRole,
+      actorUserId
+    });
 
     await recordAuditEvent(tx, {
       actorUserId,
@@ -570,9 +640,9 @@ export async function resetMemberPassword(
 
   // Le mot de passe est GLOBAL (table User) : l'écraser depuis une agence
   // toucherait aussi les autres agences du compte, ou un super-admin. Pour ces
-  // comptes protégés, seul le lien à usage unique est émis ; le hash n'est pas
-  // modifié et les sessions ne sont pas révoquées (elles sont communes à toutes
-  // les agences du compte).
+  // comptes protégés, seul le lien à usage unique est émis et le hash n'est pas
+  // modifié. Les sessions, elles, sont révoquées quand même (sauf super-admin) :
+  // une déconnexion forcée est sans danger pour les autres agences.
   // Est aussi protégé : un compte portant un rôle de portée plateforme ou d'une
   // autre agence, un profil client dans une autre agence, ou une appartenance
   // (même non active : invitation, désactivée) ailleurs.
@@ -587,10 +657,12 @@ export async function resetMemberPassword(
   }
 
   // Un administrateur d'agence ne peut être touché que par le super-admin ou un
-  // administrateur de la même agence : sinon (gestionnaire), le compte est traité
-  // comme protégé. Pas de mot de passe imposé (on se connecterait à sa place),
-  // et ni écrasement du hash ni révocation de ses sessions : seul le lien de
-  // réinitialisation, envoyé à son adresse, est émis.
+  // administrateur ACTIF de la même agence : sinon (gestionnaire), le compte est
+  // traité comme protégé. Pas de mot de passe imposé (on se connecterait à sa
+  // place), et ni écrasement du hash ni révocation de ses sessions (un
+  // gestionnaire ne déconnecte pas un administrateur, comme pour
+  // `revokeMemberSessions`) : seul le lien de réinitialisation, envoyé à son
+  // adresse, est émis.
   const targetIsAdmin = await isTenantAdmin(userId, tenantId);
   const adminShielded = targetIsAdmin && !(await actorMayTouchAdmin(actorUserId, tenantId));
   if (adminShielded && newPassword) {
@@ -629,16 +701,24 @@ export async function resetMemberPassword(
 
   // Critical action: password change, session revocation, reset token and
   // audit trace commit together or not at all.
-  await prisma.$transaction(async tx => {
+  const sessionsRevoked = await prisma.$transaction(async tx => {
     if (passwordHash) {
       await tx.user.update({
         where: { id: userId },
         data: { passwordHash }
       });
-
-      // Revoke all sessions
-      await revokeUserSessionsInTx(tx, userId, tenantId);
     }
+
+    // Révocation des sessions : toujours, sauf administrateur protégé d'un
+    // gestionnaire et super-admin (portée plateforme, sauté par la fonction).
+    const revocation = adminShielded
+      ? { skipped: true, count: 0 }
+      : await revokeUserSessionsInTx(tx, {
+          userId,
+          tenantId,
+          targetGlobalRole: membership.user.globalRole,
+          actorUserId
+        });
 
     await tx.passwordResetToken.updateMany({
       where: { userId, used: false },
@@ -658,6 +738,7 @@ export async function resetMemberPassword(
         entityId: userId
       });
     }
+    return !revocation.skipped;
   });
 
   // Send password reset notification email
@@ -680,7 +761,8 @@ export async function resetMemberPassword(
   return {
     password: generated ? undefined : password,
     resetLinkSent: true,
-    sessionsRevoked: !(protectedAccount || adminShielded)
+    passwordReplaced: passwordHash !== null,
+    sessionsRevoked
   };
 }
 
@@ -716,32 +798,21 @@ export async function revokeMemberSessions(userId: string, tenantId: string, act
     await assertActorMayTouchAdmin(actorUserId, tenantId);
   }
 
-  // Revoke all sessions (critical action: audit trace in the same transaction).
-  // Un compte partagé (autres agences, plateforme) garde ses sessions (communes) :
-  // aucune trace SESSIONS_REVOKED n'est alors écrite, l'appelant en est informé.
-  const tokensRevoked = await prisma.$transaction(async tx => {
-    const { skipped, count } = await revokeUserSessionsInTx(tx, userId, tenantId);
-    if (skipped) return null;
-
-    await recordAuditEvent(tx, {
-      actorUserId,
+  // Revoke all sessions (critical action: SESSIONS_REVOKED audit trace in the
+  // same transaction). Toujours faite, même pour un compte présent dans d'autres
+  // agences : sinon le titulaire d'une session volée y échapperait en se créant
+  // une appartenance ailleurs (le super-admin est refusé plus haut).
+  const { count: tokensRevoked } = await prisma.$transaction(tx =>
+    revokeUserSessionsInTx(tx, {
+      userId,
       tenantId,
-      actionKey: AuditActionKey.SESSIONS_REVOKED,
-      entityType: 'User',
-      entityId: userId,
-      payload: { tokensRevoked: count }
-    });
-    return count;
-  });
+      targetGlobalRole: membership.user.globalRole,
+      actorUserId
+    })
+  );
 
-  const sessionsRevoked = tokensRevoked !== null;
-  logger.info(sessionsRevoked ? 'Member sessions revoked' : 'Member sessions kept (shared account)', {
-    userId,
-    tenantId,
-    actorUserId,
-    tokensRevoked
-  });
-  return { sessionsRevoked, tokensRevoked: tokensRevoked ?? 0 };
+  logger.info('Member sessions revoked', { userId, tenantId, actorUserId, tokensRevoked });
+  return { sessionsRevoked: true, tokensRevoked };
 }
 
 /**

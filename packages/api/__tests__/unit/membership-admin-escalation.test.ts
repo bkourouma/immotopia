@@ -2,10 +2,15 @@
  * TEN-04 : un gestionnaire (USERS_EDIT) ne peut ni s'attribuer / attribuer le rôle
  * TENANT_ADMIN, ni le retirer, ni désactiver / réactiver / déconnecter un
  * administrateur ; nul ne modifie ses propres rôles ; la révocation de sessions
- * épargne un super-admin et un compte actif dans d'autres agences.
+ * épargne seulement un super-admin (M1 : un compte présent dans d'autres agences
+ * est déconnecté quand même) ; un administrateur DÉSACTIVÉ n'exerce plus ses
+ * pouvoirs (M2) ; contrôles rejoués sous verrou (F1) ; invitations en attente de
+ * l'auteur désactivé annulées (F2).
  */
 const tx: any = {
+  $executeRaw: jest.fn(),
   membership: { update: jest.fn(), count: jest.fn() },
+  invitation: { updateMany: jest.fn() },
   user: { findUnique: jest.fn() },
   tenantClient: { count: jest.fn() },
   refreshToken: { updateMany: jest.fn() },
@@ -41,20 +46,30 @@ const T = 't1';
 const ADMIN_ROLE = { id: 'r-admin', key: 'TENANT_ADMIN' };
 const AGENT_ROLE = { id: 'r-agent', key: 'TENANT_AGENT' };
 
-/** Acteur 'actor', cible 'target' ; `otherAdmins` = autres administrateurs actifs. */
+/**
+ * Acteur 'actor', cible 'target' ; `otherAdmins` = autres administrateurs actifs.
+ * `actorDisabled` : l'acteur porte TENANT_ADMIN mais son appartenance n'est plus
+ * ACTIVE (la requête filtrée sur `user.memberships` ne le compte pas).
+ */
 function scene(opts: {
   actorAdmin?: boolean;
+  actorDisabled?: boolean;
   actorGlobal?: string;
   targetAdmin?: boolean;
   otherAdmins?: number;
   targetGlobal?: string;
   status?: MembershipStatus;
 }) {
-  prismaMock.userRole.count.mockImplementation(async ({ where }: any) => {
+  const count = async ({ where }: any) => {
     if (typeof where.userId === 'object') return opts.otherAdmins ?? 1;
-    if (where.userId === 'actor') return opts.actorAdmin ? 1 : 0;
+    if (where.userId === 'actor') {
+      if (where.user && opts.actorDisabled) return 0;
+      return opts.actorAdmin ? 1 : 0;
+    }
     return opts.targetAdmin ? 1 : 0;
-  });
+  };
+  prismaMock.userRole.count.mockImplementation(count);
+  tx.userRole.count.mockImplementation(count);
   prismaMock.user.findUnique.mockResolvedValue({ globalRole: opts.actorGlobal ?? 'USER' });
   prismaMock.membership.findUnique.mockResolvedValue({
     id: 'm1',
@@ -68,6 +83,8 @@ beforeEach(() => {
   jest.clearAllMocks();
   tx.membership.update.mockResolvedValue({ id: 'm1' });
   tx.membership.count.mockResolvedValue(0);
+  tx.invitation.updateMany.mockResolvedValue({ count: 0 });
+  tx.$executeRaw.mockResolvedValue(1);
   tx.userRole.count.mockResolvedValue(0);
   tx.tenantClient.count.mockResolvedValue(0);
   tx.refreshToken.updateMany.mockResolvedValue({ count: 2 });
@@ -192,34 +209,50 @@ describe('disableMember / enableMember / revokeMemberSessions : compte administr
   });
 });
 
-describe('revokeUserSessionsInTx : sessions communes épargnées', () => {
+describe('M1 : révocation de sessions toujours faite (sauf super-admin)', () => {
   it('revokeMemberSessions refuse un super-admin cible (403), aucun token touché', async () => {
     scene({ actorAdmin: true, targetGlobal: 'SUPER_ADMIN' });
     await expect(revokeMemberSessions('target', T, 'actor')).rejects.toMatchObject({ statusCode: 403 });
     expect(tx.refreshToken.updateMany).not.toHaveBeenCalled();
   });
 
-  it("disableMember d'un compte actif dans une autre agence ne révoque pas ses refresh tokens", async () => {
+  it("disableMember d'un compte présent dans une autre agence révoque quand même ses refresh tokens", async () => {
     scene({ actorAdmin: true, targetAdmin: false });
     tx.membership.count.mockResolvedValue(1);
     await disableMember('target', T, 'actor');
     expect(tx.membership.update).toHaveBeenCalledTimes(1);
-    expect(tx.refreshToken.updateMany).not.toHaveBeenCalled();
-    expect(tx.membership.count).toHaveBeenCalledWith({ where: { userId: 'target', tenantId: { not: T } } });
+    expect(tx.refreshToken.updateMany).toHaveBeenCalledWith({
+      where: { userId: 'target', revoked: false },
+      data: { revoked: true, revokedAt: expect.any(Date) }
+    });
   });
 
-  it('disableMember : un super-admin désactivé dans une agence garde ses sessions', async () => {
-    scene({ actorAdmin: true, targetAdmin: false });
-    tx.user.findUnique.mockResolvedValue({ globalRole: 'SUPER_ADMIN' });
+  it('disableMember : un super-admin désactivé dans une agence garde ses sessions (portée plateforme)', async () => {
+    scene({ actorGlobal: 'SUPER_ADMIN', targetGlobal: 'SUPER_ADMIN' });
     await disableMember('target', T, 'actor');
+    expect(tx.membership.update).toHaveBeenCalledTimes(1);
     expect(tx.refreshToken.updateMany).not.toHaveBeenCalled();
   });
 
-  it('revokeMemberSessions : compte multi-agences, aucun token révoqué', async () => {
+  it('revokeMemberSessions : compte avec une appartenance « fantôme » ailleurs, sessions révoquées et auditées', async () => {
     scene({ actorAdmin: true, targetAdmin: false });
+    // Appartenance et profil client ailleurs : ne protègent plus les sessions.
     tx.membership.count.mockResolvedValue(2);
-    await revokeMemberSessions('target', T, 'actor');
-    expect(tx.refreshToken.updateMany).not.toHaveBeenCalled();
+    tx.tenantClient.count.mockResolvedValue(1);
+    const res = await revokeMemberSessions('target', T, 'actor');
+    expect(tx.refreshToken.updateMany).toHaveBeenCalledTimes(1);
+    expect(res).toEqual({ sessionsRevoked: true, tokensRevoked: 2 });
+    const { recordAuditEvent } = require('../../src/services/audit-service');
+    expect(recordAuditEvent).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        actionKey: 'SESSIONS_REVOKED',
+        actorUserId: 'actor',
+        tenantId: T,
+        entityId: 'target',
+        payload: { tokensRevoked: 2 }
+      })
+    );
   });
 
   it('compte mono-agence : les sessions sont révoquées', async () => {
@@ -230,39 +263,96 @@ describe('revokeUserSessionsInTx : sessions communes épargnées', () => {
       data: { revoked: true, revokedAt: expect.any(Date) }
     });
   });
-});
 
-describe('N1 : revokeMemberSessions annonce honnêtement ce qui a été fait', () => {
-  it('compte mono-agence : sessionsRevoked true, audit SESSIONS_REVOKED écrit', async () => {
-    scene({ actorAdmin: true });
-    const res = await revokeMemberSessions('target', T, 'actor');
-    expect(res).toMatchObject({ sessionsRevoked: true, tokensRevoked: 2 });
-    const { recordAuditEvent } = require('../../src/services/audit-service');
-    expect(recordAuditEvent).toHaveBeenCalledWith(tx, expect.objectContaining({ actionKey: 'SESSIONS_REVOKED' }));
-  });
-
-  it('compte actif ailleurs : sessionsRevoked false et aucun audit SESSIONS_REVOKED', async () => {
-    scene({ actorAdmin: true });
-    tx.membership.count.mockResolvedValue(1);
-    const res = await revokeMemberSessions('target', T, 'actor');
-    expect(res.sessionsRevoked).toBe(false);
-    expect(tx.refreshToken.updateMany).not.toHaveBeenCalled();
-    const { recordAuditEvent } = require('../../src/services/audit-service');
-    expect(recordAuditEvent).not.toHaveBeenCalled();
-  });
-});
-
-describe('N2 : un seul prédicat « compte partagé » (critères complets)', () => {
-  it.each([
-    ['appartenance non active ailleurs', () => tx.membership.count.mockResolvedValue(1)],
-    ['rôle de portée plateforme ou autre agence', () => tx.userRole.count.mockResolvedValue(1)],
-    ['profil client dans une autre agence', () => tx.tenantClient.count.mockResolvedValue(1)]
-  ])('disableMember : %s, sessions épargnées', async (_label, arrange) => {
+  it('disableMember écrit aussi la trace SESSIONS_REVOKED', async () => {
     scene({ actorAdmin: true, targetAdmin: false });
-    arrange();
     await disableMember('target', T, 'actor');
-    expect(tx.membership.update).toHaveBeenCalledTimes(1);
-    expect(tx.refreshToken.updateMany).not.toHaveBeenCalled();
+    const { recordAuditEvent } = require('../../src/services/audit-service');
+    const keys = recordAuditEvent.mock.calls.map((call: any[]) => call[1].actionKey);
+    expect(keys).toEqual(expect.arrayContaining(['SESSIONS_REVOKED', 'USER_DISABLED']));
+  });
+});
+
+describe("M2 : un administrateur désactivé n'exerce plus ses pouvoirs", () => {
+  it('ne peut pas réactiver un administrateur, lui-même compris (403)', async () => {
+    scene({ actorAdmin: true, actorDisabled: true, targetAdmin: true, status: MembershipStatus.DISABLED });
+    await expect(enableMember('target', T, 'actor')).rejects.toMatchObject({ statusCode: 403 });
+    expect(tx.membership.update).not.toHaveBeenCalled();
+  });
+
+  it('ne peut pas rétrograder un administrateur (403)', async () => {
+    scene({ actorAdmin: true, actorDisabled: true, targetAdmin: true, otherAdmins: 2 });
+    await expect(updateMemberRoles('target', T, { roleIds: ['r-agent'] }, 'actor')).rejects.toMatchObject({
+      statusCode: 403
+    });
+    expect(tx.userRole.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it("ne peut pas attribuer TENANT_ADMIN (403) ; le filtre exige une appartenance ACTIVE de l'acteur", async () => {
+    scene({ actorAdmin: true, actorDisabled: true });
+    prismaMock.role.findMany.mockResolvedValue([ADMIN_ROLE]);
+    await expect(updateMemberRoles('target', T, { roleIds: ['r-admin'] }, 'actor')).rejects.toMatchObject({
+      statusCode: 403
+    });
+    expect(prismaMock.userRole.count).toHaveBeenCalledWith({
+      where: {
+        userId: 'actor',
+        tenantId: T,
+        role: { key: 'TENANT_ADMIN' },
+        user: { isActive: true, memberships: { some: { tenantId: T, status: MembershipStatus.ACTIVE } } }
+      }
+    });
+  });
+});
+
+describe("F2 : les invitations en attente de l'auteur désactivé sont annulées", () => {
+  it('disableMember révoque les invitations PENDING émises par le membre, dans la transaction', async () => {
+    scene({ actorAdmin: true, targetAdmin: false });
+    await disableMember('target', T, 'actor');
+    expect(tx.invitation.updateMany).toHaveBeenCalledWith({
+      where: { tenantId: T, invitedBy: 'target', status: 'PENDING' },
+      data: { status: 'REVOKED', revokedAt: expect.any(Date) }
+    });
+  });
+});
+
+describe('F1 : contrôles rejoués sous le verrou des administrateurs', () => {
+  it("updateMemberRoles prend le verrou consultatif de l'agence dans la transaction", async () => {
+    scene({ actorAdmin: true, targetAdmin: true, otherAdmins: 1 });
+    await updateMemberRoles('target', T, { roleIds: ['r-agent'] }, 'actor');
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
+    const [, key] = tx.$executeRaw.mock.calls[0];
+    expect(key).toBe(`tenant-admins:${T}`);
+  });
+
+  it("course : le dernier autre administrateur est rétrogradé entre la lecture et l'écriture -> 409, rien écrit", async () => {
+    scene({ actorAdmin: true, targetAdmin: true, otherAdmins: 1 });
+    // Sous le verrou, l'autre administrateur a disparu (rétrogradé en parallèle).
+    tx.userRole.count.mockImplementation(async ({ where }: any) => (typeof where.userId === 'object' ? 0 : 1));
+    await expect(updateMemberRoles('target', T, { roleIds: ['r-agent'] }, 'actor')).rejects.toMatchObject({
+      statusCode: 409
+    });
+    expect(tx.userRole.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it("course : la cible est devenue administratrice entre la lecture et l'écriture -> 403 pour un gestionnaire", async () => {
+    scene({ actorAdmin: false, targetAdmin: false });
+    tx.userRole.count.mockImplementation(async ({ where }: any) => {
+      if (typeof where.userId === 'object') return 1;
+      return where.userId === 'target' ? 1 : 0;
+    });
+    await expect(updateMemberRoles('target', T, { roleIds: ['r-agent'] }, 'actor')).rejects.toMatchObject({
+      statusCode: 403
+    });
+    expect(tx.userRole.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('disableMember : le dernier autre administrateur disparaît sous le verrou -> 409, rien écrit', async () => {
+    scene({ actorAdmin: true, targetAdmin: true, otherAdmins: 1 });
+    tx.userRole.count.mockImplementation(async ({ where }: any) => (typeof where.userId === 'object' ? 0 : 1));
+    await expect(disableMember('target', T, 'actor')).rejects.toMatchObject({ statusCode: 409 });
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(tx.membership.update).not.toHaveBeenCalled();
   });
 });
 

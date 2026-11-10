@@ -4,6 +4,9 @@
  * actif (désactivation ou retrait du rôle).
  */
 const tx: any = {
+  // Verrou consultatif des administrateurs : les contrôles sont rejoués dans la transaction.
+  $executeRaw: jest.fn().mockResolvedValue(1),
+  invitation: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
   membership: { update: jest.fn(), count: jest.fn() },
   user: { findUnique: jest.fn() },
   refreshToken: { updateMany: jest.fn() },
@@ -51,11 +54,14 @@ beforeEach(() => {
  * est-il admin ? (userId = 'u1'), combien d'autres admins actifs ? (userId: { not }).
  */
 function adminCounts(targetIsAdmin: number, otherActiveAdmins: number, actorIsAdmin = 1) {
-  prismaMock.userRole.count.mockImplementation(async ({ where }: any) => {
+  const count = async ({ where }: any) => {
     if (typeof where.userId === 'object') return otherActiveAdmins;
     if (where.userId === 'u1') return actorIsAdmin;
     return targetIsAdmin;
-  });
+  };
+  prismaMock.userRole.count.mockImplementation(count);
+  // Mêmes réponses sous le verrou (contrôles rejoués dans la transaction).
+  tx.userRole.count.mockImplementation(count);
 }
 
 describe('disableMember', () => {

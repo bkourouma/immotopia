@@ -10,7 +10,7 @@ import { maskSensitivePath } from '../utils/sensitive-path';
  * Le cookie `accessToken` est `SameSite=Lax` : il part aussi sur les requêtes
  * « même site » (sous-domaines voisins). Le garde refuse donc une requête qui
  * MODIFIE (POST/PUT/PATCH/DELETE) quand l'authentification repose sur ce
- * cookie (cookie `accessToken` présent, pas d'en-tête `Authorization`) et que
+ * cookie (cookie `accessToken` présent, avec ou sans `Authorization`) et que
  * le navigateur indique qu'elle ne vient pas de notre interface :
  *
  * 1. `Sec-Fetch-Site: cross-site` : refusée.
@@ -26,8 +26,10 @@ import { maskSensitivePath } from '../utils/sensitive-path';
  * 4. Sans `Origin`, sans `Referer` et sans `Sec-Fetch-Site` (client non
  *    navigateur : scripts, supertest) : autorisée.
  *
- * Un client API qui envoie `Authorization: Bearer` ou n'a pas de cookie
- * `accessToken` n'est pas concerné (un CSRF suppose un cookie ambiant).
+ * Un client API sans cookie `accessToken` (`Authorization: Bearer` seul, dont
+ * la passerelle IA en boucle locale) n'est pas concerné : un CSRF suppose un
+ * cookie ambiant. Connexion et inscription sont contrôlées à part (CSRF de
+ * connexion, voir `loginRejectionReason`).
  */
 
 const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
@@ -68,10 +70,34 @@ const EXEMPT_EXACT: ReadonlyArray<readonly [string, string]> = [
   ['/api/auth/refresh', 'rafraîchissement : authentifié par le seul cookie refreshToken, pas accessToken']
 ];
 
+/**
+ * Longueur maximale d'un chemin examiné par le garde. Aucune route de l'API n'en
+ * approche ; au-delà, une écriture portant le cookie est refusée sans autre
+ * calcul (contre-audit PR #205 : coût borné avant tout traitement du chemin).
+ */
+export const CSRF_MAX_PATH_LENGTH = 2048;
+
+/** Connexion et inscription : exclues du garde (pas de session), mais protégées contre le CSRF de connexion. */
+const LOGIN_CSRF_PATHS: ReadonlySet<string> = new Set(['/api/auth/login', '/api/auth/register']);
+
+const SLASH = 0x2f;
+
+/**
+ * Chemin en minuscules sans barre(s) finale(s). Boucle linéaire : l'ancienne
+ * expression `/\/+$/` était quadratique sur une longue suite de `/` (ReDoS).
+ */
+export function normalizeCsrfPath(path: string): string {
+  let end = path.length;
+  while (end > 0 && path.charCodeAt(end - 1) === SLASH) end -= 1;
+  return path.slice(0, end).toLowerCase();
+}
+
 /** Vrai si le chemin n'est pas protégé par le garde (webhook, route publique, auth non connectée). */
 export function isCsrfExemptPath(path: string): boolean {
+  // Aucun chemin exclu n'est aussi long : pas d'exclusion, donc contrôle complet.
+  if (path.length > CSRF_MAX_PATH_LENGTH) return false;
   // Express route sans tenir compte de la casse ni d'une barre finale.
-  const normalized = path.toLowerCase().replace(/\/+$/, '');
+  const normalized = normalizeCsrfPath(path);
   if (EXEMPT_EXACT.some(([exact]) => normalized === exact)) return true;
   return EXEMPT_PREFIXES.some(([prefix]) => normalized === prefix || normalized.startsWith(`${prefix}/`));
 }
@@ -110,23 +136,55 @@ function rejectionReason(req: Request): string | null {
 }
 
 /**
- * Middleware global (monté après `cookieParser` et CORS, avant tout routeur).
- * Réponse uniforme : 403 `CSRF_REJECTED`, quel que soit le motif.
+ * CSRF de connexion (`/api/auth/login`, `/api/auth/register`), cookie présent ou
+ * non : un site tiers ne doit pas pouvoir connecter la victime à SON compte.
+ * Refus : `Sec-Fetch-Site: cross-site`, ou `Origin` présente (`null` compris)
+ * différente de `FRONTEND_URL` hors `same-origin`/`none`. Un client sans
+ * `Origin` ni `Sec-Fetch-Site` (scripts, supertest) passe.
  */
-export function csrfOriginGuard(req: Request, res: Response, next: NextFunction): void {
-  if (!UNSAFE_METHODS.has(req.method)) return next();
-  if (!req.cookies?.accessToken || req.headers.authorization) return next();
-  if (isCsrfExemptPath(req.path)) return next();
+function loginRejectionReason(req: Request): string | null {
+  const site = headerValue(req.headers['sec-fetch-site'])?.toLowerCase();
+  if (site === 'cross-site') return 'connexion-cross-site';
+  if (site === 'same-origin' || site === 'none') return null;
+  const origin = headerValue(req.headers.origin);
+  if (origin === undefined) return null;
+  const declared = originOf(origin);
+  return declared && declared === originOf(env.FRONTEND_URL) ? null : 'connexion-origine-etrangere';
+}
 
-  const reason = rejectionReason(req);
-  if (!reason) return next();
-
+function reject(req: Request, res: Response, reason: string): void {
   logger.warn('Requête refusée par le garde CSRF', {
     reason,
     method: req.method,
-    path: maskSensitivePath(req.path),
+    path: req.path.length > CSRF_MAX_PATH_LENGTH ? '[chemin trop long]' : maskSensitivePath(req.path),
     ip: req.ip
   });
   const message = t('Requête refusée.');
   res.status(403).json({ success: false, message, error: message, code: CSRF_REJECTED_CODE });
+}
+
+/**
+ * Middleware global (monté après `cookieParser`, CORS et `globalApiRateLimiter`,
+ * avant tout routeur). Réponse uniforme : 403 `CSRF_REJECTED`, quel que soit le motif.
+ *
+ * Le garde ne s'efface que sans cookie `accessToken` : `authenticate` lit le
+ * cookie AVANT l'en-tête `Authorization`, donc un `Authorization` ajouté à une
+ * requête portant le cookie ne prouve rien (contre-audit PR #205).
+ */
+export function csrfOriginGuard(req: Request, res: Response, next: NextFunction): void {
+  if (!UNSAFE_METHODS.has(req.method)) return next();
+  const hasCookie = Boolean(req.cookies?.accessToken);
+  if (req.path.length > CSRF_MAX_PATH_LENGTH) {
+    return hasCookie ? reject(req, res, 'chemin-trop-long') : next();
+  }
+  if (LOGIN_CSRF_PATHS.has(normalizeCsrfPath(req.path))) {
+    const loginReason = loginRejectionReason(req);
+    return loginReason ? reject(req, res, loginReason) : next();
+  }
+  if (!hasCookie) return next();
+  if (isCsrfExemptPath(req.path)) return next();
+
+  const reason = rejectionReason(req);
+  if (!reason) return next();
+  reject(req, res, reason);
 }

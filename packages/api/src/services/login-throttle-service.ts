@@ -18,16 +18,25 @@ import { normalizeSignupIp } from './signup-guard-service';
  *    ramenée à son IPv4 ; sans IP, la clé « inconnue »). Un tiers qui martèle
  *    un compte depuis SA connexion ne verrouille que sa propre paire : le
  *    titulaire, depuis la sienne, n'est pas touché.
- * 2. Compteur GLOBAL par e-mail (toutes IP confondues) : au-delà de
+ * 2. Compteur GLOBAL par e-mail (toutes IP confondues) : à chaque tranche de
  *    `LOGIN_THROTTLE_GLOBAL_MAX_FAILURES` (50) échecs dans la fenêtre, un
- *    verrou COURT et FIXE de `LOGIN_THROTTLE_GLOBAL_LOCK_MS` (15 s) — jamais
- *    d'escalade, pas de prolongation pendant le verrou, compteur remis à zéro
- *    en l'engageant. Il freine une attaque distribuée sans permettre un
- *    verrouillage durable.
+ *    verrou qui ESCALADE d'un engagement à l'autre (15 s, 30 s, 60 s…,
+ *    plafonné à `LOGIN_THROTTLE_GLOBAL_MAX_LOCK_MS`, 5 min), sans prolongation
+ *    pendant le verrou, compteur d'échecs remis à zéro en l'engageant. Le rang
+ *    d'engagement vit tant que l'attaque continue (fenêtre glissante).
+ *    Contre-audit PR #205 : le verrou fixe de 15 s laissait ~200 essais par
+ *    minute à une attaque distribuée.
+ * 3. EXEMPTION du verrou global pour une paire (e-mail, IP) qui a réussi une
+ *    connexion depuis moins de `LOGIN_THROTTLE_TRUSTED_PAIR_MS` (30 jours) :
+ *    le titulaire, depuis sa connexion habituelle, n'est pas enfermé par une
+ *    attaque distribuée. Le verrou de SA paire continue de s'appliquer.
  *
- * Les tentatives faites PENDANT un verrou ne sont comptées nulle part. Un
- * succès remet à zéro la paire ET le compteur global de l'e-mail ; une
- * réinitialisation de mot de passe efface les deux (`clearEmailThrottle`).
+ * Les tentatives faites PENDANT un verrou ne sont comptées nulle part (une
+ * paire exemptée qui échoue pendant le verrou global n'est comptée que sur sa
+ * paire). Un succès remet à zéro la paire ET le compteur global de l'e-mail, et
+ * marque la paire comme sûre ; une réinitialisation de mot de passe efface
+ * tout l'état de l'e-mail, paires sûres comprises (`clearEmailThrottle`). La
+ * réponse reste indiscernable d'un échec ordinaire dans tous les cas.
  * Les échecs sont comptés pour TOUT e-mail, connu ou non : la réponse ne
  * trahit pas l'existence du compte.
  *
@@ -43,7 +52,9 @@ import { normalizeSignupIp } from './signup-guard-service';
  * anciennes). Derrière un CGNAT ou une agence, des utilisateurs partagent une
  * IP donc une paire par e-mail seulement : pas d'effet croisé entre comptes.
  * Une attaque distribuée sur de très nombreuses IP n'est freinée que par le
- * verrou global court (15 s par tranche de 50 échecs).
+ * verrou global escaladant (15 s puis doublé à chaque tranche de 50 échecs,
+ * 5 min au plus). Les paires sûres sont aussi en mémoire (redémarrage : le
+ * titulaire redevient soumis au verrou global jusqu'à sa prochaine connexion).
  */
 
 export const LOGIN_THROTTLE_WINDOW_MS = 15 * 60 * 1000;
@@ -52,7 +63,15 @@ export const LOGIN_THROTTLE_BASE_LOCK_MS = 15 * 1000;
 export const LOGIN_THROTTLE_MAX_LOCK_MS = 15 * 60 * 1000;
 export const LOGIN_THROTTLE_GLOBAL_MAX_FAILURES = 50;
 export const LOGIN_THROTTLE_GLOBAL_LOCK_MS = 15 * 1000;
+export const LOGIN_THROTTLE_GLOBAL_MAX_LOCK_MS = 5 * 60 * 1000;
+/** Durée pendant laquelle une paire (e-mail, IP) ayant réussi une connexion échappe au verrou global. */
+export const LOGIN_THROTTLE_TRUSTED_PAIR_MS = 30 * 24 * 60 * 60 * 1000;
 export const LOGIN_THROTTLE_MAX_ENTRIES = 10_000;
+/**
+ * Motif interne d'un refus de connexion pendant un verrou (`LoginLockedError.reason`),
+ * jamais renvoyé au client : il sert au seul `loginRateLimiter`.
+ */
+export const LOGIN_LOCKED_REASON = 'LOGIN_LOCKED';
 /** Intervalle minimal entre deux purges des entrées expirées (nettoyage opportuniste à l'écriture). */
 const PURGE_INTERVAL_MS = 60 * 1000;
 
@@ -65,10 +84,18 @@ interface ThrottleEntry {
   lockedUntil: number;
   /** Empreinte de l'e-mail (pour effacer toutes les paires d'un e-mail). */
   emailKey: string;
+  /** Compteur global : nombre de verrous déjà engagés dans la fenêtre (escalade). */
+  engagements: number;
+}
+
+interface TrustedPair {
+  lastSuccessAt: number;
+  emailKey: string;
 }
 
 const pairs = new Map<string, ThrottleEntry>();
 const globals = new Map<string, ThrottleEntry>();
+const trustedPairs = new Map<string, TrustedPair>();
 let lastPurgeAt = 0;
 let cachedKey: Buffer | null = null;
 let cachedKeySource: string | null = null;
@@ -109,10 +136,17 @@ function purgeExpired(now: number): void {
       if (isExpired(entry, now)) map.delete(key);
     }
   }
+  for (const [key, trusted] of trustedPairs) {
+    if (!isTrustValid(trusted, now)) trustedPairs.delete(key);
+  }
+}
+
+function isTrustValid(trusted: TrustedPair, now: number): boolean {
+  return now - trusted.lastSuccessAt < LOGIN_THROTTLE_TRUSTED_PAIR_MS;
 }
 
 /** Réinsère l'entrée en fin de Map (ordre d'ancienneté) et évince les plus anciennes au-delà du plafond. */
-function store(map: Map<string, ThrottleEntry>, key: string, entry: ThrottleEntry): void {
+function store<T>(map: Map<string, T>, key: string, entry: T): void {
   map.delete(key);
   map.set(key, entry);
   while (map.size > LOGIN_THROTTLE_MAX_ENTRIES) {
@@ -126,15 +160,31 @@ function currentEntry(map: Map<string, ThrottleEntry>, key: string, emailKey: st
   const previous = map.get(key);
   return previous && !isExpired(previous, now)
     ? previous
-    : { failures: 0, lastFailureAt: now, lockedUntil: 0, emailKey };
+    : { failures: 0, lastFailureAt: now, lockedUntil: 0, emailKey, engagements: 0 };
 }
 
-/** Vrai quand la connexion de cet e-mail, depuis cette IP, est actuellement refusée (verrou de paire ou global). */
+/** Vrai quand cette paire a réussi une connexion récemment (exemptée du verrou global). */
+function isTrustedPair(pairKey: string, now: number): boolean {
+  const trusted = trustedPairs.get(pairKey);
+  return !!trusted && isTrustValid(trusted, now);
+}
+
+/**
+ * Vrai quand la connexion de cet e-mail, depuis cette IP, est actuellement refusée :
+ * verrou de la paire, ou verrou global sauf pour une paire sûre.
+ */
 export function isLoginLocked(email: string, ip?: string, now: number = Date.now()): boolean {
-  const pair = pairs.get(pairKeyOf(email, ip));
+  const pairKey = pairKeyOf(email, ip);
+  const pair = pairs.get(pairKey);
   if (pair && pair.lockedUntil > now) return true;
   const global = globals.get(emailKeyOf(email));
-  return !!global && global.lockedUntil > now;
+  return !!global && global.lockedUntil > now && !isTrustedPair(pairKey, now);
+}
+
+/** Durée du n-ième verrou global de la fenêtre (n ≥ 1) : 15 s × 2^(n − 1), 5 min au plus. */
+export function globalLockDurationMs(engagement: number): number {
+  const exponent = Math.min(Math.max(engagement - 1, 0), 20);
+  return Math.min(LOGIN_THROTTLE_GLOBAL_LOCK_MS * 2 ** exponent, LOGIN_THROTTLE_GLOBAL_MAX_LOCK_MS);
 }
 
 /** Enregistre un échec de mot de passe (compte connu ou non). */
@@ -159,33 +209,47 @@ export function recordLoginFailure(email: string, ip?: string, now: number = Dat
   }
   store(pairs, pairKey, pair);
 
-  // 2. Global par e-mail : verrou court et fixe, non escaladant, remis à zéro en l'engageant.
+  // 2. Global par e-mail : verrou escaladant d'un engagement à l'autre, remis à zéro en
+  // l'engageant. Pendant le verrou (paire sûre qui échoue), rien n'est compté ni prolongé.
   const global = currentEntry(globals, emailKey, emailKey, now);
+  if (global.lockedUntil > now) return;
   global.failures += 1;
   global.lastFailureAt = now;
   if (global.failures >= LOGIN_THROTTLE_GLOBAL_MAX_FAILURES) {
     global.failures = 0;
-    global.lockedUntil = now + LOGIN_THROTTLE_GLOBAL_LOCK_MS;
+    global.engagements += 1;
+    const lockMs = globalLockDurationMs(global.engagements);
+    global.lockedUntil = now + lockMs;
     logger.warn('Login global throttle engaged for an email fingerprint', {
       fingerprint: emailKey.slice(0, 12),
-      lockSeconds: Math.round(LOGIN_THROTTLE_GLOBAL_LOCK_MS / 1000)
+      engagement: global.engagements,
+      lockSeconds: Math.round(lockMs / 1000)
     });
   }
   store(globals, emailKey, global);
 }
 
-/** Connexion réussie : remet à zéro la paire ET le compteur global de cet e-mail. */
-export function clearLoginFailures(email: string, ip?: string): void {
-  pairs.delete(pairKeyOf(email, ip));
-  globals.delete(emailKeyOf(email));
+/**
+ * Connexion réussie (mot de passe correct) : remet à zéro la paire ET le compteur global
+ * de cet e-mail, et marque la paire comme sûre (exemptée du verrou global 30 jours).
+ */
+export function clearLoginFailures(email: string, ip?: string, now: number = Date.now()): void {
+  const emailKey = emailKeyOf(email);
+  const pairKey = pairKeyOf(email, ip);
+  pairs.delete(pairKey);
+  globals.delete(emailKey);
+  store(trustedPairs, pairKey, { lastSuccessAt: now, emailKey });
 }
 
-/** Efface tout l'état d'un e-mail (toutes IP) : mot de passe réinitialisé par son titulaire. */
+/** Efface tout l'état d'un e-mail (toutes IP, paires sûres comprises) : mot de passe réinitialisé par son titulaire. */
 export function clearEmailThrottle(email: string): void {
   const emailKey = emailKeyOf(email);
   globals.delete(emailKey);
   for (const [key, entry] of pairs) {
     if (entry.emailKey === emailKey) pairs.delete(key);
+  }
+  for (const [key, trusted] of trustedPairs) {
+    if (trusted.emailKey === emailKey) trustedPairs.delete(key);
   }
 }
 
@@ -199,9 +263,15 @@ export function loginThrottleEmailCount(): number {
   return globals.size;
 }
 
+/** Nombre de paires sûres en mémoire (tests, diagnostic). */
+export function loginTrustedPairCount(): number {
+  return trustedPairs.size;
+}
+
 /** Vide tout l'état (tests). */
 export function resetLoginThrottle(): void {
   pairs.clear();
   globals.clear();
+  trustedPairs.clear();
   lastPurgeAt = 0;
 }

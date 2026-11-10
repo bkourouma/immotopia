@@ -250,6 +250,28 @@ export interface DecideCheckoutTransitionInput {
 
 const DEFAULT_EXPECTED_CURRENCY = 'XOF';
 
+/** Motif de revue d'un succès rapporté SANS montant (texte stocké sur la tentative). */
+export const AMOUNT_NOT_PROVIDED_REVIEW_REASON =
+  'Montant non communiqué par PaySecureHub : paiement à vérifier manuellement.';
+
+/** Début du motif de revue d'un succès rapporté dans une autre devise. */
+export const CURRENCY_MISMATCH_REVIEW_PREFIX = 'Devise reçue (';
+
+/** Ajouté au motif quand la revérification automatique d'une revue s'arrête (borne de 48 h). */
+export const REVIEW_RECHECK_ABANDONED_SUFFIX =
+  ' Revérification automatique arrêtée après 48 h : à vérifier auprès de PaySecureHub.';
+
+/**
+ * Une tentative en REVIEW peut-elle être revérifiée par la tâche planifiée ?
+ * Seulement un succès sans montant ou dans une autre devise : l'agrégateur peut
+ * compléter sa réponse ensuite. Jamais un montant divergent ni un état
+ * contraire (décision humaine), ni une revérification déjà abandonnée.
+ */
+export function isRecheckableReviewReason(reason: string | null | undefined): boolean {
+  if (!reason || reason.endsWith(REVIEW_RECHECK_ABANDONED_SUFFIX)) return false;
+  return reason === AMOUNT_NOT_PROVIDED_REVIEW_REASON || reason.startsWith(CURRENCY_MISMATCH_REVIEW_PREFIX);
+}
+
 /** Alias du franc CFA de l'Ouest (XOF), après normalisation ; `952` est son code numérique ISO 4217. XAF reste volontairement distinct. */
 const XOF_ALIASES = new Set(['XOF', 'FCFA', 'CFA', 'FRANCCFA', 'FRANCSCFA', '952']);
 
@@ -271,7 +293,7 @@ export function successReviewReason(
   expectedCurrency: string = DEFAULT_EXPECTED_CURRENCY
 ): string | null {
   if (provider.amount === null) {
-    return 'Montant non communiqué par PaySecureHub : paiement à vérifier manuellement.';
+    return AMOUNT_NOT_PROVIDED_REVIEW_REASON;
   }
   if (Math.round(provider.amount) !== Math.round(expectedAmount)) {
     return `Montant reçu (${provider.amount}) différent du montant attendu (${expectedAmount}).`;
@@ -281,7 +303,7 @@ export function successReviewReason(
     typeof received === 'number' ? Number.isFinite(received) : typeof received === 'string' && received.trim() !== '';
   if (hasCurrency) {
     if (canonicalCurrency(received) !== canonicalCurrency(expectedCurrency)) {
-      return `Devise reçue (${received}) différente de la devise attendue (${expectedCurrency}).`;
+      return `${CURRENCY_MISMATCH_REVIEW_PREFIX}${received}) différente de la devise attendue (${expectedCurrency}).`;
     }
   }
   return null;

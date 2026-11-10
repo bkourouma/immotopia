@@ -309,7 +309,14 @@ export async function getSyndicateWithLotsAndStats(
     include: {
       property: {
         include: {
-          containerChildren: true
+          // Unités de l'immeuble : seulement celles de l'agence ou sous mandat
+          // actif de l'agence (même filtre que `childAccessWhere` de
+          // property-service, TEN-01), et seulement les champs d'identification :
+          // jamais des lignes Property complètes d'une autre agence.
+          containerChildren: {
+            where: { OR: [{ tenantId }, { mandates: { some: { tenantId, isActive: true } } }] },
+            select: { id: true, internalReference: true, title: true, propertyType: true }
+          }
         }
       },
       lots: {

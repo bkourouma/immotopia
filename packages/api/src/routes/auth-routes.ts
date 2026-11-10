@@ -26,6 +26,7 @@ import {
   registrationRateLimiter,
   resendVerificationRateLimiter,
   loginRateLimiter,
+  loginLockedRefusalRateLimiter,
   forgotPasswordRateLimiter,
   refreshRateLimiter,
   resetPasswordRateLimiter,
@@ -44,7 +45,9 @@ const router = Router();
 // Register and Login
 // Le limiteur passe APRÈS la validation : une requête invalide ne consomme pas le quota d'inscription.
 router.post('/register', validate(registerSchema), registrationRateLimiter, asyncHandler(register));
-router.post('/login', loginRateLimiter, validate(loginSchema), asyncHandler(login));
+// Deux seaux : les échecs ordinaires (5 / 15 min) et, à part, les refus pendant un verrou
+// (30 / 15 min), que le premier ne compte pas (voir rate-limit-middleware).
+router.post('/login', loginRateLimiter, loginLockedRefusalRateLimiter, validate(loginSchema), asyncHandler(login));
 
 // Email Verification
 router.get('/verify-email', asyncHandler(verifyEmailHandler));

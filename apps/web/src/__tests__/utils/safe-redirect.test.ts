@@ -28,6 +28,15 @@ describe('getSafeRedirectPath', () => {
     ['caractère nul', '/\u0000/evil.com'],
     ['tabulation en tête', '\t//evil.com'],
     ['barre oblique inverse après tabulation (texte brut)', '/\\t/evil.com'],
+    // Contre-audit A1 : le chemin normalisé par `new URL` commence par `//`.
+    ['segment « . » avant la double barre', '/.//evil.com'],
+    ['segment « .. » avant la double barre', '/a/..//evil.com/x?y#z'],
+    ['« .. » encodé avant la double barre', '/%2e%2e//evil.com'],
+    ['« .. » seul avant la double barre', '/..//evil.com'],
+    ['« .. » encodé après un segment', '/x/%2e%2e//evil.com'],
+    ['double barre encodée', '/%2f%2fevil.com'],
+    ['double barre encodée en majuscules', '/%2F%2Fevil.com'],
+    ['barre encodée puis barre', '/%2f/evil.com'],
     ['chemin vide', ''],
     ['null', null],
     ['undefined', undefined]
@@ -39,6 +48,28 @@ describe('getSafeRedirectPath', () => {
     expect(safe('/ok?x=1#h')).toBe('/ok?x=1#h');
     expect(safe('/')).toBe('/');
     expect(safe('/auth/accept-invite?token=abc%2Fdef')).toBe('/auth/accept-invite?token=abc%2Fdef');
+  });
+
+  it('ne renvoie jamais un chemin lu comme une autre origine', () => {
+    const targets = [
+      '/.//evil.com',
+      '/a/..//evil.com/x?y#z',
+      '/%2e%2e//evil.com',
+      '/..//evil.com',
+      '/x/%2e%2e//evil.com',
+      '/%2f%2fevil.com'
+    ];
+    for (const target of targets) {
+      const result = safe(target);
+      expect(result.startsWith('//')).toBe(false);
+      expect(new URL(result, ORIGIN).origin).toBe(ORIGIN);
+      expect(new URL(decodeURIComponent(result), ORIGIN).origin).toBe(ORIGIN);
+    }
+  });
+
+  it('garde un chemin normalisé resté interne', () => {
+    expect(safe('/a/../b')).toBe('/b');
+    expect(safe('/./ok')).toBe('/ok');
   });
 
   it('renvoie le repli demandé, y compris null', () => {

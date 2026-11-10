@@ -4,6 +4,7 @@ import { listMeetingsPage } from '../lib/syndics/meeting-reads';
 import { closeMeetingRoom } from '../lib/syndics/meeting-visio';
 import * as path from 'path';
 import { assertUploadMatchesDeclaredType } from '../utils/file-signature';
+import { prisma } from '../utils/database';
 import * as fs from 'fs/promises';
 import {
   listSyndicatesByTenant,
@@ -1514,6 +1515,16 @@ export const createDocumentHandler = asyncHandler(async (req: Request, res: Resp
     const { extension } = assertUploadMatchesDeclaredType(req.file, {
       allowedKinds: ['pdf', 'doc', 'docx', 'jpg', 'png', 'tiff']
     });
+    // Appartenance de la copropriété contrôlée AVANT toute écriture disque
+    // (sinon une copropriété d'une autre agence, ou inexistante, laissait un
+    // fichier orphelin sur le volume). Même 404 que `createDocumentForSyndicate`.
+    const syndicate = await prisma.syndicate.findFirst({
+      where: { id: syndicateId, tenantId },
+      select: { id: true }
+    });
+    if (!syndicate) {
+      throw notFound('Copropriété introuvable ou inaccessible');
+    }
     const uploadDir = syndicateDocumentsDir(syndicateId);
     await fs.mkdir(uploadDir, { recursive: true });
 

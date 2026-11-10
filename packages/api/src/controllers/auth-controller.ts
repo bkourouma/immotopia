@@ -17,6 +17,7 @@ import { setAuthCookies, setAccessTokenCookie, clearAuthCookies } from '../utils
 import { isLanguage, t } from '../i18n';
 import { logger } from '../utils/logger';
 import { BadRequestError, UnauthorizedError } from '../middleware/error-middleware';
+import { markLoginLockedRefusal } from '../middleware/rate-limit-middleware';
 
 /**
  * Register a new user
@@ -88,8 +89,14 @@ export async function login(req: Request, res: Response): Promise<void> {
   };
 
   // Échec métier : BadRequestError (400), le limiteur `loginRateLimiter` compte
-  // les réponses >= 400. Panne imprévue : 500 générique via `errorHandler`.
-  const result = await loginUser(data, { ip: req.ip });
+  // les réponses >= 400, SAUF un refus pendant un verrou (`LoginLockedError`,
+  // réponse identique côté client) : `markLoginLockedRefusal` le signale au
+  // limiteur, puis l'erreur est relancée telle quelle (statut décidé par sa
+  // classe). Panne imprévue : 500 générique via `errorHandler`.
+  const result = await loginUser(data, { ip: req.ip }).catch((error: unknown) => {
+    markLoginLockedRefusal(res, error);
+    throw error;
+  });
 
   setAuthCookies(res, result.accessToken, result.refreshToken);
 

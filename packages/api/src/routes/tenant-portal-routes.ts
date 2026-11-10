@@ -13,11 +13,14 @@ import multer from 'multer';
 const router = Router();
 const controller = new TenantPortalController();
 
-// Configure multer for file uploads
-const upload = multer({
+// Configure multer for file uploads. Au-delà de la taille du fichier, le
+// nombre de fichiers et de champs texte (et la taille de chacun) est borné :
+// sans cela, une seule requête multipart pouvait remplir la mémoire.
+export const tenantPortalUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 } // 5MB max
+  limits: { fileSize: 5 * 1024 * 1024, files: 10, fields: 10, fieldSize: 100 * 1024 }
 });
+const upload = tenantPortalUpload;
 
 // All routes require authentication and tenant portal access
 router.use(authenticate);
