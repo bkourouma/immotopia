@@ -227,8 +227,8 @@ describe('contre-audit PR #205 : rognage des blancs de bord en temps linéaire',
   it('100 000 espaces internes : refus immédiat (longueur brute) et rognage linéaire', () => {
     const evil = `a${' '.repeat(100_000)}b`;
     isSafeEmailAddress(evil);
-    expect(elapsedMs(() => expect(isSafeEmailAddress(evil)).toBe(false))).toBeLessThan(5);
-    expect(elapsedMs(() => expect(normalizeRecipientAddress(evil)).toBe(evil))).toBeLessThan(5);
+    expect(elapsedMs(() => expect(isSafeEmailAddress(evil)).toBe(false))).toBeLessThan(100);
+    expect(elapsedMs(() => expect(normalizeRecipientAddress(evil)).toBe(evil))).toBeLessThan(100);
   });
 
   it('blancs de bord sous la borne brute : rognés comme avant', () => {

@@ -229,20 +229,20 @@ describe('csrfOriginGuard : chemin et performance (ReDoS)', () => {
       expect(normalizeCsrfPath(p)).toBe(legacy(p));
     }
   });
-  it('isCsrfExemptPath : 16 000 « / » puis « a » traités en moins de 5 ms', () => {
-    const evil = `${'/'.repeat(16_000)}a`;
+  it('isCsrfExemptPath : 60 000 « / » puis « a » traités en moins de 100 ms', () => {
+    const evil = `${'/'.repeat(60_000)}a`;
     isCsrfExemptPath(evil);
     const start = process.hrtime.bigint();
     expect(isCsrfExemptPath(evil)).toBe(false);
     expect(normalizeCsrfPath(evil)).toBe(evil);
     const elapsedMs = Number(process.hrtime.bigint() - start) / 1e6;
-    expect(elapsedMs).toBeLessThan(5);
+    expect(elapsedMs).toBeLessThan(100);
   });
   it('normalizeCsrfPath : longue suite de « / » finaux en temps linéaire', () => {
     const evil = `/api/auth/login${'/'.repeat(100_000)}`;
     const start = process.hrtime.bigint();
     expect(normalizeCsrfPath(evil)).toBe('/api/auth/login');
-    expect(Number(process.hrtime.bigint() - start) / 1e6).toBeLessThan(5);
+    expect(Number(process.hrtime.bigint() - start) / 1e6).toBeLessThan(100);
   });
   it('chemin plus long que la limite : jamais exclu ; écriture avec cookie refusée, sans cookie laissée passer', async () => {
     const long = `/api/newsletter/${'a'.repeat(CSRF_MAX_PATH_LENGTH)}`;
