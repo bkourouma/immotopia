@@ -51,8 +51,14 @@ export async function postEventStream(path: string, body: unknown, opts: EventSt
   if (response.status === 401) {
     try {
       await refreshSession();
-    } catch {
-      redirectToLogin();
+    } catch (refreshError) {
+      // Comme l'intercepteur d'`api-client` (BUG-2026-11-04-044) : seul un
+      // refus 401/403 prouve la perte de session. `redirectToLogin` purge
+      // alors les données personnelles locales (contre-audit A4) ; une panne
+      // réseau ou un 5xx ne doit ni renvoyer vers la connexion ni effacer un
+      // brouillon en cours.
+      const status = (refreshError as { response?: { status?: number } } | null)?.response?.status;
+      if (status === 401 || status === 403) redirectToLogin();
       throw { status: 401, code: 'UNAUTHORIZED', message: t('Session expirée') } satisfies EventStreamError;
     }
     response = await send();

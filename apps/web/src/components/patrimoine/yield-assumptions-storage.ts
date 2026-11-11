@@ -1,5 +1,6 @@
 import { getYieldAssumptions, saveYieldAssumptions } from '../../services/patrimoine-service';
 import type { YieldAssumptionsInput } from './YieldCalculator';
+import { YIELD_ASSUMPTIONS_KEY_PREFIX, purgePersonalLocalData } from '../../utils/personal-local-data';
 
 /**
  * Les hypothèses de projection vivent sur le serveur (une ligne par bien,
@@ -7,7 +8,7 @@ import type { YieldAssumptionsInput } from './YieldCalculator';
  * que de REPLI hors ligne et de source de migration unique : sous la même clé
  * qu'avant, par agence et par bien.
  */
-const cle = (tenantId: string, propertyId: string) => `patrimoine:performance:assumptions:${tenantId}:${propertyId}`;
+const cle = (tenantId: string, propertyId: string) => `${YIELD_ASSUMPTIONS_KEY_PREFIX}${tenantId}:${propertyId}`;
 
 const BORNES: Record<keyof YieldAssumptionsInput, [number, number]> = {
   years: [1, 30],
@@ -46,6 +47,11 @@ export function writeYieldAssumptions(tenantId: string, propertyId: string, valu
   } catch {
     // stockage indisponible : les hypothèses restent valables pour la session en cours
   }
+}
+
+/** Supprime toutes les hypothèses locales (déconnexion). Voir `utils/personal-local-data.ts`. */
+export function purgeLocalYieldAssumptions(): void {
+  purgePersonalLocalData();
 }
 
 export interface LoadedYieldAssumptions {

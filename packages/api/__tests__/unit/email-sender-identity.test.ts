@@ -20,20 +20,26 @@ jest.mock('../../src/utils/database', () => ({
 
 import { emailService } from '../../src/services/email-service';
 import { runWithTenantContext } from '../../src/utils/tenant-context';
+import { env } from '../../src/config/env';
 
 const ORIGINAL_ENV = { ...process.env };
+const ORIGINAL_ENABLE_EMAILS = env.ENABLE_EMAILS;
+const ORIGINAL_EMAIL_FROM = env.EMAIL_FROM;
 
 beforeAll(() => {
   // `sendEmail` court-circuite l'envoi quand NODE_ENV=test (mis par
   // __tests__/setup.ts), sauf ENABLE_EMAILS=1 — exactement le mecanisme prevu
   // pour les tests manuels (voir env.example). Sans lui, `sendMail` ne serait
   // jamais appele et ce fichier ne testerait rien.
-  process.env.ENABLE_EMAILS = '1';
-  process.env.EMAIL_FROM = 'noreply@immotopia.com';
+  // `env` est fige a l'import : on mute l'objet lu par le service a chaque appel.
+  env.ENABLE_EMAILS = true;
+  env.EMAIL_FROM = 'noreply@immotopia.com';
 });
 
 afterAll(() => {
   process.env = { ...ORIGINAL_ENV };
+  env.ENABLE_EMAILS = ORIGINAL_ENABLE_EMAILS;
+  env.EMAIL_FROM = ORIGINAL_EMAIL_FROM;
 });
 
 beforeEach(() => {
@@ -42,7 +48,7 @@ beforeEach(() => {
 });
 
 describe("Identite d'envoi par agence (lot H)", () => {
-  it("sans agence identifiable (ni option, ni contexte ambiant) : expediteur ImmoTopia, pas de Reply-To", async () => {
+  it('sans agence identifiable (ni option, ni contexte ambiant) : expediteur ImmoTopia, pas de Reply-To', async () => {
     await emailService.sendPasswordResetEmail('user@example.com', 'reset-token');
 
     expect(tenantFindUniqueMock).not.toHaveBeenCalled();
@@ -52,7 +58,10 @@ describe("Identite d'envoi par agence (lot H)", () => {
   });
 
   it("avec tenantId explicite (sendInviteEmail) : expediteur '<Agence> via ImmoTopia', Reply-To = contactEmail", async () => {
-    tenantFindUniqueMock.mockResolvedValueOnce({ name: 'Agence Kipe', contactEmail: 'contact@agence-kipe.example.com' });
+    tenantFindUniqueMock.mockResolvedValueOnce({
+      name: 'Agence Kipe',
+      contactEmail: 'contact@agence-kipe.example.com'
+    });
 
     await emailService.sendInviteEmail(
       'admin@example.com',
@@ -83,7 +92,10 @@ describe("Identite d'envoi par agence (lot H)", () => {
   });
 
   it('sans option explicite, retombe sur le contexte ambiant getCurrentTenantId() (pose par requireTenantAccess/les jobs)', async () => {
-    tenantFindUniqueMock.mockResolvedValueOnce({ name: 'Agence Ambiante', contactEmail: 'contact@ambiante.example.com' });
+    tenantFindUniqueMock.mockResolvedValueOnce({
+      name: 'Agence Ambiante',
+      contactEmail: 'contact@ambiante.example.com'
+    });
 
     await runWithTenantContext({ tenantId: 'tenant-ambiant' }, async () => {
       await emailService.sendPasswordResetEmail('user2@example.com', 'reset-token-2');
@@ -99,10 +111,20 @@ describe("Identite d'envoi par agence (lot H)", () => {
   });
 
   it('option tenantId explicite prioritaire sur le contexte ambiant', async () => {
-    tenantFindUniqueMock.mockResolvedValueOnce({ name: 'Agence Explicite', contactEmail: 'contact@explicite.example.com' });
+    tenantFindUniqueMock.mockResolvedValueOnce({
+      name: 'Agence Explicite',
+      contactEmail: 'contact@explicite.example.com'
+    });
 
     await runWithTenantContext({ tenantId: 'tenant-ambiant-ignore' }, async () => {
-      await emailService.sendInviteEmail('x@example.com', 'tok', 'Agence Explicite', [], new Date(), 'tenant-explicite');
+      await emailService.sendInviteEmail(
+        'x@example.com',
+        'tok',
+        'Agence Explicite',
+        [],
+        new Date(),
+        'tenant-explicite'
+      );
     });
 
     expect(tenantFindUniqueMock).toHaveBeenCalledWith({
@@ -129,7 +151,7 @@ describe("Identite d'envoi par agence (lot H)", () => {
 
     await expect(
       emailService.sendInviteEmail('x@example.com', 'tok', 'Peu importe', [], new Date(), 'tenant-inconnu')
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({ sent: true });
 
     const call: any = sendMailMock.mock.calls[0]![0];
     expect(call.from).toBe('"ImmoTopia" <noreply@immotopia.com>');

@@ -7,6 +7,7 @@ import { logger } from '../utils/logger';
 import { DocumentTemplate } from '@prisma/client';
 import { AppError, BadRequestError, NotFoundError } from '../middleware/error-middleware';
 import { t } from '../i18n';
+import { assertDocxWithinLimits } from '../utils/docx-limits';
 import { getGeneratedDocumentDir, getShippedTemplatesDir, getTemplatesWriteDir } from '../utils/assets-paths';
 import {
   DOCX_IMAGES_CONTEXT_KEY,
@@ -138,6 +139,7 @@ export function renderDocxBuffer(
   const synced = syncDocumentReference(data);
   const values = { ...(sanitize ? sanitizeContext(synced) : synced), ...logoMarkerContext() };
 
+  assertDocxWithinLimits(templateBuffer);
   const doc = new Docxtemplater(new PizZip(templateBuffer), {
     paragraphLoop: true,
     linebreaks: true,

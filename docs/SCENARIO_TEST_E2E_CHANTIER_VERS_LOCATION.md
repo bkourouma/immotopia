@@ -97,7 +97,7 @@ reporter comme bugs) :
 
 ### 1.2 Se connecter
 
-- Compte : `devaccrocs@gmail.com` — mot de passe : `DevMick@2003`
+- Compte : `<e-mail du collaborateur de démo>` — mot de passe : `<mot de passe de démo, voir le seed local>`
   (Kouassi N'Guessan, administrateur de l'agence **Ivoire Résidences**).
 - En mode développement, le panneau « Comptes par tenant » propose un bouton
   « Utiliser » qui pré-remplit le formulaire ; il reste à cliquer

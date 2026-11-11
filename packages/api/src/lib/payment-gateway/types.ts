@@ -53,6 +53,8 @@ export interface ProviderStatus {
   transactionId: string | null;
   /** Entier, tel que renvoyé par l'agrégateur. */
   amount: number | null;
+  /** Devise rapportée par l'agrégateur, si elle figure dans sa réponse. */
+  currency?: string | null;
   fees: number | null;
   serviceName: string | null;
   error: string | null;

@@ -160,7 +160,7 @@ export function buildCatalog(routes: DiscoveredRoute[]): BuiltCatalog {
     const handler = route.middlewares[route.middlewares.length - 1];
     const permissions = permissionsOf(route);
     // Fail closed : une ÉCRITURE dont aucune permission n'est connue (simple appartenance à l'agence, comme
-    // `PATCH client-details`, libre-service d'un compte portail) n'entre pas dans le catalogue.
+    // `POST notifications/:id/read`) n'entre pas dans le catalogue.
     if (route.method !== 'GET' && !permissions.permissions && !permissions.anyOfPermissions) {
       unguardedWrites.set(id, { id, unguardedWrite: true });
       continue;

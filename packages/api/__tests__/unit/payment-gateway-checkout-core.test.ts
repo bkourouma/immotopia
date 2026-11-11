@@ -119,8 +119,15 @@ describe('decideCheckoutTransition', () => {
       expect(decide(current, provider('SUCCESS', 5000))).toEqual({ action: 'SUCCEED' });
     });
 
-    it('montant absent -> SUCCEED (pas de contrôle possible)', () => {
-      expect(decide('PENDING', provider('SUCCESS', null))).toEqual({ action: 'SUCCEED' });
+    it('montant absent -> REVIEW (échec fermé, SUR-02)', () => {
+      expect(decide('PENDING', provider('SUCCESS', null))).toEqual({
+        action: 'REVIEW',
+        reviewReason: 'Montant non communiqué par PaySecureHub : paiement à vérifier manuellement.'
+      });
+    });
+
+    it.each(['PENDING', 'FAILED', 'CANCELED', 'REVIEW'])('%s + SUCCESS sans montant -> REVIEW', current => {
+      expect(decide(current, provider('SUCCESS', null)).action).toBe('REVIEW');
     });
 
     it('comparaison à l entier : 5000.4 vs 5000 -> SUCCEED', () => {
@@ -152,6 +159,88 @@ describe('decideCheckoutTransition', () => {
     it('le montant est ignoré pour un échec', () => {
       expect(decide('PENDING', provider('FAILED', 1), 5000)).toEqual({ action: 'FAIL' });
     });
+  });
+
+  describe('devise (SUR-02)', () => {
+    const withCurrency = (
+      currency: string | null | undefined,
+      expectedCurrency?: string,
+      amount: number | null = 5000
+    ) =>
+      decideCheckoutTransition({
+        currentStatus: 'PENDING',
+        expectedAmount: 5000,
+        expectedCurrency,
+        provider: { state: 'SUCCESS', amount, rawState: 'SUCCESSFUL', currency }
+      });
+
+    it.each([undefined, null, '', 'XOF', 'xof', 'FCFA', 'fcfa', 'CFA'])('devise %p -> SUCCEED', currency => {
+      expect(withCurrency(currency)).toEqual({ action: 'SUCCEED' });
+    });
+
+    it.each(['EUR', 'USD', 'GNF'])('devise %s différente -> REVIEW', currency => {
+      expect(withCurrency(currency)).toEqual({
+        action: 'REVIEW',
+        reviewReason: `Devise reçue (${currency}) différente de la devise attendue (XOF).`
+      });
+    });
+
+    it.each(['F CFA', 'f.cfa', ' franc cfa ', 'Francs CFA', 'FRANC-CFA', 'francs_cfa', 952, '952', ' 952 '])(
+      'alias XOF %p -> SUCCEED',
+      currency => {
+        expect(withCurrency(currency as any)).toEqual({ action: 'SUCCEED' });
+      }
+    );
+
+    it.each(['EUR', 'USD', 'XAF', 'GHS', 978, '840'])('devise étrangère %p -> REVIEW', currency => {
+      expect(withCurrency(currency as any).action).toBe('REVIEW');
+    });
+
+    it('devise attendue personnalisée, insensible à la casse', () => {
+      expect(withCurrency('eur', 'EUR')).toEqual({ action: 'SUCCEED' });
+      expect(withCurrency('XOF', 'EUR').action).toBe('REVIEW');
+    });
+
+    it('montant absent prime sur la devise', () => {
+      expect(withCurrency('EUR', undefined, null).reviewReason).toMatch(/Montant non communiqué/);
+    });
+
+    it('un statut courant SUCCESS + SUCCESS reste TOUCH quelle que soit la devise', () => {
+      expect(
+        decideCheckoutTransition({
+          currentStatus: 'SUCCESS',
+          expectedAmount: 5000,
+          provider: { state: 'SUCCESS', amount: null, rawState: 'x', currency: 'EUR' }
+        })
+      ).toEqual({ action: 'TOUCH' });
+    });
+  });
+
+  it('table complète montant x devise : toutes les combinaisons', () => {
+    const currents = ['PENDING', 'SUCCESS', 'FAILED', 'CANCELED', 'EXPIRED', 'REVIEW'];
+    const states: MappedGatewayState[] = ['SUCCESS', 'FAILED', 'CANCELED', 'PENDING'];
+    const amounts: Array<number | null> = [null, 5000, 4000];
+    const currencies: Array<string | undefined> = [undefined, 'XOF', 'EUR'];
+    for (const current of currents) {
+      for (const state of states) {
+        for (const amount of amounts) {
+          for (const currency of currencies) {
+            const result = decideCheckoutTransition({
+              currentStatus: current,
+              expectedAmount: 5000,
+              provider: { state, amount, rawState: state, currency }
+            });
+            const cashes = state === 'SUCCESS' && current !== 'SUCCESS' && current !== 'EXPIRED';
+            if (cashes) {
+              const ok = amount === 5000 && currency !== 'EUR';
+              expect(result.action).toBe(ok ? 'SUCCEED' : 'REVIEW');
+            } else {
+              expect(result.action).not.toBe('SUCCEED');
+            }
+          }
+        }
+      }
+    }
   });
 
   it('table complète : chaque couple (statut courant, état fournisseur) donne une action définie', () => {
@@ -191,6 +280,7 @@ describe('normalizeProviderStatus / fetchNormalizedProviderStatus', () => {
       state: 'SUCCESS',
       providerTransactionId: 'TX1',
       amount: 5000,
+      currency: null,
       providerFees: 50,
       serviceName: 'Wave CI',
       operator: 'WAVE',

@@ -17,7 +17,7 @@
   the iteration process.
 -->
 
-**Language/Version**: TypeScript 5.3 + Node 20
+**Language/Version**: TypeScript 5.3 + Node 22
 **Primary Dependencies**: Express 4.18, React 18, Prisma 5.7, Zod 3.22
 **Storage**: PostgreSQL (via Prisma)
 **Testing**: Jest 29, Supertest
@@ -28,12 +28,13 @@
 **Scale/Scope**: Supports multiple tenants, collaborators, and clients (owners/renters)
 
 **Unknowns**:
+
 - **Google OAuth Implementation**: [NEEDS CLARIFICATION: Best library/strategy for Google OAuth in Express? passport-google-oauth20 vs google-auth-library?]
 - **URL-based Multi-tenancy**: [NEEDS CLARIFICATION: How to handle wildcards/slugs in React Router + Express for tenant isolation?]
 
 ## Constitution Check
 
-*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
+_GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 
 [Gates determined based on constitution file]
 
@@ -42,12 +43,12 @@
 ### Documentation (this feature)
 
 specs/002-auth-profiles/
-├── plan.md              # This file
-├── research.md          # Research findings
-├── data-model.md        # Prisma schema & ERD
-├── quickstart.md        # Developer guide
-├── contracts/           # API OpenAPIs
-└── tasks.md             # Implementation tasks
+├── plan.md # This file
+├── research.md # Research findings
+├── data-model.md # Prisma schema & ERD
+├── quickstart.md # Developer guide
+├── contracts/ # API OpenAPIs
+└── tasks.md # Implementation tasks
 
 ### Source Code (repository root)
 
@@ -74,7 +75,7 @@ apps/web/
 
 > **Fill ONLY if Constitution Check has violations that must be justified**
 
-| Violation | Why Needed | Simpler Alternative Rejected Because |
-|-----------|------------|-------------------------------------|
-| [e.g., 4th project] | [current need] | [why 3 projects insufficient] |
-| [e.g., Repository pattern] | [specific problem] | [why direct DB access insufficient] |
+| Violation                  | Why Needed         | Simpler Alternative Rejected Because |
+| -------------------------- | ------------------ | ------------------------------------ |
+| [e.g., 4th project]        | [current need]     | [why 3 projects insufficient]        |
+| [e.g., Repository pattern] | [specific problem] | [why direct DB access insufficient]  |

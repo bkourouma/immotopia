@@ -20,6 +20,7 @@
 
 import { PrismaClient, PropertyVisitType, PropertyVisitGoal, PropertyVisitStatus } from '@prisma/client';
 import { scheduleVisit } from '../../src/services/property-visit-service';
+import { assertNotProduction } from './assert-not-production';
 
 const prisma = new PrismaClient({ log: [] });
 const TENANT_ID = process.env.DEMO_TENANT_ID || '385a1e76-ac08-4db5-9802-8b2ddfb1672b';
@@ -289,6 +290,7 @@ const PLAN: PlanVisite[] = [
 ];
 
 async function main() {
+  assertNotProduction('seed-demo-visites.ts');
   const tenant = await prisma.tenant.findUnique({ where: { id: TENANT_ID }, select: { name: true } });
   if (!tenant) throw new Error(`Agence ${TENANT_ID} introuvable`);
 

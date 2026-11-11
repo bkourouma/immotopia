@@ -4077,7 +4077,7 @@
       "pathParams": ["key"],
       "module": "email-notifications",
       "summary": "update (email-notifications / {key})",
-      "permissions": ["COMMUNICATION_VIEW"],
+      "permissions": ["COMMUNICATION_VIEW", "TENANT_SETTINGS_EDIT"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -5078,7 +5078,7 @@
       "pathParams": ["key"],
       "module": "email-notifications",
       "summary": "reset (email-notifications / {key} / reset)",
-      "permissions": ["COMMUNICATION_VIEW"],
+      "permissions": ["COMMUNICATION_VIEW", "TENANT_SETTINGS_EDIT"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -5871,7 +5871,7 @@
       "path": "/api/tenants/:tenantId/maintenance/tenant/tickets/:ticketId/attachments",
       "pathParams": ["ticketId"],
       "module": "maintenance",
-      "summary": "upload attachment (maintenance / tenant / tickets / {ticketId} / attachments)",
+      "summary": "maintenance / tenant / tickets / {ticketId} / attachments",
       "permissions": ["MAINTENANCE_TENANT"],
       "anyOfPermissions": null,
       "sensitive": false
@@ -8313,7 +8313,7 @@
       "path": "/api/tenants/:tenantId/users/:userId/enable",
       "pathParams": ["userId"],
       "module": "users",
-      "summary": "enable member (users / {userId} / enable)",
+      "summary": "users / {userId} / enable",
       "permissions": ["USERS_EDIT"],
       "anyOfPermissions": null,
       "sensitive": false
@@ -8335,7 +8335,7 @@
       "path": "/api/tenants/:tenantId/users/:userId/revoke-sessions",
       "pathParams": ["userId"],
       "module": "users",
-      "summary": "revoke sessions (users / {userId} / revoke-sessions)",
+      "summary": "users / {userId} / revoke-sessions",
       "permissions": ["USERS_EDIT"],
       "anyOfPermissions": null,
       "sensitive": false

@@ -118,7 +118,13 @@ const subscribePublicSchema = z
       .trim()
       .min(1, t('Email requis.'))
       .max(254, t('Adresse email invalide.')),
-    name: z.string().trim().max(150).optional()
+    // Formulaire public : le nom revient dans l'e-mail de confirmation, aucun balisage accepté.
+    name: z
+      .string()
+      .trim()
+      .max(150)
+      .refine(value => !/[<>"]/.test(value), { message: t('Le nom contient des caractères non autorisés.') })
+      .optional()
   })
   .refine(v => Boolean(v.listToken || v.listId), { message: t('listToken ou listId requis.'), path: ['listToken'] });
 

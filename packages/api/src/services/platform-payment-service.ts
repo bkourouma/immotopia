@@ -40,6 +40,7 @@ import { applyUpgradeForInvoiceTx } from './subscription-upgrade/apply-upgrade';
 import { UPGRADE_AUDIT, UPGRADE_SOURCE_PACK, UpgradeTarget } from './subscription-upgrade/constants';
 import { gatewayClientForMode } from '../lib/payment-gateway/paysecurehub';
 import { GatewayError, type ProviderStatus } from '../lib/payment-gateway/types';
+import { successReviewReason } from '../lib/payment-gateway/checkout-core';
 import { generatePlatformCodePaiement } from '../lib/payment-gateway/codes';
 import {
   isPlatformGatewayAvailable,
@@ -392,7 +393,13 @@ export interface ManualPaymentInput {
   proof?: { buffer: Buffer; originalName: string; mimeType: string } | null;
 }
 
-function proofExtension(mimeType: string, originalName: string): string {
+/**
+ * Extension du justificatif : issue UNIQUEMENT d'une liste blanche selon le type
+ * déclaré (jamais du nom de fichier envoyé par le client, SUR-04), aligné sur
+ * les types que le filtre multer du contrôleur accepte (PDF, JPEG, PNG, TIFF). Un type
+ * inconnu donne `.bin`, extension inerte pour le serveur de fichiers.
+ */
+export function proofExtension(mimeType: string): string {
   const byMime: Record<string, string> = {
     'application/pdf': '.pdf',
     'image/jpeg': '.jpg',
@@ -400,9 +407,7 @@ function proofExtension(mimeType: string, originalName: string): string {
     'image/png': '.png',
     'image/tiff': '.tif'
   };
-  if (byMime[mimeType]) return byMime[mimeType];
-  const ext = path.extname(originalName).toLowerCase();
-  return /^\.[a-z0-9]{1,5}$/.test(ext) ? ext : '';
+  return byMime[(mimeType || '').toLowerCase()] ?? '.bin';
 }
 
 /** Dossier PRIVE des justificatifs : jamais classe public par uploads-access-middleware (refus par defaut). */
@@ -436,7 +441,7 @@ export async function recordManualPayment(
   if (input.proof) {
     const relative = path.posix.join(
       proofRelativeDir(tenantId),
-      `${randomUUID()}${proofExtension(input.proof.mimeType, input.proof.originalName)}`
+      `${randomUUID()}${proofExtension(input.proof.mimeType)}`
     );
     absoluteProof = path.join(getUploadsRoot(env.UPLOADS_DIR), ...relative.split('/'));
     await fs.mkdir(path.dirname(absoluteProof), { recursive: true });
@@ -715,14 +720,11 @@ export async function applyPlatformProviderStatus(checkout: CheckoutRow, ps: Pro
   }
 
   if (target === 'SUCCESS') {
-    if (ps.amount !== null && Math.round(ps.amount) !== Math.round(toNumber(checkout.amount))) {
+    const reviewReason = successReviewReason(ps, toNumber(checkout.amount));
+    if (reviewReason) {
       return prisma.platformPaymentCheckout.update({
         where: { id: checkout.id, tenantId: checkout.tenantId },
-        data: {
-          ...bookkeeping,
-          status: 'REVIEW',
-          reviewReason: `Montant reçu (${ps.amount}) différent du montant attendu (${toNumber(checkout.amount)}).`
-        }
+        data: { ...bookkeeping, status: 'REVIEW', reviewReason }
       });
     }
 

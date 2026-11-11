@@ -77,6 +77,7 @@ app.patch('/campaigns/:campaignId', controller.updateCampaignHandler);
 app.post('/campaigns/:campaignId/schedule', controller.scheduleCampaignHandler);
 app.get('/campaigns/:campaignId/recipients', controller.listRecipientsHandler);
 app.post('/templates', controller.createTemplateHandler);
+app.post('/public/subscribe', controller.subscribeHandler);
 app.use(errorHandler);
 
 const expectClean = (body: unknown) => {
@@ -188,5 +189,31 @@ describe('Newsletter — pagination des destinataires (BUG-085)', () => {
     expect(res.body.message).toBeTruthy();
     expect(findMany).not.toHaveBeenCalled();
     expectClean(res.body);
+  });
+});
+
+describe('Newsletter — inscription publique : nom sans balisage (contre-audit PAY M1)', () => {
+  it.each(['<a href="https://evil.example">Clic</a>', 'Jean>', 'Jean "le" Doe'])(
+    'nom %s : 400 VALIDATION_ERROR sur le champ name',
+    async name => {
+      const res = await request(app)
+        .post('/public/subscribe')
+        .send({ listToken: 'tok', email: 'jean@example.com', name });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('VALIDATION_ERROR');
+      expect(res.body.errors).toEqual([expect.objectContaining({ field: 'name' })]);
+      expectClean(res.body);
+    }
+  );
+
+  it('un nom ordinaire (accents, apostrophe) passe la validation', async () => {
+    const res = await request(app)
+      .post('/public/subscribe')
+      .send({ listToken: 'tok', email: 'jean@example.com', name: "Zoé N'Guessan" });
+
+    // La liste n'existe pas dans ce faux Prisma : refus métier, pas de validation.
+    expect(res.status).toBe(400);
+    expect(res.body.code).not.toBe('VALIDATION_ERROR');
   });
 });

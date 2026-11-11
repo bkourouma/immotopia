@@ -59,7 +59,7 @@ de couverture et la liste de ce qui n'a pas d'écran (« Hors interface »).
 
 | Rôle                                    | Nom                 | E-mail                    | Mot de passe                           |
 | --------------------------------------- | ------------------- | ------------------------- | -------------------------------------- |
-| Super-admin plateforme                  | Super Administrator | admin@immobillier.com     | Admin@123456 (seed)                    |
+| Super-admin plateforme                  | Super Administrator | admin@immobillier.com     | <mot de passe local> (seed)            |
 | Administrateur de l'opérateur           | Awa Konaté OI       | admin.oi@recette.test     | RecetteOI#2026 (saisi à l'acceptation) |
 | Gestionnaire (TENANT_MANAGER)           | Moussa Diarra OI    | manager.oi@recette.test   | RecetteOI#2026                         |
 | Agent (TENANT_AGENT)                    | Salif Coulibaly OI  | agent.oi@recette.test     | RecetteOI#2026                         |

@@ -94,6 +94,16 @@ describe('resendInvitation', () => {
     expect(result.emailSent).toBe(true);
     expect(result.acceptUrl).toContain('/auth/accept-invite?token=');
   });
+
+  it("renvoi : emailSent:false quand l'adresse est refusée (sent:false), sans lever d'erreur", async () => {
+    mockSendInviteEmail.mockResolvedValueOnce({ sent: false, reason: 'INVALID_RECIPIENT' });
+    mockPrisma.invitation.update.mockResolvedValueOnce({ ...baseInvitation });
+
+    const result = await resendInvitation(invitationId, tenantId, 'actor-1');
+
+    expect(result.emailSent).toBe(false);
+    expect(result.acceptUrl).toContain('/auth/accept-invite?token=');
+  });
 });
 
 describe("inviteCollaborator — honnêteté du message quand l'e-mail échoue", () => {
@@ -129,6 +139,20 @@ describe("inviteCollaborator — honnêteté du message quand l'e-mail échoue",
 
   it("retourne emailSent:false quand l'envoi initial échoue, sans faire échouer la création", async () => {
     mockSendInviteEmail.mockRejectedValueOnce(new Error('SMTP down'));
+
+    const result = await inviteCollaborator({
+      email: 'agent.oi@recette.test',
+      tenantId,
+      roleIds: ['role-1'],
+      invitedByUserId: 'actor-1'
+    });
+
+    expect(result.emailSent).toBe(false);
+    expect(result.invitation.id).toBe('inv-new');
+  });
+
+  it("retourne emailSent:false (sans erreur) quand l'adresse est refusée (sent:false), l'invitation reste créée", async () => {
+    mockSendInviteEmail.mockResolvedValueOnce({ sent: false, reason: 'INVALID_RECIPIENT' });
 
     const result = await inviteCollaborator({
       email: 'agent.oi@recette.test',

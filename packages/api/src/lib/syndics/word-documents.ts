@@ -12,6 +12,7 @@ import { assertSyndicateOfTenant } from './charge-allocation';
 import { loadChargeCallNoticeForTenant } from './charge-call-notice';
 import { paymentMethodLine, type ChargeCallNoticeData } from './charge-call-notice-pdf';
 import { formatAmount } from './charge-receipt-pdf';
+import { charSet, trimCharsLinear } from '../../utils/trim-chars';
 import {
   brandingForSnapshot,
   loadSyndicateRenderContext,
@@ -67,14 +68,19 @@ export function wordsText(amount: number, currency: string): string {
   return amount >= 0 ? amountToFrenchWords(amount, currency) : '';
 }
 
-/** Fragment de nom de fichier : ASCII sûr (lettres, chiffres, point, tiret). */
+const isSlugEdge = charSet('-.');
+
+/**
+ * Fragment de nom de fichier : ASCII sûr (lettres, chiffres, point, tiret).
+ * Tirets et points de bord retirés en temps linéaire : `/^[-.]+|[-.]+$/g` était
+ * quadratique sur une longue suite `-.-.` interne (nom saisi non borné).
+ */
 export function fileSlug(value: string | null | undefined): string {
-  return (value ?? '')
+  const ascii = (value ?? '')
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
-    .replace(/[^A-Za-z0-9._-]+/g, '-')
-    .replace(/^[-.]+|[-.]+$/g, '')
-    .slice(0, 60);
+    .replace(/[^A-Za-z0-9._-]+/g, '-');
+  return trimCharsLinear(ascii, isSlugEdge).slice(0, 60);
 }
 
 export function docxFileName(prefix: string, ...parts: Array<string | null | undefined>): string {

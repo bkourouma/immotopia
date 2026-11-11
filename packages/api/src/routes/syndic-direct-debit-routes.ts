@@ -67,11 +67,13 @@ const manage = [...base, requireSyndicDirectDebitManage];
 // Stockage en mémoire : le service lit les octets magiques (scan) ou analyse le fichier (retour).
 const uploadScan = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: MANDATE_SCAN_MAX_BYTES, files: 1 }
+  // Scan : aucun champ texte ; marge de 8.
+  limits: { fileSize: MANDATE_SCAN_MAX_BYTES, files: 1, fields: 8, fieldSize: 100 * 1024 }
 });
 const uploadReturn = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: RETURN_FILE_MAX_BYTES, files: 1 }
+  // Retours : seul `format` est lu en champ texte ; fileSize inchange (CSV bancaire).
+  limits: { fileSize: RETURN_FILE_MAX_BYTES, files: 1, fields: 8, fieldSize: 100 * 1024 }
 });
 
 const BASE = '/tenants/:tenantId/syndics/:syndicId/prelevements';

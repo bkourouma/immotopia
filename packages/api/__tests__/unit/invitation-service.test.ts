@@ -105,6 +105,17 @@ beforeEach(() => {
   sendInviteEmail.mockClear();
   seedTenant(TENANT_A);
   seedTenant(TENANT_B);
+  // Auteur des invitations de test : compte actif, membre ACTIF des deux agences
+  // (l'acceptation exige un auteur qui a encore accès à l'agence, F2).
+  mockPrisma.user.rows.push({ id: 'inviter-1', email: 'inviter@example.com', globalRole: 'USER', isActive: true });
+  for (const tenantId of [TENANT_A, TENANT_B]) {
+    mockPrisma.membership.rows.push({
+      id: `m-inviter-${tenantId}`,
+      userId: 'inviter-1',
+      tenantId,
+      status: MembershipStatus.ACTIVE
+    });
+  }
 });
 
 describe('IDOR entre agences — resendInvitation / revokeInvitation', () => {
@@ -360,6 +371,159 @@ describe('acceptInvitation — jamais de reecriture de mot de passe sur un compt
   });
 });
 
+describe('M3 / F2 — une invitation ne réactive pas un membre désactivé et ne survit pas à son auteur', () => {
+  function seedUser(id: string, email: string, overrides: Record<string, unknown> = {}) {
+    mockPrisma.user.rows.push({
+      id,
+      email,
+      globalRole: 'USER',
+      passwordHash: 'hash',
+      fullName: 'Compte',
+      isActive: true,
+      emailVerified: true,
+      ...overrides
+    });
+  }
+
+  it('inviteCollaborator : refuse un membre DÉSACTIVÉ (409, renvoi vers la réactivation), aucune invitation', async () => {
+    seedUser('disabled-1', 'desactive@example.com');
+    mockPrisma.membership.rows.push({
+      id: 'm-disabled',
+      userId: 'disabled-1',
+      tenantId: TENANT_A,
+      status: MembershipStatus.DISABLED
+    });
+
+    await expect(
+      inviteCollaborator({
+        email: 'desactive@example.com',
+        tenantId: TENANT_A,
+        roleIds: [],
+        invitedByUserId: 'inviter-1'
+      })
+    ).rejects.toMatchObject({ statusCode: 409, message: expect.stringContaining('réactivez-le') });
+    expect(mockPrisma.invitation.rows).toHaveLength(0);
+  });
+
+  it('inviteCollaborator : cible déjà administratrice (roleIds vide) invitée par un non-administrateur -> 403', async () => {
+    seedUser('pending-admin', 'admin-en-attente@example.com');
+    mockPrisma.membership.rows.push({
+      id: 'm-pending',
+      userId: 'pending-admin',
+      tenantId: TENANT_A,
+      status: MembershipStatus.PENDING_INVITE
+    });
+    mockPrisma.userRole.rows.push({
+      id: 'ur-admin',
+      userId: 'pending-admin',
+      tenantId: TENANT_A,
+      roleId: 'r-admin',
+      role: { key: 'TENANT_ADMIN' }
+    });
+
+    await expect(
+      inviteCollaborator({
+        email: 'admin-en-attente@example.com',
+        tenantId: TENANT_A,
+        roleIds: [],
+        invitedByUserId: 'inviter-1'
+      })
+    ).rejects.toMatchObject({ statusCode: 403 });
+    expect(mockPrisma.invitation.rows).toHaveLength(0);
+  });
+
+  it('acceptInvitation : un membre DÉSACTIVÉ n’est jamais réactivé (409), invitation intacte', async () => {
+    seedUser('disabled-2', 'desactive2@example.com');
+    mockPrisma.membership.rows.push({
+      id: 'm-disabled-2',
+      userId: 'disabled-2',
+      tenantId: TENANT_A,
+      status: MembershipStatus.DISABLED
+    });
+    const invitation = seedInvitation({ email: 'desactive2@example.com', tenantId: TENANT_A });
+
+    await expect(acceptInvitation({ token: PLAIN_TOKEN, requestingUserId: 'disabled-2' })).rejects.toMatchObject({
+      statusCode: 409
+    });
+    const membership = mockPrisma.membership.rows.find((row: any) => row.id === 'm-disabled-2');
+    expect(membership?.status).toBe(MembershipStatus.DISABLED);
+    const storedInvitation = mockPrisma.invitation.rows.find((row: any) => row.id === invitation.id)!;
+    expect(storedInvitation.status).toBe(InvitationStatus.PENDING);
+  });
+
+  it("acceptInvitation : auteur désactivé dans l'agence -> 409, aucun compte créé", async () => {
+    mockPrisma.membership.rows.find((row: any) => row.userId === 'inviter-1' && row.tenantId === TENANT_A)!.status =
+      MembershipStatus.DISABLED;
+    seedInvitation({ email: 'orphelin@example.com', tenantId: TENANT_A });
+
+    await expect(
+      acceptInvitation({ token: PLAIN_TOKEN, password: 'MotDePasseValide#1', fullName: 'X' })
+    ).rejects.toMatchObject({ statusCode: 409, message: expect.stringContaining("son auteur n'a plus accès") });
+    expect(mockPrisma.user.rows.find((row: any) => row.email === 'orphelin@example.com')).toBeUndefined();
+  });
+
+  it('acceptInvitation : auteur au compte inactif -> 409', async () => {
+    mockPrisma.user.rows.find((row: any) => row.id === 'inviter-1')!.isActive = false;
+    seedInvitation({ email: 'orphelin2@example.com', tenantId: TENANT_A });
+
+    await expect(
+      acceptInvitation({ token: PLAIN_TOKEN, password: 'MotDePasseValide#1', fullName: 'X' })
+    ).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  it("acceptInvitation : compte en attente déjà administrateur, invitation (roleIds vide) d'un non-administrateur -> 403", async () => {
+    seedUser('pending-admin-2', 'admin-en-attente2@example.com');
+    mockPrisma.membership.rows.push({
+      id: 'm-pending-2',
+      userId: 'pending-admin-2',
+      tenantId: TENANT_A,
+      status: MembershipStatus.PENDING_INVITE
+    });
+    mockPrisma.userRole.rows.push({
+      id: 'ur-admin-2',
+      userId: 'pending-admin-2',
+      tenantId: TENANT_A,
+      roleId: 'r-admin',
+      role: { key: 'TENANT_ADMIN' }
+    });
+    seedInvitation({ email: 'admin-en-attente2@example.com', tenantId: TENANT_A, roleIds: [] });
+
+    await expect(acceptInvitation({ token: PLAIN_TOKEN, requestingUserId: 'pending-admin-2' })).rejects.toMatchObject({
+      statusCode: 403
+    });
+    const membership = mockPrisma.membership.rows.find((row: any) => row.id === 'm-pending-2');
+    expect(membership?.status).toBe(MembershipStatus.PENDING_INVITE);
+  });
+
+  it('acceptInvitation : la même activation posée par un super-admin actif passe', async () => {
+    seedUser('super-inviter', 'super-inviter@example.com', { globalRole: 'SUPER_ADMIN' });
+    seedUser('pending-admin-3', 'admin-en-attente3@example.com');
+    mockPrisma.membership.rows.push({
+      id: 'm-pending-3',
+      userId: 'pending-admin-3',
+      tenantId: TENANT_A,
+      status: MembershipStatus.PENDING_INVITE
+    });
+    mockPrisma.userRole.rows.push({
+      id: 'ur-admin-3',
+      userId: 'pending-admin-3',
+      tenantId: TENANT_A,
+      roleId: 'r-admin',
+      role: { key: 'TENANT_ADMIN' }
+    });
+    seedInvitation({
+      email: 'admin-en-attente3@example.com',
+      tenantId: TENANT_A,
+      roleIds: [],
+      invitedBy: 'super-inviter'
+    });
+
+    await acceptInvitation({ token: PLAIN_TOKEN, requestingUserId: 'pending-admin-3' });
+    const membership = mockPrisma.membership.rows.find((row: any) => row.id === 'm-pending-3');
+    expect(membership?.status).toBe(MembershipStatus.ACTIVE);
+  });
+});
+
 describe('Casse des e-mails — le garde anti-super-admin et la recherche de compte ne se contournent pas par variation de casse', () => {
   it('inviteCollaborator : refuse un super-admin invite avec une casse differente', async () => {
     mockPrisma.user.rows.push({
@@ -402,7 +566,7 @@ describe('Casse des e-mails — le garde anti-super-admin et la recherche de com
       statusCode: 403,
       code: 'INVITATION_REQUIRES_LOGIN'
     });
-    expect(mockPrisma.user.rows).toHaveLength(1);
+    expect(mockPrisma.user.rows.filter((row: any) => row.id !== 'inviter-1')).toHaveLength(1);
 
     // Avec la session du bon compte : rattache l'agence, sans toucher au
     // mot de passe ni dupliquer le compte.
@@ -412,7 +576,7 @@ describe('Casse des e-mails — le garde anti-super-admin et la recherche de com
     });
 
     expect(result.user.id).toBe('existing-casse');
-    expect(mockPrisma.user.rows).toHaveLength(1);
+    expect(mockPrisma.user.rows.filter((row: any) => row.id !== 'inviter-1')).toHaveLength(1);
     const storedUser = mockPrisma.user.rows.find((row: any) => row.id === 'existing-casse')!;
     expect(storedUser.passwordHash).toBe(originalHash);
     const membership = mockPrisma.membership.rows.find(
@@ -443,7 +607,7 @@ describe('Casse des e-mails — le garde anti-super-admin et la recherche de com
     });
 
     expect(result.user.id).toBe('existing-mixte');
-    expect(mockPrisma.user.rows).toHaveLength(1);
+    expect(mockPrisma.user.rows.filter((row: any) => row.id !== 'inviter-1')).toHaveLength(1);
     const storedInvitation = mockPrisma.invitation.rows.find((row: any) => row.id === invitation.id)!;
     expect(storedInvitation.status).toBe(InvitationStatus.ACCEPTED);
   });

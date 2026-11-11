@@ -43,6 +43,7 @@ import PizZip from 'pizzip';
 
 import { uploadTemplate, activateTemplate, setDefaultTemplate } from '../../src/services/document-template-service';
 import { generateOwnerStatement } from '../../src/lib/patrimoine/queries';
+import { assertNotProduction } from './assert-not-production';
 
 const prisma = new PrismaClient({ log: [] });
 const TENANT_ID = process.env.DEMO_TENANT_ID || '385a1e76-ac08-4db5-9802-8b2ddfb1672b';
@@ -266,6 +267,7 @@ const QUITTANCE: Ligne[] = [
 const A_REAFFECTER = ['Immeuble Yopougon Niangon', 'Magasin de stockage 500', 'Entrepôt 1 200'];
 
 async function main() {
+  assertNotProduction('seed-demo-documents.ts');
   const membre = await prisma.membership.findFirst({ where: { tenantId: TENANT_ID }, select: { userId: true } });
   if (!membre) throw new Error('Aucun collaborateur sur cette agence');
   const acteur = membre.userId;

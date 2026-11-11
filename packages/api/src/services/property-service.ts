@@ -48,6 +48,77 @@ async function isThirdPartyOwnerUserId(
 }
 
 /**
+ * TEN-07 : un `ownerUserId` designe par l'appelant doit etre un membre ACTIF de
+ * l'agence ou un client (TenantClient) de l'agence. Une reference d'une autre
+ * agence, ou inconnue, leve la meme NotFoundError. L'acteur lui-meme est
+ * toujours accepte (comportement par defaut : proprietaire = createur).
+ */
+async function assertOwnerUserBelongsToTenant(
+  tenantId: string,
+  ownerUserId: string | null | undefined,
+  actorUserId: string | null | undefined
+): Promise<void> {
+  if (!ownerUserId || ownerUserId === actorUserId) return;
+  const activeMember = await prisma.membership.findFirst({
+    where: { tenantId, userId: ownerUserId, status: MembershipStatus.ACTIVE },
+    select: { id: true }
+  });
+  if (activeMember) return;
+  const ownerClient = await prisma.tenantClient.findFirst({
+    where: { tenantId, userId: ownerUserId },
+    select: { id: true }
+  });
+  if (!ownerClient) {
+    throw new NotFoundError(t('Propriétaire introuvable.'));
+  }
+}
+
+/**
+ * TEN-01 : filtre d'acces applique aux enfants d'un immeuble (biens de
+ * l'agence ou biens sous mandat actif de l'agence, comme `canAccessProperty`).
+ */
+function childAccessWhere(tenantId?: string | null) {
+  return tenantId ? { OR: [{ tenantId }, { mandates: { some: { tenantId, isActive: true } } }] } : {};
+}
+
+/**
+ * TEN-01 : le parent d'un bien (`containerParentId`) doit etre accessible a
+ * l'agence qui ecrit et etre un IMMEUBLE. Un parent d'une autre agence leve la
+ * meme NotFoundError qu'un parent inexistant.
+ */
+async function assertContainerParentUsable(
+  tenantId: string | null,
+  userId: string | null | undefined,
+  parentId: string
+): Promise<void> {
+  const parent = await prisma.property.findUnique({
+    where: { id: parentId },
+    select: {
+      propertyType: true,
+      ownershipType: true,
+      tenantId: true,
+      ownerUserId: true,
+      isPublished: true,
+      mandates: { where: { isActive: true }, select: { tenantId: true } }
+    }
+  });
+  if (
+    !parent ||
+    !canAccessProperty(
+      parent,
+      tenantId,
+      userId,
+      parent.mandates.map(mandate => mandate.tenantId)
+    )
+  ) {
+    throw new NotFoundError(t('Bien parent introuvable ou accès refusé'));
+  }
+  if (parent.propertyType !== PropertyType.IMMEUBLE) {
+    throw new BadRequestError(t('Le bien parent doit être de type IMMEUBLE'));
+  }
+}
+
+/**
  * Nom d'un contact CRM tel qu'il s'affiche : raison sociale pour une
  * entreprise, sinon « prénom nom ».
  */
@@ -180,7 +251,8 @@ export async function createProperty(
   tenantId: string | null,
   ownerUserId: string | null,
   data: CreatePropertyRequest,
-  actorUserId?: string
+  actorUserId?: string,
+  options?: { inheritedOwnerUserId?: string | null }
 ): Promise<PropertyDetail> {
   // Un ZodError leve ici (pas de try/catch : voir lib/properties/schemas.ts)
   // remonte tel quel jusqu'a `errorHandler`, qui le classe en 400
@@ -188,6 +260,11 @@ export async function createProperty(
   // `PrismaClientValidationError` (500) que `tx.property.create()` levait sur
   // un champ mal type plus bas.
   createPropertySchema.parse(data);
+
+  // TEN-01 : parent (immeuble) accessible a l'agence, AVANT toute ecriture.
+  if (data.containerParentId) {
+    await assertContainerParentUsable(tenantId, actorUserId ?? ownerUserId, data.containerParentId);
+  }
 
   // Validate ownership type matches provided IDs
   if (data.ownershipType === PropertyOwnershipType.TENANT && !tenantId) {
@@ -220,6 +297,15 @@ export async function createProperty(
     if (!ownerClient) {
       throw new NotFoundError(t('Propriétaire introuvable.'));
     }
+  }
+
+  // TEN-07 : proprietaire designe par identifiant (hors mandat CLIENT, deja
+  // controle ci-dessus) = membre ACTIF ou client de l'agence.
+  // Un proprietaire herite du bien parent (sous-bien) n'est pas re-controle :
+  // seule une valeur differente de celle du parent reste soumise au controle.
+  const inheritedOwner = options?.inheritedOwnerUserId;
+  if (!isManagedForClient && tenantId && finalOwnerUserId && !(inheritedOwner && finalOwnerUserId === inheritedOwner)) {
+    await assertOwnerUserBelongsToTenant(tenantId, finalOwnerUserId, actorUserId);
   }
 
   if (data.ownerEmail && !finalOwnerUserId) {
@@ -510,8 +596,17 @@ export async function getPropertyById(
         where: { isActive: true },
         select: { tenantId: true }
       },
-      containerParent: true,
+      containerParent: {
+        select: {
+          id: true,
+          internalReference: true,
+          title: true,
+          rooms: true,
+          propertyType: true
+        }
+      },
       containerChildren: {
+        where: childAccessWhere(tenantId),
         include: {
           media: {
             select: PROPERTY_MEDIA_SELECT,
@@ -584,6 +679,12 @@ export async function updateProperty(
   // d'un bien prive ou sous mandat le rendrait orphelin.
   if (data.ownerUserId === null && existing.ownershipType !== PropertyOwnershipType.TENANT) {
     throw new BadRequestError(t('Le propriétaire de ce bien ne peut pas être retiré.'));
+  }
+
+  // TEN-07 : nouveau proprietaire designe = membre ACTIF ou client de l'agence.
+  // Un proprietaire inchange (le formulaire renvoie l'ancien) n'est pas re-controle.
+  if (tenantId && data.ownerUserId && data.ownerUserId !== existing.ownerUserId) {
+    await assertOwnerUserBelongsToTenant(tenantId, data.ownerUserId, actorUserId);
   }
 
   // Validate against template if typeSpecificData is provided
@@ -968,14 +1069,19 @@ export async function listProperties(
           propertyType: true
         }
       },
+      // Lots d'un immeuble : seuls ceux que l'agence voit (TEN-01, comme la
+      // fiche) entrent dans les compteurs loués / disponibles. Sans ce filtre,
+      // les lots d'une autre agence faussaient les compteurs et trahissaient
+      // leur existence.
       containerChildren: {
+        where: childAccessWhere(tenantId),
         select: {
           status: true
         }
       },
       _count: {
         select: {
-          containerChildren: true
+          containerChildren: { where: childAccessWhere(tenantId) }
         }
       },
       rentalLeases: {
@@ -1508,7 +1614,8 @@ export async function getChildProperties(
 
   const children = await prisma.property.findMany({
     where: {
-      containerParentId: parentPropertyId
+      containerParentId: parentPropertyId,
+      ...childAccessWhere(tenantId)
     },
     include: {
       tenant: {

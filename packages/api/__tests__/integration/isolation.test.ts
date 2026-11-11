@@ -221,6 +221,27 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       const after = await prisma.crmDeal.count({ where: { contactId: contactOfB } });
       expect(after).toBe(0);
     });
+
+    it("A cree un bien avec containerParentId d'un bien de B -> 404, rien n'est cree (TEN-01)", async () => {
+      const parentOfB = await createPropertyDirect(tenantB.id, 'ImmeubleDeB');
+
+      const res = await request(app)
+        .post(`/api/tenants/${tenantA.id}/properties`)
+        .set(authed(adminA))
+        .send({
+          propertyType: 'APPARTEMENT',
+          ownershipType: 'TENANT',
+          title: 'Appartement rattache a B',
+          address: 'Cocody',
+          transactionModes: ['RENTAL'],
+          currency: 'XOF',
+          containerParentId: parentOfB
+        });
+
+      expect(res.status).toBe(404);
+      const children = await prisma.property.count({ where: { containerParentId: parentOfB } });
+      expect(children).toBe(0);
+    });
   });
 
   describe('ImmoCopilot — jeton de proposition et agences (assistant IA)', () => {

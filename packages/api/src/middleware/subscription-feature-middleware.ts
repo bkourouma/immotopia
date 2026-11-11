@@ -83,8 +83,17 @@ function count(code: FeatureDenialCode, feature: Feature): void {
 
 // ---------------------------------------------------------------- verification
 
+/**
+ * Super-admin RELU EN BASE par `requireTenantAccess` (`tenantContext.isSuperAdmin`),
+ * jamais d'après le seul `globalRole` du jeton : un compte rétrogradé ou désactivé
+ * depuis l'émission du jeton n'échappe plus aux gardes d'abonnement (contre-audit PR #205).
+ */
+function isVerifiedSuperAdmin(req: Request): boolean {
+  return req.tenantContext?.isSuperAdmin === true;
+}
+
 function isExemptActor(req: Request): boolean {
-  if (req.user?.globalRole === 'SUPER_ADMIN') return true;
+  if (isVerifiedSuperAdmin(req)) return true;
   return Boolean(req.tenantContext?.isClient);
 }
 
@@ -230,7 +239,7 @@ export function subscriptionRouteGuard(req: Request, res: Response, next: NextFu
   // d'acces — jamais l'etat de l'abonnement d'autrui.
   authenticate(req, res, () => {
     void requireTenantAccess(req, res, () => {
-      if (req.user?.globalRole === 'SUPER_ADMIN') {
+      if (isVerifiedSuperAdmin(req)) {
         next();
         return;
       }

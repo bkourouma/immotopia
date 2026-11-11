@@ -54,14 +54,12 @@ import * as dotenv from 'dotenv';
 import { PDFDocument, PDFFont, StandardFonts, rgb } from 'pdf-lib';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { parsePeriodBounds } from '../../src/lib/syndics/period';
+import { assertNotProduction } from './assert-not-production';
 import { buildSyndicFundMovements, type FundPaymentInput } from './syndic-demo-fund-movements';
 
 dotenv.config({ path: path.resolve(__dirname, '../../.env'), quiet: true });
 
-if (process.env.NODE_ENV === 'production') {
-  console.error('syndic-demo-seed : refus de tourner en production.');
-  process.exit(1);
-}
+assertNotProduction('syndic-demo-seed.ts');
 
 const prisma = new PrismaClient({ log: [] });
 

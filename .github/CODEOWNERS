@@ -1,0 +1,18 @@
+# Proprietaires du code (FRI-07). Une revue du proprietaire n'est EXIGEE que si la
+# regle de protection de la branche main active « Require review from Code Owners »
+# (reglage GitHub : Settings > Branches, a faire par l'administrateur du depot).
+# Derniere regle correspondante gagne : tout est regroupe ci-dessous.
+
+# Chaine de livraison et infrastructure
+/.github/                         @bkourouma
+/infra/                           @bkourouma
+**/Dockerfile*                    @bkourouma
+/docker-compose.yml               @bkourouma
+
+# Gouvernance et modele de menace
+/docs/governance/                 @bkourouma
+
+# Isolation multi-tenant et schema de donnees
+/packages/api/src/utils/*tenant*  @bkourouma
+/packages/api/src/middleware/*tenant* @bkourouma
+/packages/api/prisma/             @bkourouma

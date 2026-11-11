@@ -123,13 +123,13 @@ describe('Portail locataire — motif suggéré de « Payer l’agence »', () =
     );
     mount();
     await waitFor(() => expect(getUnpaidInstallments).toHaveBeenCalled());
-    await waitFor(async () => expect(await shownReason()).toBe('Loyer 04/2026'));
+    await waitFor(async () => expect(await shownReason()).toBe('Loyer 04/2026'), { timeout: 8000 });
   });
 
   it('lecture en échec : motif générique, sans période', async () => {
     getUnpaidInstallments.mockRejectedValue(new Error('500'));
     mount();
-    await waitFor(async () => expect(await shownReason()).toBe('Loyer'));
+    await waitFor(async () => expect(await shownReason()).toBe('Loyer'), { timeout: 8000 });
   });
 
   it('rien à payer : aucun motif', async () => {

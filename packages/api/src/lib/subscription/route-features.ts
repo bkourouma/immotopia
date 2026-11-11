@@ -56,7 +56,6 @@ export const TENANT_ROUTE_FEATURES: readonly RouteFeatureRule[] = [
     note: "Fiche publique reduite de l'agence, lue par un client (nom, logo, coordonnees) : jamais bloquee."
   },
   { prefix: '/unregister', feature: 'EXEMPT', note: "Desinscription d'un client." },
-  { prefix: '/client-details', feature: 'EXEMPT', note: 'Un client met a jour sa propre fiche.' },
   {
     prefix: '/maintenance/tenant',
     feature: 'EXEMPT',

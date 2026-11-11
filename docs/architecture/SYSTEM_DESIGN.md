@@ -13,7 +13,7 @@ Versions lues dans les `package.json` du dépôt (racine, `packages/api`,
 
 | Domaine         | Techno                               | Version                                                                                                                                                          |
 | --------------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Monorepo        | npm workspaces, Node                 | `>=20` (`.nvmrc` : `20`), npm `>=10`                                                                                                                             |
+| Monorepo        | npm workspaces, Node                 | `>=22` (`.nvmrc` : `22`), npm `>=10`                                                                                                                             |
 | Backend         | Express                              | `^4.18.2`                                                                                                                                                        |
 | Backend         | Prisma (`@prisma/client` + CLI)      | `^5.7.1`                                                                                                                                                         |
 | Backend         | TypeScript                           | `^5.3.3`                                                                                                                                                         |

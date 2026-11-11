@@ -395,7 +395,9 @@ export const createSubPropertyHandler = asyncHandler(async (req: Request, res: R
     typeSpecificData: Object.keys(mergedTypeSpecificData).length > 0 ? mergedTypeSpecificData : undefined
   };
 
-  const property = await createProperty(tenantId, data.ownerUserId || null, data, actorUserId);
+  const property = await createProperty(tenantId, data.ownerUserId || null, data, actorUserId, {
+    inheritedOwnerUserId: parent.ownerUserId
+  });
 
   res.status(201).json({
     success: true,

@@ -609,7 +609,8 @@ async function runLogged(alertsOnly: boolean) {
     const report = await withJobLock(
       alertsOnly ? 'subscription-usage-hourly' : 'subscription-usage-daily',
       alertsOnly ? 30 * 60 * 1000 : 60 * 60 * 1000,
-      () => runSubscriptionUsageCycle({ alertsOnly })
+      () => runSubscriptionUsageCycle({ alertsOnly }),
+      { failOpen: false } // facturation de dépassement : jamais sans verrou
     );
     if (!report) return; // une autre instance a pris le passage
     logger.info('Subscription usage job completed', { alertsOnly, ...report, errors: report.errors.length });

@@ -17,6 +17,7 @@ import { WHATSAPP_NOTIFICATION_KEYS, type WhatsappNotificationKey } from '../con
 import { filterNotificationItems } from '../lib/subscription/notification-feature-gate';
 import { sendGroupInviteToEligibleContacts } from '../services/whatsapp-group-automation-service';
 import { sendManualGroupBroadcast } from '../services/whatsapp-group-broadcast-service';
+import { env } from '../config/env';
 
 /**
  * Chaque handler passe par `asyncHandler` : une erreur inattendue part vers
@@ -143,7 +144,7 @@ function normalizePhone(phone: string, defaultCountryCode = '33'): string {
 }
 
 function getDefaultCountryCode(): string {
-  const value = process.env.WHATSAPP_DEFAULT_COUNTRY_CODE?.trim();
+  const value = env.WHATSAPP_DEFAULT_COUNTRY_CODE?.trim();
   return value && /^\d{1,4}$/.test(value) ? value : '33';
 }
 

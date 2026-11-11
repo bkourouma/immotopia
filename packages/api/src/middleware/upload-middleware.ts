@@ -62,7 +62,11 @@ export const uploadMedia = multer({
   storage,
   fileFilter: mediaFileFilter,
   limits: {
-    fileSize: 50 * 1024 * 1024 // 50MB max file size
+    fileSize: 50 * 1024 * 1024, // 50MB max file size
+    files: 1,
+    // mediaType, displayOrder, isPrimary : 3 champs légitimes, marge comprise.
+    fields: 8,
+    fieldSize: 100 * 1024
   }
 });
 
@@ -71,6 +75,10 @@ export const uploadDocument = multer({
   storage,
   fileFilter: documentFileFilter,
   limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB max file size
+    fileSize: 10 * 1024 * 1024, // 10MB max file size
+    files: 1,
+    // Le plus chargé (document de copropriété) envoie 6 champs : marge de 2.
+    fields: 8,
+    fieldSize: 100 * 1024
   }
 });

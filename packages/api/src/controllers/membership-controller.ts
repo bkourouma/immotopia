@@ -175,30 +175,20 @@ export const disableMemberHandler = asyncHandler(async (req: Request, res: Respo
  * Enable a member
  * POST /api/tenants/:tenantId/users/:userId/enable
  */
-export async function enableMemberHandler(req: Request, res: Response): Promise<void> {
-  try {
-    if (!req.user?.userId) {
-      res.status(401).json({ success: false, message: 'Authentification requise.' });
-      return;
-    }
-
-    const { tenantId, userId } = req.params;
-    const membership = await enableMember(userId, tenantId, req.user.userId);
-
-    res.status(200).json({
-      success: true,
-      message: 'Membre activé avec succès.',
-      data: membership
-    });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue.';
-    if (errorMessage.includes('introuvable')) {
-      res.status(404).json({ success: false, message: errorMessage });
-    } else {
-      res.status(400).json({ success: false, message: errorMessage });
-    }
+export const enableMemberHandler = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user?.userId) {
+    throw new UnauthorizedError();
   }
-}
+
+  const { tenantId, userId } = req.params;
+  const membership = await enableMember(userId, tenantId, req.user.userId);
+
+  res.status(200).json({
+    success: true,
+    message: 'Membre activé avec succès.',
+    data: membership
+  });
+});
 
 /**
  * Reset member password
@@ -228,9 +218,13 @@ export const resetPasswordHandler = asyncHandler(async (req: Request, res: Respo
     success: true,
     message: result.password
       ? 'Mot de passe réinitialisé. Un lien de réinitialisation a également été envoyé au membre.'
-      : result.sessionsRevoked
+      : result.sessionsRevoked && result.passwordReplaced
         ? 'Un lien de réinitialisation a été envoyé au membre. Ses sessions ont été révoquées.'
-        : 'Un lien de réinitialisation a été envoyé au membre. Son mot de passe actuel reste valable tant qu’il ne l’a pas changé.'
+        : result.sessionsRevoked
+          ? t(
+              "Un lien de réinitialisation a été envoyé au membre. Ses sessions ont été révoquées ; son mot de passe actuel reste valable tant qu'il ne l'a pas changé."
+            )
+          : 'Un lien de réinitialisation a été envoyé au membre. Son mot de passe actuel reste valable tant qu’il ne l’a pas changé.'
   });
 });
 
@@ -238,26 +232,18 @@ export const resetPasswordHandler = asyncHandler(async (req: Request, res: Respo
  * Revoke member sessions
  * POST /api/tenants/:tenantId/users/:userId/revoke-sessions
  */
-export async function revokeSessionsHandler(req: Request, res: Response): Promise<void> {
-  try {
-    if (!req.user?.userId) {
-      res.status(401).json({ success: false, message: 'Authentification requise.' });
-      return;
-    }
-
-    const { tenantId, userId } = req.params;
-    await revokeMemberSessions(userId, tenantId, req.user.userId);
-
-    res.status(200).json({
-      success: true,
-      message: 'Sessions révoquées avec succès.'
-    });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue.';
-    if (errorMessage.includes('introuvable')) {
-      res.status(404).json({ success: false, message: errorMessage });
-    } else {
-      res.status(400).json({ success: false, message: errorMessage });
-    }
+export const revokeSessionsHandler = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user?.userId) {
+    throw new UnauthorizedError();
   }
-}
+
+  const { tenantId, userId } = req.params;
+  const { sessionsRevoked, tokensRevoked } = await revokeMemberSessions(userId, tenantId, req.user.userId);
+
+  res.status(200).json({
+    success: true,
+    sessionsRevoked,
+    tokensRevoked,
+    message: t('Sessions révoquées avec succès.')
+  });
+});

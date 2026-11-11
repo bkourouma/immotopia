@@ -3,6 +3,7 @@ import { API_URL } from '../config/api';
 import i18next from '../i18n';
 import { t } from '../i18n/t';
 import { getStoredActiveTenantId } from './active-tenant';
+import { purgePersonalLocalData } from './personal-local-data';
 import { TENANT_SUSPENDED_EVENT } from './tenant-events';
 
 /**
@@ -135,8 +136,15 @@ export function refreshSession(): Promise<void> {
   return refreshPromise;
 }
 
-/** Send the user to login, preserving where they were headed. */
+/**
+ * Send the user to login, preserving where they were headed.
+ *
+ * Session perdue (rafraîchissement refusé en 401/403) : les données
+ * personnelles locales sont purgées comme à une déconnexion explicite
+ * (contre-audit A4), sans quoi elles restaient au compte suivant du poste.
+ */
 export function redirectToLogin(): void {
+  purgePersonalLocalData();
   if (window.location.pathname.includes('/login')) {
     return;
   }

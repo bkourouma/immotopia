@@ -4,7 +4,9 @@
  * @see specs/010-communication-module/plan.md
  */
 import nodemailer, { Transporter } from 'nodemailer';
+import { env } from '../../config/env';
 import { logger } from '../../utils/logger';
+import { isSafeEmailAddress, maskEmailForLog, normalizeRecipientAddress } from '../../utils/email-utils';
 
 export interface EmailSendOptions {
   to: string;
@@ -12,6 +14,13 @@ export interface EmailSendOptions {
   text?: string;
   html?: string;
   replyTo?: string;
+}
+
+/** Résultat explicite d'un envoi : `sent: false` + `reason` quand rien n'est parti. */
+export interface EmailProviderResult {
+  sent: boolean;
+  reason?: 'INVALID_RECIPIENT';
+  messageId?: string;
 }
 
 export interface EmailTemplateOptions {
@@ -29,29 +38,27 @@ let transporter: Transporter | null = null;
  */
 export function configureEmailProvider(): Transporter | null {
   if (transporter) return transporter;
-  const provider = (process.env.EMAIL_PROVIDER || 'smtp').toLowerCase();
+  const provider = (env.EMAIL_PROVIDER || 'smtp').toLowerCase();
 
   try {
-    if (provider === 'sendgrid' && process.env.SENDGRID_API_KEY) {
+    if (provider === 'sendgrid' && env.SENDGRID_API_KEY) {
       transporter = nodemailer.createTransport({
         host: 'smtp.sendgrid.net',
         port: 587,
         secure: false,
         auth: {
           user: 'apikey',
-          pass: process.env.SENDGRID_API_KEY
+          pass: env.SENDGRID_API_KEY
         }
       });
     } else {
       // Align with EmailService defaults (e.g. Hostinger: 465, secure) so same .env works for Communication and email-notifications
-      const port = parseInt(process.env.EMAIL_SMTP_PORT || '465', 10);
+      const port = env.EMAIL_SMTP_PORT ?? 465;
       transporter = nodemailer.createTransport({
-        host: process.env.EMAIL_SMTP_HOST || 'smtp.hostinger.com',
+        host: env.EMAIL_SMTP_HOST || 'smtp.hostinger.com',
         port,
-        secure: port === 465 || process.env.EMAIL_SMTP_SECURE === 'true',
-        auth: process.env.EMAIL_SMTP_USER
-          ? { user: process.env.EMAIL_SMTP_USER, pass: process.env.EMAIL_SMTP_PASS }
-          : undefined
+        secure: port === 465 || env.EMAIL_SMTP_SECURE,
+        auth: env.EMAIL_SMTP_USER ? { user: env.EMAIL_SMTP_USER, pass: env.EMAIL_SMTP_PASS } : undefined
       });
     }
     logger.info('Email provider configured', { provider });
@@ -65,34 +72,48 @@ export function configureEmailProvider(): Transporter | null {
 /**
  * Send a single email.
  */
-export async function sendEmail(options: EmailSendOptions): Promise<{ messageId?: string }> {
+export async function sendEmail(options: EmailSendOptions): Promise<EmailProviderResult> {
+  // FRI-08 : adresse invalide => aucun envoi, sans lever, résultat explicite.
+  if (!isSafeEmailAddress(options.to)) {
+    logger.warn('Email rejete : destinataire invalide', { to: maskEmailForLog(options.to) });
+    return { sent: false, reason: 'INVALID_RECIPIENT' };
+  }
+  const to = normalizeRecipientAddress(options.to);
+  let replyTo = options.replyTo;
+  if (replyTo !== undefined && !isSafeEmailAddress(replyTo)) {
+    logger.warn('Email : replyTo invalide ignore', { replyTo: maskEmailForLog(replyTo) });
+    replyTo = undefined;
+  } else if (replyTo !== undefined) {
+    replyTo = normalizeRecipientAddress(replyTo);
+  }
   const transport = configureEmailProvider();
   if (!transport) {
     throw new Error('Email provider not configured');
   }
-  const from = process.env.SENDGRID_FROM_NAME
-    ? `"${process.env.SENDGRID_FROM_NAME}" <${process.env.SENDGRID_FROM_EMAIL || process.env.EMAIL_FROM}>`
-    : process.env.SENDGRID_FROM_EMAIL || process.env.EMAIL_FROM || 'noreply@example.com';
+  const from = env.SENDGRID_FROM_NAME
+    ? `"${env.SENDGRID_FROM_NAME}" <${env.SENDGRID_FROM_EMAIL || env.EMAIL_FROM}>`
+    : env.SENDGRID_FROM_EMAIL || env.EMAIL_FROM || 'noreply@example.com';
   const info = await transport.sendMail({
     from,
-    to: options.to,
+    to,
     subject: options.subject,
     text: options.text,
     html: options.html,
-    replyTo: options.replyTo
+    replyTo
   });
-  return { messageId: info.messageId };
+  return { sent: true, messageId: info.messageId };
 }
 
 /**
  * Send email using a pre-rendered HTML body (template already resolved).
  */
-export async function sendWithTemplate(options: EmailTemplateOptions): Promise<{ messageId?: string }> {
+export async function sendWithTemplate(options: EmailTemplateOptions): Promise<EmailProviderResult> {
   return sendEmail({
     to: options.to,
     subject: options.subject,
     html: options.html,
-    text: options.html.replace(/<[^>]*>/g, ' ')
+    // `[^<>]*` et non `[^>]*` : linéaire même sur un long HTML fait de `<` sans `>`.
+    text: options.html.replace(/<[^<>]*>/g, ' ')
   });
 }
 
