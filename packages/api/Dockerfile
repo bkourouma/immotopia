@@ -5,7 +5,7 @@
 #   docker build -f packages/api/Dockerfile .
 # docker-compose.yml already sets the context accordingly.
 
-FROM node:22-alpine AS build
+FROM node:26-alpine AS build
 WORKDIR /repo
 
 # OpenSSL is required by Prisma's query engine on Alpine.
@@ -79,7 +79,7 @@ FROM build AS prod-deps
 RUN npm prune --omit=dev
 
 
-FROM node:22-alpine AS runtime
+FROM node:26-alpine AS runtime
 WORKDIR /app
 
 # LibreOffice (Writer seul) convertit les DOCX en PDF pour la signature
