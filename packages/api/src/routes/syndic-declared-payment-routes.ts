@@ -8,6 +8,18 @@ import {
   syndicDeclaredWriteRateLimiter
 } from '../middleware/rate-limit-middleware';
 import { receiveDeclarationProof } from '../middleware/declared-proof-upload';
+import { receiveReceivingAccountQr } from '../middleware/receiving-account-upload';
+import {
+  receivingAccountQrReadRateLimiter,
+  receivingAccountWriteRateLimiter
+} from '../middleware/rate-limit-middleware';
+import {
+  createSyndicReceivingAccountHandler,
+  deleteSyndicReceivingAccountHandler,
+  listSyndicReceivingAccountsHandler,
+  readSyndicReceivingAccountQrHandler,
+  updateSyndicReceivingAccountHandler
+} from '../controllers/receiving-account-controller';
 import {
   approveDeclarationHandler,
   createManagerDeclarationHandler,
@@ -88,6 +100,42 @@ router.post(
   syndicDeclaredWriteRateLimiter,
   receiveDeclarationProof,
   createManagerDeclarationHandler
+);
+
+// Spec 048, lot Q : comptes de réception (alias, QR) de la copropriété, mêmes gardes que les
+// numéros de réception. Limiteur AVANT le parseur multipart.
+const ACCOUNTS = `${BASE}/receiving-accounts`;
+
+router.get(ACCOUNTS, ...guards, canView, listSyndicReceivingAccountsHandler);
+router.post(
+  ACCOUNTS,
+  ...guards,
+  canEdit,
+  receivingAccountWriteRateLimiter,
+  receiveReceivingAccountQr,
+  createSyndicReceivingAccountHandler
+);
+router.put(
+  `${ACCOUNTS}/:accountId`,
+  ...guards,
+  canEdit,
+  receivingAccountWriteRateLimiter,
+  receiveReceivingAccountQr,
+  updateSyndicReceivingAccountHandler
+);
+router.delete(
+  `${ACCOUNTS}/:accountId`,
+  ...guards,
+  canEdit,
+  receivingAccountWriteRateLimiter,
+  deleteSyndicReceivingAccountHandler
+);
+router.get(
+  `${ACCOUNTS}/:accountId/qr`,
+  ...guards,
+  canView,
+  receivingAccountQrReadRateLimiter,
+  readSyndicReceivingAccountQrHandler
 );
 
 export default router;

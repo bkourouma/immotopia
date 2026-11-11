@@ -565,6 +565,8 @@
   "Loyer": "Rent",
   "Loyer :": "Rent:",
   "Loyer : {{montant}} / mois": "Rent: {{montant}} / month",
+  "Loyer {{period}}": "Rent {{period}}",
+  "Loyer {{period}} — {{lease}}": "Rent {{period}} — {{lease}}",
   "Loyer annuel": "Annual rent",
   "Loyer encaissé": "Rent collected",
   "Loyer mensuel": "Monthly rent",
