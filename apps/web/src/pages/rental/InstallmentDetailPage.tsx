@@ -4,6 +4,8 @@ import { Button, Card, Row, Col, Tag, Typography, Spin, Alert, Descriptions, Spa
 import { ArrowLeftOutlined, DollarOutlined, CalendarOutlined } from '@ant-design/icons';
 import { getInstallment, RentalInstallment, RentalInstallmentStatus } from '../../services/rental-service';
 import { InstallmentPaymentLinksPanel } from '../../components/rental/InstallmentPaymentLinksPanel';
+import { InstallmentReminderButton } from '../../components/rental/reminders/InstallmentReminderButton';
+import { InstallmentRemindersHistoryPanel } from '../../components/rental/reminders/InstallmentRemindersHistoryPanel';
 import { t } from '../../i18n/t';
 import { formatMoney } from '../../components/primitives/MoneyValue';
 import { deviseAffichee, libellePeriodeEcheance } from '../../lib/rental-labels';
@@ -19,6 +21,7 @@ export const InstallmentDetailPage: React.FC = () => {
   const [installment, setInstallment] = useState<RentalInstallment | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [remindersRefresh, setRemindersRefresh] = useState(0);
 
   useEffect(() => {
     if (tenantId && installmentId) {
@@ -115,7 +118,21 @@ export const InstallmentDetailPage: React.FC = () => {
               <Text type="secondary">{t("Détails de l'échéance")}</Text>
             </div>
           </Space>
-          {getStatusTag(installment.status)}
+          <Space size="middle" wrap>
+            {tenantId && installmentId && ready && (
+              <InstallmentReminderButton
+                tenantId={tenantId}
+                installmentId={installmentId}
+                periodLabel={libellePeriodeEcheance(installment.period_month, installment.period_year)}
+                remaining={remaining}
+                status={installment.status}
+                leaseStatus={installment.lease?.status}
+                canAllocate={permissions === null || permissions.has('RENTAL_PAYMENTS_ALLOCATE')}
+                onSent={() => setRemindersRefresh(k => k + 1)}
+              />
+            )}
+            {getStatusTag(installment.status)}
+          </Space>
         </div>
 
         <Row gutter={[24, 24]}>
@@ -197,6 +214,15 @@ export const InstallmentDetailPage: React.FC = () => {
             canView={permissions === null || permissions.has('RENTAL_PAYMENTS_VIEW')}
             canCreate={permissions === null || permissions.has('RENTAL_PAYMENTS_CREATE')}
             periodLabel={libellePeriodeEcheance(installment.period_month, installment.period_year)}
+          />
+        )}
+
+        {tenantId && installmentId && ready && (
+          <InstallmentRemindersHistoryPanel
+            tenantId={tenantId}
+            installmentId={installmentId}
+            canView={permissions === null || permissions.has('RENTAL_PAYMENTS_VIEW')}
+            refreshKey={remindersRefresh}
           />
         )}
       </Space>

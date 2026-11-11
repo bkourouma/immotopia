@@ -12,7 +12,12 @@ import {
   listTenantPortalReceivingAccountsHandler,
   readTenantPortalReceivingAccountQrHandler
 } from '../controllers/receiving-account-controller';
-import { receivingAccountQrReadRateLimiter } from '../middleware/rate-limit-middleware';
+import {
+  rentalPortalOnlinePaymentAvailabilityLimiter,
+  rentalPortalOnlinePaymentStartLimiter,
+  rentalPortalOnlinePaymentStatusLimiter,
+  receivingAccountQrReadRateLimiter
+} from '../middleware/rate-limit-middleware';
 import multer from 'multer';
 
 const router = Router();
@@ -50,12 +55,17 @@ router.get('/installments/:id', controller.getInstallmentDetails);
 
 // Payments
 router.get('/payments', controller.getPaymentHistory);
+// servi par tenant-portal-declared-payment-routes (monté avant)
 router.post('/payments/declare', upload.single('proof'), controller.declarePayment);
 
 // Lot 7 : paiement en ligne (PaySecureHub).
-router.get('/online-payments/availability', getOnlinePaymentAvailabilityHandler);
-router.post('/online-payments', startOnlinePaymentHandler);
-router.get('/online-payments/:codePaiement', getOnlinePaymentHandler);
+router.get(
+  '/online-payments/availability',
+  rentalPortalOnlinePaymentAvailabilityLimiter,
+  getOnlinePaymentAvailabilityHandler
+);
+router.post('/online-payments', rentalPortalOnlinePaymentStartLimiter, startOnlinePaymentHandler);
+router.get('/online-payments/:codePaiement', rentalPortalOnlinePaymentStatusLimiter, getOnlinePaymentHandler);
 
 // Spec 048, lot Q : comptes de réception de l'agence (alias, QR), actifs seulement ; image privée.
 router.get('/receiving-accounts', listTenantPortalReceivingAccountsHandler);

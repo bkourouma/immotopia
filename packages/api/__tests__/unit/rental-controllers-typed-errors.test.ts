@@ -70,7 +70,7 @@ import {
   rejectPaymentDeclarationHandler,
   getPaymentDeclarationHandler
 } from '../../src/controllers/rental-payment-declaration-controller';
-import { ConflictError, NotFoundError, errorHandler } from '../../src/middleware/error-middleware';
+import { AppError, ConflictError, ErrorCode, NotFoundError, errorHandler } from '../../src/middleware/error-middleware';
 
 const P = '/tenants/T/rental';
 
@@ -170,7 +170,23 @@ describe('déclarations de paiement', () => {
   });
 
   it('rejet : notes requises en 400, introuvable en 404', async () => {
-    expect((await request(buildApp()).post(`${P}/payment-declarations/x/reject`).send({})).status).toBe(400);
+    // Le contrôleur accepte un corps vide : la note obligatoire (motif « Autre »)
+    // est contrôlée par le service, dont le mock reproduit l'erreur typée.
+    mockDecl.rejectPaymentDeclaration.mockImplementation(
+      (_tenantId: string, _id: string, _actor: string, note?: string) =>
+        note?.trim()
+          ? Promise.reject(new NotFoundError('Déclaration non trouvée ou déjà traitée'))
+          : Promise.reject(
+              new AppError(
+                'Une note est obligatoire pour le motif « Autre ».',
+                400,
+                ErrorCode.RENTAL_DECLARATION_REJECT_NOTE_REQUIRED
+              )
+            )
+    );
+    const sansNote = await request(buildApp()).post(`${P}/payment-declarations/x/reject`).send({});
+    expect(sansNote.status).toBe(400);
+    expect(sansNote.body.code ?? sansNote.body.errorCode).toBe('RENTAL_DECLARATION_REJECT_NOTE_REQUIRED');
     mockDecl.rejectPaymentDeclaration.mockImplementation(notFound('Déclaration non trouvée ou déjà traitée'));
     const res = await request(buildApp()).post(`${P}/payment-declarations/x/reject`).send({ reviewNotes: 'non' });
     expect(res.status).toBe(404);

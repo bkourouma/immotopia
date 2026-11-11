@@ -54,6 +54,7 @@ function buildRouteLabels(): Record<string, string> {
     installments: t('Encaisser'),
     payments: t('Paiements'),
     'direct-debit': t('Prélèvements'),
+    'online-payments': t('Paiements en ligne'),
     remittances: t('Remises'),
     penalties: t('Pénalités'),
     deposits: t('Dépôts de garantie'),

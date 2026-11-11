@@ -153,6 +153,7 @@ const MENU_REQUIREMENTS: Record<string, string[]> = {
   encaisser: ['RENTAL_INSTALLMENTS_VIEW', 'RENTAL_PAYMENTS_VIEW'],
   'rental-installments': ['RENTAL_INSTALLMENTS_VIEW'],
   'rental-payments': ['RENTAL_PAYMENTS_VIEW'],
+  'rental-online-payments': ['RENTAL_PAYMENTS_VIEW'],
   'rental-direct-debit': ['RENTAL_DIRECT_DEBIT_VIEW'],
 
   // Finance. Permissions reprises des routes API de chaque écran (voir

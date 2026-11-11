@@ -101,8 +101,24 @@ export const VARIABLES_BY_EVENT_KEY: Record<string, string[]> = {
   ],
   PAYMENT_RECEIVED: ['contactName', 'amount', 'leaseLabel', 'agencyName'],
   PAYMENT_CONFIRMED: ['contactName', 'agencyName', 'amount', 'leaseLabel'],
-  INSTALLMENT_DUE_REMINDER: ['contactName', 'dueDate', 'dueAmount', 'leaseLabel', 'agencyName'],
-  INSTALLMENT_OVERDUE: ['contactName', 'dueDate', 'dueAmount', 'leaseLabel', 'agencyName'],
+  INSTALLMENT_DUE_REMINDER: [
+    'contactName',
+    'dueDate',
+    'dueAmount',
+    'leaseLabel',
+    'agencyName',
+    'paymentBlock',
+    'paymentUrl'
+  ],
+  INSTALLMENT_OVERDUE: [
+    'contactName',
+    'dueDate',
+    'dueAmount',
+    'leaseLabel',
+    'agencyName',
+    'paymentBlock',
+    'paymentUrl'
+  ],
   LEASE_ACTIVATED: [
     'contactName',
     'leaseLabel',

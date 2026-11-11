@@ -70,6 +70,10 @@ export const EMAIL_NOTIFICATION_KEYS = [
   'SYNDIC_PAYMENT_DECLARATION_REJECTED',
   'SYNDIC_PAYMENT_DECLARATION_TO_REVIEW',
   'SYNDIC_RECEIVING_NUMBER_CHANGED',
+  // Location – paiement déclaré par le locataire (parité Syndic)
+  'RENTAL_PAYMENT_DECLARATION_TO_REVIEW',
+  'RENTAL_PAYMENT_DECLARATION_OVERDUE_ALERT',
+  'RENTAL_RECEIVING_NUMBER_CHANGED',
   // Comptes de réception de l'agence (spec 048, lot Q)
   'RECEIVING_ACCOUNT_CHANGED',
   // Patrimoine – accès en lecture seule des tiers de confiance (lot B3)
@@ -409,6 +413,27 @@ export const EMAIL_NOTIFICATION_META: Record<EmailNotificationKey, EmailNotifica
     description:
       'Envoyé aux autres gestionnaires de la copropriété (droit de modification du syndic) quand le numéro qui reçoit les paiements mobile money est changé : seuls les numéros masqués sont indiqués.',
     recipientLabel: 'Gestionnaires de la copropriété'
+  },
+  RENTAL_PAYMENT_DECLARATION_TO_REVIEW: {
+    key: 'RENTAL_PAYMENT_DECLARATION_TO_REVIEW',
+    label: 'Paiements de loyer déclarés à vérifier (récapitulatif)',
+    description:
+      'Récapitulatif envoyé chaque heure aux gestionnaires de l’agence (droit de modification de la gestion locative) quand de nouveaux paiements de loyer déclarés par des locataires attendent leur vérification.',
+    recipientLabel: 'Gestionnaires de l’agence'
+  },
+  RENTAL_PAYMENT_DECLARATION_OVERDUE_ALERT: {
+    key: 'RENTAL_PAYMENT_DECLARATION_OVERDUE_ALERT',
+    label: 'Paiements de loyer déclarés en retard de vérification (alerte)',
+    description:
+      'Alerte envoyée chaque matin aux gestionnaires de l’agence quand des paiements de loyer déclarés attendent leur vérification depuis trop longtemps.',
+    recipientLabel: 'Gestionnaires de l’agence'
+  },
+  RENTAL_RECEIVING_NUMBER_CHANGED: {
+    key: 'RENTAL_RECEIVING_NUMBER_CHANGED',
+    label: 'Numéro de réception des loyers changé',
+    description:
+      'Envoyé aux autres gestionnaires de l’agence (droit de modification de la gestion locative) quand un numéro mobile money qui reçoit les loyers est créé, modifié ou désactivé : seuls les numéros masqués sont indiqués.',
+    recipientLabel: 'Gestionnaires de l’agence'
   },
   RECEIVING_ACCOUNT_CHANGED: {
     key: 'RECEIVING_ACCOUNT_CHANGED',

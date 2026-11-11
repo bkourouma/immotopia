@@ -97,6 +97,9 @@ describe('Export des déclarations — dates et cellules vides', () => {
   it('écrit les dates jj/mm/aaaa et laisse vides les cellules sans valeur', async () => {
     const table = await exporterEnCsv();
 
+    // Sans statut choisi, l'export demande tous les statuts (l'API lit l'absence comme PENDING).
+    expect(listPaymentDeclarations.mock.calls.every(c => (c[1] as { status?: string }).status === 'ALL')).toBe(true);
+
     // Dates : celles de l'export, pas celles de l'écran.
     for (const entete of ['Date de déclaration', 'Date de paiement']) {
       const cellules = colonne(table, entete);

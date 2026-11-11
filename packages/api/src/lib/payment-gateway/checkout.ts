@@ -8,11 +8,15 @@ import { logger } from '../../utils/logger';
 import { env } from '../../config/env';
 import { t } from '../../i18n';
 import { runWithTenantContext } from '../../utils/tenant-context';
+import { logAuditEvent } from '../../services/audit-service';
+import { AuditActionKey } from '../../types/audit-types';
+import { assertNoPendingDeclaration } from '../rental/online-review/pending-declaration';
 import { AppError, BadRequestError, ErrorCode, NotFoundError } from '../../middleware/error-middleware';
 import { roundMoney } from '../finance/money';
 import { startOfDay } from '../finance/installment-status';
 import { updatePaymentStatusTx, allocatePaymentTx } from '../../services/rental-payment-service';
 import { credentialsFrom, ensureCollectionAccountTx, isConfigUsable, loadConfig } from './config';
+import { assertRentalOnlinePaymentUsable, resolveRentalOnlineAvailability } from './availability';
 import { gatewayClientForMode } from './paysecurehub';
 import { GatewayError } from './types';
 import {
@@ -30,6 +34,7 @@ import {
   requestProviderCheckoutRedirect
 } from './checkout-core';
 import type { NormalizedProviderStatus } from './checkout-core';
+import type { RentalOnlineReviewKind, RentalOnlineUnavailableReason } from '../rental/online-review/types';
 
 // Réexport : `normalizeProviderCheckoutUrl` vivait ici avant le lot M2 (lien de paiement, tests).
 export { normalizeProviderCheckoutUrl };
@@ -118,14 +123,21 @@ export function toOnlineCheckoutSummaryDto(row: CheckoutRow): OnlineCheckoutSumm
   };
 }
 
-export async function getOnlinePaymentAvailability(
-  tenantId: string
-): Promise<{ available: boolean; mode: 'SIMULATOR' | 'LIVE' | null; feesPaidBy: 'CLIENT' | 'AGENCY' | null }> {
-  const config = await loadConfig(tenantId);
+export async function getOnlinePaymentAvailability(tenantId: string): Promise<{
+  available: boolean;
+  mode: 'SIMULATOR' | 'LIVE' | null;
+  feesPaidBy: 'CLIENT' | 'AGENCY' | null;
+  unavailableReason: RentalOnlineUnavailableReason | null;
+  simulated: boolean;
+}> {
+  // Règle unique durcie (contrat 049 §2.8) : config active, simulateur autorisé, droit RENTAL.
+  const availability = await resolveRentalOnlineAvailability(tenantId);
   return {
-    available: isConfigUsable(config),
-    mode: config?.mode ?? null,
-    feesPaidBy: config?.feesPaidBy ?? null
+    available: availability.usable,
+    mode: availability.mode,
+    feesPaidBy: availability.feesPaidBy,
+    unavailableReason: availability.unavailableReason,
+    simulated: availability.simulated
   };
 }
 
@@ -424,8 +436,12 @@ export async function startCheckout(
   installmentIds: string[],
   actorUserId: string | undefined
 ): Promise<OnlineCheckoutDto> {
+  // Jamais de repli : config inutilisable, simulateur interdit ou droit RENTAL absent => 400.
+  await assertRentalOnlinePaymentUsable(tenantId);
   const prepared = await prepareCheckout(tenantId, leaseId, installmentIds, prisma, undefined, { refuseDraft: true });
   const { uniqueIds } = prepared;
+  // Une déclaration de paiement en attente couvre l'échéance : pas de double paiement.
+  await assertNoPendingDeclaration(tenantId, leaseId, uniqueIds);
 
   const fifteenMinutesAgo = new Date(Date.now() - PENDING_REUSE_WINDOW_MS);
   const overlapping = await prisma.onlinePaymentCheckout.findFirst({
@@ -501,10 +517,12 @@ export async function startCheckoutForInstallments(
 
   // Configuration chargée AVANT la transaction : aucune requête hors `tx` ne
   // doit s'exécuter pendant qu'elle tient une connexion (épuisement du pool).
-  const config = await loadConfig(tenantId);
+  const availability = await assertRentalOnlinePaymentUsable(tenantId);
+  const config = availability.config;
   if (!isConfigUsable(config)) {
     throw new BadRequestError("Le paiement en ligne n'est pas disponible pour cette agence.");
   }
+  await assertNoPendingDeclaration(tenantId, leaseId, uniqueIds);
 
   const codePaiement = generateCodePaiement();
   const lockKey = `${tenantId}:${[...uniqueIds].sort().join(',')}`;
@@ -606,9 +624,18 @@ export async function getCheckoutForPortal(
   return checkout;
 }
 
+interface ReconcileOptions {
+  /**
+   * Bouton « Vérifier » de l'agence uniquement : une tentative EXPIRÉE est aussi relue, pour
+   * détecter un succès tardif (mis en REVIEW, jamais encaissé seul). Les autres appelants
+   * (IPN, portail, tâche) gardent EXPIRED = clos.
+   */
+  allowExpired?: boolean;
+}
+
 /** Cœur du rapprochement — contrat §2. Jamais appelé avec le corps de l'IPN, seulement pour retrouver la référence. */
-async function reconcileCheckoutRow(checkout: CheckoutRow): Promise<CheckoutRow> {
-  if (checkout.status === 'EXPIRED') {
+async function reconcileCheckoutRow(checkout: CheckoutRow, options: ReconcileOptions = {}): Promise<CheckoutRow> {
+  if (checkout.status === 'EXPIRED' && !options.allowExpired) {
     // Clos définitivement : la tâche planifiée a déjà fait une dernière vérification avant d'expirer.
     return checkout;
   }
@@ -648,24 +675,152 @@ async function fetchProviderStatusFor(checkout: CheckoutRow): Promise<Normalized
   }
 }
 
+/** Audit « mise en REVIEW » : jamais de jeton ni d'URL. */
+function auditReview(checkout: CheckoutRow, kind: RentalOnlineReviewKind, receivedAmount: number | null): void {
+  logAuditEvent({
+    actorUserId: null,
+    tenantId: checkout.tenantId,
+    actionKey: AuditActionKey.RENTAL_ONLINE_PAYMENT_REVIEW,
+    entityType: 'OnlinePaymentCheckout',
+    entityId: checkout.id,
+    payload: {
+      checkoutId: checkout.id,
+      codePaiement: checkout.codePaiement,
+      reviewKind: kind,
+      amount: Number(checkout.amount),
+      receivedAmount
+    }
+  });
+}
+
+/** Passe la tentative en REVIEW avec son motif ; aucun encaissement n'est fait ni défait. */
+async function moveToReview(
+  db: Pick<PrismaTransactionClient, 'onlinePaymentCheckout'>,
+  checkout: CheckoutRow,
+  bookkeeping: Prisma.OnlinePaymentCheckoutUpdateInput,
+  kind: RentalOnlineReviewKind,
+  reason: string,
+  receivedAmount: number | null
+): Promise<CheckoutRow> {
+  // Écriture conditionnée par le statut lu : une ligne périmée ne ré-écrase jamais une décision
+  // concurrente (REVIEW, FAILED, SUCCESS). Si l'état a changé (count = 0) : on relit la ligne et on
+  // la rend telle quelle, sans mise à jour ni audit.
+  const claim = await db.onlinePaymentCheckout.updateMany({
+    where: { id: checkout.id, tenantId: checkout.tenantId, status: checkout.status, resolution: null },
+    data: { ...bookkeeping, status: 'REVIEW', reviewKind: kind, reviewReason: reason }
+  });
+  if (claim.count === 1) auditReview(checkout, kind, receivedAmount);
+  return db.onlinePaymentCheckout.findFirstOrThrow({ where: { id: checkout.id, tenantId: checkout.tenantId } });
+}
+
+/**
+ * Échéance visée devenue indisponible avant l'encaissement : annulée, déjà soldée, ou qui
+ * n'appartient plus au bail de la tentative. Lecture seule.
+ */
+async function hasUnavailableInstallment(
+  db: Pick<PrismaTransactionClient, 'rentalInstallment'>,
+  checkout: CheckoutRow
+): Promise<boolean> {
+  const installments = await db.rentalInstallment.findMany({
+    where: { id: { in: checkout.installmentIds }, tenant_id: checkout.tenantId, lease_id: checkout.leaseId },
+    select: {
+      id: true,
+      status: true,
+      amount_rent: true,
+      amount_service: true,
+      amount_other_fees: true,
+      penalty_amount: true,
+      amount_paid: true,
+      payments: { select: { amount: true, payment: { select: { status: true } } } }
+    }
+  });
+  if (installments.length !== new Set(checkout.installmentIds).size) return true;
+  return installments.some(row => row.status === 'CANCELED' || resteDuEcheance(row) <= 0);
+}
+
 /**
  * Applique la réponse de l'agrégateur au checkout — la machine à états du
  * contrat §2.2 à §2.6. Toute transition qui touche l'argent (succès, échec,
  * annulation) passe par `updatePaymentStatusTx`/`allocatePaymentTx` dans LA
  * MÊME transaction que le changement de statut du checkout.
+ *
+ * Règle impérative (contrat 049 §2.4) : une tentative en REVIEW n'est JAMAIS encaissée,
+ * échouée ni annulée ici (vérification manuelle, IPN, retour portail, tâche) : seule la
+ * décision du gestionnaire (`lib/rental/online-review/resolve.ts`) la tranche.
+ *
+ * Seule exception (contre-audit PAY M2) : la tâche planifiée `recheckReviewCheckouts`
+ * passe `{ recheckReview: true }` pour une REVIEW « montant non communiqué » ou « autre
+ * devise » que le gestionnaire n'a pas tranchée (`resolution` nulle). La même décision que
+ * l'IPN s'applique alors : SUCCESS si montant et devise sont désormais conformes (avec les
+ * mêmes gardes : transaction en double, échéance indisponible), sinon la revue demeure.
+ * Le bouton « Vérifier », l'IPN et le portail n'ont jamais cette exception.
  */
-async function applyProviderStatus(checkout: CheckoutRow, ps: NormalizedProviderStatus): Promise<CheckoutRow> {
+async function applyProviderStatus(
+  checkout: CheckoutRow,
+  ps: NormalizedProviderStatus,
+  options: { recheckReview?: boolean } = {}
+): Promise<CheckoutRow> {
   const tenantId = checkout.tenantId;
+  const receivedAmount = ps.amount !== null && ps.amount !== undefined ? ps.amount : null;
 
   const bookkeeping: Prisma.OnlinePaymentCheckoutUpdateInput = {
     lastProviderState: ps.rawState,
     lastProviderPayload: ps.raw === null || ps.raw === undefined ? Prisma.JsonNull : (ps.raw as Prisma.InputJsonValue),
     lastCheckedAt: new Date(),
     checkAttempts: { increment: 1 },
+    ...(receivedAmount !== null ? { receivedAmount: new Decimal(receivedAmount) } : {}),
     ...(ps.providerTransactionId ? { providerTransactionId: ps.providerTransactionId } : {}),
     ...(ps.serviceName ? { providerServiceName: ps.serviceName } : {}),
     ...(ps.providerFees !== null ? { providerFees: new Decimal(ps.providerFees) } : {})
   };
+
+  // Tentative déjà tranchée par le gestionnaire (`resolution` non nulle : ACCEPT ou REJECT) :
+  // suivi seulement, jamais de transition ni d'encaissement.
+  if (checkout.resolution != null) {
+    return prisma.onlinePaymentCheckout.update({ where: { id: checkout.id, tenantId }, data: bookkeeping });
+  }
+
+  if (checkout.status === 'REVIEW') {
+    const recheckable = options.recheckReview === true && isRecheckableReviewReason(checkout.reviewReason);
+    if (!recheckable) {
+      // REVIEW : suivi seulement, la décision appartient au gestionnaire.
+      return prisma.onlinePaymentCheckout.update({ where: { id: checkout.id, tenantId }, data: bookkeeping });
+    }
+    const recheck = decideCheckoutTransition({
+      currentStatus: checkout.status,
+      expectedAmount: Number(checkout.amount),
+      provider: ps
+    });
+    if (recheck.action === 'REVIEW') {
+      // Succès toujours non conforme : la revue demeure, motif mis à jour, sans nouvel audit.
+      await prisma.onlinePaymentCheckout.updateMany({
+        where: { id: checkout.id, tenantId, status: 'REVIEW', resolution: null },
+        data: { ...bookkeeping, reviewReason: recheck.reviewReason ?? checkout.reviewReason }
+      });
+      return prisma.onlinePaymentCheckout.findFirstOrThrow({ where: { id: checkout.id, tenantId } });
+    }
+    if (recheck.action !== 'SUCCEED') {
+      // En attente, échec ou annulation après un succès annoncé : la revue demeure (décision humaine).
+      return prisma.onlinePaymentCheckout.update({ where: { id: checkout.id, tenantId }, data: bookkeeping });
+    }
+    // SUCCEED : même chemin d'encaissement que l'IPN ci-dessous (claim conditionné par REVIEW et resolution nulle).
+  }
+
+  // Succès tardif sur une tentative expirée (lecture demandée par le bouton « Vérifier ») :
+  // REVIEW / CONTRARY_STATE, sans encaissement ; tout autre état ne change rien.
+  if (checkout.status === 'EXPIRED') {
+    if (ps.state === 'SUCCESS') {
+      return moveToReview(
+        prisma,
+        checkout,
+        bookkeeping,
+        'CONTRARY_STATE',
+        'PaySecureHub rapporte un paiement réussi alors que la tentative avait expiré.',
+        receivedAmount
+      );
+    }
+    return prisma.onlinePaymentCheckout.update({ where: { id: checkout.id, tenantId }, data: bookkeeping });
+  }
 
   // La décision est pure (checkout-core) ; le claim atomique et les écritures
   // métier restent ici, dans la transaction.
@@ -684,22 +839,58 @@ async function applyProviderStatus(checkout: CheckoutRow, ps: NormalizedProvider
 
   if (decision.action === 'REVIEW') {
     // Règle 5 (un succès conclu ne redescend jamais) ou écart de montant.
-    return prisma.onlinePaymentCheckout.update({
-      where: { id: checkout.id, tenantId },
-      data: { ...bookkeeping, status: 'REVIEW', reviewReason: decision.reviewReason }
-    });
+    const kind: RentalOnlineReviewKind = checkout.status === 'SUCCESS' ? 'CONTRARY_STATE' : 'AMOUNT_MISMATCH';
+    return moveToReview(
+      prisma,
+      checkout,
+      bookkeeping,
+      kind,
+      decision.reviewReason ?? 'Paiement à vérifier.',
+      receivedAmount
+    );
   }
 
   if (decision.action === 'SUCCEED') {
+    // Transaction déjà enregistrée sur une AUTRE tentative de l'agence : jamais encaissée seule.
+    if (ps.providerTransactionId) {
+      const duplicate = await prisma.onlinePaymentCheckout.findFirst({
+        where: { tenantId, providerTransactionId: ps.providerTransactionId, id: { not: checkout.id } },
+        select: { codePaiement: true }
+      });
+      if (duplicate) {
+        return moveToReview(
+          prisma,
+          checkout,
+          bookkeeping,
+          'DUPLICATE_TRANSACTION',
+          `Cette transaction PaySecureHub est déjà enregistrée sur le paiement ${duplicate.codePaiement}.`,
+          receivedAmount
+        );
+      }
+    }
+
     return prisma.$transaction(async tx => {
+      // Échéance visée annulée, soldée ou étrangère au bail : REVIEW, aucun encaissement.
+      if (await hasUnavailableInstallment(tx, checkout)) {
+        return moveToReview(
+          tx,
+          checkout,
+          bookkeeping,
+          'INSTALLMENT_UNAVAILABLE',
+          "Une échéance visée par ce paiement est déjà soldée, annulée ou n'appartient plus à ce bail.",
+          receivedAmount
+        );
+      }
+
       const claim = await tx.onlinePaymentCheckout.updateMany({
-        where: { id: checkout.id, tenantId, status: { not: 'SUCCESS' } },
+        // Conditionné par le statut lu : un REVIEW (ou tout autre état posé entre-temps) n'est jamais encaissé ici.
+        where: { id: checkout.id, tenantId, status: checkout.status, resolution: null },
         data: { ...bookkeeping, status: 'SUCCESS', completedAt: new Date() }
       });
 
-      // Un checkout en REVIEW après un succès déjà encaissé (règle 5) revient
-      // à SUCCESS sans rejouer l'encaissement : le paiement est déjà SUCCESS
-      // et ses affectations sont en place.
+      // count = 0 : l'état a changé entre la lecture et le claim (concurrent, REVIEW…) ; on ne
+      // rejoue rien. Le paiement n'est encaissé que si CE claim a gagné et qu'il n'est pas déjà SUCCESS
+      // (affectations déjà en place dans ce cas).
       const payment = await tx.rentalPayment.findFirst({
         where: { id: checkout.paymentId, tenant_id: tenantId },
         select: { status: true }
@@ -741,27 +932,32 @@ async function applyProviderStatus(checkout: CheckoutRow, ps: NormalizedProvider
 
   const target: 'FAILED' | 'CANCELED' = decision.action === 'FAIL' ? 'FAILED' : 'CANCELED';
   return prisma.$transaction(async tx => {
-    // Règle 5, suite : un checkout passé en REVIEW alors que son paiement est
-    // déjà encaissé ne doit jamais défaire cet encaissement sur un nouvel
-    // état contraire — il reste en REVIEW, à trancher par l'agence.
+    // Règle 5, suite : un checkout dont le paiement est déjà encaissé ne doit
+    // jamais défaire cet encaissement sur un nouvel état contraire — il passe
+    // en REVIEW, à trancher par l'agence.
     const payment = await tx.rentalPayment.findFirst({
       where: { id: checkout.paymentId, tenant_id: tenantId },
       select: { status: true }
     });
     if (payment?.status === RentalPaymentStatus.SUCCESS) {
-      await tx.onlinePaymentCheckout.updateMany({
-        where: { id: checkout.id, tenantId },
-        data: {
-          ...bookkeeping,
-          status: 'REVIEW',
-          reviewReason: contraryAfterSuccessReviewReason(ps.rawState)
-        }
-      });
-      return tx.onlinePaymentCheckout.findFirstOrThrow({ where: { id: checkout.id, tenantId } });
+      return moveToReview(
+        tx,
+        checkout,
+        bookkeeping,
+        'CONTRARY_STATE',
+        contraryAfterSuccessReviewReason(ps.rawState),
+        receivedAmount
+      );
     }
 
     const claim = await tx.onlinePaymentCheckout.updateMany({
-      where: { id: checkout.id, tenantId, status: { notIn: ['SUCCESS', target] } },
+      where: {
+        id: checkout.id,
+        tenantId,
+        resolution: null,
+        // Jamais REVIEW ni SUCCESS : une ligne périmée ne ré-écrase pas une décision concurrente.
+        status: { in: (['PENDING', 'FAILED', 'CANCELED'] as const).filter(status => status !== target) }
+      },
       data: { ...bookkeeping, status: target, failureMessage: ps.error ?? checkout.failureMessage }
     });
 
@@ -776,6 +972,18 @@ async function applyProviderStatus(checkout: CheckoutRow, ps: NormalizedProvider
 
     return tx.onlinePaymentCheckout.findFirstOrThrow({ where: { id: checkout.id, tenantId } });
   });
+}
+
+/**
+ * Bouton « Vérifier » de l'agence (contrat 049 §2.4) : comme `reconcileCheckout`, mais une
+ * tentative EXPIRÉE est aussi relue (un succès tardif passe en REVIEW, jamais encaissé seul).
+ */
+export async function reconcileCheckoutForVerify(tenantId: string, checkoutId: string): Promise<CheckoutRow> {
+  const checkout = await prisma.onlinePaymentCheckout.findFirst({ where: { id: checkoutId, tenantId } });
+  if (!checkout) {
+    throw new NotFoundError('Paiement en ligne introuvable.');
+  }
+  return reconcileCheckoutRow(checkout, { allowExpired: true });
 }
 
 export async function reconcileCheckout(tenantId: string, checkoutId: string): Promise<CheckoutRow> {
@@ -1009,8 +1217,13 @@ async function recheckReviewCheckoutRow(checkout: CheckoutRow): Promise<Checkout
   const fresh = await prisma.onlinePaymentCheckout.findFirst({
     where: { id: checkout.id, tenantId: checkout.tenantId }
   });
-  // Tranchée entre-temps (IPN, bouton « Vérifier ») : rien à faire.
-  if (!fresh || fresh.status !== 'REVIEW' || !isRecheckableReviewReason(fresh.reviewReason)) {
+  // Tranchée entre-temps (IPN, bouton « Vérifier », décision du gestionnaire) : rien à faire.
+  if (
+    !fresh ||
+    fresh.status !== 'REVIEW' ||
+    fresh.resolution != null ||
+    !isRecheckableReviewReason(fresh.reviewReason)
+  ) {
     return fresh ?? checkout;
   }
 
@@ -1022,7 +1235,9 @@ async function recheckReviewCheckoutRow(checkout: CheckoutRow): Promise<Checkout
     expectedAmount: Number(fresh.amount),
     provider: ps
   });
-  if (decision.action === 'SUCCEED' || decision.action === 'REVIEW') return applyProviderStatus(fresh, ps);
+  if (decision.action === 'SUCCEED' || decision.action === 'REVIEW') {
+    return applyProviderStatus(fresh, ps, { recheckReview: true });
+  }
 
   // En attente, échec ou annulation après un succès annoncé : suivi seulement, la revue demeure.
   await prisma.onlinePaymentCheckout.updateMany({

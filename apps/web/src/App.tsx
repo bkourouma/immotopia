@@ -603,6 +603,9 @@ const DirectDebitRemittanceDetail = lazy(() =>
 const Payments = lazy(() =>
   import(/* webpackChunkName: "rental" */ './pages/rental/Payments').then(m => ({ default: m.Payments }))
 );
+const OnlinePayments = lazy(() =>
+  import(/* webpackChunkName: "rental" */ './pages/rental/OnlinePayments').then(m => ({ default: m.OnlinePayments }))
+);
 const Penalties = lazy(() =>
   import(/* webpackChunkName: "rental" */ './pages/rental/Penalties').then(m => ({ default: m.Penalties }))
 );
@@ -1134,6 +1137,7 @@ function App() {
                             element={<InstallmentDetailPage />}
                           />
                           <Route path="/tenant/:tenantId/rental/payments" element={<Payments />} />
+                          <Route path="/tenant/:tenantId/rental/online-payments" element={<OnlinePayments />} />
                           <Route path="/tenant/:tenantId/rental/direct-debit" element={<DirectDebitMandates />} />
                           <Route
                             path="/tenant/:tenantId/rental/direct-debit/remittances"

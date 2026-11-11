@@ -150,6 +150,23 @@ export const AUDIT_ACTION_LABELS_FR: Record<string, string> = localizedRecord(()
   RENTAL_LEASE_AMENDED: t('Avenant au bail'),
   RENTAL_LEASE_TERMINATED: t('Résiliation du bail'),
   RENTAL_INSTALLMENT_MARKED_OVERDUE: t("Marquage d'une échéance de loyer comme en retard"),
+  RENTAL_RECEIVING_NUMBER_CREATED: t("Ajout d'un numéro de réception des loyers (mobile money)"),
+  RENTAL_RECEIVING_NUMBER_UPDATED: t("Modification d'un numéro de réception des loyers"),
+  RENTAL_RECEIVING_NUMBER_DEACTIVATED: t("Désactivation d'un numéro de réception des loyers"),
+  RENTAL_DECLARED_PAYMENT_SETTINGS_UPDATED: t('Modification des réglages du paiement de loyer déclaré'),
+  RENTAL_PAYMENT_DECLARATION_CREATED_FOR_THIRD_PARTY: t(
+    "Déclaration d'un paiement de loyer saisie pour le compte d'un locataire"
+  ),
+  RENTAL_PAYMENT_DECLARATION_APPROVED_WITH_CORRECTION: t(
+    "Validation d'un paiement de loyer déclaré avec correction du montant"
+  ),
+  RENTAL_PAYMENT_DECLARATION_REJECTED: t("Rejet d'un paiement de loyer déclaré"),
+  RENTAL_PAYMENT_DECLARATION_CANCELED: t("Annulation d'un paiement de loyer déclaré"),
+  RENTAL_PAYMENT_DECLARATION_PROOF_VIEWED: t("Consultation de la capture d'un paiement de loyer déclaré"),
+  RENTAL_ONLINE_PAYMENT_REVIEW: t('Paiement de loyer en ligne mis en vérification'),
+  RENTAL_ONLINE_PAYMENT_RESOLVED: t('Paiement de loyer en ligne résolu après vérification'),
+  RENTAL_COLLECTION_PAYOUT_RECORDED: t("Enregistrement d'un reversement des loyers encaissés en ligne"),
+  RENTAL_PAYMENT_REMINDER_SENT: t("Envoi d'un rappel de paiement de loyer au locataire"),
 
   // Patrimoine
   PATRIMOINE_WORK_PROGRAM_COST_OVERRIDDEN: t("Modification manuelle du coût d'un programme de travaux"),

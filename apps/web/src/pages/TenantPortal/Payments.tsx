@@ -23,6 +23,8 @@ import { tenantPortalService } from '../../services/tenantPortalService';
 import InstallmentDetails from '../../components/TenantPortal/InstallmentDetails';
 import { TenantPaymentAccountsSection } from '../../components/TenantPortal/TenantPaymentAccountsSection';
 import PaymentDeclarationModal from '../../components/TenantPortal/PaymentDeclarationModal';
+import MyDeclarationsList from '../../components/TenantPortal/declared-payment/MyDeclarationsList';
+import type { PendingDeclarationSummary } from '../../types/rental-declared-payment';
 import dayjs from 'dayjs';
 import { useAuth } from '../../hooks/useAuth';
 import { getMyStatement } from '../../services/finance-service';
@@ -59,6 +61,8 @@ interface InstallmentItem {
   status: string;
   items: any[];
   payments: any[];
+  /** Déclaration mobile money en attente de validation sur cette échéance (spec 049). */
+  pendingDeclaration?: PendingDeclarationSummary | null;
 }
 
 interface InstallmentsData {
@@ -419,6 +423,12 @@ export default function TenantPayments() {
     });
   }, [data?.installments]);
   const [payingOnline, setPayingOnline] = useState(false);
+  // Erreur du paiement en ligne : affichée au-dessus du tableau (l'erreur de chargement
+  // ci-dessus ne s'affiche que tant qu'aucune donnée n'est chargée).
+  const [onlinePayError, setOnlinePayError] = useState<string | null>(null);
+  // Section « Mes déclarations » : ouverte d'office quand une déclaration est en attente,
+  // sauf choix contraire du locataire.
+  const [declarationsOpen, setDeclarationsOpen] = useState<boolean | null>(null);
 
   // Plusieurs baux actifs : le numéro de bail est affiché sur chaque échéance.
   const { data: leases } = useQuery({
@@ -551,6 +561,16 @@ export default function TenantPayments() {
   };
 
   /**
+   * Après la création ou l'annulation d'une déclaration : la liste affichée se recharge
+   * tout de suite, l'autre (si elle a déjà été chargée) en arrière-plan.
+   */
+  const rechargerApresDeclaration = () => {
+    rechargerListeAffichee();
+    if (ongletRef.current !== 'echeances' && data) void loadRef.current?.loadInstallments(true);
+    if (ongletRef.current !== 'historique' && paymentHistoryData) void loadRef.current?.loadPaymentHistory(true);
+  };
+
+  /**
    * Crée le checkout PaySecureHub pour les échéances choisies, puis redirige
    * vers la page hébergée de l'agrégateur (contrat §3.3).
    *
@@ -562,20 +582,32 @@ export default function TenantPayments() {
     if (selectedInstallmentIds.length === 0) return;
     setPayingOnline(true);
     setError(null);
+    setOnlinePayError(null);
     try {
       const checkout = await createOnlinePaymentCheckout(selectedInstallmentIds);
       if (checkout.checkoutUrl) {
         redirectToExternalUrl(checkout.checkoutUrl);
         return;
       }
-      setError(t("Le paiement en ligne n'a pas pu être initié."));
+      setOnlinePayError(t("Le paiement en ligne n'a pas pu être initié."));
     } catch (err: any) {
       if (err?.response?.status === 409 && err.response?.data?.data?.checkoutUrl) {
         const conflit = err.response.data.data as OnlineCheckoutConflict;
         redirectToExternalUrl(conflit.checkoutUrl as string);
         return;
       }
-      setError(err?.response?.data?.message || t('Erreur lors de la création du paiement en ligne'));
+      if (err?.response?.status === 409) {
+        // Une déclaration mobile money en attente de validation bloque le paiement en ligne
+        // de la même échéance (pas de double règlement) : on dit quoi faire.
+        setOnlinePayError(
+          `${err.response?.data?.message ?? t('Le paiement en ligne est indisponible tant qu’une déclaration de paiement est en attente de validation.')} ${t(
+            'Annulez-la dans « Mes déclarations » ou attendez la décision de votre agence.'
+          )}`
+        );
+        setDeclarationsOpen(true);
+        return;
+      }
+      setOnlinePayError(err?.response?.data?.message || t('Erreur lors de la création du paiement en ligne'));
     } finally {
       setPayingOnline(false);
     }
@@ -691,7 +723,16 @@ export default function TenantPayments() {
       dataIndex: 'status',
       key: 'status',
       width: 120,
-      render: (status: string) => getStatusTag(status)
+      render: (status: string, record: InstallmentItem) => (
+        <Space orientation="vertical" size={4}>
+          {getStatusTag(status)}
+          {record.pendingDeclaration ? (
+            <Tag color="warning" title={formatCurrency(record.pendingDeclaration.amount)}>
+              {t('Déclaration en attente de validation')}
+            </Tag>
+          ) : null}
+        </Space>
+      )
     },
     {
       title: t('Actions'),
@@ -835,6 +876,23 @@ export default function TenantPayments() {
         </Row>
       )}
 
+      {/* Mes déclarations (spec 049) : requêtes lancées seulement quand la section est ouverte */}
+      <Collapse
+        activeKey={
+          (declarationsOpen ?? Boolean(data?.installments.some(item => item.pendingDeclaration)))
+            ? ['declarations']
+            : []
+        }
+        onChange={keys => setDeclarationsOpen((Array.isArray(keys) ? keys : [keys]).includes('declarations'))}
+        items={[
+          {
+            key: 'declarations',
+            label: t('Mes déclarations'),
+            children: <MyDeclarationsList onChanged={rechargerApresDeclaration} />
+          }
+        ]}
+      />
+
       {/* Tabs for Installments and Payment History */}
       <Tabs
         activeKey={ongletActif}
@@ -852,6 +910,16 @@ export default function TenantPayments() {
                   </>
                 }
               >
+                {onlinePayError ? (
+                  <Alert
+                    type="warning"
+                    showIcon
+                    closable
+                    onClose={() => setOnlinePayError(null)}
+                    message={onlinePayError}
+                    style={{ marginBottom: 16 }}
+                  />
+                ) : null}
                 {availability?.available ? (
                   <Space direction="vertical" size="small" style={{ width: '100%', marginBottom: 16 }}>
                     {availability.mode === 'SIMULATOR' ? (
@@ -1210,7 +1278,7 @@ export default function TenantPayments() {
         }}
         onSuccess={() => {
           setDeclarationFor(null);
-          rechargerListeAffichee();
+          rechargerApresDeclaration();
         }}
       />
     </Space>

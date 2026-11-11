@@ -62,10 +62,10 @@ beforeEach(() => {
 });
 
 describe('Déclarations : recherche multicritères', () => {
-  it('charge la première page sans critère, toutes les déclarations (aucun statut imposé)', async () => {
+  it('charge la première page sans critère, toutes les déclarations (statut ALL envoyé)', async () => {
     renderList();
     expect(await screen.findByText('OM-998877', undefined, T)).toBeInTheDocument();
-    expect(listPaymentDeclarations).toHaveBeenCalledWith('agence-1', { page: 1, limit: 20 });
+    expect(listPaymentDeclarations).toHaveBeenCalledWith('agence-1', { status: 'ALL', page: 1, limit: 20 });
     expect(screen.getByRole('search', { name: 'Rechercher dans les déclarations' })).toBeInTheDocument();
   });
 
@@ -81,6 +81,7 @@ describe('Déclarations : recherche multicritères', () => {
       () =>
         expect(listPaymentDeclarations).toHaveBeenLastCalledWith('agence-1', {
           search: 'om-99',
+          status: 'ALL',
           leaseId: 'bail-1',
           page: 1,
           limit: 20

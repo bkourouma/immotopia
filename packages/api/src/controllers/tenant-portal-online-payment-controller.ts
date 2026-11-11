@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { asyncHandler, BadRequestError, ForbiddenError, NotFoundError } from '../middleware/error-middleware';
+import { assertRentalOnlinePaymentAllowed } from '../lib/payment-gateway/availability';
 import { prisma } from '../utils/database';
 import { listPortalLeaseIds } from '../utils/tenant-portal-leases';
 import {
@@ -35,8 +36,15 @@ const startCheckoutSchema = z.object({
   installmentIds: z.array(z.string().uuid()).min(1).max(24)
 });
 
+/**
+ * Garde RENTAL (contrat 049 §2.8) : une agence sans droit RENTAL (ou inactive) répond 403
+ * `RENTAL_FEATURE_DENIED`. Le portail ne passe ni par `requireTenantAccess` ni par
+ * `subscriptionRouteGuard`. `availability` n'est pas gardée : elle répond `available: false`.
+ * Les limiteurs de débit sont posés sur les routes (`routes/tenant-portal-routes.ts`).
+ */
 export const startOnlinePaymentHandler = asyncHandler(async (req: Request, res: Response) => {
   const { tenantId, tenantClientId } = requirePortalContext(req);
+  await assertRentalOnlinePaymentAllowed(tenantId);
   const { installmentIds } = startCheckoutSchema.parse(req.body);
 
   // H29 : le bail à payer est celui des échéances choisies, contrôlé contre les
@@ -66,6 +74,7 @@ export const startOnlinePaymentHandler = asyncHandler(async (req: Request, res: 
 
 export const getOnlinePaymentHandler = asyncHandler(async (req: Request, res: Response) => {
   const { tenantId, tenantClientId } = requirePortalContext(req);
+  await assertRentalOnlinePaymentAllowed(tenantId);
   const { codePaiement } = req.params;
 
   const checkout = await getCheckoutForPortal(tenantId, tenantClientId, codePaiement);

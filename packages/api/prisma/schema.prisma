@@ -2800,6 +2800,7 @@ model RentalLease {
   documents                  RentalDocument[]
   payments                   RentalPayment[]
   paymentDeclarations        RentalPaymentDeclaration[]  @relation("RentalPaymentDeclarationLease")
+  paymentReminders           RentalPaymentReminder[]
   maintenanceTickets         MaintenanceTicket[]
   thirdPartyMovements        ThirdPartyMovement[]
   managementTerms            LeaseManagementTerms?
@@ -2868,6 +2869,7 @@ model RentalInstallment {
   depositMovements           RentalDepositMovement[]
   documents                  RentalDocument[]
   paymentDeclarations        RentalPaymentDeclaration[]  @relation("RentalPaymentDeclarationInstallment")
+  paymentReminders           RentalPaymentReminder[]
   directDebitRemittanceLines DirectDebitRemittanceLine[]
 
   partnershipDistributions PartnershipDistribution[]
@@ -3047,6 +3049,13 @@ model OnlinePaymentCheckout {
   /// SUCCESS | FAILED | CANCELED — mode simulateur seulement.
   simulatedOutcome    String?              @map("simulated_outcome")
 
+  /// Parite Syndic : motif de la mise en revue, decision du gestionnaire et trace.
+  reviewKind          RentalOnlineReviewKind?       @map("review_kind")
+  receivedAmount      Decimal?             @map("received_amount") @db.Decimal(12, 2)
+  resolution          RentalOnlineReviewResolution? @map("resolution")
+  resolvedByUserId    String?              @map("resolved_by_user_id")
+  resolvedAt          DateTime?            @map("resolved_at")
+  resolutionNote      String?              @map("resolution_note") @db.Text
   createdByUserId String?   @map("created_by_user_id")
   /// Lot C5 (spec 039) : lien de paiement `SecureLink` (portee INSTALLMENT_PAYMENT)
   /// a l'origine de ce checkout ; nul pour un paiement lance depuis le portail
@@ -3301,6 +3310,12 @@ model DocumentCounter {
 }
 
 // Rental Payment Declaration
+/// ATTENTION : un index unique PARTIEL est maintenu A LA MAIN dans la migration
+/// 20261109120000_rental_payment_parity (Prisma ne sait pas l'exprimer) :
+/// rental_payment_declarations_pending_approved_ref_key sur
+/// (tenant_id, receiving_phone, reference_normalized) WHERE status IN
+/// ('PENDING','APPROVED') AND reference_normalized IS NOT NULL.
+/// Ne pas le supprimer lors d'un futur `migrate diff`.
 model RentalPaymentDeclaration {
   id                String                   @id @default(uuid()) @db.Uuid
   tenant_id         String                   @map("tenant_id")
@@ -3322,7 +3337,25 @@ model RentalPaymentDeclaration {
   created_at        DateTime                 @default(now()) @map("created_at")
   updated_at        DateTime                 @updatedAt @map("updated_at")
 
+  // Parite Syndic (colonnes nullables ou avec defaut)
+  receiving_number_id  String?                    @map("receiving_number_id") @db.Uuid
+  reference_normalized String?                    @map("reference_normalized")
+  /// Instantane normalise du numero de reception ; sert a l'index unique partiel.
+  receiving_phone      String?                    @map("receiving_phone")
+  reject_reason        RentalPaymentRejectReason? @map("reject_reason")
+  /// Saisie par le gestionnaire pour un tiers (User.id).
+  declared_by_user_id  String?                    @map("declared_by_user_id")
+  accepted_amount      Decimal?                   @map("accepted_amount") @db.Decimal(12, 2)
+  correction_note      String?                    @map("correction_note") @db.Text
+  proof_read_id        String?                    @unique @map("proof_read_id") @db.Uuid
+  ai_prefilled         Boolean                    @default(false) @map("ai_prefilled")
+  ai_edited_fields     String[]                   @default([]) @map("ai_edited_fields")
+  canceled_at          DateTime?                  @map("canceled_at")
+  review_alerted_at    DateTime?                  @map("review_alerted_at")
+
   // Relations
+  receivingNumber RentalReceivingNumber?  @relation(fields: [receiving_number_id], references: [id], onDelete: SetNull)
+  proofRead       RentalPaymentProofRead? @relation(fields: [proof_read_id], references: [id], onDelete: SetNull)
   lease       RentalLease        @relation("RentalPaymentDeclarationLease", fields: [lease_id], references: [id], onDelete: Cascade)
   installment RentalInstallment? @relation("RentalPaymentDeclarationInstallment", fields: [installment_id], references: [id])
   declarer    TenantClient       @relation("RentalPaymentDeclarationDeclarer", fields: [declared_by], references: [id])
@@ -3333,7 +3366,117 @@ model RentalPaymentDeclaration {
   @@index([declared_by])
   @@index([status])
   @@index([installment_id])
+  @@index([receiving_number_id])
+  @@index([tenant_id, status, created_at])
   @@map("rental_payment_declarations")
+}
+
+enum RentalPaymentRejectReason {
+  NOT_FOUND
+  AMOUNT_MISMATCH
+  REFERENCE_USED
+  WRONG_NUMBER
+  OTHER
+}
+
+enum RentalOnlineReviewKind {
+  AMOUNT_MISMATCH
+  CONTRARY_STATE
+  DUPLICATE_TRANSACTION
+  INSTALLMENT_UNAVAILABLE
+}
+
+enum RentalOnlineReviewResolution {
+  ACCEPT
+  REJECT
+}
+
+/// Numero de reception mobile money de l'agence (lien a l'agence, pas a un bien).
+model RentalReceivingNumber {
+  id                      String              @id @default(uuid()) @db.Uuid
+  tenant_id               String              @map("tenant_id")
+  operator                MobileMoneyOperator
+  /// MSISDN normalise.
+  phone                   String
+  label                   String?
+  /// Instantane du compte de tresorerie (5521..5524) derive de l'operateur.
+  treasury_account_number String              @map("treasury_account_number")
+  is_active               Boolean             @default(true) @map("is_active")
+  sort_order              Int                 @default(0) @map("sort_order")
+  created_at              DateTime            @default(now()) @map("created_at")
+  updated_at              DateTime            @updatedAt @map("updated_at")
+
+  declarations RentalPaymentDeclaration[]
+
+  @@unique([tenant_id, operator, phone])
+  @@index([tenant_id, phone])
+  @@map("rental_receiving_numbers")
+}
+
+/// Reglages du paiement declare d'une agence (une ligne par agence).
+model RentalDeclaredPaymentSettings {
+  id                         String   @id @default(uuid()) @db.Uuid
+  tenant_id                  String   @unique @map("tenant_id")
+  enabled                    Boolean  @default(true)
+  proof_required             Boolean  @default(false) @map("proof_required")
+  ai_prefill_enabled         Boolean  @default(false) @map("ai_prefill_enabled")
+  review_alert_business_days Int      @default(3) @map("review_alert_business_days")
+  payer_instructions         String?  @map("payer_instructions") @db.VarChar(500)
+  updated_by_id              String?  @map("updated_by_id")
+  created_at                 DateTime @default(now()) @map("created_at")
+  updated_at                 DateTime @updatedAt @map("updated_at")
+
+  @@map("rental_declared_payment_settings")
+}
+
+/// Lecture IA d'une capture de paiement ; sert aussi au quota mensuel par agence.
+model RentalPaymentProofRead {
+  id               String    @id @default(uuid()) @db.Uuid
+  tenant_id        String    @map("tenant_id")
+  renter_client_id String    @map("renter_client_id")
+  temp_file_url    String?   @map("temp_file_url")
+  sha256           String
+  provider         String
+  model            String
+  /// OK | UNREADABLE | NOT_A_PAYMENT | FAILED | DISABLED
+  outcome          String
+  result           Json?
+  latency_ms       Int       @map("latency_ms")
+  consumed_at      DateTime? @map("consumed_at")
+  expires_at       DateTime  @map("expires_at")
+  created_at       DateTime  @default(now()) @map("created_at")
+
+  declaration RentalPaymentDeclaration?
+
+  @@index([tenant_id, created_at])
+  @@index([renter_client_id, created_at])
+  @@index([expires_at])
+  @@map("rental_payment_proof_reads")
+}
+
+/// Relance d'echeance (niveau 1 a 3) envoyee a un locataire.
+model RentalPaymentReminder {
+  id              String          @id @default(uuid()) @db.Uuid
+  tenant_id       String          @map("tenant_id")
+  installment_id  String          @map("installment_id") @db.Uuid
+  lease_id        String          @map("lease_id") @db.Uuid
+  level           Int
+  channel         ReminderChannel
+  status          ReminderStatus
+  sent_by         String?         @map("sent_by")
+  sent_at         DateTime        @map("sent_at")
+  payment_link_id String?         @map("payment_link_id")
+  failure_code    String?         @map("failure_code")
+  failure_message String?         @map("failure_message")
+  created_at      DateTime        @default(now()) @map("created_at")
+
+  installment RentalInstallment @relation(fields: [installment_id], references: [id], onDelete: Cascade)
+  lease       RentalLease       @relation(fields: [lease_id], references: [id])
+
+  @@index([tenant_id])
+  @@index([installment_id, level])
+  @@index([lease_id])
+  @@map("rental_payment_reminders")
 }
 
 // =============================================================

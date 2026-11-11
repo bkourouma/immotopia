@@ -35,6 +35,8 @@ import { useAgencyFeatures } from '../../hooks/useAgencyFeatures';
 import { PaymentGatewaySettingsCard } from '../../components/settings/PaymentGatewaySettingsCard';
 import { ReceivingAccountsManagerCard } from '../../components/payment/ReceivingAccountsManagerCard';
 import { DirectDebitCreditorsCard } from '../../components/rental/direct-debit/DirectDebitCreditorsCard';
+import { ReceivingNumbersCard as RentalReceivingNumbersCard } from '../../components/rental/declared-payment/ReceivingNumbersCard';
+import { DeclaredSettingsCard as RentalDeclaredSettingsCard } from '../../components/rental/declared-payment/DeclaredSettingsCard';
 import { t } from '../../i18n/t';
 
 const { Title, Text, Paragraph } = Typography;
@@ -456,6 +458,8 @@ export const AgencyFinanceSettings: React.FC = () => {
         <ReceivingAccountsManagerCard scope={{ kind: 'agency', tenantId }} canEdit={canEdit && permissionsReady} />
       ) : null}
       {tenantId && rental && !ownAssetsOnly ? <DirectDebitCreditorsCard tenantId={tenantId} /> : null}
+      {tenantId && rental && !ownAssetsOnly ? <RentalReceivingNumbersCard tenantId={tenantId} /> : null}
+      {tenantId && rental && !ownAssetsOnly ? <RentalDeclaredSettingsCard tenantId={tenantId} /> : null}
       {tenantId && rental && !ownAssetsOnly ? <OwnerFeeTermsCard tenantId={tenantId} /> : null}
       {tenantId && rental && !ownAssetsOnly ? <AgentCommissionCard tenantId={tenantId} /> : null}
     </Space>

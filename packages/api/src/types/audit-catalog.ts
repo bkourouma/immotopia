@@ -29,7 +29,15 @@ type Extra = Pick<AuditCatalogEntry, 'critical' | 'redact'>;
 const STOCK_WHATSAPP_REDACT = ['phone', 'phoneE164'];
 
 /** Spec 047 : numeros de telephone (reception, payeur) jamais en clair dans l'audit. */
-const DECLARED_PAYMENT_REDACT = ['phone', 'phoneE164', 'payerPhone', 'receivingPhone', 'phoneNumber'];
+const DECLARED_PAYMENT_REDACT = [
+  'phone',
+  'phoneE164',
+  'payerPhone',
+  'receivingPhone',
+  'phoneNumber',
+  'transactionReference',
+  'transactionRef'
+];
 
 /** Spec 044 : contact (e-mail, numero), IP et signature ne figurent jamais en clair dans l'audit. */
 const SIGNATURE_REDACT = ['contact', 'email', 'phone', 'phoneE164', 'ip', 'ipAddress', 'signature'];
@@ -212,6 +220,26 @@ export const AUDIT_CATALOG: Record<AuditActionKey, AuditCatalogEntry> = {
   [AuditActionKey.SECURE_LINK_PAYMENT_STARTED]: tenant('BILLING'),
   [AuditActionKey.RENTAL_PAYMENT_LINK_SENT]: tenant('BILLING'),
   [AuditActionKey.RENTAL_PAYMENT_STATUS_CHANGED]: tenant('BILLING', { critical: true }),
+
+  // Paiement locatif, parité Syndic (numéros de réception, déclarations, paiement en ligne).
+  [AuditActionKey.RENTAL_RECEIVING_NUMBER_CREATED]: tenant('DATA', { redact: DECLARED_PAYMENT_REDACT }),
+  [AuditActionKey.RENTAL_RECEIVING_NUMBER_UPDATED]: tenant('DATA', { redact: DECLARED_PAYMENT_REDACT }),
+  [AuditActionKey.RENTAL_RECEIVING_NUMBER_DEACTIVATED]: tenant('DATA', { redact: DECLARED_PAYMENT_REDACT }),
+  [AuditActionKey.RENTAL_DECLARED_PAYMENT_SETTINGS_UPDATED]: tenant('SECURITY'),
+  [AuditActionKey.RENTAL_PAYMENT_DECLARATION_CREATED_FOR_THIRD_PARTY]: tenant('BILLING', {
+    redact: DECLARED_PAYMENT_REDACT
+  }),
+  [AuditActionKey.RENTAL_PAYMENT_DECLARATION_APPROVED_WITH_CORRECTION]: tenant('BILLING', {
+    critical: true,
+    redact: DECLARED_PAYMENT_REDACT
+  }),
+  [AuditActionKey.RENTAL_PAYMENT_DECLARATION_REJECTED]: tenant('BILLING', { redact: DECLARED_PAYMENT_REDACT }),
+  [AuditActionKey.RENTAL_PAYMENT_DECLARATION_CANCELED]: tenant('BILLING', { redact: DECLARED_PAYMENT_REDACT }),
+  [AuditActionKey.RENTAL_PAYMENT_DECLARATION_PROOF_VIEWED]: tenant('BILLING', { redact: DECLARED_PAYMENT_REDACT }),
+  [AuditActionKey.RENTAL_ONLINE_PAYMENT_REVIEW]: tenant('BILLING'),
+  [AuditActionKey.RENTAL_ONLINE_PAYMENT_RESOLVED]: tenant('BILLING', { critical: true }),
+  [AuditActionKey.RENTAL_COLLECTION_PAYOUT_RECORDED]: tenant('BILLING', { critical: true }),
+  [AuditActionKey.RENTAL_PAYMENT_REMINDER_SENT]: tenant('BILLING'),
   [AuditActionKey.EXTERNAL_ACCESS_GRANT_CREATED]: tenant('SECURITY'),
   [AuditActionKey.EXTERNAL_ACCESS_GRANT_UPDATED]: tenant('SECURITY'),
   [AuditActionKey.EXTERNAL_ACCESS_GRANT_REVOKED]: tenant('SECURITY'),

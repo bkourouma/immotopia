@@ -174,6 +174,7 @@ export const EMAIL_NOTIFICATION_DEFAULT_TEMPLATES: Record<EmailNotificationKey, 
     bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#d97706;">Rappel d'échéance</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{contactName}},</p>
 <p style="margin:0 0 20px 0;">Nous vous rappelons qu'une échéance de <strong>{{dueAmount}}</strong> est prévue le <strong>{{dueDate}}</strong> pour le bail {{leaseLabel}}.</p>
+<p style="margin:0 0 20px 0; padding:14px; background:#fffbeb; border-radius:8px; font-size:14px; white-space:pre-line;">{{paymentBlock}}</p>
 <p style="margin:20px 0 0 0; font-size:14px;">Cordialement,<br/>{{agencyName}}</p>`
   },
   INSTALLMENT_OVERDUE: {
@@ -181,6 +182,7 @@ export const EMAIL_NOTIFICATION_DEFAULT_TEMPLATES: Record<EmailNotificationKey, 
     bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#b91c1c;">Échéance dépassée</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{contactName}},</p>
 <p style="margin:0 0 20px 0;">L'échéance du <strong>{{dueDate}}</strong> (montant : {{dueAmount}}) pour le bail {{leaseLabel}} n'a pas été réglée. Merci de régulariser au plus tôt.</p>
+<p style="margin:0 0 20px 0; padding:14px; background:#fef2f2; border-radius:8px; font-size:14px; white-space:pre-line;">{{paymentBlock}}</p>
 <p style="margin:20px 0 0 0; font-size:14px;">Cordialement,<br/>{{agencyName}}</p>`
   },
   LEASE_ACTIVATED: {
@@ -452,6 +454,29 @@ export const EMAIL_NOTIFICATION_DEFAULT_TEMPLATES: Record<EmailNotificationKey, 
     bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#b45309;">Numéro de réception changé</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour,</p>
 <p style="margin:0 0 20px 0;"><strong>{{actorName}}</strong> a changé le numéro mobile money qui reçoit les paiements de la copropriété <strong>{{syndicName}}</strong> : {{previousPhone}} devient {{newPhone}}.</p>
+<p style="margin:0 0 12px 0; font-size:14px; color:#555;">Si vous n'êtes pas au courant de ce changement, vérifiez-le sans attendre auprès de votre collègue.</p>`
+  },
+  RENTAL_PAYMENT_DECLARATION_TO_REVIEW: {
+    subject: 'Paiements de loyer déclarés à vérifier - {{agencyName}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#b45309;">Paiements de loyer déclarés à vérifier</h1>
+<p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour,</p>
+<p style="margin:0 0 20px 0;"><strong>{{count}}</strong> paiement(s) de loyer déclaré(s) par des locataires attendent votre vérification chez <strong>{{agencyName}}</strong>.</p>
+<p style="margin:0 0 20px 0; font-size:14px; color:#555;">{{lines}}</p>
+<p style="margin:0 0 20px 0; padding:14px; background:#fffbeb; border-radius:8px; font-size:14px;"><a href="{{reviewUrl}}" style="color:#b45309; font-weight:600; text-decoration:underline;">Ouvrir les paiements à vérifier</a></p>`
+  },
+  RENTAL_PAYMENT_DECLARATION_OVERDUE_ALERT: {
+    subject: 'Paiements de loyer déclarés en retard de vérification - {{agencyName}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#b91c1c;">Vérifications en retard</h1>
+<p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour,</p>
+<p style="margin:0 0 20px 0;"><strong>{{count}}</strong> paiement(s) de loyer déclaré(s) attendent votre vérification depuis plus de <strong>{{days}}</strong> jour(s) ouvré(s) chez <strong>{{agencyName}}</strong>.</p>
+<p style="margin:0 0 20px 0; font-size:14px; color:#555;">{{lines}}</p>
+<p style="margin:0 0 20px 0; padding:14px; background:#fef2f2; border-radius:8px; font-size:14px;"><a href="{{reviewUrl}}" style="color:#b91c1c; font-weight:600; text-decoration:underline;">Ouvrir les paiements à vérifier</a></p>`
+  },
+  RENTAL_RECEIVING_NUMBER_CHANGED: {
+    subject: 'Numéro de réception des loyers modifié - {{agencyName}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#b45309;">Numéro de réception des loyers modifié</h1>
+<p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour,</p>
+<p style="margin:0 0 20px 0;"><strong>{{changedBy}}</strong> a {{action}} le numéro {{operator}} {{phone}} qui reçoit les loyers de <strong>{{agencyName}}</strong>.</p>
 <p style="margin:0 0 12px 0; font-size:14px; color:#555;">Si vous n'êtes pas au courant de ce changement, vérifiez-le sans attendre auprès de votre collègue.</p>`
   },
   RECEIVING_ACCOUNT_CHANGED: {

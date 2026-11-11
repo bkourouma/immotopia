@@ -13,12 +13,12 @@ export async function loadConfig(tenantId: string): Promise<PaymentGatewayConfig
 }
 
 /**
- * Une config est utilisable pour créer un paiement en ligne : active, et,
- * hors simulateur, avec un identifiant marchand et une clé API enregistrés.
+ * Une config est utilisable pour créer un paiement en ligne : active, en mode
+ * simulateur seulement si le serveur l'autorise, et, hors simulateur, avec un identifiant marchand et une clé API enregistrés.
  */
 export function isConfigUsable(config: PaymentGatewayConfig | null): config is PaymentGatewayConfig {
   if (!config || !config.isActive) return false;
-  // Le simulateur n'est utilisable que s'il est disponible (jamais en production).
+  // Le simulateur n'existe que si le serveur l'autorise (jamais en production réelle).
   if (config.mode === 'SIMULATOR') return paymentGatewaySimulatorAvailable;
   return Boolean(config.merchantId && config.apiKeyEncrypted);
 }

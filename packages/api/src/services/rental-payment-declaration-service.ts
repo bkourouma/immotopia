@@ -12,11 +12,43 @@ import { inscrireAllocationTx, inscrireReliquatTx, libelleMoyen } from './rental
 import { assertTreasuryAccountUsableTx } from '../lib/treasury/accounts';
 import { syncDirectRentPaymentEntryTx } from '../lib/finance/rental-direct-ledger';
 import { t } from '../i18n';
-import { ConflictError, NotFoundError } from '../middleware/error-middleware';
+import { AppError, ConflictError, ErrorCode, NotFoundError } from '../middleware/error-middleware';
+import { logAuditEvent } from './audit-service';
+import { AuditActionKey } from '../types/audit-types';
+import { loadDeclarationDtos } from '../lib/rental/declared-payment/declaration-dto';
+import {
+  RENTAL_MAX_DECLARATION_AMOUNT,
+  type RentalDeclarationRejectReason
+} from '../lib/rental/declared-payment/types';
 import { applyDeclarationListExtras, type DeclarationListExtras } from '../lib/rental/payment-list-filters';
 import { env } from '../config/env';
 
+const NOTE_MIN = 10;
+/** Candidats lus pour le filtre `flagged` (alertes calculées hors SQL). */
+const FLAGGED_SCAN_LIMIT = 500;
+const NOTE_MAX = 500;
+
+/** 409 typé : reste une `ConflictError`, avec le code du contrat. */
+const alreadyReviewed = () => {
+  const error = new ConflictError(t('Déclaration déjà traitée'));
+  error.code = ErrorCode.RENTAL_DECLARATION_ALREADY_REVIEWED;
+  return error;
+};
+
+/** Déclaration absente de la file PENDING : 404 si elle n'existe pas dans l'agence, 409 si déjà traitée. */
+async function throwNotFoundOrReviewed(tenantId: string, declarationId: string): Promise<never> {
+  const existing = await prisma.rentalPaymentDeclaration.findFirst({
+    where: { id: declarationId, tenant_id: tenantId },
+    select: { id: true }
+  });
+  if (!existing) throw new NotFoundError(t('Déclaration non trouvée'));
+  throw alreadyReviewed();
+}
+
 interface PaymentDeclarationFilters {
+  /** Alertes seulement (doublon probable, montant différent du dû, retard). */
+  flagged?: boolean;
+  receivingNumberId?: string;
   status?: PaymentDeclarationStatus;
   leaseId?: string;
   declaredBy?: string;
@@ -28,6 +60,15 @@ interface PaginationOptions {
   page?: number;
   limit?: number;
 }
+
+/** Libellés des motifs de rejet (repli de la note envoyée au locataire). */
+const REJECT_REASON_LABELS = (): Record<RentalDeclarationRejectReason, string> => ({
+  NOT_FOUND: t('Paiement introuvable'),
+  AMOUNT_MISMATCH: t('Montant ne correspondant pas'),
+  REFERENCE_USED: t('Référence déjà utilisée'),
+  WRONG_NUMBER: t('Numéro de réception erroné'),
+  OTHER: t('Autre')
+});
 
 /**
  * Approve a payment declaration and convert it to a real payment
@@ -43,25 +84,51 @@ export async function approvePaymentDeclaration(
   actorUserId: string,
   reviewNotes?: string,
   /** Lot 10 : compte de trésorerie réellement crédité. Nul : celui par défaut du moyen de paiement. */
-  treasuryAccountId?: string | null
-): Promise<{ declaration: any; payment: any }> {
+  treasuryAccountId?: string | null,
+  /** Contrat 1.6 : montant retenu (absent = montant déclaré) ; `reviewNotes` tient lieu de note. */
+  correction?: { acceptedAmount?: number | null }
+): Promise<{
+  declaration: any;
+  payment: any;
+  installment: { id: string; status: string; amountPaid: number; remainingDue: number } | null;
+  corrected: boolean;
+}> {
   try {
     // Get declaration with relations
     const declaration = await prisma.rentalPaymentDeclaration.findFirst({
-      where: {
-        id: declarationId,
-        tenant_id: tenantId,
-        status: PaymentDeclarationStatus.PENDING
-      },
+      where: { id: declarationId, tenant_id: tenantId, status: PaymentDeclarationStatus.PENDING },
       include: {
         lease: true,
         installment: true,
-        declarer: true
+        declarer: true,
+        receivingNumber: { select: { treasury_account_number: true } }
       }
     });
 
-    if (!declaration) {
-      throw new NotFoundError(t('Déclaration non trouvée ou déjà traitée'));
+    if (!declaration) await throwNotFoundOrReviewed(tenantId, declarationId);
+    if (!declaration) throw new NotFoundError(t('Déclaration non trouvée'));
+
+    // Montant retenu : différent du déclaré = correction, avec note obligatoire.
+    const declaredAmount = Number(declaration.amount);
+    const requested = correction?.acceptedAmount;
+    const corrected = requested != null && requested !== declaredAmount;
+    const acceptedAmount = corrected ? (requested as number) : declaredAmount;
+    const note = reviewNotes?.trim() || null;
+    if (corrected) {
+      if (!Number.isFinite(acceptedAmount) || acceptedAmount <= 0 || acceptedAmount > RENTAL_MAX_DECLARATION_AMOUNT) {
+        throw new AppError(
+          t('Le montant retenu doit être supérieur à 0 et ne pas dépasser 5 000 000 FCFA.'),
+          400,
+          ErrorCode.RENTAL_DECLARATION_ACCEPTED_AMOUNT_INVALID
+        );
+      }
+      if (!note || note.length < NOTE_MIN || note.length > NOTE_MAX) {
+        throw new AppError(
+          t('Une note de 10 à 500 caractères est obligatoire quand le montant retenu diffère du montant déclaré.'),
+          400,
+          ErrorCode.RENTAL_DECLARATION_CORRECTION_NOTE_REQUIRED
+        );
+      }
     }
 
     // Use transaction to ensure consistency
@@ -74,14 +141,26 @@ export async function approvePaymentDeclaration(
           status: PaymentDeclarationStatus.APPROVED,
           reviewed_by: actorUserId,
           reviewed_at: new Date(),
-          review_notes: reviewNotes || null
+          review_notes: reviewNotes || null,
+          ...(corrected ? { accepted_amount: new Decimal(acceptedAmount), correction_note: note } : {})
         }
       });
       if (revendiquee.count === 0) {
-        throw new ConflictError(t('Déclaration déjà traitée'));
+        throw alreadyReviewed();
       }
 
-      await assertTreasuryAccountUsableTx(tx, tenantId, treasuryAccountId, declaration.payment_method);
+      // Compte crédité : celui du corps s'il est fourni, sinon celui du numéro
+      // de réception de la déclaration (compte mobile money de l'opérateur).
+      let compteCredite: string | null = treasuryAccountId || null;
+      const numeroCompte = declaration.receivingNumber?.treasury_account_number;
+      if (!compteCredite && numeroCompte) {
+        const compte = await tx.treasuryAccount.findFirst({
+          where: { tenantId, accountNumber: numeroCompte, isActive: true },
+          select: { id: true }
+        });
+        compteCredite = compte?.id ?? null;
+      }
+      await assertTreasuryAccountUsableTx(tx, tenantId, compteCredite, declaration.payment_method);
 
       // Create payment from declaration
       const payment = await tx.rentalPayment.create({
@@ -90,10 +169,10 @@ export async function approvePaymentDeclaration(
           lease_id: declaration.lease_id,
           renter_client_id: declaration.declared_by,
           method: declaration.payment_method,
-          amount: declaration.amount,
+          amount: corrected ? new Decimal(acceptedAmount) : declaration.amount,
           currency: 'FCFA',
           mm_operator: declaration.mobile_operator as any,
-          treasury_account_id: treasuryAccountId || null,
+          treasury_account_id: compteCredite,
           psp_reference: declaration.reference || null,
           idempotency_key: `declaration-${declaration.id}`,
           status: RentalPaymentStatus.SUCCESS,
@@ -106,6 +185,7 @@ export async function approvePaymentDeclaration(
       // le reste, s'il y en a, est une avance reçue à porter au compte du
       // locataire. La somme des deux vaut toujours le montant déclaré.
       let montantAffecte = 0;
+      let echeanceApres: { id: string; status: string; amountPaid: number; remainingDue: number } | null = null;
       let affectation: {
         id: string;
         leaseId: string;
@@ -139,7 +219,7 @@ export async function approvePaymentDeclaration(
             Number(installment.penalty_amount);
 
           const remainingDue = totalAmountDue - allocatedToInstallment;
-          const paymentAmount = Number(declaration.amount);
+          const paymentAmount = acceptedAmount;
 
           // Allocate the payment (up to remaining due amount)
           const allocationAmount = Math.min(paymentAmount, remainingDue);
@@ -183,6 +263,13 @@ export async function approvePaymentDeclaration(
                 paid_at: newStatus === RentalInstallmentStatus.PAID ? new Date() : undefined
               }
             });
+
+            echeanceApres = {
+              id: installment.id,
+              status: String(echeanceMiseAJour.status),
+              amountPaid: newTotalAllocated,
+              remainingDue: Math.max(0, totalAmountDue - newTotalAllocated)
+            };
 
             // L'échéance réglée est exigible : sa créance est portée au compte
             // (idempotent, voir BUG-2026-09-30-058).
@@ -264,7 +351,7 @@ export async function approvePaymentDeclaration(
         }
       });
 
-      return { declaration: updatedDeclaration, payment };
+      return { declaration: updatedDeclaration, payment, installment: echeanceApres };
     });
 
     logger.info('Payment declaration approved', {
@@ -272,9 +359,20 @@ export async function approvePaymentDeclaration(
       declarationId,
       actorUserId,
       paymentId: result.payment.id,
-      amount: Number(declaration.amount),
+      amount: acceptedAmount,
       installmentId: declaration.installment_id
     });
+
+    if (corrected) {
+      logAuditEvent({
+        actorUserId,
+        tenantId,
+        actionKey: AuditActionKey.RENTAL_PAYMENT_DECLARATION_APPROVED_WITH_CORRECTION,
+        entityType: 'RENTAL_PAYMENT_DECLARATION',
+        entityId: declarationId,
+        payload: { declaredAmount, acceptedAmount, paymentId: result.payment.id }
+      });
+    }
 
     // Notify tenant by email (en dur, like account creation)
     try {
@@ -313,7 +411,7 @@ export async function approvePaymentDeclaration(
           })
         : '';
       const declarationDetails = {
-        amount: Number(declaration.amount),
+        amount: acceptedAmount,
         paymentDate: paymentDateFormatted,
         paymentMethod: declaration.payment_method,
         mobileOperator: declaration.mobile_operator ?? null,
@@ -407,7 +505,7 @@ export async function approvePaymentDeclaration(
       });
     }
 
-    return result;
+    return { ...result, corrected };
   } catch (error: any) {
     logger.error('Error approving payment declaration', {
       error: error.message,
@@ -432,31 +530,55 @@ export async function rejectPaymentDeclaration(
   tenantId: string,
   declarationId: string,
   actorUserId: string,
-  reviewNotes: string
+  /** Note du gestionnaire (10 à 500) ; obligatoire si le motif est `OTHER`. */
+  noteInput: string | null | undefined,
+  /** Motif du contrat ; absent = `OTHER` (ancien corps `{ reviewNotes }`). */
+  rejectReasonInput?: RentalDeclarationRejectReason
 ): Promise<any> {
   try {
-    // Get declaration
-    const declaration = await prisma.rentalPaymentDeclaration.findFirst({
-      where: {
-        id: declarationId,
-        tenant_id: tenantId,
-        status: PaymentDeclarationStatus.PENDING
-      }
-    });
-
-    if (!declaration) {
-      throw new NotFoundError(t('Déclaration non trouvée ou déjà traitée'));
+    const rejectReasonExplicit = rejectReasonInput !== undefined;
+    const rejectReason: RentalDeclarationRejectReason = rejectReasonInput ?? 'OTHER';
+    const rawNote = noteInput?.trim() || null;
+    if (rejectReason === 'OTHER' && !rawNote) {
+      throw new AppError(
+        t('Une note est obligatoire pour le motif « Autre ».'),
+        400,
+        ErrorCode.RENTAL_DECLARATION_REJECT_NOTE_REQUIRED
+      );
+    }
+    if (rawNote && rawNote.length > NOTE_MAX) {
+      throw new AppError(t('La note ne doit pas dépasser 500 caractères.'), 400, ErrorCode.VALIDATION_ERROR);
+    }
+    // Contrat §1.6 : 10 à 500 caractères dès qu'un motif explicite accompagne la note.
+    if (rawNote && rejectReasonExplicit && rawNote.length < NOTE_MIN) {
+      throw new AppError(t('La note doit faire au moins 10 caractères.'), 400, ErrorCode.VALIDATION_ERROR);
     }
 
-    // Update declaration status
-    const updatedDeclaration = await prisma.rentalPaymentDeclaration.update({
-      where: { id: declarationId, tenant_id: tenantId },
+    // Get declaration
+    const declaration = await prisma.rentalPaymentDeclaration.findFirst({
+      where: { id: declarationId, tenant_id: tenantId, status: PaymentDeclarationStatus.PENDING }
+    });
+
+    if (!declaration) await throwNotFoundOrReviewed(tenantId, declarationId);
+    if (!declaration) throw new NotFoundError(t('Déclaration non trouvée'));
+
+    // Passage atomique PENDING -> REJECTED : de deux rejets (ou d'un rejet et
+    // d'une approbation) concurrents, un seul l'emporte.
+    const reviewNotes = rawNote ?? REJECT_REASON_LABELS()[rejectReason];
+    const revendiquee = await prisma.rentalPaymentDeclaration.updateMany({
+      where: { id: declarationId, tenant_id: tenantId, status: PaymentDeclarationStatus.PENDING },
       data: {
         status: PaymentDeclarationStatus.REJECTED,
         reviewed_by: actorUserId,
         reviewed_at: new Date(),
-        review_notes: reviewNotes
-      },
+        review_notes: reviewNotes,
+        reject_reason: rejectReason
+      }
+    });
+    if (revendiquee.count === 0) throw alreadyReviewed();
+
+    const updatedDeclaration = await prisma.rentalPaymentDeclaration.findFirstOrThrow({
+      where: { id: declarationId, tenant_id: tenantId },
       include: {
         lease: {
           select: {
@@ -495,7 +617,17 @@ export async function rejectPaymentDeclaration(
       declarationId,
       actorUserId,
       amount: Number(declaration.amount),
+      rejectReason,
       reviewNotes
+    });
+
+    logAuditEvent({
+      actorUserId,
+      tenantId,
+      actionKey: AuditActionKey.RENTAL_PAYMENT_DECLARATION_REJECTED,
+      entityType: 'RENTAL_PAYMENT_DECLARATION',
+      entityId: declarationId,
+      payload: { rejectReason, hasNote: Boolean(rawNote) }
     });
 
     // Notify tenant by email (en dur, like account creation)
@@ -676,6 +808,10 @@ export async function getPaymentDeclarations(
       where.declared_by = filters.declaredBy;
     }
 
+    if (filters?.receivingNumberId) {
+      where.receiving_number_id = filters.receivingNumberId;
+    }
+
     if (filters?.startDate || filters?.endDate) {
       where.payment_date = {};
       if (filters.startDate) {
@@ -687,6 +823,22 @@ export async function getPaymentDeclarations(
     }
 
     if (filters) applyDeclarationListExtras(where, filters); // search + méthode
+
+    // Alertes seulement : calculées à la lecture, donc filtrées avant la pagination.
+    if (filters?.flagged) {
+      where.status = PaymentDeclarationStatus.PENDING;
+      const candidates = await prisma.rentalPaymentDeclaration.findMany({
+        where,
+        select: { id: true },
+        orderBy: { created_at: 'asc' },
+        take: FLAGGED_SCAN_LIMIT
+      });
+      const dtos = await loadDeclarationDtos(
+        tenantId,
+        candidates.map(c => c.id)
+      );
+      where.id = { in: candidates.map(c => c.id).filter(id => (dtos.get(id)?.alerts.length ?? 0) > 0) };
+    }
 
     // Get declarations and total count
     const [declarations, total] = await Promise.all([
@@ -736,8 +888,9 @@ export async function getPaymentDeclarations(
             }
           }
         },
+        // Les plus anciennes en attente d'abord ; sinon les plus récentes.
         orderBy: {
-          created_at: 'desc'
+          created_at: where.status === PaymentDeclarationStatus.PENDING ? 'asc' : 'desc'
         },
         skip,
         take: limit
@@ -745,8 +898,17 @@ export async function getPaymentDeclarations(
       prisma.rentalPaymentDeclaration.count({ where })
     ]);
 
+    // Champ additif `view` (camelCase, contrat 1.6) à côté des lignes snake_case.
+    const views = await loadDeclarationDtos(
+      tenantId,
+      declarations.map((declaration: { id: string }) => declaration.id)
+    );
+
     return {
-      declarations,
+      declarations: declarations.map((declaration: { id: string }) => ({
+        ...declaration,
+        view: views.get(declaration.id) ?? null
+      })),
       pagination: {
         page,
         limit,
@@ -841,7 +1003,8 @@ export async function getPaymentDeclarationById(tenantId: string, declarationId:
       throw new NotFoundError(t('Déclaration non trouvée'));
     }
 
-    return declaration;
+    const view = (await loadDeclarationDtos(tenantId, [declarationId])).get(declarationId) ?? null;
+    return { ...declaration, view };
   } catch (error: any) {
     logger.error('Error getting payment declaration by ID', {
       error: error.message,

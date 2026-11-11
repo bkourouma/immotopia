@@ -613,6 +613,122 @@ export const chargePaymentStatusRateLimiter = rateLimit({
   legacyHeaders: false
 });
 
+// ---------------------------------------------------------------------------
+// Paiement en ligne du locatif (spec 049)
+// ---------------------------------------------------------------------------
+
+/** Vérification manuelle d'un paiement en ligne locatif (appelle le fournisseur). 20 par minute et par utilisateur. */
+export const rentalOnlineVerifyLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  keyGenerator: req => `rental-online-verify:${userTenantKey(req)}`,
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      code: 'RATE_LIMITED',
+      message: t('Trop de requêtes. Veuillez réessayer dans une minute.')
+    });
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Décision d'un paiement en ligne locatif en REVIEW. 20 par minute et par utilisateur. */
+export const rentalOnlineResolveLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  keyGenerator: req => `rental-online-resolve:${userTenantKey(req)}`,
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      code: 'RATE_LIMITED',
+      message: t('Trop de requêtes. Veuillez réessayer dans une minute.')
+    });
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Reversement du compte de collecte locatif. 20 par minute et par utilisateur. */
+export const rentalCollectionPayoutLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  keyGenerator: req => `rental-collection-payout:${userTenantKey(req)}`,
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      code: 'RATE_LIMITED',
+      message: t('Trop de requêtes. Veuillez réessayer dans une minute.')
+    });
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Compte de collecte locatif (appelle le fournisseur). 10 par minute et par utilisateur. */
+export const rentalCollectionAccountLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  keyGenerator: req => `rental-collection-account:${userTenantKey(req)}`,
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      code: 'RATE_LIMITED',
+      message: t('Trop de requêtes. Veuillez réessayer dans une minute.')
+    });
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Portail locataire : disponibilité du paiement en ligne. 60 par minute et par IP. */
+export const rentalPortalOnlinePaymentAvailabilityLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  keyGenerator: req => `rental-portal-online-availability:${req.ip ?? 'inconnue'}`,
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      code: 'RATE_LIMITED',
+      message: t('Trop de requêtes. Veuillez réessayer dans une minute.')
+    });
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Portail locataire : démarrage d'un paiement en ligne (crée un paiement chez l'agrégateur). 10 par minute et par utilisateur. */
+export const rentalPortalOnlinePaymentStartLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  keyGenerator: req => `rental-portal-online-start:${req.user?.userId ?? req.ip ?? 'inconnue'}`,
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      code: 'RATE_LIMITED',
+      message: t('Trop de requêtes. Veuillez réessayer dans une minute.')
+    });
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Portail locataire : statut d'un paiement en ligne. 60 par minute et par utilisateur. */
+export const rentalPortalOnlinePaymentStatusLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  keyGenerator: req => `rental-portal-online-status:${req.user?.userId ?? req.ip ?? 'inconnue'}`,
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      code: 'RATE_LIMITED',
+      message: t('Trop de requêtes. Veuillez réessayer dans une minute.')
+    });
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
 /**
  * Baseline limiter applied to the whole API.
  * Sized well above normal single-user traffic; the per-endpoint limiters above

@@ -5,22 +5,25 @@ la liste des champs. Pour les colonnes exactes, ouvrir
 `packages/api/prisma/schema.prisma`.
 
 `docs/architecture/database-schema.md` est **partiel et daté**
-(2025-01-27, écrit pour 38 des 192 modèles actuels d'après
+(2025-01-27, écrit pour 38 des 269 modèles actuels d'après
 [docs/README.md](../README.md)). Ne pas s'y fier pour un travail en cours :
 `schema.prisma` est la seule référence à jour.
 
-## Compte exact (2026-09-27)
+## Compte exact (2026-11-09)
 
 Compté avec :
 
 ```bash
-grep -c "^model " packages/api/prisma/schema.prisma   # 192
-grep -c "^enum "  packages/api/prisma/schema.prisma   # 162
-wc -l packages/api/prisma/schema.prisma               # 7571 lignes
+grep -c "^model " packages/api/prisma/schema.prisma   # 269
+grep -c "^enum "  packages/api/prisma/schema.prisma   # 255
+wc -l packages/api/prisma/schema.prisma               # 11476 lignes
 ```
 
-- **192 modèles**
-- **162 enums**
+- **269 modèles**
+- **255 enums**
+
+Les comptages de la section « Scoping par tenant » (110 et 23 modèles) datent encore du
+2026-09-27 et n'ont pas été recomptés.
 
 ## Modèles par domaine
 
@@ -36,8 +39,8 @@ fois au CRM et à la gestion locative).
 | CRM                                  | `CrmContact`, `CrmContactRole`, `CrmDeal`, `CrmActivity`, `CrmDealProperty`, `CrmTag`, `CrmContactTag`, `CrmContactTargetZone`, `CrmNote`                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Contacts, opportunités, activités commerciales.                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | Biens                                | `Property`, `PropertyTypeTemplate`, `PropertyMedia`, `PropertyDocument`, `PropertyStatusHistory`, `PropertyVisit`, `PropertyVisitCollaborator`, `PropertyMandate`, `PropertyQualityScore`, `PropertyOwnershipShare`                                                                                                                                                                                                                                                                                                                                                                                                  | Fiches de biens, médias, mandats, visites, indivision.                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | Géographie                           | `Country`, `Region`, `Commune`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Référentiel hiérarchique public, partagé entre agences.                                                                                                                                                                                                                                                                                                                                                                                                                |
-| Gestion locative                     | `TenantClient`, `RentalLease`, `RentalLeaseCoRenter`, `RentalInstallment`, `RentalInstallmentItem`, `RentalPayment`, `RentalPaymentAllocation`, `RentalRefund`, `RentalPenaltyRule`, `RentalPenalty`, `RentalSecurityDeposit`, `RentalDepositMovement`, `RentalDocument`, `DocumentTemplate`, `DocumentCounter`, `RentalPaymentDeclaration`, `LeaseEvent`, `LeaseInspection`, `LeaseInspectionPhoto`, `LeaseManagementTerms`, `RentBillingRun`                                                                                                                                                                       | Cycle de vie du bail : échéances, paiements, pénalités, caution, états des lieux.                                                                                                                                                                                                                                                                                                                                                                                      |
-| Paiement en ligne                    | `PaymentGatewayConfig`, `OnlinePaymentCheckout`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Configuration et sessions de paiement PaySecureHub par agence (lot 7). `secureLinkId` rattache un checkout au lien de paiement qui l'a créé (lot C5).                                                                                                                                                                                                                                                                                                                  |
+| Gestion locative                     | `TenantClient`, `RentalLease`, `RentalLeaseCoRenter`, `RentalInstallment`, `RentalInstallmentItem`, `RentalPayment`, `RentalPaymentAllocation`, `RentalRefund`, `RentalPenaltyRule`, `RentalPenalty`, `RentalSecurityDeposit`, `RentalDepositMovement`, `RentalDocument`, `DocumentTemplate`, `DocumentCounter`, `RentalPaymentDeclaration`, `RentalReceivingNumber`, `RentalDeclaredPaymentSettings`, `RentalPaymentProofRead`, `RentalPaymentReminder`, `LeaseEvent`, `LeaseInspection`, `LeaseInspectionPhoto`, `LeaseManagementTerms`, `RentBillingRun`                                                          | Cycle de vie du bail : échéances, paiements, pénalités, caution, états des lieux.                                                                                                                                                                                                                                                                                                                                                                                      |
+| Paiement en ligne                    | `PaymentGatewayConfig`, `OnlinePaymentCheckout`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Configuration et sessions de paiement PaySecureHub par agence (lot 7). `secureLinkId` rattache un checkout au lien de paiement qui l'a créé (lot C5) ; la spec 049 y ajoute le motif de `REVIEW` et la décision du gestionnaire.                                                                                                                                                                                                                                       |
 | Finance / comptabilité générale      | `ChartOfAccount`, `AccountingJournal`, `JournalEntry`, `JournalEntryLine`, `OwnerAccount`, `OwnerAccountTransaction`, `AgencyFinanceSettings`, `ThirdPartyAccount`, `ThirdPartyMovement`, `VoidDocument`                                                                                                                                                                                                                                                                                                                                                                                                             | Plan comptable, écritures, comptes tiers/propriétaires, annulation de documents.                                                                                                                                                                                                                                                                                                                                                                                       |
 | Propriétaires & honoraires           | `OwnerManagementTerms`, `ManagementFee`, `AgentCommissionRate`, `OwnerStatement`, `OwnerStatementItem`, `OwnerPayout`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Conditions de gestion, honoraires, relevés et reversements aux propriétaires.                                                                                                                                                                                                                                                                                                                                                                                          |
 | Patrimoine                           | `Asset`, `AssetValuation`, `PropertyLoan`, `PropertyExpense`, `WorkProgram`, `PatrimonyDocument`, `PatrimonyCashPlanSettings`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Valorisation d'actifs, emprunts, travaux liés à un bien détenu ; plan de trésorerie prévisionnel : `PropertyExpense.recurrence` / `recurrenceEndDate` (enum `ExpenseRecurrence`) et date d'exigibilité de la taxe foncière par agence (`PatrimonyCashPlanSettings`, un enregistrement par agence, deux champs nuls = non renseignée, contrainte CHECK : les deux nuls ou les deux renseignés) ; `Asset` est la racine multi-classes (ADR-005 patrimoine multi-actifs). |
@@ -99,8 +102,8 @@ Migration `20261004160000_patrimoine_multi_actifs`. Détail :
 - Données : un `Asset` `REAL_ESTATE` est créé par bien portant des données
   patrimoniales ou détenu en propre (activation `HELD_PROPERTY` ouverte) ; les
   biens sans tenant sont ignorés ; aucune ligne existante n'est réécrite.
-- Le comptage ci-dessus (192 modèles) date du 2026-09-27 ; le schéma en compte
-  désormais davantage (`Asset` inclus).
+- Le comptage de cette section (192 modèles) date du 2026-09-27 ; il a été recompté au
+  2026-11-09 (269 modèles, `Asset` inclus).
 
 ## Motifs transverses
 
@@ -593,6 +596,120 @@ Relations inverses ajoutées à `Tenant` (cinq listes), `Syndicate` (`receivingN
 (`paymentDeclarationLines`) et `ChargePayment` (`declarationLine`). Un encaissement validé est
 un `ChargePayment` `method = MOBILE_MONEY`, `origin = DECLARED`, `idempotencyKey = DECL-<lineId>`,
 `providerTransactionId` nul, comptabilisé débit 5521x / crédit 450.
+
+## Paiement locatif : parité avec le Syndic (spec 049)
+
+La gestion locative reprend le paiement mobile money déclaré (spec 047), la décision sur les paiements
+en ligne en `REVIEW`, le compte de collecte et les relances. Spec :
+[specs/049-locatif-paiement-parite-syndic](../../specs/049-locatif-paiement-parite-syndic/spec.md),
+contrats : [contracts.md](../../specs/049-locatif-paiement-parite-syndic/contracts.md). Une seule migration,
+additive : `20261109120000_rental_payment_parity`. Les quatre nouveaux modèles portent `tenant_id` direct
+(champ non mappé, comme les modèles locatifs plus anciens), donc cloisonnés par l'extension d'isolation
+et couverts par `schema-tenant-coverage.test.ts`. Différence avec le Syndic : tout est rattaché à
+**l'agence**, jamais à un bien, à un bail ou à une copropriété.
+
+### Enums
+
+- `RentalPaymentRejectReason` : `NOT_FOUND`, `AMOUNT_MISMATCH`, `REFERENCE_USED`, `WRONG_NUMBER`, `OTHER`.
+- `RentalOnlineReviewKind` : `AMOUNT_MISMATCH`, `CONTRARY_STATE`, `DUPLICATE_TRANSACTION`,
+  `INSTALLMENT_UNAVAILABLE`.
+- `RentalOnlineReviewResolution` : `ACCEPT`, `REJECT`.
+
+`PaymentDeclarationStatus` contenait déjà `CANCELED` ; elle sert à l'annulation par le locataire.
+
+### `RentalReceivingNumber` (table `rental_receiving_numbers`)
+
+Numéro mobile money sur lequel l'agence reçoit les loyers : `operator` (`MobileMoneyOperator`), `phone`
+(normalisé E.164), `label`, `is_active`, `sort_order`, `treasury_account_number`. Le numéro est **rattaché
+à l'agence et non au bien**. `treasury_account_number` est un instantané du compte de trésorerie **dérivé de
+l'opérateur** (5521 à 5524, 5529 pour `OTHER`) : il n'est jamais saisi. Unique
+`(tenant_id, operator, phone)`, index `(tenant_id, phone)`. Une déclaration le référence en
+`onDelete: SetNull` ; côté contrat, un numéro qui porte des déclarations se désactive au lieu de se
+supprimer.
+
+### `RentalDeclaredPaymentSettings` (table `rental_declared_payment_settings`)
+
+Une ligne par agence (`tenant_id` unique) ; sans ligne, l'API répond les défauts sans rien écrire :
+`enabled` vrai, `proof_required` faux, `ai_prefill_enabled` faux, `review_alert_business_days` 3 (1 à 15),
+`payer_instructions` nul (500 caractères au plus), plus `updated_by_id` (champ simple). Le défaut de
+`enabled` est **vrai** ici (faux au Syndic).
+
+### `RentalPaymentProofRead` (table `rental_payment_proof_reads`)
+
+Lecture IA d'une capture de paiement : `renter_client_id` (champ simple), `temp_file_url`, `sha256`,
+`provider`, `model`, `outcome` (`OK`, `UNREADABLE`, `NOT_A_PAYMENT`, `FAILED`, `DISABLED`), `result`
+(JSON), `latency_ms`, `consumed_at`, `expires_at`. Elle est **conservée 24 h** (`expires_at` = création
+
+- 24 h) et **sert au quota mensuel** de l'agence. Index `(tenant_id, created_at)`,
+  `(renter_client_id, created_at)`, `expires_at`. La déclaration la relie par `proof_read_id` (unique,
+  `SetNull`) : une lecture ne sert qu'une fois.
+
+### `RentalPaymentReminder` (table `rental_payment_reminders`)
+
+Une relance d'échéance envoyée à un locataire : `installment_id` (`Cascade`), `lease_id` (relation
+par défaut, sans suppression en cascade), `level` (1 à 3), `channel` (`ReminderChannel` ; `EMAIL` ou
+`WHATSAPP` seulement selon le contrat), `status` (`ReminderStatus` ; `SENT` ou `FAILED` écrits), `sent_by`,
+`sent_at`, `payment_link_id` (`SecureLink.id`, jamais le jeton), `failure_code`, `failure_message`. Index
+`tenant_id`, `(installment_id, level)`, `lease_id`. Relations inverses `paymentReminders` sur
+`RentalLease` et `RentalInstallment`. **Aucun job planifié** : les relances sont manuelles ou par lot,
+après aperçu ; le niveau suivant se déduit des lignes `SENT`, jamais d'un compteur stocké.
+
+### Champs ajoutés à `RentalPaymentDeclaration`
+
+Tous nullables ou avec défaut, aucune ligne existante réécrite.
+
+| Champ                                | Rôle                                                                                               |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------- |
+| `receiving_number_id`                | Numéro de réception choisi (`SetNull`), indexé                                                     |
+| `receiving_phone`                    | Instantané normalisé du numéro ; il alimente l'index unique partiel                                |
+| `reference_normalized`               | Référence de transaction normalisée (majuscules, sans espaces)                                     |
+| `reject_reason`                      | `RentalPaymentRejectReason`                                                                        |
+| `declared_by_user_id`                | Gestionnaire qui a déclaré pour un tiers (champ simple) ; `declared_by` reste le locataire du bail |
+| `accepted_amount`, `correction_note` | Montant retenu et note quand le gestionnaire corrige                                               |
+| `proof_read_id` (unique)             | Lecture IA dont provient la capture                                                                |
+| `ai_prefilled`, `ai_edited_fields`   | Proposition de l'IA et champs retouchés par le déclarant                                           |
+| `canceled_at`, `review_alerted_at`   | Annulation par le locataire ; alerte de retard de revue envoyée au gestionnaire                    |
+
+Nouveaux index : `receiving_number_id` et `(tenant_id, status, created_at)`.
+
+### Index unique partiel (manuel)
+
+`rental_payment_declarations_pending_approved_ref_key` sur `(tenant_id, receiving_phone,
+reference_normalized)` `WHERE status IN ('PENDING','APPROVED') AND reference_normalized IS NOT NULL` :
+une même référence ne se déclare qu'une fois par agence et par numéro tant que la déclaration est active
+(un rejet ou une annulation libère la référence ; les anciennes lignes à référence nulle sont hors
+index). **Prisma ne sait pas l'exprimer** : il est écrit à la main dans la migration
+`20261109120000_rental_payment_parity` et n'apparaît pas dans `schema.prisma` (seul un commentaire
+d'avertissement le signale). **Ne pas le supprimer lors d'un futur `migrate diff` ou `migrate dev`** :
+relire le SQL généré et retirer tout `DROP INDEX` qui le vise. La violation (`P2002`) se convertit en
+`RENTAL_DECLARATION_DUPLICATE_REFERENCE` (409).
+
+### Champs ajoutés à `OnlinePaymentCheckout`
+
+Tous nullables, pour trancher un paiement en ligne mis en `REVIEW` :
+
+- `review_kind` (`RentalOnlineReviewKind`) : motif de la mise en revue ; `reviewReason` (existant) reste le
+  texte affiché ;
+- `received_amount` (`Decimal(12,2)`) : montant rapporté par PaySecureHub ;
+- `resolution` (`RentalOnlineReviewResolution`), `resolved_by_user_id` (champ simple), `resolved_at`,
+  `resolution_note` : décision du gestionnaire ; la note est obligatoire pour `REJECT`.
+
+La décision se prend par un claim atomique sur `status = 'REVIEW'`. Aucun nouveau modèle de reversement.
+
+### Règles qui structurent les données
+
+- **Numéro rattaché à l'agence.** Un numéro de réception sert tous les baux et tous les biens de
+  l'agence ; l'unicité est par `tenant_id`.
+- **Compte de trésorerie dérivé.** `treasury_account_number` vient de l'opérateur (5521 à 5524) et n'est
+  jamais saisi ; le compte est créé à la demande s'il manque.
+- **Référence unique par numéro.** Unicité de la référence normalisée par (agence, numéro) pour les
+  déclarations `PENDING` ou `APPROVED` seulement (index partiel ci-dessus).
+- **Lecture IA : 24 h et quota.** Une `RentalPaymentProofRead` expire après 24 h ; ses lignes comptent pour
+  le quota mensuel de l'agence ; la capture n'est jamais servie au locataire.
+- **Compte de collecte = compte de trésorerie 5525.** Le compte PaySecureHub est le compte de trésorerie
+  `5525` créé par `ensureCollectionAccountTx` ; le reversement est un virement de trésorerie existant
+  (`VIR-AAAA-NNNN`), **sans nouveau modèle**. Enregistrement comptable seulement.
+- **Relances sans job.** Pas de planification : chaque envoi crée une ligne `RentalPaymentReminder`.
 
 ## LandRegularization — régularisation foncière (lot B2, spec 033)
 

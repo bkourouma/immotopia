@@ -59,6 +59,12 @@ jest.mock('../../src/services/rental-payment-service', () => ({
   updatePaymentStatusTx: jest.fn(),
   allocatePaymentTx: jest.fn()
 }));
+jest.mock('../../src/lib/payment-gateway/availability', () =>
+  require('../helpers/rental-availability-mock').makeAvailabilityMock(() =>
+    jest.requireMock('../../src/lib/payment-gateway/config')
+  )
+);
+
 jest.mock('../../src/lib/treasury/accounts', () => ({ ensureChartAccountTx: jest.fn() }));
 
 const startCheckoutForInstallments = jest.fn();

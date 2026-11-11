@@ -27,6 +27,10 @@ import documentBrandingRoutes from './routes/document-branding-routes';
 import propertyPublicRoutes from './routes/property-public-routes';
 import geographicRoutes from './routes/geographic-routes';
 import rentalRoutes from './routes/rental-routes';
+import rentalDeclaredPaymentRoutes from './routes/rental-declared-payment-routes';
+import rentalOnlineReviewRoutes from './routes/rental-online-review-routes';
+import rentalPaymentReminderRoutes from './routes/rental-payment-reminder-routes';
+import tenantPortalDeclaredPaymentRoutes from './routes/tenant-portal-declared-payment-routes';
 import documentRoutes from './routes/document-routes';
 import aiRoutes from './routes/ai-routes';
 import financeRoutes from './routes/finance-routes';
@@ -291,6 +295,10 @@ app.use('/api/tenants', dashboardRoutes); // Generic tenant dashboard figures
 app.use('/api/tenants', crmRoutes); // CRM routes are tenant-scoped
 app.use('/api/tenants/:tenantId/crm/contacts-search', contactSearchRoutes);
 app.use('/api/tenants', rentalRoutes); // Rental routes are tenant-scoped
+// Paiement locatif, parite Syndic : routeurs gestionnaire montes sur /api (gardes posees avec leur chemin).
+app.use('/api', rentalDeclaredPaymentRoutes); // Paiement de loyer declare, cote gestionnaire
+app.use('/api', rentalOnlineReviewRoutes); // Paiement de loyer en ligne : verification et reversements
+app.use('/api', rentalPaymentReminderRoutes); // Relances de paiement de loyer
 app.use('/api/tenants', documentRoutes); // Document routes are tenant-scoped
 app.use('/api/tenants/:tenantId/ai', aiRoutes); // Assistant ImmoCopilot (SSE, confirmation de proposition)
 app.use('/api', financeRoutes); // Finance : balances, releves, campagnes de facturation
@@ -329,6 +337,8 @@ app.use('/api/tenants/:tenantId/email-notifications', emailNotificationConfigRou
 app.use('/api/tenants/:tenantId/whatsapp-notifications', whatsappNotificationConfigRoutes); // Notifications WhatsApp (WaSender/Twilio)
 app.use('/api/tenants/:tenantId/newsletter', newsletterRoutes); // Newsletter / Mailing
 app.use('/api/newsletter', newsletterPublicRoutes); // Newsletter public (subscribe, confirm, unsubscribe)
+// Chemins litteraux du paiement declare AVANT les chemins a parametres de tenantPortalRoutes.
+app.use('/api/portal/tenant', tenantPortalDeclaredPaymentRoutes); // Paiement de loyer declare, portail locataire
 app.use('/api/portal/tenant', tenantPortalRoutes); // Tenant portal routes
 app.use('/api/portal/owner', ownerPortalRoutes); // Owner portal routes
 app.use('/api/portal/owner', ownerAccountPortalRouter); // Compte courant du proprietaire connecte

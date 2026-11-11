@@ -105,7 +105,7 @@ point d'entrée (un lien public à jeton) et l'URL de retour.
 - **Le mode `SIMULATOR`** : même fausse page de paiement et mêmes trois issues (payé, échoué,
   annulé) ; son retour pointe sur `/payer/statut` pour un checkout issu d'un lien.
 - **Un compte marchand par agence** : le lien ne choisit ni la clé ni le mode ; les conditions
-  `isConfigUsable` sont recontrôlées à chaque ouverture et à chaque démarrage.
+  `usable` (voir « Disponibilité durcie ») sont recontrôlées à chaque ouverture et à chaque démarrage.
 - **Le portail locataire** : mêmes réponses 400 et 409, aucun verrou.
 
 **Non validé.** Le mode `LIVE` n'est ni activé ni testé pour ce lot : la recette passe par
@@ -128,15 +128,87 @@ lien (WhatsApp, e-mail) n'est pas non plus vérifié.
   portail et un paiement par lien simultanés sur la même échéance restent possibles. Un `PENDING` du
   portail déjà présent donne 409 au lien (pas de reprise). Un second lien qui reprend le checkout du
   premier affiche « aucun paiement » dans la liste de l'agence.
-- **Checkout `REVIEW`** (écart de montant constaté par la réconciliation) : il bloque tout nouveau
-  démarrage par lien (409), sans limite d'âge ; la page désactive « Payer » (`reviewPending`) et invite à
-  contacter l'agence. La tâche planifiée ne traite que les `PENDING` : seul le bouton « Vérifier » de
-  l'agence ou un règlement manuel le résout, et il bloque tous les liens de l'échéance. **À décider avec
-  l'utilisateur** : action « trancher un REVIEW » et borne d'âge.
+- **Checkout `REVIEW`** (écart de montant, état contraire, transaction en double ou échéance indisponible,
+  constatés par la réconciliation) : il bloque tout nouveau démarrage par lien (409), sans limite d'âge ; la
+  page désactive « Payer » (`reviewPending`) et invite à contacter l'agence. Il se tranche par la décision
+  décrite dans « Décision sur un paiement en `REVIEW` » ci-dessous. **Borne d'âge** : le contrat (spec 049)
+  n'en fixe aucune ; un `REVIEW` reste bloquant tant qu'il n'est pas tranché.
 - **URL fournisseur** : pas de liste blanche d'hôtes ; en simulateur, un `BACKEND_URL` en `http` sur un
   hôte non local est refusé, donc le staging doit servir le simulateur en `https`.
 - **Pas de paiement partiel**, **une seule échéance par lien**.
 - **Pas de révocation automatique des liens précédents** de la même échéance.
+
+## Décision sur un paiement en `REVIEW` (locatif)
+
+Spec [049](../../specs/049-locatif-paiement-parite-syndic/contracts.md), §2.5 et §2.6. Le gestionnaire
+tranche avec `POST /api/tenants/:tenantId/rental/online-payments/:checkoutId/resolve`, permission
+`RENTAL_PAYMENTS_ALLOCATE`, corps `{ decision: 'ACCEPT' | 'REJECT', note?, paidAt? }`.
+
+- **Note** : obligatoire pour `REJECT` (1 à 500 caractères), facultative pour `ACCEPT`. `paidAt` n'est admis
+  qu'avec `ACCEPT`.
+- **Claim atomique** : une mise à jour conditionnelle sur `status = 'REVIEW'` fait passer la tentative en
+  `SUCCESS` ou `FAILED` ; deux décisions concurrentes n'ont qu'un vainqueur, l'autre reçoit 409.
+- **Vérifier une tentative `EXPIRED` est permis** : cela permet de relire un succès tardif de la passerelle
+  survenu après l'expiration.
+- **Jamais encaissé automatiquement** : ni la vérification manuelle (`…/verify`, `…/online-check`), ni le
+  retour portail ou l'IPN, ni le job de rapprochement n'encaissent une tentative en `REVIEW` ; ils ne
+  mettent à jour que l'état fournisseur, le montant reçu et les compteurs de vérification. Seule la
+  décision tranche.
+- **Matrice par `reviewKind`** :
+
+| `reviewKind`                                                    | ACCEPT                                                                 | REJECT                      |
+| --------------------------------------------------------------- | ---------------------------------------------------------------------- | --------------------------- |
+| `AMOUNT_MISMATCH`                                               | encaisse le montant reçu sur les échéances visées encore ouvertes      | refus simple                |
+| `INSTALLMENT_UNAVAILABLE`                                       | encaisse sur les échéances encore ouvertes ; sinon paiement non alloué | refus simple                |
+| `DUPLICATE_TRANSACTION`                                         | 409 `REVIEW_NOT_ACCEPTABLE`                                            | refus simple                |
+| `CONTRARY_STATE`, déjà encaissé (`collected`)                   | aucun nouvel encaissement, clôt en `SUCCESS`                           | 409 `REVIEW_NOT_REJECTABLE` |
+| `CONTRARY_STATE`, non encaissé (succès tardif après expiration) | encaisse le montant reçu                                               | refus simple                |
+
+- **`REJECT` ne rembourse rien** : l'argent reste chez PaySecureHub, le remboursement éventuel se règle
+  avec l'agrégateur ; le `RentalPayment` passe en `FAILED`.
+- L'encaissement passe par le service d'allocation existant et reste idempotent ; le surplus reste non
+  alloué.
+
+## Compte de collecte (locatif)
+
+Spec 049, §2.7. Aucun nouveau modèle : le compte de collecte est le compte de trésorerie **5525**
+« PaySecureHub » créé par `ensureCollectionAccountTx` (`lib/payment-gateway/config.ts`).
+
+- `GET …/rental/online-payments/collection-account` (`RENTAL_PAYMENTS_VIEW`) : solde **comptable** (solde du
+  5525, 0 s'il n'existe pas ; la route ne le crée pas) et solde **fournisseur** (`GET /data-ws/solde` avec les
+  identifiants de l'agence). Si le solde fournisseur est indisponible : `balance: null` et
+  `unavailableReason` parmi `NOT_CONFIGURED`, `SIMULATOR`, `NO_CREDENTIALS`, `UNREACHABLE`. La route répond
+  toujours 200 : une panne fournisseur n'est jamais un 500.
+- **Reversement** : `POST …/rental/online-payments/collection-account/payouts` (`RENTAL_PAYMENTS_ALLOCATE`)
+  crée un **virement de trésorerie existant** du 5525 vers un compte de trésorerie de l'agence, numéroté
+  `VIR-AAAA-NNNN`. C'est un **enregistrement comptable seulement** : aucun virement réel n'est déclenché chez
+  PaySecureHub ; le gestionnaire le fait de son côté. Le montant doit être inférieur ou égal au solde du
+  5525, contrôlé avant l'appel (`RENTAL_COLLECTION_PAYOUT_INVALID`, 400). L'historique
+  (`…/collection-account/payouts`) liste les virements issus du 5525, hors annulés.
+
+## Disponibilité durcie (locatif)
+
+Spec 049, §2.8 et §2.9.
+
+- **Règle unique** `resolveRentalOnlineAvailability(tenantId)`, partagée par le gestionnaire, le portail, le
+  lien public, les relances et la création de lien : `usable` = configuration active ET (mode ≠ `SIMULATOR`
+  OU simulateur autorisé sur le serveur) ET droit `RENTAL` de l'agence. Motifs : `NOT_CONFIGURED`,
+  `INACTIVE`, `SIMULATOR_FORBIDDEN`, `SUBSCRIPTION`. **Pas de repli** : si `usable` est faux, le démarrage
+  d'un paiement ou la création d'un lien est refusé (400 `RENTAL_ONLINE_PAYMENT_UNAVAILABLE`).
+- **Portail locataire** : limiteurs 60 par minute et par IP sur `availability`, 10 par minute et par
+  utilisateur sur le démarrage, 60 par minute et par utilisateur sur la lecture ; garde `RENTAL` (403
+  `RENTAL_FEATURE_DENIED`), sauf `availability` qui répond `available: false`.
+- **Lien public d'échéance** : à l'ouverture et au démarrage, le serveur recontrôle que le bail n'est pas
+  terminé. Le lien n'est **pas révoqué en base** : aucun effet de bord à l'ouverture.
+- **Limite connue : changement de locataire non contrôlé.** Le lien public ne mémorise pas le locataire pour
+  lequel il a été émis (colonne manquante sur `SecureLink`) : si le locataire du bail change après l'envoi,
+  rien ne le détecte. Le code d'erreur `RENTAL_ONLINE_PAYMENT_LEASE_TENANT_CHANGED` est déclaré mais jamais
+  levé. Correctif : ajouter la colonne (migration) puis refuser le lien dont le locataire n'est plus celui
+  du bail.
+- **Configuration marchande** : changer le mode, le `merchantId` ou la clé alors qu'une tentative est
+  `PENDING` est refusé (409 `GATEWAY_CHECKOUTS_PENDING`).
+- **Relances** : une relance d'échéance n'inclut un lien de paiement que si `usable` est vrai ; sinon elle
+  part sans lien. Les relances sont manuelles ou par lot, jamais planifiées.
 
 ## Points ouverts à poser à BMI
 
