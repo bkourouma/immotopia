@@ -12,10 +12,12 @@ const TENANT_A = 'tenant-a';
 const TENANT_B = 'tenant-b';
 
 const store = {
+  tenants: [] as Row[],
   configs: [] as Row[],
   checkouts: [] as Row[],
   payments: [] as Row[],
   installments: [] as Row[],
+  declarations: [] as Row[],
   treasuryAccounts: [] as Row[],
   tenantClients: [] as Row[],
   crmContacts: [] as Row[],
@@ -23,10 +25,12 @@ const store = {
 };
 
 function resetStore() {
+  store.tenants = [];
   store.configs = [];
   store.checkouts = [];
   store.payments = [];
   store.installments = [];
+  store.declarations = [];
   store.treasuryAccounts = [];
   store.tenantClients = [];
   store.crmContacts = [];
@@ -85,6 +89,9 @@ const configReadsInTx: boolean[] = [];
 const readOrder: string[] = [];
 
 const mockPrisma: Row = {
+  tenant: {
+    findUnique: jest.fn(async ({ where }: Row) => store.tenants.find(tenant => matches(tenant, where)) ?? null)
+  },
   paymentGatewayConfig: {
     findUnique: jest.fn(async ({ where }: Row) => {
       configReadsInTx.push(inTransaction);
@@ -98,6 +105,7 @@ const mockPrisma: Row = {
   ),
   rentalPayment: delegate(() => store.payments, 'payment'),
   rentalInstallment: delegate(() => store.installments, 'installment'),
+  rentalPaymentDeclaration: delegate(() => store.declarations, 'declaration'),
   treasuryAccount: delegate(() => store.treasuryAccounts, 'treasury'),
   tenantClient: delegate(() => store.tenantClients, 'client'),
   crmContact: delegate(() => store.crmContacts, 'contact'),
@@ -131,6 +139,12 @@ jest.mock('../../src/services/rental-payment-service', () => ({
   allocatePaymentTx: jest.fn()
 }));
 
+// Garder les vrais gardes de disponibilité/déclaration ; seul le calcul des droits est simulé.
+const mockGetEntitlements = jest.fn();
+jest.mock('../../src/services/subscription-v2-service', () => ({
+  getEntitlements: (...args: unknown[]) => mockGetEntitlements(...args)
+}));
+
 jest.mock('../../src/lib/treasury/accounts', () => ({
   ensureChartAccountTx: jest.fn(async () => 'chart-5525')
 }));
@@ -155,6 +169,7 @@ import {
 const PROVIDER_URL = 'https://pay.provider.example/hosted/abc123';
 
 function seedAgency(tenantId: string, overrides: Row = {}) {
+  store.tenants.push({ id: tenantId, status: 'ACTIVE' });
   store.configs.push({
     id: nextId('config'),
     tenantId,
@@ -201,11 +216,89 @@ function params(installmentId: string, overrides: Row = {}) {
 beforeEach(() => {
   resetStore();
   jest.clearAllMocks();
+  mockGetEntitlements.mockReset().mockResolvedValue({
+    enforcement: 'enforce',
+    moduleAccess: { MODULE_AGENCY: 'FULL' },
+    readOnly: false
+  });
   configReadsInTx.length = 0;
   readOrder.length = 0;
   inTransaction = false;
   buildAway.mockResolvedValue({ url: PROVIDER_URL, tokens: 'tok', code: '00', message: 'ok' });
   gatewayClientForMode.mockReturnValue({ buildAway, getStatus: jest.fn() });
+});
+
+describe.each([
+  ['lien de paiement', (id: string) => startCheckoutForInstallments(params(id))],
+  ['portail locataire', (id: string) => startCheckout(TENANT_A, 'client-a', 'lease-a', [id], 'user-a')]
+])('gardes avant démarrage — %s', (_source, start) => {
+  it.each(['absente', 'suspendue', 'sans droit RENTAL', 'en lecture seule'])(
+    'refuse une agence %s sans créer de paiement ni appeler le fournisseur',
+    async state => {
+      seedAgency(TENANT_A);
+      const inst = seedInstallment(TENANT_A, 'lease-a');
+      if (state === 'absente') store.tenants = [];
+      if (state === 'suspendue') store.tenants[0].status = 'SUSPENDED';
+      if (state === 'sans droit RENTAL' || state === 'en lecture seule') {
+        mockGetEntitlements.mockResolvedValue({
+          enforcement: 'enforce',
+          moduleAccess: { MODULE_AGENCY: state === 'sans droit RENTAL' ? 'NONE' : 'FULL' },
+          readOnly: state === 'en lecture seule'
+        });
+      }
+
+      await expect(start(inst.id)).rejects.toMatchObject({
+        statusCode: 400,
+        code: 'RENTAL_ONLINE_PAYMENT_UNAVAILABLE'
+      });
+      expect(mockPrisma.tenant.findUnique).toHaveBeenCalledWith({
+        where: { id: TENANT_A },
+        select: { status: true }
+      });
+      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+      expect(store.payments).toHaveLength(0);
+      expect(store.checkouts).toHaveLength(0);
+      expect(buildAway).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(['échéance', 'bail'])('refuse une déclaration en attente de portée %s', async scope => {
+    seedAgency(TENANT_A);
+    const inst = seedInstallment(TENANT_A, 'lease-a');
+    store.declarations.push({
+      id: 'declaration-1',
+      tenant_id: TENANT_A,
+      lease_id: 'lease-a',
+      installment_id: scope === 'échéance' ? inst.id : null,
+      status: 'PENDING',
+      created_at: new Date()
+    });
+
+    await expect(start(inst.id)).rejects.toMatchObject({ statusCode: 409, code: 'CONFLICT' });
+    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    expect(store.payments).toHaveLength(0);
+    expect(store.checkouts).toHaveLength(0);
+    expect(buildAway).not.toHaveBeenCalled();
+  });
+
+  it('ignore une déclaration en attente d’une autre agence', async () => {
+    seedAgency(TENANT_A);
+    const inst = seedInstallment(TENANT_A, 'lease-a');
+    store.declarations.push({
+      id: 'declaration-foreign',
+      tenant_id: TENANT_B,
+      lease_id: 'lease-a',
+      installment_id: inst.id,
+      status: 'PENDING',
+      created_at: new Date()
+    });
+
+    await start(inst.id);
+
+    expect(store.payments).toHaveLength(1);
+    expect(store.checkouts).toHaveLength(1);
+    expect(buildAway).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('startCheckoutForInstallments (lien de paiement)', () => {
