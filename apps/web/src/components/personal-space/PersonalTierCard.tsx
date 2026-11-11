@@ -16,6 +16,7 @@ import {
 import { formatMoney } from '../primitives';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { t } from '../../i18n/t';
+import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 
 const { Text, Paragraph } = Typography;
 
@@ -40,6 +41,9 @@ export const PersonalTierCard: React.FC<{ tenantId: string; onConfirmed?: () => 
   onConfirmed
 }) => {
   const { message, modal } = App.useApp();
+  // Monter de palier = écriture (`TENANT_SETTINGS_EDIT` côté API) ; l'offre reste visible pour tous.
+  const { permissions, ready: permissionsReady } = useMyMenuAccess(tenantId);
+  const canUpgrade = permissions === null || permissions.has('TENANT_SETTINGS_EDIT');
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const returningFromPayment = Boolean(searchParams.get('paiement'));
@@ -202,7 +206,9 @@ export const PersonalTierCard: React.FC<{ tenantId: string; onConfirmed?: () => 
               })}{' '}
               <Tag color="warning">{t('Tarif provisoire')}</Tag>
             </Paragraph>
-            {askPhone ? (
+            {!permissionsReady ? null : !canUpgrade ? (
+              <Text type="secondary">{t("Montée de palier réservée à l'administrateur de l'espace")}</Text>
+            ) : askPhone ? (
               <Form
                 form={form}
                 layout="vertical"

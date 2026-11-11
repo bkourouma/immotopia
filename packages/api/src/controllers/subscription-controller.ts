@@ -15,6 +15,8 @@ import {
 import { CreateSubscriptionRequest, UpdateSubscriptionRequest } from '../types/subscription-types';
 import { UpdateInvoiceRequest as UpdateInvoiceRequestType } from '../types/subscription-types';
 import { z } from 'zod';
+import { AppError } from '../middleware/error-middleware';
+import { t } from '../i18n';
 import { parsePagination } from '../utils/pagination-helper';
 
 // Validation schemas
@@ -122,6 +124,21 @@ export async function createSubscriptionHandler(req: Request, res: Response): Pr
   }
 }
 
+/** Agence attendue (optionnelle) pour les routes de facture historiques. */
+function expectedTenantFromQuery(req: Request): string | undefined {
+  const value = req.query?.tenantId;
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+/** Renvoie les erreurs typees (404, 409...) avec leur statut ; false pour les autres. */
+const sendAppError = (error: unknown, res: Response): boolean => {
+  if (error instanceof AppError) {
+    res.status(error.statusCode).json({ success: false, message: error.message });
+    return true;
+  }
+  return false;
+};
+
 /**
  * Update subscription
  * PATCH /api/admin/tenants/:tenantId/subscription
@@ -155,6 +172,7 @@ export async function updateSubscriptionHandler(req: Request, res: Response): Pr
       data: subscription
     });
   } catch (error) {
+    if (sendAppError(error, res)) return;
     const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue.';
     if (errorMessage.includes('introuvable')) {
       res.status(404).json({ success: false, message: errorMessage });
@@ -285,10 +303,10 @@ export async function getInvoiceHandler(req: Request, res: Response): Promise<vo
     }
 
     const { invoiceId } = req.params;
-    const invoice = await getInvoiceById(invoiceId);
+    const invoice = await getInvoiceById(invoiceId, expectedTenantFromQuery(req));
 
     if (!invoice) {
-      res.status(404).json({ success: false, message: 'Facture introuvable.' });
+      res.status(404).json({ success: false, message: t('Facture introuvable.') });
       return;
     }
 
@@ -297,6 +315,7 @@ export async function getInvoiceHandler(req: Request, res: Response): Promise<vo
       data: invoice
     });
   } catch (error) {
+    if (sendAppError(error, res)) return;
     const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue.';
     res.status(400).json({ success: false, message: errorMessage });
   }
@@ -333,7 +352,8 @@ export async function updateInvoiceHandler(req: Request, res: Response): Promise
         ...data,
         paidAt: data.paidAt ? new Date(data.paidAt) : undefined
       },
-      req.user.userId
+      req.user.userId,
+      expectedTenantFromQuery(req)
     );
 
     res.status(200).json({
@@ -342,6 +362,7 @@ export async function updateInvoiceHandler(req: Request, res: Response): Promise
       data: invoice
     });
   } catch (error) {
+    if (sendAppError(error, res)) return;
     const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue.';
     if (errorMessage.includes('introuvable')) {
       res.status(404).json({ success: false, message: errorMessage });
@@ -365,7 +386,7 @@ export async function markInvoicePaidHandler(req: Request, res: Response): Promi
     const { invoiceId } = req.params;
     const paidAt = req.body.paidAt ? new Date(req.body.paidAt) : undefined;
 
-    const invoice = await markInvoiceAsPaid(invoiceId, paidAt, req.user.userId);
+    const invoice = await markInvoiceAsPaid(invoiceId, paidAt, req.user.userId, expectedTenantFromQuery(req));
 
     res.status(200).json({
       success: true,
@@ -373,6 +394,7 @@ export async function markInvoicePaidHandler(req: Request, res: Response): Promi
       data: invoice
     });
   } catch (error) {
+    if (sendAppError(error, res)) return;
     const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue.';
     if (errorMessage.includes('introuvable')) {
       res.status(404).json({ success: false, message: errorMessage });

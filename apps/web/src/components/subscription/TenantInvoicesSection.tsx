@@ -17,6 +17,7 @@ import {
 import { formatMoney, StatusTag, Table } from '../primitives';
 import { collectAllPages } from '../../utils/table-export/collect';
 import { useListSearch } from '../../hooks/useListSearch';
+import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { platformInvoiceCriteria } from './platform-invoice-criteria';
 import {
   INVOICE_NATURE_LABEL,
@@ -53,6 +54,9 @@ interface Props {
  */
 export const TenantInvoicesSection: React.FC<Props> = ({ tenantId, onPaid }) => {
   const { message, modal } = App.useApp();
+  // Payer = écriture (`TENANT_SETTINGS_EDIT` côté API) ; la lecture des factures reste ouverte.
+  const { permissions, ready: permissionsReady } = useMyMenuAccess(tenantId);
+  const canPay = permissions === null || permissions.has('TENANT_SETTINGS_EDIT');
   const [searchParams, setSearchParams] = useSearchParams();
   const [invoices, setInvoices] = useState<PlatformInvoice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -228,17 +232,23 @@ export const TenantInvoicesSection: React.FC<Props> = ({ tenantId, onPaid }) => 
           <Button size="small" onClick={() => handlePdf(r, 'ar')}>
             {t('Traduction arabe')}
           </Button>
-          {availability?.available && PAYABLE_STATUSES.includes(r.status) && r.amountTotal > 0 && (
-            <Button
-              size="small"
-              type="primary"
-              icon={<CreditCardOutlined />}
-              loading={paying === r.id}
-              onClick={() => handlePay(r)}
-            >
-              {t('Payer en ligne')}
-            </Button>
-          )}
+          {availability?.available &&
+            PAYABLE_STATUSES.includes(r.status) &&
+            r.amountTotal > 0 &&
+            permissionsReady &&
+            (canPay ? (
+              <Button
+                size="small"
+                type="primary"
+                icon={<CreditCardOutlined />}
+                loading={paying === r.id}
+                onClick={() => handlePay(r)}
+              >
+                {t('Payer en ligne')}
+              </Button>
+            ) : (
+              <Text type="secondary">{t("Paiement réservé à l'administrateur de l'agence")}</Text>
+            ))}
         </Space>
       )
     }

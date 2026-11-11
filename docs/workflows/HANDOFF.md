@@ -17,6 +17,23 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 
 Modèle de section : voir le bloc « Modèle de section » plus bas.
 
+## Abonnements : correctifs de code — 2026-11-09
+
+**Branche** `fix/abonnements-correctifs`, depuis `origin/main` `aa857a25`. Fait suite à la recette écrite de la PR #201 (`orch/2026-11-09-abonnements`, scénario de 190 cas dans `docs/recette/abonnements/`) : ses écarts E-S3-1 et suivants sont ici corrigés. En cas de conflit de fusion sur ce fichier avec #201, garder les deux sections.
+
+**Fait** — Règles tranchées par le propriétaire le 2026-11-09 : fin de mois ancrée, routes héritées de factures limitées aux factures plateforme, changement de cycle refusé sur la route historique.
+
+- Fin de mois : `addBillingPeriod(start, cycle, anchorDay)` conserve le jour d'ancrage (31/01 → 28/02 → 31/03 → 30/04), ancre dans `Subscription.metadata.billingAnchorDay` (sans migration, écrite seulement au-delà de 28). Adoptée par le renouvellement (tâche et paiement), l'aperçu, les fenêtres de dépassement, la création ACTIVE, la montée de palier. Équivalence avec l'ancien calcul prouvée pour les jours 1 à 28.
+- Annulation d'un changement de pack programmé : le pack remplacé et ses extensions sont rétablis. Refus (409) s'il y a plusieurs changements à la même échéance, si la période suivante est déjà facturée ou si le pack rétabli est incompatible. `changePack` refuse un second changement tant qu'un autre est en attente.
+- Routes admin héritées de factures, liste comprise : factures plateforme seulement, même 404 pour inexistante, autre agence ou loyer. `PATCH …/subscription` refuse le changement de cycle (409). `billingAnchorDay` n'est plus injectable par un admin.
+- Web : carte abonnements des statistiques, texte du changement de pack (montée, descente, essai), actions de paiement, de demande d'extension et de montée de palier réservées aux administrateurs. Traductions en/ar et classeur de fonctionnalités à jour.
+
+**Reste** — Pas fait : verrou de ligne sur `changePack`/`removeSubscriptionItem` (deux changements simultanés peuvent passer), `addSubscriptionItem` qui ne voit pas un changement programmé (peut créer un doublon à l'échéance), lecture-écriture concurrente de `metadata` entre renouvellement et fenêtres de dépassement, abonnements existants créés un 29/30/31 sans ancre ou avec une ancre 31 périmée après montée de palier (requête de contrôle à décider, aucune donnée réécrite), `listQuotaAlerts` jamais appelée, route héritée `mark-paid` qui ne passe pas par le règlement (à retirer ?), interrupteur de mise en route du tiroir de création d'agence sans effet (E-S1-1, question métier : la mise en route est-elle obligatoire ?), `TenantActivityStats` dont le type web ne correspond pas à l'API. L'écran doit encore afficher proprement les nouveaux 409 de `changePack` et d'annulation. Un abonnement qui a déjà deux changements à la même échéance ne peut plus en annuler aucun par l'API (support).
+
+**Pièges** — Le menu réel est « Mon compte › Abonnement / Facturation » (pas « Réglages »). Les tests `tenant-detail-subscription` sont lents (≈ 2 min) : relancer seul avant de conclure à un échec. Le classeur se modifie avec openpyxl en place puis `npm run wiki:export`.
+
+**Vérifié** — typecheck, lint, architecture, i18n, wiki, jest et vitest ciblés (détail dans la PR). Non vérifié : rejeu navigateur, `test:isolation` sur base dédiée, suites complètes.
+
 ## Audit de sécurité et correctifs — 2026-11-10
 
 **État** — Branche `orch/2026-11-09-audit-securite` (depuis `origin/main` `aa857a25`), poussée, PR #205 ouverte vers `main` ; fusion et déploiement demandés par l'utilisateur le 2026-11-10 (l'état réel du serveur se lit dans son journal de déploiement). Audit en 4 territoires : 48 constats, 0 critique, 7 élevés, corrigés en sept lots. Puis **contre-audit Opus** (5 relectures adversariales, 2026-11-10) : 2 élevés (dont un déni de service du garde CSRF introduit par la PR), 12 moyens, 23 faibles distincts, 15 inexactitudes de documentation ; corrigés en deux vagues (`377cd363`, `daaa31ce`), sauf 5 points signalés en recommandation. Rapport complet, statuts, hypothèses H1 à H29 et actions du propriétaire : [AUDIT_SECURITE_2026-11-09.md](../governance/AUDIT_SECURITE_2026-11-09.md) (section 8 pour le contre-audit).

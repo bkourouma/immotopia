@@ -148,6 +148,7 @@ jest.mock('../../src/services/subscription-v2-service', () => {
 });
 
 import {
+  alertPeriodStart,
   crossedThresholds,
   dueTrialReminder,
   evaluateQuotaAlerts,
@@ -337,6 +338,28 @@ describe('espace particulier : palier gratuit, capacite ACTIFS', () => {
     expect(await sendTrialReminders(T, new Date(END.getTime() - 6 * DAY))).toBe(7);
   });
 
+  it('periode finissant le 31 janvier : renouvelee au 28 fevrier, ancre 31 memorisee puis retrouvee en mars', async () => {
+    const END = new Date('2027-01-31T00:00:00Z');
+    seedSubscription({
+      currentPeriodStart: new Date('2026-12-31T00:00:00Z'),
+      currentPeriodEnd: END,
+      metadata: { note: 'x' }
+    });
+    mockState.free = ['sub-1'];
+    expect((await processBillingBoundary('sub-1', new Date('2027-01-31T03:00:00Z'))).action).toBe('RENEWED');
+    expect(mockState.subscriptions[0]).toMatchObject({
+      currentPeriodStart: END,
+      currentPeriodEnd: new Date('2027-02-28T00:00:00Z'),
+      metadata: { note: 'x', billingAnchorDay: 31 }
+    });
+    expect((await processBillingBoundary('sub-1', new Date('2027-02-28T03:00:00Z'))).action).toBe('RENEWED');
+    expect(mockState.subscriptions[0]).toMatchObject({
+      currentPeriodStart: new Date('2027-02-28T00:00:00Z'),
+      currentPeriodEnd: new Date('2027-03-31T00:00:00Z'),
+      metadata: { note: 'x', billingAnchorDay: 31 }
+    });
+  });
+
   it('abonnement gratuit echu, sans aucune facture : renouvele, jamais PAST_DUE ; le payant sans facture payee passe PAST_DUE', async () => {
     const END = new Date('2026-10-01T00:00:00Z');
     seedSubscription({});
@@ -355,6 +378,23 @@ describe('espace particulier : palier gratuit, capacite ACTIFS', () => {
     mockState.free = [];
     seedSubscription({});
     expect((await processBillingBoundary('sub-1', new Date('2026-10-01T03:00:00Z'))).action).toBe('PAST_DUE');
+  });
+});
+
+describe('alertPeriodStart : ancre de fin de mois', () => {
+  it('annuel commence le 28/02 avec ancre 31 : la fenetre en cours va du 28/02 au 31/03', () => {
+    const sub = {
+      billingCycle: 'ANNUAL' as const,
+      currentPeriodStart: new Date('2027-02-28T00:00:00Z'),
+      metadata: { billingAnchorDay: 31 }
+    };
+    // Le 29/03 : avec l'ancre la fenetre court encore jusqu'au 31/03 (debut 28/02) ;
+    // sans ancre elle aurait ete renouvelee le 28/03.
+    expect(alertPeriodStart(sub, new Date('2027-03-29T10:00:00Z'))).toEqual(new Date('2027-02-28T00:00:00Z'));
+    expect(alertPeriodStart(sub, new Date('2027-03-31T10:00:00Z'))).toEqual(new Date('2027-03-31T00:00:00Z'));
+    expect(alertPeriodStart({ ...sub, metadata: null }, new Date('2027-03-29T10:00:00Z'))).toEqual(
+      new Date('2027-03-28T00:00:00Z')
+    );
   });
 });
 
