@@ -42,7 +42,10 @@ jest.mock('../../src/middleware/rate-limit-middleware', () => ({
   syndicDeclaredProofReadRateLimiter: (req: any, _res: any, next: any) => {
     proofLimiterCalls.push(req.path);
     next();
-  }
+  },
+  // Lot Q (comptes de réception) : limiteurs montés sur le même routeur.
+  receivingAccountWriteRateLimiter: (_req: any, _res: any, next: any) => next(),
+  receivingAccountQrReadRateLimiter: (_req: any, _res: any, next: any) => next()
 }));
 
 const auditEvents: any[] = [];

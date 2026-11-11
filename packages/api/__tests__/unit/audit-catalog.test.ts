@@ -232,7 +232,11 @@ describe('catalogue d’audit', () => {
       'SYNDIC_MEETING_CHAT_PARTICIPANT_MUTED',
       'SYNDIC_MEETING_CHAT_PARTICIPANT_UNMUTED',
       'SYNDIC_MEETING_CHAT_OPENED',
-      'SYNDIC_MEETING_CHAT_CLOSED'
+      'SYNDIC_MEETING_CHAT_CLOSED',
+      // Spec 048, lot Q : comptes de réception de l'agence.
+      'RECEIVING_ACCOUNT_CREATED',
+      'RECEIVING_ACCOUNT_UPDATED',
+      'RECEIVING_ACCOUNT_DELETED'
     ];
     const fromCatalog = Object.fromEntries(
       Object.entries(AUDIT_CATALOG)
