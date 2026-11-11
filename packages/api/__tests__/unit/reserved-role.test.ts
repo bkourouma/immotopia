@@ -16,6 +16,8 @@ const mockPrisma: any = {
     // Garde-fou « dernier administrateur » : la cible n'est pas administrateur.
     count: jest.fn(async () => 0)
   },
+  // Verrou consultatif des administrateurs pris dans la transaction de updateMemberRoles.
+  $executeRaw: jest.fn(async () => 1),
   // updateMemberRoles réécrit les rôles et écrit sa trace d'audit dans une même transaction.
   $transaction: jest.fn(async (cb: (tx: unknown) => unknown): Promise<unknown> => cb(mockPrisma))
 };

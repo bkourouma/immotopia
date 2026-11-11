@@ -3,6 +3,7 @@ import multer from 'multer';
 import { z } from 'zod';
 import { PlatformPaymentMethod } from '@prisma/client';
 import { asyncHandler, BadRequestError } from '../middleware/error-middleware';
+import { assertUploadMatchesDeclaredType } from '../utils/file-signature';
 import {
   getInvoiceCheckoutForTenant,
   getInvoicePayment,
@@ -52,7 +53,8 @@ const PROOF_TYPES = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 
 /** Justificatif facultatif du constat manuel : 10 Mo, PDF ou image, garde en memoire puis ecrit hors du dossier public. */
 export const paymentProofUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+  // method, paidAt, reference, note : 4 champs ; marge de 4.
+  limits: { fileSize: 10 * 1024 * 1024, files: 1, fields: 8, fieldSize: 100 * 1024 },
   fileFilter: (_req, file, cb) => {
     if (file.mimetype && PROOF_TYPES.includes(file.mimetype)) cb(null, true);
     else cb(new BadRequestError('Justificatif : PDF, JPEG, PNG ou TIFF uniquement.'));
@@ -132,6 +134,13 @@ const manualPaymentSchema = z.object({
 export const recordManualPaymentHandler = asyncHandler(async (req: Request, res: Response) => {
   const input = parse(manualPaymentSchema, req.body ?? {});
   const file = req.file;
+  // Octets magiques : un HTML ou un script declare image/png n'entre pas.
+  if (file) {
+    assertUploadMatchesDeclaredType(file, {
+      allowedKinds: ['pdf', 'jpg', 'png', 'tiff'],
+      message: 'Justificatif : PDF, JPEG, PNG ou TIFF uniquement.'
+    });
+  }
   const data = await recordManualPayment(
     req.params.tenantId,
     req.params.invoiceId,

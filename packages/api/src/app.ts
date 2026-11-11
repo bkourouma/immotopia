@@ -108,13 +108,14 @@ import treasuryRoutes from './routes/treasury-routes';
 import salesRoutes from './routes/sales-routes';
 import { corsMiddleware } from './middleware/cors-middleware';
 import { requestLogger } from './middleware/logging-middleware';
+import { csrfOriginGuard } from './middleware/csrf-origin-middleware';
 import { responseSanitizer } from './middleware/response-sanitizer-middleware';
 import { requestContextMiddleware } from './middleware/request-context-middleware';
 import { auditAccessMiddleware } from './middleware/audit-access-middleware';
 import { resolveLanguage } from './middleware/language-middleware';
 import { errorHandler } from './middleware/error-middleware';
 import { compressionMiddleware } from './middleware/compression-middleware';
-import { uploadsAccessGuard } from './middleware/uploads-access-middleware';
+import { uploadsAccessGuard, applyUploadsResponseHeaders } from './middleware/uploads-access-middleware';
 import { globalApiRateLimiter } from './middleware/rate-limit-middleware';
 import { subscriptionRouteGuard } from './middleware/subscription-feature-middleware';
 import helmet from 'helmet';
@@ -201,28 +202,7 @@ app.use(
   // passes straight through.
   uploadsAccessGuard,
   express.static(uploadsPath, {
-    setHeaders: (res, filePath) => {
-      // Credentialed requests cannot use a wildcard origin: scope to the app.
-      res.setHeader('Access-Control-Allow-Origin', frontendUrl);
-      res.setHeader('Access-Control-Allow-Credentials', 'true');
-      res.setHeader('Vary', 'Origin');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-      // Set appropriate content type for images and documents
-      if (filePath.endsWith('.jpg') || filePath.endsWith('.jpeg')) {
-        res.setHeader('Content-Type', 'image/jpeg');
-      } else if (filePath.endsWith('.png')) {
-        res.setHeader('Content-Type', 'image/png');
-      } else if (filePath.endsWith('.webp')) {
-        res.setHeader('Content-Type', 'image/webp');
-      } else if (filePath.endsWith('.pdf')) {
-        res.setHeader('Content-Type', 'application/pdf');
-      } else if (filePath.endsWith('.doc')) {
-        res.setHeader('Content-Type', 'application/msword');
-      } else if (filePath.endsWith('.docx')) {
-        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-      }
-    }
+    setHeaders: (res, filePath) => applyUploadsResponseHeaders(res, filePath, frontendUrl)
   })
 );
 
@@ -230,8 +210,17 @@ app.use(
 app.use(corsMiddleware);
 
 // Baseline rate limiting for the whole API (tighter per-endpoint limiters
-// remain on the sensitive auth routes).
+// remain on the sensitive auth routes). AVANT le garde CSRF (contre-audit
+// PR #205) : aucune requete anonyme n'atteint un traitement du chemin sans
+// avoir d'abord consomme le budget de son IP.
 app.use(globalApiRateLimiter);
+
+// CSRF (audit AUTH-05) : refuse une requete qui modifie, portee par le cookie
+// accessToken, quand son origine n'est pas celle du front ; controle aussi le
+// CSRF de connexion (login, register). Apres cookieParser, CORS et le
+// limiteur global, avant tout routeur ; webhooks et routes publiques exclus
+// (voir le middleware).
+app.use(csrfOriginGuard);
 
 // Request context (IP, User-Agent) for audit logs – must run before routes
 app.use(requestContextMiddleware);

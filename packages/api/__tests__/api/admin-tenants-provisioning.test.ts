@@ -36,7 +36,6 @@ jest.mock('../../src/services/tenant-service', () => ({
   getTenantClients: jest.fn(),
   getUserTenantMemberships: jest.fn(),
   listActiveTenants: jest.fn(),
-  updateTenantClientDetails: jest.fn(),
   removeTenantClient: jest.fn(),
   updateTenant: jest.fn(),
   listTenants: jest.fn(),
@@ -71,9 +70,18 @@ function sampleResult(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     tenant: { id: 'tenant-1', name: 'Agence Kipe', slug: 'agence-kipe', type: 'AGENCY', status: 'ACTIVE' },
     modules: ['MODULE_AGENCY'],
-    subscription: { planKey: 'PRO', billingCycle: 'MONTHLY', status: 'TRIALING', currentPeriodEnd: new Date().toISOString() },
+    subscription: {
+      planKey: 'PRO',
+      billingCycle: 'MONTHLY',
+      status: 'TRIALING',
+      currentPeriodEnd: new Date().toISOString()
+    },
     admin: { userId: 'user-1', email: 'admin@example.com', fullName: 'Awa Diallo', existingUser: false },
-    invitation: { id: 'invitation-1', expiresAt: new Date().toISOString(), acceptUrl: 'http://localhost:3000/auth/accept-invite?token=abc' },
+    invitation: {
+      id: 'invitation-1',
+      expiresAt: new Date().toISOString(),
+      acceptUrl: 'http://localhost:3000/auth/accept-invite?token=abc'
+    },
     emailSent: true,
     ...overrides
   };
@@ -117,7 +125,7 @@ describe('POST /api/admin/tenants — validation (400)', () => {
     expect(res.status).toBe(400);
   });
 
-  it("refuse un tableau modules vide", async () => {
+  it('refuse un tableau modules vide', async () => {
     const res = await request(app).post('/api/admin/tenants').send({
       name: 'Agence Kipe',
       adminFullName: 'Awa Diallo',
@@ -127,7 +135,7 @@ describe('POST /api/admin/tenants — validation (400)', () => {
     expect(res.status).toBe(400);
   });
 
-  it("refuse un en-tete Idempotency-Key de plus de 100 caracteres", async () => {
+  it('refuse un en-tete Idempotency-Key de plus de 100 caracteres', async () => {
     const res = await request(app)
       .post('/api/admin/tenants')
       .set('Idempotency-Key', 'x'.repeat(101))
@@ -171,27 +179,34 @@ describe('POST /api/admin/tenants — creation', () => {
   it('accepte les champs optionnels (planKey, billingCycle, type, modules, branding...)', async () => {
     provisionTenantMock.mockResolvedValueOnce({ result: sampleResult(), replay: false });
 
-    const res = await request(app).post('/api/admin/tenants').send({
-      name: 'Agence Kipe',
-      adminFullName: 'Awa Diallo',
-      adminEmail: 'admin@example.com',
-      planKey: 'ELITE',
-      billingCycle: 'ANNUAL',
-      type: 'OPERATOR',
-      modules: ['MODULE_AGENCY', 'MODULE_SYNDIC'],
-      legalName: 'Agence Kipe SARL',
-      contactEmail: 'contact@agence-kipe.example.com',
-      contactPhone: '+224600000000',
-      country: 'Guinée',
-      city: 'Conakry',
-      address: 'Kipe, Conakry',
-      website: 'https://agence-kipe.example.com',
-      brandingPrimaryColor: '#1E90FF'
-    });
+    const res = await request(app)
+      .post('/api/admin/tenants')
+      .send({
+        name: 'Agence Kipe',
+        adminFullName: 'Awa Diallo',
+        adminEmail: 'admin@example.com',
+        planKey: 'ELITE',
+        billingCycle: 'ANNUAL',
+        type: 'OPERATOR',
+        modules: ['MODULE_AGENCY', 'MODULE_SYNDIC'],
+        legalName: 'Agence Kipe SARL',
+        contactEmail: 'contact@agence-kipe.example.com',
+        contactPhone: '+224600000000',
+        country: 'Guinée',
+        city: 'Conakry',
+        address: 'Kipe, Conakry',
+        website: 'https://agence-kipe.example.com',
+        brandingPrimaryColor: '#1E90FF'
+      });
 
     expect(res.status).toBe(201);
     expect(provisionTenantMock).toHaveBeenCalledWith(
-      expect.objectContaining({ planKey: 'ELITE', billingCycle: 'ANNUAL', type: 'OPERATOR', brandingPrimaryColor: '#1E90FF' }),
+      expect.objectContaining({
+        planKey: 'ELITE',
+        billingCycle: 'ANNUAL',
+        type: 'OPERATOR',
+        brandingPrimaryColor: '#1E90FF'
+      }),
       'super-admin-1',
       undefined
     );

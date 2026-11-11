@@ -24,11 +24,16 @@ export function startPenaltyCalculationJob() {
       try {
         logger.info('Starting scheduled penalty calculation job');
         // D'abord le statut (Brouillon/À payer échus -> En retard), puis les pénalités.
-        const results = await withJobLock('penalty-calculation-daily', 60 * 60 * 1000, async () => {
-          await applyDueRevisions();
-          await markOverdueInstallments();
-          return calculatePenaltiesForOverdueInstallments();
-        });
+        const results = await withJobLock(
+          'penalty-calculation-daily',
+          60 * 60 * 1000,
+          async () => {
+            await applyDueRevisions();
+            await markOverdueInstallments();
+            return calculatePenaltiesForOverdueInstallments();
+          },
+          { failOpen: false }
+        ); // écrit des pénalités : jamais sans verrou en production
         if (!results) return; // une autre instance a pris le passage
         logger.info('Penalty calculation job completed', {
           processed: results.processed,

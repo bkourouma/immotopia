@@ -3,6 +3,7 @@ import * as path from 'path';
 import { randomBytes } from 'crypto';
 import { logger } from '../utils/logger';
 import { getProjectRoot } from '../utils/project-root';
+import { assertUploadMatchesDeclaredType } from '../utils/file-signature';
 import {
   configureWhatsAppProvider,
   getConfiguredWhatsAppProvider,
@@ -10,14 +11,9 @@ import {
   sendText,
   type WhatsAppProviderKind
 } from './providers/whatsapp.provider';
+import { env } from '../config/env';
 
 const ALLOWED_IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/jpg', 'image/png']);
-
-const MIME_TYPE_TO_EXT: Record<string, string> = {
-  'image/jpeg': '.jpg',
-  'image/jpg': '.jpg',
-  'image/png': '.png'
-};
 
 export interface SendManualGroupBroadcastInput {
   tenantId: string;
@@ -34,11 +30,7 @@ export interface SendManualGroupBroadcastResult {
 }
 
 function getApiBaseUrl(): string {
-  return (
-    process.env.API_URL?.trim() ||
-    process.env.BACKEND_URL?.trim() ||
-    `http://localhost:${process.env.PORT || '8001'}`
-  ).replace(/\/+$/, '');
+  return (env.API_URL || env.BACKEND_URL || `http://localhost:${env.PORT || 8001}`).replace(/\/+$/, '');
 }
 
 function getGroupBroadcastTarget(): string {
@@ -61,21 +53,16 @@ function validateImageFile(file: Express.Multer.File): void {
   }
 }
 
-function inferExtension(file: Express.Multer.File): string {
-  const fromName = path.extname(file.originalname || '').toLowerCase();
-  if (fromName && Object.values(MIME_TYPE_TO_EXT).includes(fromName)) return fromName;
-  return MIME_TYPE_TO_EXT[file.mimetype] || '.jpg';
-}
-
 async function saveBroadcastImage(
   tenantId: string,
   file: Express.Multer.File
 ): Promise<{ relativeUrl: string; absoluteUrl: string }> {
+  // Extension dérivée du type réel (octets), jamais de `originalname`.
+  const { extension: ext } = assertUploadMatchesDeclaredType(file, { allowedKinds: ['jpg', 'png'] });
   const projectRoot = getProjectRoot();
   const uploadDir = path.join(projectRoot, 'uploads', 'whatsapp', 'group-broadcast', tenantId);
   await fs.mkdir(uploadDir, { recursive: true });
 
-  const ext = inferExtension(file);
   const fileName = `group-${Date.now()}-${randomBytes(5).toString('hex')}${ext}`;
   const fullPath = path.join(uploadDir, fileName);
 

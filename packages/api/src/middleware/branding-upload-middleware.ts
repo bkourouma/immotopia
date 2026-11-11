@@ -22,5 +22,5 @@ function brandingImageFilter(_req: Request, file: Express.Multer.File, cb: multe
 export const brandingImageUpload = multer({
   storage: multer.memoryStorage(),
   fileFilter: brandingImageFilter,
-  limits: { fileSize: BRANDING_IMAGE_MAX_BYTES, files: 1 }
+  limits: { fileSize: BRANDING_IMAGE_MAX_BYTES, files: 1, fields: 8, fieldSize: 100 * 1024 }
 });

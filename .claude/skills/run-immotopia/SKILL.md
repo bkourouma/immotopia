@@ -6,7 +6,7 @@ description: Fait tourner l'application ImmoTopia en local et la pilote dans un 
 # Lancer ImmoTopia
 
 Recette vérifiée le 19 septembre 2026 sur la branche `feat/finance-lot-0`
-(Windows 11, PostgreSQL 18, Node 20). Chaque piège documenté ici a réellement
+(Windows 11, PostgreSQL 18, Node 22). Chaque piège documenté ici a réellement
 bloqué un démarrage : ils ne sont pas théoriques.
 
 ## Ce qu'est le projet
@@ -149,12 +149,12 @@ L'écran de connexion affiche un panneau **« Comptes par tenant »** en mode de
 (`import.meta.env.DEV`), couvrant les quatre personas de navigation. Un clic sur
 « Utiliser » pré-remplit le formulaire ; il reste à cliquer « Se connecter ».
 
-| Persona       | Compte                                   |
-| ------------- | ---------------------------------------- |
-| Super-admin   | `admin@immobillier.com` / `Admin@123456` |
-| Collaborateur | `devaccrocs@gmail.com`                   |
-| Propriétaire  | `mickael.andjui.21@gmail.com`            |
-| Locataire     | voir `apps/web/src/dev/dev-accounts.ts`  |
+| Persona       | Compte                                           |
+| ------------- | ------------------------------------------------ |
+| Super-admin   | `admin@immobillier.com` / `<mot de passe local>` |
+| Collaborateur | `<e-mail du collaborateur de démo>`              |
+| Propriétaire  | `<e-mail du propriétaire de démo>`               |
+| Locataire     | voir `apps/web/src/dev/dev-accounts.ts`          |
 
 Le mot de passe commun des comptes d'agence est dans ce même fichier — lis-le
 plutôt que de le supposer, il change avec les jeux de données.
@@ -188,7 +188,7 @@ un problème d'API d'un problème de front :
 ```bash
 curl -s -c /tmp/cj.txt -X POST http://localhost:8001/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"devaccrocs@gmail.com","password":"<mdp>"}' -o /dev/null
+  -d '{"email":"<e-mail du collaborateur de démo>","password":"<mdp>"}' -o /dev/null
 curl -s -b /tmp/cj.txt -w "\nHTTP %{http_code}\n" \
   "http://localhost:8001/api/tenants/<tenantId>/finance/sites/dashboard"
 ```

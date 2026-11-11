@@ -1,8 +1,21 @@
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
-import { BillingCycle, SubscriptionStatus } from '@prisma/client';
+import { Prisma, SubscriptionStatus } from '@prisma/client';
 import { CreateSubscriptionRequest, UpdateSubscriptionRequest } from '../types/subscription-types';
+import { ConflictError } from '../middleware/error-middleware';
+import { t } from '../i18n';
+import { BILLING_ANCHOR_METADATA_KEY, addBillingPeriod, withBillingAnchorDay } from '../lib/subscription';
 import { logAuditEvent, recordAuditEvent, AuditActionKey } from './audit-service';
+
+/**
+ * Metadata fourni par l'appelant sans la cle reservee a la facturation : le jour
+ * d'ancrage n'est pose que par le flux de renouvellement, jamais par une saisie.
+ */
+function stripReservedMetadata(metadata: Record<string, unknown>): Record<string, unknown> {
+  const rest = { ...metadata };
+  delete rest[BILLING_ANCHOR_METADATA_KEY];
+  return rest;
+}
 
 /**
  * Create a subscription for a tenant
@@ -29,10 +42,21 @@ export async function createSubscription(data: CreateSubscriptionRequest, actorU
     throw new Error('Ce tenant a déjà un abonnement.');
   }
 
-  // Set default dates if not provided
-  const startAt = data.startAt || new Date();
-  const currentPeriodStart = data.currentPeriodStart || startAt;
-  const currentPeriodEnd = data.currentPeriodEnd || calculatePeriodEnd(currentPeriodStart, data.billingCycle);
+  // Dates par defaut. Le controleur transmet les dates validees en chaines ISO :
+  // elles sont normalisees ici avant tout calcul.
+  const startAt = data.startAt ? new Date(data.startAt) : new Date();
+  const currentPeriodStart = data.currentPeriodStart ? new Date(data.currentPeriodStart) : startAt;
+  // Fin de periode en UTC (fin de mois : 31/01 -> 28/02, jamais 03/03).
+  const computedPeriodEnd = addBillingPeriod(currentPeriodStart, data.billingCycle);
+  const currentPeriodEnd = data.currentPeriodEnd ? new Date(data.currentPeriodEnd) : computedPeriodEnd;
+  // Ancre (> 28) memorisee des la creation pour retrouver le 31 apres fevrier.
+  // Seulement si la fin est bien un cycle calendaire depuis le debut : une fin
+  // saisie a une autre date garde l'ancre lue au renouvellement (jour de fin).
+  const baseMetadata = stripReservedMetadata(data.metadata || {});
+  const anchoredMetadata =
+    currentPeriodEnd.getTime() === computedPeriodEnd.getTime()
+      ? withBillingAnchorDay(baseMetadata, currentPeriodStart.getUTCDate())
+      : undefined;
 
   // Create subscription
   const subscription = await prisma.subscription.create({
@@ -44,7 +68,7 @@ export async function createSubscription(data: CreateSubscriptionRequest, actorU
       startAt,
       currentPeriodStart,
       currentPeriodEnd,
-      metadata: data.metadata || {}
+      metadata: (anchoredMetadata ?? baseMetadata) as Prisma.InputJsonObject
     }
   });
 
@@ -89,21 +113,33 @@ export async function updateSubscription(tenantId: string, data: UpdateSubscript
     throw new Error('Abonnement introuvable.');
   }
 
-  // Update subscription
+  // Le cycle n'est jamais modifie par cette route (la periode en cours en depend).
+  if (data.billingCycle && data.billingCycle !== subscription.billingCycle) {
+    throw new ConflictError(t('Le cycle de facturation (mensuel/annuel) ne peut pas être modifié par cette route.'));
+  }
+
+  // billingAnchorDay est reserve : retire de la saisie, puis reinjecte la valeur
+  // deja en base (posee par le flux de facturation) si le metadata est remplace.
+  const existingMetadata = subscription.metadata as Record<string, unknown> | null;
+  const existingAnchor =
+    existingMetadata && typeof existingMetadata === 'object'
+      ? existingMetadata[BILLING_ANCHOR_METADATA_KEY]
+      : undefined;
+  const metadata = data.metadata
+    ? {
+        ...stripReservedMetadata(data.metadata),
+        ...(existingAnchor !== undefined ? { [BILLING_ANCHOR_METADATA_KEY]: existingAnchor } : {})
+      }
+    : undefined;
+
+  // Update subscription (billingCycle volontairement non modifie ici)
   const updated = await prisma.subscription.update({
     where: { tenantId },
     data: {
       planKey: data.planKey,
-      billingCycle: data.billingCycle,
       status: data.status,
       cancelAt: data.cancelAt,
-      metadata: data.metadata,
-      // Update period end if billing cycle changed
-      ...(data.billingCycle && data.billingCycle !== subscription.billingCycle
-        ? {
-            currentPeriodEnd: calculatePeriodEnd(subscription.currentPeriodStart, data.billingCycle)
-          }
-        : {}),
+      metadata: metadata as Prisma.InputJsonObject | undefined,
       // Set canceledAt if status is CANCELED
       ...(data.status === SubscriptionStatus.CANCELED && !subscription.canceledAt ? { canceledAt: new Date() } : {})
     }
@@ -262,17 +298,4 @@ export async function checkSubscriptionAccess(tenantId: string) {
     reason: `Subscription status: ${subscription.status}`,
     subscription
   };
-}
-
-/**
- * Calculate period end date based on billing cycle
- */
-function calculatePeriodEnd(startDate: Date, billingCycle: BillingCycle): Date {
-  const endDate = new Date(startDate);
-  if (billingCycle === BillingCycle.MONTHLY) {
-    endDate.setMonth(endDate.getMonth() + 1);
-  } else if (billingCycle === BillingCycle.ANNUAL) {
-    endDate.setFullYear(endDate.getFullYear() + 1);
-  }
-  return endDate;
 }

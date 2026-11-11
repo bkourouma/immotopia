@@ -7,7 +7,7 @@
 
 ## Prerequis
 
-- Node.js 20 (voir `.nvmrc` a la racine du depot)
+- Node.js 22 (voir `.nvmrc` a la racine du depot)
 - PostgreSQL disponible, variables d'environnement API configurees (`packages/api/.env`, voir `env.example`)
 - Dependances installees **a la racine uniquement** (`npm install`), jamais separement dans `apps/web` ou `packages/api` (monorepo npm workspaces, un seul `package-lock.json` - `CONTRIBUTING.md`)
 

@@ -99,7 +99,7 @@ function Run([string]$label, [scriptblock]$command) {
 
 # ------------------------------------------------------------------ prerequis
 Step 'Verification des outils'
-Require-Command 'node' 'Installez Node.js 20 ou plus.'
+Require-Command 'node' 'Installez Node.js 22 ou plus.'
 Require-Command 'npm' 'Installez Node.js (npm est inclus).'
 if (-not $SkipDocker) { Require-Command 'docker' 'Installez Docker Desktop, ou relancez avec -SkipDocker -DatabaseUrl "postgresql://...".' }
 if (-not $SkipDocker) {
@@ -143,8 +143,18 @@ if (-not $SkipDocker) {
   # jetable, limitee a ce processus, evite le refus d'interpolation. Jamais ecrite sur disque.
   $tempJwt = $false
   if (-not $env:JWT_SECRET) { $env:JWT_SECRET = New-RandomHex 32; $tempJwt = $true }
+  # POSTGRES_PASSWORD est obligatoire (sans defaut) : on pose le mot de passe de dev local,
+  # le meme que celui de DATABASE_URL ecrite plus haut, le temps de cet appel seulement.
+  $tempPgPass = $false
+  $prevPgPass = $env:POSTGRES_PASSWORD
+  $env:POSTGRES_PASSWORD = $dbPass; $tempPgPass = $true
   try { Run 'docker compose up -d db' { docker compose up -d db } }
-  finally { if ($tempJwt) { Remove-Item Env:JWT_SECRET -ErrorAction SilentlyContinue } }
+  finally {
+    if ($tempJwt) { Remove-Item Env:JWT_SECRET -ErrorAction SilentlyContinue }
+    if ($tempPgPass) {
+      if ($null -ne $prevPgPass) { $env:POSTGRES_PASSWORD = $prevPgPass } else { Remove-Item Env:POSTGRES_PASSWORD -ErrorAction SilentlyContinue }
+    }
+  }
   Info 'attente de la base (30 s max)...'
   $healthy = $false
   for ($i = 0; $i -lt 30; $i++) {

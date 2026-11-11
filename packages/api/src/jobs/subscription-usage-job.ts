@@ -40,7 +40,15 @@ import { t } from '../i18n';
 import { frontendUrl } from '../config/env';
 import { logAuditEvent } from '../services/audit-service';
 import { AuditActionKey } from '../types/audit-types';
-import { addBillingPeriod, CAPACITY_KEYS, CapacityKeyCode, PACK, PARTICULIER_PACKS } from '../lib/subscription';
+import {
+  addBillingPeriod,
+  CAPACITY_KEYS,
+  CapacityKeyCode,
+  PACK,
+  PARTICULIER_PACKS,
+  resolveBillingAnchorDay,
+  withBillingAnchorDay
+} from '../lib/subscription';
 import { isFreeSubscription, runPlatformBillingStep } from '../services/platform-invoice-service';
 import {
   applyDueItemTransitionsTx,
@@ -99,9 +107,13 @@ function metadataOf(sub: { metadata: Prisma.JsonValue | null }): Record<string, 
  * en ANNUEL, la fenetre MENSUELLE de depassement (le depassement y est
  * facture chaque mois), si bien que les alertes se rearment chaque mois.
  */
-export function alertPeriodStart(sub: Pick<SubscriptionRow, 'billingCycle' | 'currentPeriodStart'>, now: Date): Date {
+export function alertPeriodStart(
+  sub: Pick<SubscriptionRow, 'billingCycle' | 'currentPeriodStart' | 'metadata'>,
+  now: Date
+): Date {
   return sub.billingCycle === 'ANNUAL'
-    ? monthlyOverageWindow(sub.currentPeriodStart, now).start
+    ? monthlyOverageWindow(sub.currentPeriodStart, now, resolveBillingAnchorDay(sub.metadata, sub.currentPeriodStart))
+        .start
     : sub.currentPeriodStart;
 }
 
@@ -218,7 +230,9 @@ export async function processBillingBoundary(subscriptionId: string, now: Date =
     // Changement de periode : les transitions ci-dessus (a `now`, donc apres
     // l'echeance) ont deja termine les packs retires ET leurs extensions
     // liees, et commence ce qui etait programme.
-    const nextEnd = addBillingPeriod(boundary, sub.billingCycle);
+    const anchor = resolveBillingAnchorDay(sub.metadata, boundary);
+    const nextEnd = addBillingPeriod(boundary, sub.billingCycle, anchor);
+    const anchoredMetadata = withBillingAnchorDay(sub.metadata, anchor);
     const paid = await tx.invoice.findFirst({
       where: {
         tenantId: sub.tenantId,
@@ -240,7 +254,8 @@ export async function processBillingBoundary(subscriptionId: string, now: Date =
           currentPeriodStart: boundary,
           currentPeriodEnd: nextEnd,
           nextBillingAt: nextEnd,
-          pastDueAt: null
+          pastDueAt: null,
+          ...(anchoredMetadata ? { metadata: anchoredMetadata as Prisma.InputJsonValue } : {})
         }
       });
       outcome.action = 'RENEWED';
@@ -594,7 +609,8 @@ async function runLogged(alertsOnly: boolean) {
     const report = await withJobLock(
       alertsOnly ? 'subscription-usage-hourly' : 'subscription-usage-daily',
       alertsOnly ? 30 * 60 * 1000 : 60 * 60 * 1000,
-      () => runSubscriptionUsageCycle({ alertsOnly })
+      () => runSubscriptionUsageCycle({ alertsOnly }),
+      { failOpen: false } // facturation de dépassement : jamais sans verrou
     );
     if (!report) return; // une autre instance a pris le passage
     logger.info('Subscription usage job completed', { alertsOnly, ...report, errors: report.errors.length });

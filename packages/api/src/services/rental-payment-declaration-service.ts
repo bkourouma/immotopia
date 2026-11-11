@@ -21,6 +21,7 @@ import {
   type RentalDeclarationRejectReason
 } from '../lib/rental/declared-payment/types';
 import { applyDeclarationListExtras, type DeclarationListExtras } from '../lib/rental/payment-list-filters';
+import { env } from '../config/env';
 
 const NOTE_MIN = 10;
 /** Candidats lus pour le filtre `flagged` (alertes calculées hors SQL). */
@@ -375,7 +376,7 @@ export async function approvePaymentDeclaration(
 
     // Notify tenant by email (en dur, like account creation)
     try {
-      const baseUrl = process.env.FRONTEND_URL || process.env.CLIENT_URL || 'http://localhost:3000';
+      const baseUrl = env.FRONTEND_URL || env.CLIENT_URL || 'http://localhost:3000';
       const portalPath = '/tenant/payments';
       const portalUrl = `${baseUrl}/login?redirect=${encodeURIComponent(portalPath)}`;
 
@@ -631,7 +632,7 @@ export async function rejectPaymentDeclaration(
 
     // Notify tenant by email (en dur, like account creation)
     try {
-      const baseUrl = process.env.FRONTEND_URL || process.env.CLIENT_URL || 'http://localhost:3000';
+      const baseUrl = env.FRONTEND_URL || env.CLIENT_URL || 'http://localhost:3000';
       const portalPath = '/tenant/payments';
       const portalUrl = `${baseUrl}/login?redirect=${encodeURIComponent(portalPath)}`;
 

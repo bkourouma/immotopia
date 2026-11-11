@@ -563,4 +563,10 @@ describe('TVA (D9) et periodes', () => {
     );
     expect(addBillingPeriod(new Date('2026-09-25T00:00:00Z'), 'ANNUAL').toISOString()).toBe('2027-09-25T00:00:00.000Z');
   });
+
+  it('fin de mois : 31 janvier -> 28 fevrier (voir subscription.billing-anchor.test.ts)', () => {
+    expect(addBillingPeriod(new Date('2027-01-31T00:00:00Z'), 'MONTHLY').toISOString()).toBe(
+      '2027-02-28T00:00:00.000Z'
+    );
+  });
 });

@@ -383,7 +383,7 @@ npx prisma migrate deploy
 ### Admin
 
 - **Email**: admin@immotopia.com
-- **Password**: Admin@123456
+- **Password**: <mot de passe local>
 - **Role**: ADMIN
 
 ### Instructor

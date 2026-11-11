@@ -6,16 +6,16 @@ Tu as tout donné pour Twilio ; voici la vérification que tout est en place et 
 
 ## Ce qui est déjà en place dans le projet
 
-| Élément | Statut |
-|--------|--------|
-| Provider Twilio (`whatsapp.provider.ts`) | Utilise `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM` |
-| Envoi template (ContentSid + ContentVariables) | Implémenté (message initié par l'entreprise) |
-| Envoi message libre (body) | Implémenté (si pas de Content SID) |
-| Config par tenant (activation + template) | API `GET/PATCH /api/tenants/:tenantId/whatsapp-notifications` |
-| Page Communication → Notifications WhatsApp | Menu + route + formulaire (message + Template Twilio) |
-| Déclenchement maintenance | Ticket créé / statut changé → envoi WhatsApp si contact avec consentement + numéro |
-| Migration BDD `whatsapp_notification_configs` | À appliquer si pas déjà fait (`prisma migrate deploy`) |
-| Client Prisma à jour | `npx prisma generate` après modification du schéma |
+| Élément                                        | Statut                                                                             |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Provider Twilio (`whatsapp.provider.ts`)       | Utilise `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM`          |
+| Envoi template (ContentSid + ContentVariables) | Implémenté (message initié par l'entreprise)                                       |
+| Envoi message libre (body)                     | Implémenté (si pas de Content SID)                                                 |
+| Config par tenant (activation + template)      | API `GET/PATCH /api/tenants/:tenantId/whatsapp-notifications`                      |
+| Page Communication → Notifications WhatsApp    | Menu + route + formulaire (message + Template Twilio)                              |
+| Déclenchement maintenance                      | Ticket créé / statut changé → envoi WhatsApp si contact avec consentement + numéro |
+| Migration BDD `whatsapp_notification_configs`  | À appliquer si pas déjà fait (`prisma migrate deploy`)                             |
+| Client Prisma à jour                           | `npx prisma generate` après modification du schéma                                 |
 
 ---
 
@@ -26,12 +26,12 @@ Tu as tout donné pour Twilio ; voici la vérification que tout est en place et 
 Dans **`packages/api/.env`** :
 
 ```env
-TWILIO_ACCOUNT_SID=AC2174127f32ee40f7eb5482def5162cec
-TWILIO_AUTH_TOKEN=ton_auth_token
+TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TWILIO_AUTH_TOKEN=<TWILIO_AUTH_TOKEN>
 TWILIO_WHATSAPP_FROM=+14155238886
 ```
 
-*(Tu as déjà fourni ces valeurs ; vérifie que le Auth Token est bien celui affiché dans la console Twilio.)*
+_(Tu as déjà fourni ces valeurs ; vérifie que le Auth Token est bien celui affiché dans la console Twilio.)_
 
 ### 2. Base de données
 
@@ -40,12 +40,12 @@ TWILIO_WHATSAPP_FROM=+14155238886
 
 ### 3. Sandbox Twilio
 
-- Sur le téléphone qui recevra les messages (ex. +22595031843), envoyer **« join &lt;code&gt; »** au numéro du Sandbox dans WhatsApp (code affiché dans la console Twilio → Messaging → WhatsApp → Sandbox).
+- Sur le téléphone qui recevra les messages (ex. +2250700000000), envoyer **« join &lt;code&gt; »** au numéro du Sandbox dans WhatsApp (code affiché dans la console Twilio → Messaging → WhatsApp → Sandbox).
 
 ### 4. Contact CRM pour le test
 
 - Un **contact** avec :
-  - **Numéro** : `+22595031843` ou `0022595031843` (format E.164 recommandé).
+  - **Numéro** : `+2250700000000` ou `002250700000000` (format E.164 recommandé).
   - **Consentement WhatsApp** coché.
 - Ce contact sera utilisé comme **contact locataire** du ticket.
 
@@ -55,14 +55,14 @@ TWILIO_WHATSAPP_FROM=+14155238886
 - Pour **« Nouveau ticket de maintenance »** (ou **« Rappel rendez-vous »**) :
   - Activer la notification (switch).
   - Optionnel – **Template Twilio** (pour message initié par l’entreprise) :
-    - Content SID : `HXb5b62575e6e4ff6129ad7c8efe1f983e`
+    - Content SID : `HXxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
     - Mapping : `{"1":"appointmentDate","2":"appointmentTime"}` (pour Rappel rendez-vous).
 - Enregistrer.
 
 ### 6. Déclencher l’envoi
 
 - **Maintenance** → créer un **nouveau ticket**.
-- Associer le **contact** (avec +22595031843 et consentement WhatsApp) comme **contact locataire** du ticket.
+- Associer le **contact** (avec +2250700000000 et consentement WhatsApp) comme **contact locataire** du ticket.
 - Enregistrer le ticket → l’API envoie l’email (si configuré) et, si la notif WhatsApp est activée, un WhatsApp via Twilio.
 
 ---

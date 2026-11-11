@@ -130,10 +130,17 @@ describe('garde de type — espace PARTICULIER', () => {
     });
   }
 
-  it('le super-admin n est pas restreint', async () => {
+  it('le super-admin (relu en base : tenantContext.isSuperAdmin) n est pas restreint', async () => {
     currentUser = { userId: 'admin', globalRole: 'SUPER_ADMIN' };
+    currentContext = { isClient: false, tenantType: 'PARTICULIER', isSuperAdmin: true };
     const res = await request(app).get(`/api/tenants/${TENANT}/crm/deals`);
     expect(res.status).toBe(200);
+  });
+
+  it('un jeton SUPER_ADMIN non confirme en base (pas de isSuperAdmin) reste restreint', async () => {
+    currentUser = { userId: 'admin', globalRole: 'SUPER_ADMIN' };
+    const res = await request(app).get(`/api/tenants/${TENANT}/crm/deals`);
+    expect(res.status).toBe(403);
   });
 });
 

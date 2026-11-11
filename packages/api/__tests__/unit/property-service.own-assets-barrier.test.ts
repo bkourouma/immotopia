@@ -31,7 +31,9 @@ jest.mock('../../src/utils/database', () => ({
       findUnique: userFindUnique,
       create: userCreate
     },
-    membership: { findFirst: membershipFindFirst }
+    membership: { findFirst: membershipFindFirst },
+    // TEN-07 : un proprietaire tiers designe par identifiant est un client de l'agence.
+    tenantClient: { findFirst: jest.fn(async () => ({ id: 'client-1' })) }
   }
 }));
 

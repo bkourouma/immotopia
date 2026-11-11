@@ -618,15 +618,31 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
   const handleChangeTier = (item: SubscriptionItemDTO) => {
     const target = PATRIMOINE_TIER_TARGET[item.code as 'PATRIMOINE_ESSENTIEL' | 'PATRIMOINE_PRO'];
     const targetName = catalog.find(c => c.code === target)?.name ?? target;
+    // Même règle que `changePack` côté API : montée de gamme (prix catalogue de
+    // la cible supérieur au prix mensuel figé du pack quitté) immédiate, au
+    // prorata ; descente programmée à l'échéance, sans prorata ; pendant
+    // l'essai, toujours immédiat et sans prorata. Sans catalogue (lecture
+    // échouée), repli sur le sens du palier : Essentiel → Pro est une montée.
+    const targetPrice = catalog.find(c => c.code === target)?.monthlyPrice;
+    const isUpgrade =
+      targetPrice !== undefined ? targetPrice > item.unitMonthlyPrice : item.code === 'PATRIMOINE_ESSENTIEL';
+    const description =
+      overview?.subscription.status === 'TRIALING'
+        ? t("Pendant l'essai, le changement est immédiat et sans prorata.")
+        : isUpgrade
+          ? t(
+              'Prend effet immédiatement ; le pack remplacé est crédité et le nouveau facturé au prorata de la période en cours.'
+            )
+          : t("Prend effet à l'échéance de la période en cours, sans prorata : le pack actuel reste actif jusque-là.");
     confirmAction({
       title: t('Passer de « {{from}} » à « {{to}} » ?', { from: item.name, to: targetName }),
-      description: t('Prend effet immédiatement, au prorata de la période en cours.'),
+      description,
       okText: t('Changer de pack'),
       onConfirm: async () => {
         setTierChangeSaving(true);
         try {
-          await changeSubscriptionPack(tenantId, { fromCodes: [item.code], toCode: target });
-          message.success(t('Pack changé'));
+          const result = await changeSubscriptionPack(tenantId, { fromCodes: [item.code], toCode: target });
+          message.success(result?.immediate === false ? t("Changement programmé à l'échéance") : t('Pack changé'));
           await load();
         } catch (err: any) {
           message.error(err.response?.data?.message || t('Erreur lors du changement de pack'));

@@ -25,6 +25,7 @@ npm run prisma:generate
 ```
 
 Or manually:
+
 ```bash
 npx prisma generate
 ```
@@ -36,11 +37,13 @@ npm run prisma:migrate
 ```
 
 Or manually:
+
 ```bash
 npx prisma migrate dev --name init_auth_schema
 ```
 
 This will:
+
 - Create the migration file in `prisma/migrations/`
 - Apply the migration to your database
 - Generate the Prisma client
@@ -98,7 +101,7 @@ After seeding, you can use these test accounts (password `Test@123456`):
 
 Plus the platform account created by `db:seed:super-admin`:
 
-- `admin@immobillier.com` / `Admin@123456` — SUPER_ADMIN
+- `admin@immobillier.com` / `<mot de passe local>` — SUPER_ADMIN
   (override with `SUPER_ADMIN_EMAIL` / `SUPER_ADMIN_PASSWORD`)
 
 ## Troubleshooting
@@ -106,6 +109,7 @@ Plus the platform account created by `db:seed:super-admin`:
 ### Database Connection Error
 
 If you get a connection error:
+
 1. Verify PostgreSQL is running: `pg_isready`
 2. Check `DATABASE_URL` format in `.env`
 3. Verify database exists: `psql -l`
@@ -113,6 +117,7 @@ If you get a connection error:
 ### Migration Issues
 
 If migrations fail:
+
 1. Check database permissions
 2. Verify schema doesn't already exist
 3. Use `npx prisma migrate reset` to reset (⚠️ deletes all data)
@@ -120,7 +125,7 @@ If migrations fail:
 ### Prisma Client Not Generated
 
 If TypeScript errors about missing Prisma types:
+
 1. Run `npx prisma generate`
 2. Restart TypeScript server in your IDE
 3. Verify `node_modules/.prisma/client` exists
-

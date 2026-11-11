@@ -136,7 +136,7 @@ echo   - admin2@bamako-immo.com (Password: Test@123456) - TENANT_ADMIN
 echo   - agent@agence-mali.com (Password: Test@123456) - TENANT_AGENT
 echo   - proprietaire@gmail.com (Password: Test@123456)
 echo   - locataire@gmail.com (Password: Test@123456)
-echo   - admin@immobillier.com (Password: Admin@123456) - SUPER_ADMIN
+echo   - admin@immobillier.com (Password: defini par SUPER_ADMIN_PASSWORD) - SUPER_ADMIN
 echo.
 echo   Optional demo data:
 echo     cd packages\api

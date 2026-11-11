@@ -47,7 +47,6 @@ const FORBIDDEN_PREFIXES = [
   '/maintenance',
   '/register',
   '/unregister',
-  '/client-details',
   '/document-identity'
 ];
 

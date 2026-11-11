@@ -1,3 +1,4 @@
+import { MembershipStatus } from '@prisma/client';
 import { prisma } from '../utils/database';
 
 // In-memory permission cache
@@ -58,6 +59,20 @@ async function fetchPermissionsFromDB(userId: string, tenantId?: string): Promis
       select: { key: true }
     });
     return allPermissions.map(p => p.key);
+  }
+
+  // Rôles d'AGENCE : seulement pour un membre ACTIF de cette agence. Un membre
+  // désactivé (ou dont l'invitation est en attente) garde ses lignes
+  // user_roles, mais n'en exerce plus aucune permission, même s'il reste
+  // client de l'agence (le cache est invalidé à la désactivation).
+  if (tenantId) {
+    const membership = await prisma.membership.findUnique({
+      where: { userId_tenantId: { userId, tenantId } },
+      select: { status: true }
+    });
+    if (membership?.status !== MembershipStatus.ACTIVE) {
+      return [];
+    }
   }
 
   // Get all user roles

@@ -58,6 +58,7 @@ jest.mock('../../src/lib/signature/sms-guard', () => ({
 }));
 
 import { emailService } from '../../src/services/email-service';
+import { env } from '../../src/config/env';
 import { sendWhatsappNotification } from '../../src/services/whatsapp-notification-send-service';
 import { createInternalProvider } from '../../src/lib/signature/provider/internal';
 
@@ -70,7 +71,7 @@ function createdData(): Record<string, any> {
 }
 
 beforeAll(() => {
-  process.env.ENABLE_EMAILS = '1';
+  env.ENABLE_EMAILS = true;
   (emailService as any).transporter = { sendMail: (...args: unknown[]) => mockSendMail(...args) };
 });
 
@@ -206,7 +207,7 @@ describe('sendEmail avec journal', () => {
     mockCreate.mockRejectedValueOnce(new Error('db down'));
     await expect(
       emailService.sendEmail({ to: 'a@x.test', subject: 'S', text: 't', tenantId: TENANT, journal: { key: 'K' } })
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({ sent: true });
     expect(mockSendMail).toHaveBeenCalledTimes(1);
   });
 

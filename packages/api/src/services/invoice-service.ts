@@ -1,8 +1,25 @@
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
-import { InvoiceStatus } from '@prisma/client';
+import { InvoiceStatus, Prisma } from '@prisma/client';
 import { CreateInvoiceRequest, UpdateInvoiceRequest } from '../types/subscription-types';
 import { logAuditEvent, AuditActionKey } from './audit-service';
+import { NotFoundError } from '../middleware/error-middleware';
+import { t } from '../i18n';
+
+/**
+ * Garde des routes admin historiques : seules les factures PLATEFORME sont
+ * accessibles (jamais les factures de loyer), et, si fourni, uniquement celles
+ * de l'agence attendue. Refus = meme NotFoundError qu'un objet inexistant.
+ */
+async function findPlatformInvoiceOrThrow(invoiceId: string, expectedTenantId?: string) {
+  const invoice = await prisma.invoice.findFirst({
+    where: { id: invoiceId, kind: 'PLATFORM', ...(expectedTenantId ? { tenantId: expectedTenantId } : {}) }
+  });
+  if (!invoice) {
+    throw new NotFoundError(t('Facture introuvable.'));
+  }
+  return invoice;
+}
 
 /**
  * Generate unique invoice number
@@ -106,14 +123,13 @@ export async function createInvoice(data: CreateInvoiceRequest, actorUserId?: st
  * @param actorUserId - User performing the update (for audit)
  * @returns Updated invoice
  */
-export async function updateInvoice(invoiceId: string, data: UpdateInvoiceRequest, actorUserId?: string) {
-  const invoice = await prisma.invoice.findUnique({
-    where: { id: invoiceId }
-  });
-
-  if (!invoice) {
-    throw new Error('Facture introuvable.');
-  }
+export async function updateInvoice(
+  invoiceId: string,
+  data: UpdateInvoiceRequest,
+  actorUserId?: string,
+  expectedTenantId?: string
+) {
+  const invoice = await findPlatformInvoiceOrThrow(invoiceId, expectedTenantId);
 
   // Update invoice
   const updated = await prisma.invoice.update({
@@ -163,9 +179,9 @@ export async function updateInvoice(invoiceId: string, data: UpdateInvoiceReques
  * @param invoiceId - Invoice ID
  * @returns Invoice with tenant and subscription
  */
-export async function getInvoiceById(invoiceId: string) {
-  return prisma.invoice.findUnique({
-    where: { id: invoiceId },
+export async function getInvoiceById(invoiceId: string, expectedTenantId?: string) {
+  return prisma.invoice.findFirst({
+    where: { id: invoiceId, kind: 'PLATFORM', ...(expectedTenantId ? { tenantId: expectedTenantId } : {}) },
     include: {
       tenant: {
         select: {
@@ -204,8 +220,11 @@ export async function listInvoices(
   const limit = filters.limit || 20;
   const skip = (page - 1) * limit;
 
-  const where: any = {
-    tenantId
+  // Route admin des factures de la PLATEFORME : jamais les factures de loyer
+  // (RENTAL) de l'agence, qui partagent la table.
+  const where: Prisma.InvoiceWhereInput = {
+    tenantId,
+    kind: 'PLATFORM'
   };
 
   if (filters.status) {
@@ -244,13 +263,19 @@ export async function listInvoices(
  * @param actorUserId - User marking as paid (for audit)
  * @returns Updated invoice
  */
-export async function markInvoiceAsPaid(invoiceId: string, paidAt?: Date, actorUserId?: string) {
+export async function markInvoiceAsPaid(
+  invoiceId: string,
+  paidAt?: Date,
+  actorUserId?: string,
+  expectedTenantId?: string
+) {
   return updateInvoice(
     invoiceId,
     {
       status: InvoiceStatus.PAID,
       paidAt: paidAt || new Date()
     },
-    actorUserId
+    actorUserId,
+    expectedTenantId
   );
 }

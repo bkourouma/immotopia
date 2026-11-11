@@ -123,6 +123,7 @@ L'application React doit implémenter une vérification d'authentification avant
 
 **REQ-010 : Tableau de bord utilisateur**  
 Après connexion réussie, l'utilisateur doit être redirigé vers `/dashboard`. Le tableau de bord doit afficher : nom complet, email, rôle, date d'inscription. Le contenu du tableau de bord doit varier selon le rôle :
+
 - **STUDENT** : Mes cours inscrits, Progression, Certificats
 - **INSTRUCTOR** : Mes cours créés, Statistiques d'engagement, Créer un cours
 - **ADMIN** : Statistiques globales, Gestion utilisateurs, Gestion contenus
@@ -155,6 +156,7 @@ Page déclenchée par le clic sur le lien dans l'email. Affiche un loader pendan
 
 **UI-006 : Tableau de bord (`/dashboard`)**  
 Navigation avec menu (Tableau de bord, Mon profil, Mes cours, Déconnexion). Section principale affichant :
+
 - En-tête : "Bienvenue [Nom de l'utilisateur]"
 - Carte d'information : Nom complet, Email, Rôle, Membre depuis [Date]
 - Section spécifique au rôle (voir REQ-010)
@@ -202,6 +204,7 @@ Toutes les informations sensibles doivent être stockées en variables d'environ
 **Purpose** : Représente un utilisateur de la plateforme avec ses informations d'authentification et d'autorisation.
 
 **Key Attributes** :
+
 - `id` : UUID, identifiant unique
 - `email` : String, unique, format email valide
 - `password_hash` : String, hash bcrypt du mot de passe
@@ -216,6 +219,7 @@ Toutes les informations sensibles doivent être stockées en variables d'environ
 - `locked_until` : Timestamp nullable, date de fin de blocage temporaire
 
 **Relationships** :
+
 - Un User peut avoir plusieurs RefreshToken (one-to-many)
 - Un User peut avoir un PasswordResetToken actif (one-to-one)
 - Un User peut avoir un EmailVerificationToken actif (one-to-one)
@@ -225,6 +229,7 @@ Toutes les informations sensibles doivent être stockées en variables d'environ
 **Purpose** : Stocke les tokens de rafraîchissement pour permettre le renouvellement des access tokens sans nouvelle authentification.
 
 **Key Attributes** :
+
 - `id` : UUID, identifiant unique
 - `token` : String, unique, le token de rafraîchissement (hash ou UUID)
 - `user_id` : UUID, référence vers User
@@ -235,6 +240,7 @@ Toutes les informations sensibles doivent être stockées en variables d'environ
 - `device_info` : String nullable, information sur le device (user-agent)
 
 **Relationships** :
+
 - Un RefreshToken appartient à un User (many-to-one)
 
 ### PasswordResetToken
@@ -242,6 +248,7 @@ Toutes les informations sensibles doivent être stockées en variables d'environ
 **Purpose** : Stocke les tokens temporaires pour la réinitialisation de mot de passe.
 
 **Key Attributes** :
+
 - `id` : UUID, identifiant unique
 - `token` : String, unique, le token de réinitialisation
 - `user_id` : UUID, référence vers User
@@ -250,6 +257,7 @@ Toutes les informations sensibles doivent être stockées en variables d'environ
 - `used` : Boolean, indique si le token a été utilisé
 
 **Relationships** :
+
 - Un PasswordResetToken appartient à un User (many-to-one)
 
 ### EmailVerificationToken
@@ -257,6 +265,7 @@ Toutes les informations sensibles doivent être stockées en variables d'environ
 **Purpose** : Stocke les tokens temporaires pour la vérification d'email.
 
 **Key Attributes** :
+
 - `id` : UUID, identifiant unique
 - `token` : String, unique, le token de vérification
 - `user_id` : UUID, référence vers User
@@ -265,6 +274,7 @@ Toutes les informations sensibles doivent être stockées en variables d'environ
 - `used` : Boolean, indique si le token a été utilisé
 
 **Relationships** :
+
 - Un EmailVerificationToken appartient à un User (many-to-one)
 
 ---
@@ -421,6 +431,7 @@ Toutes les informations sensibles doivent être stockées en variables d'environ
 **Given** trois utilisateurs connectés avec des rôles différents (STUDENT, INSTRUCTOR, ADMIN)  
 **When** chacun accède à `/dashboard`  
 **Then** chaque utilisateur voit un contenu personnalisé selon son rôle :
+
 - STUDENT voit ses cours inscrits et sa progression
 - INSTRUCTOR voit ses cours créés et peut créer un nouveau cours
 - ADMIN voit les statistiques globales et les liens de gestion
@@ -451,8 +462,8 @@ Toutes les questions ont été résolues en utilisant les bonnes pratiques de s�
 
 ### Change Log
 
-| Date | Author | Change |
-|------|--------|--------|
+| Date       | Author                  | Change                                                               |
+| ---------- | ----------------------- | -------------------------------------------------------------------- |
 | 2025-11-12 | ImmoTopia Platform Team | Initial draft - Complete authentication & login module specification |
 
 ---
@@ -462,13 +473,15 @@ Toutes les questions ont été résolues en utilisant les bonnes pratiques de s�
 Pour faciliter les tests et la validation, les comptes suivants doivent être créés via un script de seed Prisma :
 
 ### Admin Account
+
 - **Email** : admin@immotopia.com
-- **Password** : Admin@123456
+- **Password** : <mot de passe local>
 - **Full Name** : Administrateur Principal
 - **Role** : ADMIN
 - **Email Verified** : true
 
 ### Instructor Account
+
 - **Email** : instructeur@immotopia.com
 - **Password** : Instructor@123456
 - **Full Name** : Jean Dupont
@@ -476,6 +489,7 @@ Pour faciliter les tests et la validation, les comptes suivants doivent être cr
 - **Email Verified** : true
 
 ### Student Account
+
 - **Email** : etudiant@immotopia.com
 - **Password** : Student@123456
 - **Full Name** : Marie Martin

@@ -10,7 +10,7 @@ This document tracks all changes to seed data for the authentication module.
 
 1. **Admin Account**
    - Email: `admin@immotopia.com`
-   - Password: `Admin@123456`
+   - Password: `<mot de passe local>`
    - Full Name: `Administrateur Principal`
    - Role: `ADMIN`
    - Email Verified: `true`
@@ -42,13 +42,14 @@ This document tracks all changes to seed data for the authentication module.
 ### Usage
 
 To run the seed script:
+
 ```bash
 npm run prisma:seed
 ```
 
 To reset and reseed:
+
 ```bash
 npx prisma migrate reset
 npm run prisma:seed
 ```
-

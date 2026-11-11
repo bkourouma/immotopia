@@ -287,6 +287,8 @@ describe('acceptInvitation — non-regression securite (INVITATION_REQUIRES_LOGI
   it("invitation posee par un administrateur d'agence (pas super-admin) sur un compte non active", async () => {
     seedUser();
     seedMembership({ invitedBy: TENANT_ADMIN_INVITER });
+    // L'auteur est membre ACTIF de l'agence : seul le contrôle de session refuse.
+    seedMembership({ userId: TENANT_ADMIN_INVITER, status: MembershipStatus.ACTIVE, invitedBy: null });
     seedInvitation({ invitedBy: TENANT_ADMIN_INVITER });
     await expectRequiresLogin();
   });
@@ -311,6 +313,12 @@ describe('acceptInvitation — non-regression securite (INVITATION_REQUIRES_LOGI
     seedMembership();
     seedInvitation();
     mockPrisma.user.rows.find((r: any) => r.id === SUPER)!.isActive = false;
-    await expectRequiresLogin();
+    // Auteur inactif : l'invitation n'est plus valable (F2), refus avant tout contrôle de compte.
+    await expect(
+      acceptInvitation({ token: PLAIN_TOKEN, password: NEW_PASSWORD, fullName: 'Pirate' })
+    ).rejects.toMatchObject({ statusCode: 409 });
+    const stored = mockPrisma.user.rows.find((r: any) => r.id === 'admin-1')!;
+    expect(stored.passwordHash).toBe(originalHash);
+    expect(mockPrisma.invitation.rows[0].status).toBe(InvitationStatus.PENDING);
   });
 });

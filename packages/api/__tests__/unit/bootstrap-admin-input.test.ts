@@ -195,3 +195,64 @@ describe('synchronisation avec le vrai middleware de connexion', () => {
     }
   );
 });
+
+describe('liste de refus des comptes de démonstration (FRI-01)', () => {
+  const originalEnv = process.env.NODE_ENV;
+  const setEnv = (value: string) => {
+    (process.env as Record<string, string | undefined>).NODE_ENV = value;
+  };
+  afterEach(() => {
+    (process.env as Record<string, string | undefined>).NODE_ENV = originalEnv;
+  });
+
+  const DEMO_PASSWORDS = [
+    'Admin@123456',
+    'DevMick@2003',
+    'PackTest@2026',
+    'Test@123456',
+    'P@ssw0rd_2025',
+    'P@ssw0rd_2026'
+  ];
+
+  it.each(['admin@immobillier.com', 'Admin@Immobillier.COM', ' admin@immotopia.com '])(
+    "refuse en production l'e-mail de démonstration %j",
+    email => {
+      setEnv('production');
+      expect(() => normalizeAdminEmail(email)).toThrow(BootstrapInputError);
+      expect(() => normalizeAdminEmail(email)).toThrow(/démonstration/);
+    }
+  );
+
+  it.each(DEMO_PASSWORDS)('refuse en production un mot de passe de démonstration (%#)', password => {
+    setEnv('production');
+    expect(() => validateBootstrapPassword(password)).toThrow(BootstrapInputError);
+    expect(() => validateBootstrapPassword(password)).toThrow(/démonstration/);
+    expect(() => validateBootstrapPassword(password.toUpperCase())).toThrow(/démonstration/);
+  });
+
+  it("aucun message d'erreur ne contient le mot de passe", () => {
+    setEnv('production');
+    for (const password of DEMO_PASSWORDS) {
+      try {
+        validateBootstrapPassword(password);
+        throw new Error('aurait dû refuser');
+      } catch (e) {
+        expect((e as Error).message.toLowerCase()).not.toContain(password.toLowerCase());
+      }
+    }
+  });
+
+  it("accepte hors production l'e-mail et les mots de passe de démonstration valides", () => {
+    setEnv('development');
+    expect(normalizeAdminEmail('admin@immobillier.com')).toBe('admin@immobillier.com');
+    expect(() => validateBootstrapPassword('Admin@123456')).not.toThrow();
+    setEnv('test');
+    expect(() => validateBootstrapPassword('DevMick@2003')).not.toThrow();
+  });
+
+  it('en production, un e-mail et un mot de passe réels restent acceptés', () => {
+    setEnv('production');
+    expect(normalizeAdminEmail('direction@exemple.com')).toBe('direction@exemple.com');
+    expect(() => validateBootstrapPassword('Zq7!mK2#vR9wLp')).not.toThrow();
+  });
+});

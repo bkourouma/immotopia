@@ -25,7 +25,11 @@ import {
   fetchNormalizedProviderStatus,
   isCheckoutExpired,
   isDueForRecheck,
+  isRecheckableReviewReason,
   normalizeProviderCheckoutUrl,
+  AMOUNT_NOT_PROVIDED_REVIEW_REASON,
+  CURRENCY_MISMATCH_REVIEW_PREFIX,
+  REVIEW_RECHECK_ABANDONED_SUFFIX,
   reconcileCutoff,
   requestProviderCheckoutRedirect
 } from './checkout-core';
@@ -636,18 +640,28 @@ async function reconcileCheckoutRow(checkout: CheckoutRow, options: ReconcileOpt
     return checkout;
   }
 
+  const providerStatus = await fetchProviderStatusFor(checkout);
+  if (!providerStatus) return checkout;
+  return applyProviderStatus(checkout, providerStatus);
+}
+
+/**
+ * Statut faisant foi chez l'agrégateur, interrogé dans le MODE DE LA TENTATIVE
+ * (jamais le mode courant de l'agence). `null` si l'agence n'a plus de
+ * configuration ; 502 (tentative comptée) si l'agrégateur ne répond pas.
+ */
+async function fetchProviderStatusFor(checkout: CheckoutRow): Promise<NormalizedProviderStatus | null> {
   const config = await loadConfig(checkout.tenantId);
   if (!config) {
     logger.warn('reconcileCheckout: configuration introuvable pour cette agence', { checkoutId: checkout.id });
-    return checkout;
+    return null;
   }
 
   const credentials = credentialsFrom(config);
   const client = gatewayClientForMode(checkout.mode);
 
-  let providerStatus: NormalizedProviderStatus;
   try {
-    providerStatus = await fetchNormalizedProviderStatus(client, credentials, checkout.codePaiement);
+    return await fetchNormalizedProviderStatus(client, credentials, checkout.codePaiement);
   } catch (error) {
     await prisma.onlinePaymentCheckout.update({
       where: { id: checkout.id, tenantId: checkout.tenantId },
@@ -659,8 +673,6 @@ async function reconcileCheckoutRow(checkout: CheckoutRow, options: ReconcileOpt
     });
     throw error instanceof GatewayError ? new AppError(error.message, 502) : error;
   }
-
-  return applyProviderStatus(checkout, providerStatus);
 }
 
 /** Audit « mise en REVIEW » : jamais de jeton ni d'URL. */
@@ -735,8 +747,19 @@ async function hasUnavailableInstallment(
  * Règle impérative (contrat 049 §2.4) : une tentative en REVIEW n'est JAMAIS encaissée,
  * échouée ni annulée ici (vérification manuelle, IPN, retour portail, tâche) : seule la
  * décision du gestionnaire (`lib/rental/online-review/resolve.ts`) la tranche.
+ *
+ * Seule exception (contre-audit PAY M2) : la tâche planifiée `recheckReviewCheckouts`
+ * passe `{ recheckReview: true }` pour une REVIEW « montant non communiqué » ou « autre
+ * devise » que le gestionnaire n'a pas tranchée (`resolution` nulle). La même décision que
+ * l'IPN s'applique alors : SUCCESS si montant et devise sont désormais conformes (avec les
+ * mêmes gardes : transaction en double, échéance indisponible), sinon la revue demeure.
+ * Le bouton « Vérifier », l'IPN et le portail n'ont jamais cette exception.
  */
-async function applyProviderStatus(checkout: CheckoutRow, ps: NormalizedProviderStatus): Promise<CheckoutRow> {
+async function applyProviderStatus(
+  checkout: CheckoutRow,
+  ps: NormalizedProviderStatus,
+  options: { recheckReview?: boolean } = {}
+): Promise<CheckoutRow> {
   const tenantId = checkout.tenantId;
   const receivedAmount = ps.amount !== null && ps.amount !== undefined ? ps.amount : null;
 
@@ -751,10 +774,36 @@ async function applyProviderStatus(checkout: CheckoutRow, ps: NormalizedProvider
     ...(ps.providerFees !== null ? { providerFees: new Decimal(ps.providerFees) } : {})
   };
 
-  // Tentative en REVIEW, ou déjà tranchée par le gestionnaire (`resolution` non nulle : ACCEPT ou REJECT) :
+  // Tentative déjà tranchée par le gestionnaire (`resolution` non nulle : ACCEPT ou REJECT) :
   // suivi seulement, jamais de transition ni d'encaissement.
-  if (checkout.status === 'REVIEW' || checkout.resolution != null) {
+  if (checkout.resolution != null) {
     return prisma.onlinePaymentCheckout.update({ where: { id: checkout.id, tenantId }, data: bookkeeping });
+  }
+
+  if (checkout.status === 'REVIEW') {
+    const recheckable = options.recheckReview === true && isRecheckableReviewReason(checkout.reviewReason);
+    if (!recheckable) {
+      // REVIEW : suivi seulement, la décision appartient au gestionnaire.
+      return prisma.onlinePaymentCheckout.update({ where: { id: checkout.id, tenantId }, data: bookkeeping });
+    }
+    const recheck = decideCheckoutTransition({
+      currentStatus: checkout.status,
+      expectedAmount: Number(checkout.amount),
+      provider: ps
+    });
+    if (recheck.action === 'REVIEW') {
+      // Succès toujours non conforme : la revue demeure, motif mis à jour, sans nouvel audit.
+      await prisma.onlinePaymentCheckout.updateMany({
+        where: { id: checkout.id, tenantId, status: 'REVIEW', resolution: null },
+        data: { ...bookkeeping, reviewReason: recheck.reviewReason ?? checkout.reviewReason }
+      });
+      return prisma.onlinePaymentCheckout.findFirstOrThrow({ where: { id: checkout.id, tenantId } });
+    }
+    if (recheck.action !== 'SUCCEED') {
+      // En attente, échec ou annulation après un succès annoncé : la revue demeure (décision humaine).
+      return prisma.onlinePaymentCheckout.update({ where: { id: checkout.id, tenantId }, data: bookkeeping });
+    }
+    // SUCCEED : même chemin d'encaissement que l'IPN ci-dessous (claim conditionné par REVIEW et resolution nulle).
   }
 
   // Succès tardif sur une tentative expirée (lecture demandée par le bouton « Vérifier ») :
@@ -1014,9 +1063,22 @@ async function expireCheckout(checkout: { id: string; tenantId: string; paymentI
 /**
  * Tâche planifiée — contrat §2.7 et prompt lot 7 : rapproche les checkouts
  * PENDING créés il y a plus de 2 minutes, expire (après cette dernière
- * vérification) ceux de plus de 48 heures.
+ * vérification) ceux de plus de 48 heures, puis revérifie les REVIEW
+ * « montant non communiqué » ou « autre devise » (voir `recheckReviewCheckouts`).
  */
-export async function reconcilePendingCheckouts(): Promise<{ reconciled: number; expired: number; errors: number }> {
+export interface ReconcilePendingCheckoutsResult {
+  reconciled: number;
+  expired: number;
+  errors: number;
+  /** Tentatives REVIEW revérifiées (succès sans montant ou dans une autre devise). */
+  reviewRechecked: number;
+  /** Dont passées en SUCCESS, par la même décision que l'IPN. */
+  reviewSucceeded: number;
+  /** Dont la revérification s'arrête (48 h révolues). */
+  reviewAbandoned: number;
+}
+
+export async function reconcilePendingCheckouts(): Promise<ReconcilePendingCheckoutsResult> {
   const now = Date.now();
   const minAgeCutoff = reconcileCutoff(now);
 
@@ -1060,5 +1122,147 @@ export async function reconcilePendingCheckouts(): Promise<{ reconciled: number;
     }
   }
 
-  return { reconciled, expired, errors };
+  const review = await recheckReviewCheckouts(now);
+  return {
+    reconciled,
+    expired,
+    errors: errors + review.errors,
+    reviewRechecked: review.rechecked,
+    reviewSucceeded: review.succeeded,
+    reviewAbandoned: review.abandoned
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Revérification des revues « montant non communiqué » ou « autre devise »
+// ---------------------------------------------------------------------------
+
+const REVIEW_RECHECK_BATCH_SIZE = 200;
+
+interface ReviewRecheckCounts {
+  rechecked: number;
+  succeeded: number;
+  abandoned: number;
+  errors: number;
+}
+
+/**
+ * Contre-audit PAY M2 : en location, une tentative en REVIEW parce que
+ * l'agrégateur a confirmé le succès SANS montant (ou dans une autre devise)
+ * n'avait aucune issue : la tâche ne revérifiait que PENDING et la REVIEW
+ * bloque (409) toute nouvelle tentative sur les mêmes échéances.
+ *
+ * La tâche redemande donc le statut à l'agrégateur, dans le mode de la
+ * tentative, et applique la MÊME décision que l'IPN (`decideCheckoutTransition`,
+ * donc `successReviewReason`) :
+ *   - montant et devise désormais conformes : SUCCESS (aucune autre voie) ;
+ *   - succès toujours non conforme : reste REVIEW, motif mis à jour par la décision ;
+ *   - en attente, échec ou annulation après un succès annoncé : reste REVIEW
+ *     (état contraire, décision humaine), seul le suivi est écrit.
+ * Les REVIEW d'un autre motif (montant divergent, état contraire) ne sont
+ * jamais revérifiées. Bornée à 48 h après la création de la tentative : au-delà,
+ * le motif est marqué (`REVIEW_RECHECK_ABANDONED_SUFFIX`), ce qui la sort de la
+ * sélection et laisse une seule trace au journal.
+ */
+async function recheckReviewCheckouts(now: number): Promise<ReviewRecheckCounts> {
+  const candidates = await prisma.onlinePaymentCheckout.findMany({
+    where: {
+      status: 'REVIEW',
+      createdAt: { lte: reconcileCutoff(now) },
+      OR: [
+        { reviewReason: AMOUNT_NOT_PROVIDED_REVIEW_REASON },
+        { reviewReason: { startsWith: CURRENCY_MISMATCH_REVIEW_PREFIX } }
+      ]
+    },
+    orderBy: { createdAt: 'asc' },
+    take: REVIEW_RECHECK_BATCH_SIZE
+  });
+
+  const counts: ReviewRecheckCounts = { rechecked: 0, succeeded: 0, abandoned: 0, errors: 0 };
+  for (const row of candidates) {
+    if (!isRecheckableReviewReason(row.reviewReason)) continue; // déjà abandonnée
+    let stillReview = true;
+    try {
+      const result = await runWithTenantContext({ tenantId: row.tenantId }, () => recheckReviewCheckoutRow(row));
+      counts.rechecked++;
+      if (result.status === 'SUCCESS') counts.succeeded++;
+      stillReview = result.status === 'REVIEW' && isRecheckableReviewReason(result.reviewReason);
+    } catch (error) {
+      counts.errors++;
+      logger.warn("reconcilePendingCheckouts: échec de la revérification d'une revue", {
+        checkoutId: row.id,
+        error: (error as Error)?.message
+      });
+    }
+
+    if (stillReview && isCheckoutExpired(row.createdAt, now)) {
+      try {
+        if (await runWithTenantContext({ tenantId: row.tenantId }, () => abandonReviewRecheck(row))) {
+          counts.abandoned++;
+        }
+      } catch (error) {
+        counts.errors++;
+        logger.warn("reconcilePendingCheckouts: échec de l'arrêt de revérification", {
+          checkoutId: row.id,
+          error: (error as Error)?.message
+        });
+      }
+    }
+  }
+  return counts;
+}
+
+/** Une revérification : seul un succès (conforme : SUCCESS ; sinon REVIEW, motif à jour) change la tentative. */
+async function recheckReviewCheckoutRow(checkout: CheckoutRow): Promise<CheckoutRow> {
+  const fresh = await prisma.onlinePaymentCheckout.findFirst({
+    where: { id: checkout.id, tenantId: checkout.tenantId }
+  });
+  // Tranchée entre-temps (IPN, bouton « Vérifier », décision du gestionnaire) : rien à faire.
+  if (
+    !fresh ||
+    fresh.status !== 'REVIEW' ||
+    fresh.resolution != null ||
+    !isRecheckableReviewReason(fresh.reviewReason)
+  ) {
+    return fresh ?? checkout;
+  }
+
+  const ps = await fetchProviderStatusFor(fresh);
+  if (!ps) return fresh;
+
+  const decision = decideCheckoutTransition({
+    currentStatus: fresh.status,
+    expectedAmount: Number(fresh.amount),
+    provider: ps
+  });
+  if (decision.action === 'SUCCEED' || decision.action === 'REVIEW') {
+    return applyProviderStatus(fresh, ps, { recheckReview: true });
+  }
+
+  // En attente, échec ou annulation après un succès annoncé : suivi seulement, la revue demeure.
+  await prisma.onlinePaymentCheckout.updateMany({
+    where: { id: fresh.id, tenantId: fresh.tenantId, status: 'REVIEW' },
+    data: { lastProviderState: ps.rawState, lastCheckedAt: new Date(), checkAttempts: { increment: 1 } }
+  });
+  return prisma.onlinePaymentCheckout.findFirstOrThrow({ where: { id: fresh.id, tenantId: fresh.tenantId } });
+}
+
+/** Arrêt de la revérification (48 h) : motif marqué sous claim, une seule trace au journal. */
+async function abandonReviewRecheck(checkout: CheckoutRow): Promise<boolean> {
+  const current = await prisma.onlinePaymentCheckout.findFirst({
+    where: { id: checkout.id, tenantId: checkout.tenantId },
+    select: { status: true, reviewReason: true }
+  });
+  if (!current || current.status !== 'REVIEW' || !isRecheckableReviewReason(current.reviewReason)) return false;
+
+  const claim = await prisma.onlinePaymentCheckout.updateMany({
+    where: { id: checkout.id, tenantId: checkout.tenantId, status: 'REVIEW', reviewReason: current.reviewReason },
+    data: { reviewReason: `${current.reviewReason}${REVIEW_RECHECK_ABANDONED_SUFFIX}` }
+  });
+  if (claim.count !== 1) return false;
+  logger.error('reconcilePendingCheckouts: revérification automatique abandonnée après 48 h, paiement à trancher', {
+    checkoutId: checkout.id,
+    tenantId: checkout.tenantId
+  });
+  return true;
 }

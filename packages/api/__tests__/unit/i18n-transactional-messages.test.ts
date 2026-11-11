@@ -15,7 +15,7 @@ describe("e-mails d'authentification traduits", () => {
   let sendEmail: jest.SpyInstance;
 
   beforeEach(() => {
-    sendEmail = jest.spyOn(emailService, 'sendEmail').mockResolvedValue(undefined);
+    sendEmail = jest.spyOn(emailService, 'sendEmail').mockResolvedValue({ sent: true });
   });
   afterEach(() => sendEmail.mockRestore());
 

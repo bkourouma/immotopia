@@ -44,6 +44,9 @@ const TENANT_ADMIN_TEST_PERMISSIONS = [
   'CRM_DEALS_VIEW',
   'CRM_DEALS_CREATE',
   'PROPERTIES_VIEW',
+  // Creation d'un bien (TEN-01 : parent d'une autre agence) : sans elle la garde
+  // RBAC repondait 403 avant d'atteindre la verification du parent.
+  'PROPERTIES_CREATE',
   'PROPERTIES_EDIT',
   'PATRIMOINE_PERSONAL_VIEW',
   'PATRIMOINE_PERSONAL_EDIT',

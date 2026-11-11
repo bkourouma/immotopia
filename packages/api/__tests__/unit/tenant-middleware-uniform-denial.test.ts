@@ -9,12 +9,14 @@ const mockMembershipFind = jest.fn();
 const mockClientFind = jest.fn();
 const mockUserRoleFind = jest.fn();
 const mockGetTenantAccessInfo = jest.fn();
+const mockUserFind = jest.fn();
 
 jest.mock('../../src/utils/database', () => ({
   prisma: {
     membership: { findUnique: (...a: unknown[]) => mockMembershipFind(...a) },
     tenantClient: { findUnique: (...a: unknown[]) => mockClientFind(...a) },
-    userRole: { findMany: (...a: unknown[]) => mockUserRoleFind(...a) }
+    userRole: { findMany: (...a: unknown[]) => mockUserRoleFind(...a) },
+    user: { findUnique: (...a: unknown[]) => mockUserFind(...a) }
   }
 }));
 jest.mock('../../src/utils/tenant-access', () => ({
@@ -169,12 +171,92 @@ describe('requireTenantAccess : refus uniforme', () => {
     expect(r.out.body).toMatchObject({ code: 'TENANT_SUSPENDED' });
   });
 
-  it('super-admin sur agence inexistante : passe, sans lecture en base', async () => {
+  it("super-admin (confirme en base) sur agence inexistante : passe, sans lecture de l'agence ni d'adhesion", async () => {
+    mockUserFind.mockResolvedValue({ globalRole: 'SUPER_ADMIN', isActive: true });
     const r = run('SUPER_ADMIN');
     await r.call();
     expect(r.next).toHaveBeenCalledTimes(1);
     expect(r.req.tenantContext).toMatchObject({ tenantId: TENANT, isSuperAdmin: true });
     expect(mockGetTenantAccessInfo).not.toHaveBeenCalled();
     expect(mockMembershipFind).not.toHaveBeenCalled();
+  });
+});
+
+describe('requireTenantAccess : contournement super-admin relu en base (AUTH-08)', () => {
+  beforeEach(() => {
+    jest.resetAllMocks();
+    mockMembershipFind.mockResolvedValue(null);
+    mockClientFind.mockResolvedValue(null);
+    mockUserRoleFind.mockResolvedValue([]);
+    mockGetTenantAccessInfo.mockResolvedValue({ status: 'ACTIVE', type: 'AGENCY' });
+  });
+
+  it('super-admin actif en base : passe, relecture avec select explicite', async () => {
+    mockUserFind.mockResolvedValue({ globalRole: 'SUPER_ADMIN', isActive: true });
+    const r = run('SUPER_ADMIN');
+    await r.call();
+    expect(r.next).toHaveBeenCalledTimes(1);
+    expect(r.req.tenantContext).toMatchObject({ tenantId: TENANT, isSuperAdmin: true });
+    expect(mockUserFind).toHaveBeenCalledWith({
+      where: { id: 'u1' },
+      select: { globalRole: true, isActive: true }
+    });
+  });
+
+  it.each([
+    ['retrograde en base', { globalRole: 'USER', isActive: true }],
+    ['desactive en base', { globalRole: 'SUPER_ADMIN', isActive: false }],
+    ['compte disparu', null]
+  ])('jeton SUPER_ADMIN mais %s : pas de contournement, refus uniforme', async (_nom, row) => {
+    mockUserFind.mockResolvedValue(row);
+    const r = run('SUPER_ADMIN');
+    await r.call();
+    expect(r.next).not.toHaveBeenCalled();
+    expect(r.out.status).toBe(403);
+    expect(r.out.body).toEqual({ success: false, message: "Vous n'avez pas accès à ce tenant." });
+  });
+
+  it('retrograde mais membre actif : cheminement normal (sans isSuperAdmin)', async () => {
+    mockUserFind.mockResolvedValue({ globalRole: 'USER', isActive: true });
+    mockMembershipFind.mockResolvedValue({ status: 'ACTIVE' });
+    const r = run('SUPER_ADMIN');
+    await r.call();
+    expect(r.next).toHaveBeenCalledTimes(1);
+    expect(r.req.tenantContext?.isSuperAdmin).toBeUndefined();
+  });
+
+  it('super-admin DESACTIVE en base mais membre actif : refus uniforme, pas de repli sur l’adhesion', async () => {
+    mockUserFind.mockResolvedValue({ globalRole: 'SUPER_ADMIN', isActive: false });
+    mockMembershipFind.mockResolvedValue({ status: 'ACTIVE' });
+    const r = run('SUPER_ADMIN');
+    await r.call();
+    expect(r.next).not.toHaveBeenCalled();
+    expect(r.out.status).toBe(403);
+    expect(r.out.body).toEqual({ success: false, message: "Vous n'avez pas accès à ce tenant." });
+    expect(mockMembershipFind).not.toHaveBeenCalled();
+  });
+
+  it('erreur de lecture en base : refus uniforme (fail-closed), aucun detail', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    mockUserFind.mockRejectedValue(new Error('connexion base: secret-detail'));
+    const r = run('SUPER_ADMIN');
+    await r.call();
+    expect(r.next).not.toHaveBeenCalled();
+    expect(r.out.status).toBe(403);
+    expect(JSON.stringify(r.out.body)).not.toContain('secret-detail');
+  });
+
+  it('utilisateur ordinaire : aucune relecture du compte', async () => {
+    const r = run('USER');
+    await r.call();
+    expect(mockUserFind).not.toHaveBeenCalled();
+  });
+
+  it('contexte deja resolu : raccourci de cache, pas de relecture', async () => {
+    const r = run('SUPER_ADMIN');
+    r.req.tenantContext = { tenantId: TENANT, role: null, isCollaborator: true, isClient: false, isSuperAdmin: true };
+    await r.call();
+    expect(r.next).toHaveBeenCalledTimes(1);
+    expect(mockUserFind).not.toHaveBeenCalled();
   });
 });

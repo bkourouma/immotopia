@@ -10,6 +10,9 @@ import { TenantInvoicesSection } from '../../components/subscription/TenantInvoi
 
 const listOwnPlatformInvoices = vi.hoisted(() => vi.fn());
 
+vi.mock('../../hooks/useMenuAccess', () => ({
+  useMyMenuAccess: () => ({ permissions: null, ready: true })
+}));
 vi.mock('../../hooks/useBreakpoint', () => ({
   useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
 }));

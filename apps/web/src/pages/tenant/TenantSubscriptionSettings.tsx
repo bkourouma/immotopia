@@ -32,7 +32,7 @@ import { PersonalTierCard } from '../../components/personal-space/PersonalTierCa
 import { TenantInvoicesSection } from '../../components/subscription/TenantInvoicesSection';
 import { AccountAccessReserved } from '../../components/subscription/AccountAccessReserved';
 import { packLabel } from '../../components/subscription/pack-labels';
-import { useMenuEntryAccess } from '../../hooks/useMenuAccess';
+import { useMenuEntryAccess, useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { ASSET_USAGE_QUERY_KEY } from '../../services/personal-space-service';
 import { useQueryClient } from '@tanstack/react-query';
 import { StatusTag, Table } from '../../components/primitives';
@@ -144,6 +144,9 @@ export const TenantSubscriptionSettings: React.FC = () => {
   // Mêmes droits que l'API (TENANT_SETTINGS_VIEW) : sans eux, aucun appel et un état « Accès réservé ».
   const access = useMenuEntryAccess(tenantId, 'mon-compte-abonnement');
   const canView = access.ready && access.allowed;
+  // Envoyer une demande d'extension = écriture (`TENANT_SETTINGS_EDIT` côté API).
+  const { permissions, ready: permissionsReady } = useMyMenuAccess(tenantId);
+  const canRequest = permissions === null || permissions.has('TENANT_SETTINGS_EDIT');
   const [entitlements, setEntitlements] = useState<TenantEntitlements | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -374,7 +377,13 @@ export const TenantSubscriptionSettings: React.FC = () => {
         <Paragraph type="secondary">
           {t("Besoin de plus de capacité ? Envoyez une demande à l'équipe ImmoTopia.")}
         </Paragraph>
-        <Form form={requestForm} layout="vertical" onFinish={handleRequestExtension} style={{ maxWidth: 560 }}>
+        <Form
+          form={requestForm}
+          layout="vertical"
+          disabled={!canRequest}
+          onFinish={handleRequestExtension}
+          style={{ maxWidth: 560 }}
+        >
           <Form.Item
             label={t('Offre souhaitée')}
             name="catalogCode"
@@ -400,9 +409,14 @@ export const TenantSubscriptionSettings: React.FC = () => {
           >
             <Input.TextArea rows={3} maxLength={2000} />
           </Form.Item>
-          <Button type="primary" htmlType="submit" icon={<SendOutlined />} loading={sending}>
-            {t('Envoyer la demande')}
-          </Button>
+          {permissionsReady &&
+            (canRequest ? (
+              <Button type="primary" htmlType="submit" icon={<SendOutlined />} loading={sending}>
+                {t('Envoyer la demande')}
+              </Button>
+            ) : (
+              <Text type="secondary">{t("Demande réservée à l'administrateur de l'agence")}</Text>
+            ))}
         </Form>
         {requests.length > 0 && (
           <Table<ExtensionRequest>
