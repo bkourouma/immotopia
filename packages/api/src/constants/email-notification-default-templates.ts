@@ -479,6 +479,14 @@ export const EMAIL_NOTIFICATION_DEFAULT_TEMPLATES: Record<EmailNotificationKey, 
 <p style="margin:0 0 20px 0;"><strong>{{changedBy}}</strong> a {{action}} le numéro {{operator}} {{phone}} qui reçoit les loyers de <strong>{{agencyName}}</strong>.</p>
 <p style="margin:0 0 12px 0; font-size:14px; color:#555;">Si vous n'êtes pas au courant de ce changement, vérifiez-le sans attendre auprès de votre collègue.</p>`
   },
+  RECEIVING_ACCOUNT_CHANGED: {
+    subject: 'Compte de réception modifié - {{scopeLabel}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#b45309;">Compte de réception modifié</h1>
+<p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour,</p>
+<p style="margin:0 0 20px 0;"><strong>{{actorName}}</strong> a modifié un compte de réception de paiement ({{scopeLabel}}) : <strong>{{institution}}</strong>. Changement : {{changeLabel}}.</p>
+<p style="margin:0 0 20px 0; padding:14px; background:#fffbeb; border-radius:8px; font-size:14px;">Alias : {{previousAlias}} devient {{newAlias}}. QR : {{previousQr}} devient {{newQr}}.{{holderLine}}</p>
+<p style="margin:0 0 12px 0; font-size:14px; color:#555;">Si vous n'êtes pas au courant de ce changement, vérifiez-le sans attendre auprès de votre collègue : ces coordonnées reçoivent l'argent des locataires et des copropriétaires.</p>`
+  },
   EXTERNAL_ACCESS_LINK_SENT: {
     subject: 'Accès partagé par {{agencyName}}',
     bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1d4ed8;">Accès en lecture seule</h1>

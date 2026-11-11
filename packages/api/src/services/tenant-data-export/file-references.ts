@@ -94,6 +94,8 @@ export const UPLOAD_FOLDER_RULES: ReadonlyArray<{ prefix: string[]; owner: 'tena
   // Lot 040 (spec B5-R9) : pieces jointes du stock de chantier,
   // `stock/<tenantId>/<aaaa>/<uuid>.<ext>` (lib/finance/stock-pieces-jointes.ts).
   { prefix: ['stock'], owner: 'tenant' },
+  // Spec 048 (lot Q) : QR des comptes de reception, `receiving-accounts/<tenantId>/<uuid>.<ext>`.
+  { prefix: ['receiving-accounts'], owner: 'tenant' },
   { prefix: ['properties'], owner: 'Property' },
   { prefix: ['syndics'], owner: 'Syndicate' },
   { prefix: ['rental', 'penalties'], owner: 'RentalPenalty' }

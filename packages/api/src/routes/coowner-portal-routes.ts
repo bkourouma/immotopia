@@ -42,6 +42,11 @@ import {
   listCoOwnerDeclarationsHandler
 } from '../controllers/coowner-declared-payment-controller';
 import { receiveDeclarationProof } from '../middleware/declared-proof-upload';
+import { receivingAccountQrReadRateLimiter } from '../middleware/rate-limit-middleware';
+import {
+  listCoOwnerPortalReceivingAccountsHandler,
+  readCoOwnerPortalReceivingAccountQrHandler
+} from '../controllers/receiving-account-controller';
 
 /**
  * Limiteurs du paiement en ligne, posés APRÈS `authenticate` et la garde du
@@ -123,5 +128,14 @@ router.post(
 );
 router.get('/paiements-declares', listCoOwnerDeclarationsHandler);
 router.post('/paiements-declares/:declarationId/annulation', cancelCoOwnerDeclarationHandler);
+
+// Spec 048, lot Q : comptes de réception (alias, QR) des copropriétés du périmètre, actifs
+// seulement ; image privée. `?syndicId=` restreint à une copropriété du périmètre.
+router.get('/receiving-accounts', listCoOwnerPortalReceivingAccountsHandler);
+router.get(
+  '/receiving-accounts/:accountId/qr',
+  receivingAccountQrReadRateLimiter,
+  readCoOwnerPortalReceivingAccountQrHandler
+);
 
 export default router;

@@ -837,6 +837,8 @@ model Tenant {
   maintenanceLogEntries          MaintenanceLogEntry[]
   // Spec 047 : paiement mobile money declare.
   syndicReceivingNumbers         SyndicReceivingNumber[]
+  // Spec 048, lot Q : comptes de reception (alias / QR) de l'agence et des coproprietes.
+  receivingAccounts              ReceivingAccount[]
   syndicDeclaredPaymentSettings  SyndicDeclaredPaymentSettings[]
   syndicPaymentDeclarations      SyndicPaymentDeclaration[]
   syndicPaymentDeclarationLines  SyndicPaymentDeclarationLine[]
@@ -4256,6 +4258,8 @@ model Syndicate {
   providerInvoices         SyndicProviderInvoice[]
   /// Spec 047 : paiement mobile money declare.
   receivingNumbers         SyndicReceivingNumber[]
+  /// Spec 048, lot Q : comptes de reception (alias / QR) de la copropriete.
+  receivingAccounts        ReceivingAccount[]
   declaredPaymentSettings  SyndicDeclaredPaymentSettings?
   paymentDeclarations      SyndicPaymentDeclaration[]
   paymentProofReads        SyndicPaymentProofRead[]
@@ -11161,6 +11165,42 @@ model SyndicReceivingNumber {
   @@unique([syndicateId, operator, phoneNumber])
   @@index([tenantId, phoneNumber]) // numéro partagé entre copropriétés (D10)
   @@map("syndic_receiving_numbers")
+}
+
+/// Spec 048, lot Q : portee d'un compte de reception.
+enum ReceivingAccountScope {
+  AGENCY
+  SYNDICATE
+}
+
+/// Spec 048, lot Q : compte de reception de l'agence (loyers) ou d'une copropriete (charges).
+/// Alias et/ou image de QR saisis PAR l'agence ; ImmoTopia ne genere ni ne modifie aucun QR.
+/// `qrFileUrl` est un identifiant de stockage prive (`/uploads/receiving-accounts/<tenantId>/<fichier>`) :
+/// jamais renvoye par l'API, l'image sort par une route authentifiee.
+/// CHECK (hors Prisma, dans la migration) : (scope = AGENCY et syndicate_id nul) ou (scope = SYNDICATE et syndicate_id non nul).
+model ReceivingAccount {
+  id            String                @id @default(uuid()) @db.Uuid
+  tenantId      String                @map("tenant_id")
+  scope         ReceivingAccountScope
+  syndicateId   String?               @map("syndicate_id") @db.Uuid
+  institution   String                @db.VarChar(60)
+  scannableWith String?               @map("scannable_with") @db.VarChar(80)
+  alias         String?               @db.VarChar(80)
+  holderName    String                @map("holder_name") @db.VarChar(80)
+  instructions  String?               @db.VarChar(500)
+  qrFileUrl     String?               @map("qr_file_url")
+  qrMimeType    String?               @map("qr_mime_type")
+  qrSha256      String?               @map("qr_sha256")
+  isActive      Boolean               @default(true) @map("is_active")
+  sortOrder     Int                   @default(0) @map("sort_order")
+  createdAt     DateTime              @default(now()) @map("created_at")
+  updatedAt     DateTime              @updatedAt @map("updated_at")
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  syndicate Syndicate? @relation(fields: [syndicateId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, scope, syndicateId])
+  @@map("receiving_accounts")
 }
 
 /// Spec 047 : réglages du paiement déclaré d'une copropriété. Sans ligne : valeurs par défaut.

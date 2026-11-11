@@ -21,6 +21,7 @@ import { DollarOutlined, CalendarOutlined, EyeOutlined, PlusOutlined, CreditCard
 import { useQuery } from '@tanstack/react-query';
 import { tenantPortalService } from '../../services/tenantPortalService';
 import InstallmentDetails from '../../components/TenantPortal/InstallmentDetails';
+import { TenantPaymentAccountsSection } from '../../components/TenantPortal/TenantPaymentAccountsSection';
 import PaymentDeclarationModal from '../../components/TenantPortal/PaymentDeclarationModal';
 import MyDeclarationsList from '../../components/TenantPortal/declared-payment/MyDeclarationsList';
 import type { PendingDeclarationSummary } from '../../types/rental-declared-payment';
@@ -43,7 +44,7 @@ import {
 import { redirectToExternalUrl } from '../../utils/external-redirect';
 import { t } from '../../i18n/t';
 
-import { activeLocale } from '../../i18n/format';
+import { activeLocale, dateFormat } from '../../i18n/format';
 import { formatMontantLocatif } from '../../lib/rental-labels';
 const { Title, Text } = Typography;
 
@@ -344,6 +345,36 @@ function SuiviPaiementEnLigne({
   );
 }
 
+/** Quelques lignes suffisent : l'API les trie par échéance, on retrie quand même ici. */
+const UNPAID_LOOKAHEAD = 10;
+
+/** « 2026-10 » (format technique de l'API) devient un mois lisible dans la langue courante ; autre forme : inchangée. */
+export function rentPeriodLabel(period: string): string {
+  const match = /^(\d{4})-(\d{2})$/.exec(period.trim());
+  if (!match) return period;
+  const month = Number(match[2]);
+  if (month < 1 || month > 12) return period;
+  // Midi, le 15 : aucun décalage de fuseau possible.
+  return dayjs(new Date(Number(match[1]), month - 1, 15, 12)).format(dateFormat('month'));
+}
+
+/**
+ * Motif « Loyer <période> » de la plus ancienne échéance non soldée (triée par
+ * date d'échéance ici, sans supposer l'ordre reçu). Lecture en échec : motif
+ * générique sans période plutôt qu'une période fausse. Rien à payer : aucun motif.
+ */
+function rentReason(installments: InstallmentItem[] | undefined, failed: boolean, withLease: boolean): string | null {
+  if (failed) return t('Loyer');
+  if (!installments) return null;
+  const next = installments
+    .filter(item => item.balance > 0 && item.status !== 'PAID')
+    .sort((a, b) => Date.parse(a.dueDate) - Date.parse(b.dueDate))[0];
+  if (!next) return null;
+  return withLease && next.leaseNumber
+    ? t('Loyer {{period}} — {{lease}}', { period: rentPeriodLabel(next.period), lease: next.leaseNumber })
+    : t('Loyer {{period}}', { period: rentPeriodLabel(next.period) });
+}
+
 export default function TenantPayments() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { ongletActif, ongletRef, changerOnglet } = useOngletPaiements();
@@ -410,6 +441,21 @@ export default function TenantPayments() {
     retry: false
   });
   const hasSeveralLeases = (leases?.length ?? 0) > 1;
+
+  // Motif à recopier : la plus ancienne échéance non soldée de TOUTES les échéances, pas
+  // seulement de la page affichée (filtrée, paginée). Requête légère dédiée, revue quand
+  // le total dû change ; sans réponse fiable, motif générique sans période.
+  const { data: unpaidInstallments, isError: unpaidError } = useQuery({
+    queryKey: ['tenant-portal', 'unpaid-installments', data?.summary?.due ?? null],
+    queryFn: async () => {
+      const response = await tenantPortalService.getUnpaidInstallments(UNPAID_LOOKAHEAD);
+      return (response.data?.data?.installments ?? []) as InstallmentItem[];
+    },
+    enabled: Boolean(data),
+    staleTime: 30_000,
+    retry: false
+  });
+  const suggestedReason = rentReason(unpaidInstallments, unpaidError, hasSeveralLeases);
 
   // Payment history state
   const [paymentHistoryLoading, setPaymentHistoryLoading] = useState(false);
@@ -780,6 +826,14 @@ export default function TenantPayments() {
           {t('Déclarer un paiement')}
         </Button>
       </div>
+
+      <TenantPaymentAccountsSection
+        suggestedReason={suggestedReason}
+        onDeclare={() => {
+          setDeclarationFor(null);
+          setDeclarationModalVisible(true);
+        }}
+      />
 
       {/* Summary Cards (T054) */}
       {ongletActif === 'echeances' && data?.summary && (

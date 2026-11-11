@@ -188,6 +188,11 @@ export const AUDIT_CATALOG: Record<AuditActionKey, AuditCatalogEntry> = {
   [AuditActionKey.SYNDIC_RECEIVING_NUMBER_CREATED]: tenant('DATA', { redact: DECLARED_PAYMENT_REDACT }),
   [AuditActionKey.SYNDIC_RECEIVING_NUMBER_UPDATED]: tenant('DATA', { redact: DECLARED_PAYMENT_REDACT }),
   [AuditActionKey.SYNDIC_RECEIVING_NUMBER_DEACTIVATED]: tenant('DATA', { redact: DECLARED_PAYMENT_REDACT }),
+
+  // Spec 048, lot Q : comptes de reception (alias, QR) de l'agence et des coproprietes.
+  [AuditActionKey.RECEIVING_ACCOUNT_CREATED]: tenant('DATA'),
+  [AuditActionKey.RECEIVING_ACCOUNT_UPDATED]: tenant('DATA'),
+  [AuditActionKey.RECEIVING_ACCOUNT_DELETED]: tenant('DATA'),
   [AuditActionKey.SYNDIC_DECLARED_PAYMENT_SETTINGS_UPDATED]: tenant('SECURITY'),
   [AuditActionKey.SYNDIC_PAYMENT_DECLARATION_CREATED]: tenant('BILLING', { redact: DECLARED_PAYMENT_REDACT }),
   [AuditActionKey.SYNDIC_PAYMENT_DECLARATION_CANCELED]: tenant('BILLING', { redact: DECLARED_PAYMENT_REDACT }),

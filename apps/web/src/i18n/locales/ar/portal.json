@@ -607,6 +607,8 @@
   "Loyer": "الإيجار",
   "Loyer :": "الإيجار:",
   "Loyer : {{montant}} / mois": "الإيجار: {{montant}} / شهريًا",
+  "Loyer {{period}}": "إيجار {{period}}",
+  "Loyer {{period}} — {{lease}}": "إيجار {{period}} — {{lease}}",
   "Loyer annuel": "الإيجار السنوي",
   "Loyer encaissé": "إيجار محصّل",
   "Loyer mensuel": "الإيجار الشهري",

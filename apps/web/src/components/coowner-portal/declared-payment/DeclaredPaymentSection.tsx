@@ -35,6 +35,11 @@ function writePayerPhone(phone: string | undefined): void {
   }
 }
 
+/** Ancre de la déclaration d'une copropriété : « Payer l'agence » y fait défiler. */
+export function declaredSyndicateAnchorId(syndicateId: string): string {
+  return `coowner-declared-payment-${syndicateId}`;
+}
+
 export interface DeclaredPaymentSectionProps {
   calls: CoOwnerChargeCall[];
   entries: DeclaredAvailabilityEntry[];
@@ -69,39 +74,40 @@ export function DeclaredPaymentSection({ calls, entries }: DeclaredPaymentSectio
         const lots = (lotsQuery.data ?? []).filter(lot => lot.syndicate?.id === syndicate.id);
         const canDeclare = lots.length > 0;
         return (
-          <ReceivingNumbersCard
-            key={syndicate.id}
-            numbers={availability.receivingNumbers}
-            payerInstructions={availability.payerInstructions}
-            syndicateName={entries.length > 1 ? syndicate.name : undefined}
-            extra={
-              canDeclare ? (
-                <>
-                  <Button
-                    type="primary"
-                    icon={<MobileOutlined aria-hidden />}
-                    block={isMobile}
-                    style={{ minHeight: 40 }}
-                    onClick={() => setOpenSyndicateId(syndicate.id)}
-                  >
-                    {t("J'ai payé par mobile money")}
-                  </Button>
-                  {openSyndicateId === syndicate.id ? (
-                    <DeclarationForm
-                      open
-                      onClose={() => setOpenSyndicateId(null)}
-                      onSubmitted={handleSubmitted}
-                      syndicate={syndicate}
-                      availability={availability}
-                      lots={lots.map(lot => ({ id: lot.id, lotNumber: lot.lotNumber }))}
-                      calls={calls}
-                      defaultPayerPhone={payerPhone}
-                    />
-                  ) : null}
-                </>
-              ) : null
-            }
-          />
+          <div key={syndicate.id} id={declaredSyndicateAnchorId(syndicate.id)}>
+            <ReceivingNumbersCard
+              numbers={availability.receivingNumbers}
+              payerInstructions={availability.payerInstructions}
+              syndicateName={entries.length > 1 ? syndicate.name : undefined}
+              extra={
+                canDeclare ? (
+                  <>
+                    <Button
+                      type="primary"
+                      icon={<MobileOutlined aria-hidden />}
+                      block={isMobile}
+                      style={{ minHeight: 40 }}
+                      onClick={() => setOpenSyndicateId(syndicate.id)}
+                    >
+                      {t("J'ai payé par mobile money")}
+                    </Button>
+                    {openSyndicateId === syndicate.id ? (
+                      <DeclarationForm
+                        open
+                        onClose={() => setOpenSyndicateId(null)}
+                        onSubmitted={handleSubmitted}
+                        syndicate={syndicate}
+                        availability={availability}
+                        lots={lots.map(lot => ({ id: lot.id, lotNumber: lot.lotNumber }))}
+                        calls={calls}
+                        defaultPayerPhone={payerPhone}
+                      />
+                    ) : null}
+                  </>
+                ) : null
+              }
+            />
+          </div>
         );
       })}
     </Space>
