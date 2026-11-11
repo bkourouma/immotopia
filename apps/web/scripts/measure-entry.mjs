@@ -41,8 +41,10 @@ const BUILD_DIR = join(WEB_ROOT, 'build');
  * la cloche de notifications, l'icône Messagerie et leurs entrées de menu (lot 3) ne laissaient que 269 o de marge.
  * Relevé de 230 400 à 231 424 o (+1 Kio) le 2026-11-10, sur décision du superviseur (PR de sécurité n°205) :
  * la redirection de connexion normalisée et la purge des données locales (expiration de session, changement de compte) dépassaient le plafond de 165 o.
+ * Relevé de 231 424 à 234 496 o (+3 Kio) le 2026-11-11, sur demande de l'utilisateur (mise à jour groupée des dépendances, PR Dependabot n°212) :
+ * antd 6.7, Radix et TanStack Query faisaient passer l'entrée à 234 199 o, soit 2 775 o au-dessus du plafond.
  */
-const DEFAULT_BUDGET = 231_424;
+const DEFAULT_BUDGET = 234_496;
 
 const args = process.argv.slice(2);
 const asJson = args.includes('--json');

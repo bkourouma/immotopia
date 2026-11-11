@@ -465,7 +465,7 @@ describe('Fournisseurs — recherche serveur', () => {
     expect(screen.queryByText('Fournisseur 21')).not.toBeInTheDocument();
     const barre = screen.getByRole('search');
     expect(within(barre).getByText('25 résultats')).toBeInTheDocument();
-    await userEvent.setup({ delay: null }).click(screen.getByTitle('2'));
+    await userEvent.setup({ delay: null }).click(screen.getByRole('button', { name: 'Page 2' }));
     expect(await screen.findByText('Fournisseur 21', {}, T)).toBeInTheDocument();
     expect(lignes()).toHaveLength(5);
     expect(listSuppliersPage).toHaveBeenCalledWith('agence-1', expect.objectContaining({ page: 2, limit: 20 }));

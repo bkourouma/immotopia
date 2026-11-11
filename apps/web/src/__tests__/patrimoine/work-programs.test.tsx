@@ -245,7 +245,7 @@ describe('Aperçu patrimoine — deux requêtes au montage', () => {
     const user = userEvent.setup();
     monter(<PatrimoineOverviewPage />, '/tenant/:tenantId/patrimoine', '/tenant/agence-1/patrimoine');
     expect(await screen.findByText('Premier programme', {}, { timeout: 8000 })).toBeInTheDocument();
-    await user.click(screen.getByTitle('11'));
+    await user.click(screen.getByRole('button', { name: 'Page 11' }));
     expect(await screen.findByText('Programme ancien 205', {}, { timeout: 8000 })).toBeInTheDocument();
     expect(listTenantWorkPrograms).toHaveBeenLastCalledWith('agence-1', { upcoming: true, page: 11, limit: 20 });
     expect(screen.getByTestId('url').textContent).toContain('travaux.page=11');

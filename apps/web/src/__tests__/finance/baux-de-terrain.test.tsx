@@ -624,7 +624,7 @@ describe('Fiche du bail — onglets paresseux et pagination locale', () => {
     expect(document.querySelectorAll('.ant-table-tbody tr.ant-table-row')).toHaveLength(20);
     expect(screen.queryByText('Janvier 2021')).not.toBeInTheDocument();
 
-    await user.click(screen.getByTitle('2'));
+    await user.click(screen.getByRole('button', { name: 'Page 2' }));
 
     expect(await screen.findByText('Janvier 2021', {}, { timeout: 8000 })).toBeInTheDocument();
     expect(document.querySelectorAll('.ant-table-tbody tr.ant-table-row')).toHaveLength(5);

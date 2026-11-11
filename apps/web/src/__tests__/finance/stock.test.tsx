@@ -1703,7 +1703,7 @@ describe('Onglets paresseux et pagination locale de l’état du stock', () => {
     expect(screen.getAllByText(/^Article numéro \d+$/)).toHaveLength(20);
     expect(screen.queryByText('Article numéro 21')).not.toBeInTheDocument();
 
-    await user.click(screen.getByTitle('2'));
+    await user.click(screen.getByRole('button', { name: 'Page 2' }));
     await screen.findByText('Article numéro 21', {}, { timeout: 8000 });
     expect(screen.getAllByText(/^Article numéro \d+$/)).toHaveLength(5);
   }, 30000);

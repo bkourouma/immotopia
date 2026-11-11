@@ -470,7 +470,7 @@ describe('Relevé — pagination serveur', () => {
     expect(getAccountStatement.mock.calls[0][2]).toMatchObject({ skip: 0, take: 20 });
     expect(screen.getByText('1–20 sur 45')).toBeInTheDocument();
 
-    await user.click(screen.getByTitle('2'));
+    await user.click(screen.getByRole('button', { name: 'Page 2' }));
 
     await waitFor(
       () =>

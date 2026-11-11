@@ -238,7 +238,7 @@ describe('Mandants — grand livre auxiliaire', () => {
   it('changer de page appelle la page 2', async () => {
     renderPage();
     await screen.findByRole('button', { name: 'Propriétaire 1' });
-    await userEvent.click(await screen.findByTitle('2'));
+    await userEvent.click(await screen.findByRole('button', { name: 'Page 2' }));
     await waitFor(() => expect(dernier(getMandantOwners)[1]).toMatchObject({ page: 2, limit: 50 }));
     expect(url()).toContain('page=2');
   });
@@ -333,7 +333,7 @@ describe('Mandants — grand livre auxiliaire', () => {
   it('pagine les lignes du détail côté serveur (page-lignes)', async () => {
     renderPage(`?${PERIODE}&owner=own-1`);
     await screen.findByText('PIECE-1');
-    await userEvent.click(await screen.findByTitle('2'));
+    await userEvent.click(await screen.findByRole('button', { name: 'Page 2' }));
     await waitFor(() => expect(dernier(getMandantOwnerLedger)[1]).toMatchObject({ page: 2, limit: 100 }));
     expect(url()).toContain('page-lignes=2');
   });

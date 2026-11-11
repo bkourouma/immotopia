@@ -232,7 +232,7 @@ describe('Syndics accounting page', () => {
     const user = userEvent.setup();
     renderWithRoute();
     await screen.findByText('JE-001', undefined, T);
-    await user.click(screen.getByTitle('2'));
+    await user.click(screen.getByRole('button', { name: 'Page 2' }));
 
     await waitFor(
       () => expect(svc.listAccountingEntries).toHaveBeenLastCalledWith('tenant-1', 'syndic-1', { page: 2, limit: 20 }),

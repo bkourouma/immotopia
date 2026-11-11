@@ -1086,7 +1086,7 @@ describe('Onglets paresseux et pagination locale', () => {
     configurerGet({ liste });
     monter(`/tenant/${TENANT}/finance/stock/inventaire?onglet=inventaire`);
     await waitFor(() => expect(document.querySelectorAll('tbody tr.ant-table-row').length).toBe(20), TIMEOUT);
-    fireEvent.click(screen.getByTitle('2'));
+    fireEvent.click(screen.getByRole('button', { name: 'Page 2' }));
     await waitFor(() => expect(document.querySelectorAll('tbody tr.ant-table-row').length).toBe(5), TIMEOUT);
   }, 120000);
 
@@ -1099,7 +1099,7 @@ describe('Onglets paresseux et pagination locale', () => {
     configurerGet({ liste: [{ ...enCours(), lines: lignes }] });
     monterDetail(EN_COURS);
     await waitFor(() => expect(lignesCiment()).toBe(50), TIMEOUT);
-    fireEvent.click(screen.getByTitle('2'));
+    fireEvent.click(screen.getByRole('button', { name: 'Page 2' }));
     await waitFor(() => expect(lignesCiment()).toBe(10), TIMEOUT);
   }, 120000);
 });

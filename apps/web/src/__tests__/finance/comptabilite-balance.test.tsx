@@ -209,7 +209,7 @@ describe('Balance générale — comptabilité de l’agence', () => {
     expect(screen.getByText('Compte test 100')).toBeInTheDocument();
     expect(screen.queryByText('Compte test 101')).not.toBeInTheDocument();
     // Une seule lecture : la page 2 est locale.
-    await userEvent.click(await screen.findByTitle('2'));
+    await userEvent.click(await screen.findByRole('button', { name: 'Page 2' }));
     expect(await screen.findByText('Compte test 101')).toBeInTheDocument();
     expect(screen.queryByText('Compte test 1')).not.toBeInTheDocument();
     expect(getTrialBalance).toHaveBeenCalledTimes(1);

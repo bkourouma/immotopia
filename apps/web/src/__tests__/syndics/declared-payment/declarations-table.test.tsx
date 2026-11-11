@@ -276,7 +276,7 @@ describe('DeclarationsTable', () => {
     expect(names[0]).toContain('Zoé Zadi');
     expect(names[1]).toContain('Abel Aka');
 
-    fireEvent.click(screen.getByTitle('2'));
+    fireEvent.click(screen.getByRole('button', { name: 'Page 2' }));
     await waitFor(() => expect(lastQuery().page).toBe(2), T);
     expect(screen.getByTestId('url').textContent).toContain('dec.page=2');
   });
@@ -290,7 +290,7 @@ describe('DeclarationsTable', () => {
     });
     renderTable();
     await screen.findByText('Awa Koné', undefined, T);
-    fireEvent.click(screen.getByTitle('2'));
+    fireEvent.click(screen.getByRole('button', { name: 'Page 2' }));
     await waitFor(() => expect(lastQuery().page).toBe(2), T);
     await user.type(
       within(screen.getByRole('search', { name: /paiements déclarés/ })).getAllByRole('textbox')[0],

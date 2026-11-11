@@ -147,7 +147,7 @@ describe('<TenantDetail> — collaborateurs paginés par le serveur', () => {
     const first = get.mock.calls.find(([url]) => url === '/tenants/tenant-1/users')!;
     expect(first[1].params).toEqual({ page: 1, limit: 20 });
 
-    await user.click(screen.getByTitle('2'));
+    await user.click(screen.getByRole('button', { name: 'Page 2' }));
 
     expect(await screen.findByText('Agent 21')).toBeInTheDocument();
     const last = get.mock.calls.filter(([url]) => url === '/tenants/tenant-1/users').at(-1)!;

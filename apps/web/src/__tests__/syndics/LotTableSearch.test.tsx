@@ -156,7 +156,7 @@ describe('LotTable : recherche multicritères locale', () => {
     mount(many);
     expect(screen.getByText('L-020')).toBeInTheDocument();
     expect(screen.queryByText('L-021')).not.toBeInTheDocument();
-    await user.click(screen.getByTitle('3'));
+    await user.click(screen.getByRole('button', { name: 'Page 3' }));
     expect(await screen.findByText('L-045', undefined, T)).toBeInTheDocument();
   });
 });

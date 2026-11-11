@@ -300,7 +300,7 @@ describe('OwnerMonthlyReportPage : recherche des biens', () => {
     // Page 1 : dix biens ; les deux autres sont sur la page 2.
     expect(screen.getByText('Loyer du bien 10')).toBeInTheDocument();
     expect(screen.queryByText('Loyer du bien 11')).not.toBeInTheDocument();
-    await user.click(screen.getByTitle('2'));
+    await user.click(screen.getByRole('button', { name: 'Page 2' }));
     expect(await screen.findByText('Loyer du bien 11', undefined, T)).toBeInTheDocument();
     expect(screen.getByText('Loyer du bien 12')).toBeInTheDocument();
     expect(screen.queryByText('Loyer du bien 1')).not.toBeInTheDocument();

@@ -181,7 +181,7 @@ describe('SyndicMeetings : recherche multicritères serveur', () => {
     withRouter(<SyndicMeetings />);
     expect(await screen.findByText('Lieu-020')).toBeInTheDocument();
     expect(screen.queryByText('Lieu-021')).not.toBeInTheDocument();
-    await user.click(screen.getByTitle('3'));
+    await user.click(screen.getByRole('button', { name: 'Page 3' }));
     expect(await screen.findByText('Lieu-045', undefined, T)).toBeInTheDocument();
   });
 });
@@ -280,7 +280,7 @@ describe('MeetingProxies : recherche multicritères locale', () => {
     mountProxies(many);
     expect(screen.getByText('Mandant N20')).toBeInTheDocument();
     expect(screen.queryByText('Mandant N21')).not.toBeInTheDocument();
-    await user.click(screen.getByTitle('2'));
+    await user.click(screen.getByRole('button', { name: 'Page 2' }));
     expect(await screen.findByText('Mandant N25', undefined, T)).toBeInTheDocument();
   });
 });

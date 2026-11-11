@@ -132,7 +132,7 @@ describe('RentalOnlineCheckoutsTable', () => {
     listRentalOnlinePayments.mockResolvedValue({ items: [row()], total: 45, page: 1, pageSize: 20 });
     setup();
     await screen.findByText('IMT-ABCDEFGHIJ0123456789');
-    fireEvent.click(screen.getByTitle('2'));
+    fireEvent.click(screen.getByRole('button', { name: 'Page 2' }));
     await waitFor(() =>
       expect(listRentalOnlinePayments).toHaveBeenLastCalledWith(
         't1',

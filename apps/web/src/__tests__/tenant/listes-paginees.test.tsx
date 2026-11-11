@@ -70,7 +70,7 @@ describe('InvitationsList — pagination locale', () => {
     expect(screen.getByText('invite19@ex.com')).toBeInTheDocument();
     expect(screen.queryByText('invite20@ex.com')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByTitle('2'));
+    fireEvent.click(screen.getByRole('button', { name: 'Page 2' }));
     expect(await screen.findByText('invite20@ex.com')).toBeInTheDocument();
     expect(screen.queryByText('invite00@ex.com')).not.toBeInTheDocument();
   });
@@ -123,7 +123,7 @@ describe('NewsletterTemplatesPage — pagination locale', () => {
 
     expect(await screen.findByText('Modele 00')).toBeInTheDocument();
     expect(screen.queryByText('Modele 20')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByTitle('2'));
+    fireEvent.click(screen.getByRole('button', { name: 'Page 2' }));
     expect(await screen.findByText('Modele 20')).toBeInTheDocument();
   });
 });
