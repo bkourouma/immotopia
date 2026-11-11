@@ -13,7 +13,7 @@
 # (staging ou production) : docker-compose.prod.yml passe les valeurs via les
 # ARG, a partir de infra/environments/<env>.conf.
 
-FROM node:22-alpine AS build
+FROM node:26-alpine AS build
 WORKDIR /repo
 
 # Manifestes d'abord, pour que la couche d'installation soit mise en cache
