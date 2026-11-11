@@ -1,9 +1,10 @@
-import { Router } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 import { authenticate } from '../middleware/auth-middleware';
 import { requireTenantAccess, requireTenantCollaborator } from '../middleware/tenant-middleware';
 import { enforceTenantIsolation } from '../middleware/tenant-isolation-middleware';
 import { BadRequestError } from '../middleware/error-middleware';
+import { assertUploadMatchesDeclaredType } from '../utils/file-signature';
 import { requireCommunicationByMethod } from '../middleware/communication-rbac-middleware';
 import { whatsappTestSendRateLimiter } from '../middleware/rate-limit-middleware';
 import { requireNotificationKeyFeature } from '../lib/subscription/notification-feature-gate';
@@ -18,7 +19,7 @@ import {
 } from '../controllers/whatsapp-notification-config-controller';
 
 const router = Router({ mergeParams: true });
-const upload = multer({
+export const groupBroadcastImageUpload = multer({
   storage: multer.memoryStorage(),
   fileFilter: (_req, file, cb) => {
     const allowed = ['image/jpeg', 'image/jpg', 'image/png'];
@@ -28,10 +29,29 @@ const upload = multer({
     }
     cb(new BadRequestError('Type de fichier non accepté. Formats autorisés : JPEG, PNG.'));
   },
+  // Champ texte reellement envoye : `message` ; marge de 6.
   limits: {
-    fileSize: 5 * 1024 * 1024
+    fileSize: 5 * 1024 * 1024,
+    files: 1,
+    fields: 8,
+    fieldSize: 100 * 1024
   }
 });
+
+/** Image facultative : si presente, ses octets doivent etre un vrai JPEG/PNG (400 sinon). */
+export function assertGroupBroadcastImageSignature(req: Request, _res: Response, next: NextFunction): void {
+  try {
+    if (req.file) {
+      assertUploadMatchesDeclaredType(req.file, {
+        allowedKinds: ['jpg', 'png'],
+        message: 'Type de fichier non accepté. Formats autorisés : JPEG, PNG.'
+      });
+    }
+    next();
+  } catch (error) {
+    next(error);
+  }
+}
 
 router.use(authenticate);
 router.use(requireTenantAccess);
@@ -50,7 +70,7 @@ router.post('/group-invite/send-all', requireFeature('CRM'), sendGroupInviteToAl
 router.post(
   '/group-broadcast/send',
   (req, res, next) => {
-    upload.single('image')(req, res, (error: unknown) => {
+    groupBroadcastImageUpload.single('image')(req, res, (error: unknown) => {
       if (error) {
         const message = error instanceof Error ? error.message : 'Upload image invalide';
         res.status(400).json({ success: false, message });
@@ -59,6 +79,7 @@ router.post(
       next();
     });
   },
+  assertGroupBroadcastImageSignature,
   sendGroupBroadcastHandler
 );
 router.patch('/:key', requireNotificationKeyFeature, updateHandler);

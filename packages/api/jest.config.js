@@ -25,6 +25,7 @@ const APP_LEVEL_TESTS = [
   '<rootDir>/__tests__/unit/particulier-routes.test.ts',
   '<rootDir>/__tests__/unit/no-secret-in-responses.test.ts',
   '<rootDir>/__tests__/integration/isolation.test.ts',
+  '<rootDir>/__tests__/integration/isolation-syndic-lot.test.ts',
   '<rootDir>/__tests__/integration/patrimoine.property-asset.integration.test.ts',
   // Importe `createProperty` (services/property-service), donc property-template-service et ses erreurs TS anciennes.
   '<rootDir>/__tests__/integration/personal-space.integration.test.ts',

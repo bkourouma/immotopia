@@ -218,12 +218,25 @@ describe('mode enforce', () => {
     expect((await request(app).get('/api/tenants/my-memberships')).status).toBe(200);
 
     currentUser = { userId: 'admin', globalRole: 'SUPER_ADMIN' };
+    currentContext = { isClient: false, isSuperAdmin: true };
     expect((await request(app).post(`/api/tenants/${TENANT}/syndics`)).status).toBe(200);
+    expect((await request(app).post(`/api/tenants/${TENANT}/explicit`)).status).toBe(200);
 
     currentUser = { userId: 'loc', globalRole: 'USER' };
     currentContext = { isClient: true };
     expect((await request(app).post(`/api/tenants/${TENANT}/syndics`)).status).toBe(200);
     expect(getEntitlements).not.toHaveBeenCalled();
+  });
+
+  it('enforce : un jeton SUPER_ADMIN non confirme en base (retrograde, membre) n’est PAS exempte', async () => {
+    mode = 'enforce';
+    getEntitlements.mockResolvedValue(entitlements({ MODULE_AGENCY: 'FULL' }));
+    currentUser = { userId: 'ancien-admin', globalRole: 'SUPER_ADMIN' };
+    currentContext = { isClient: false };
+    const res = await request(app).post(`/api/tenants/${TENANT}/syndics`);
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('MODULE_NOT_INCLUDED');
+    expect((await request(app).post(`/api/tenants/${TENANT}/explicit`)).status).toBe(403);
   });
 
   it('warn : une panne du calcul des droits laisse passer ET journalise (warn)', async () => {

@@ -4,9 +4,11 @@ import type { Prisma } from '@prisma/client';
 import { toCsvString } from '../lib/csv';
 import { BadRequestError, ConflictError, NotFoundError } from '../middleware/error-middleware';
 import { t } from '../i18n';
+import { env } from '../config/env';
 import { prisma } from '../utils/database';
+import { logger } from '../utils/logger';
 import { emailService } from './email-service';
-import { resolveRecipients } from './newsletter-campaign.service';
+import { escapeHtml, resolveRecipients } from './newsletter-campaign.service';
 
 /** Parse CSV buffer to array of { email?, name? } */
 function parseCsvBuffer(buffer: Buffer): Array<{ email?: string; name?: string }> {
@@ -302,7 +304,7 @@ export function generateConfirmationToken(): string {
 }
 
 function getBaseUrl(): string {
-  return process.env.FRONTEND_URL || process.env.CLIENT_URL || 'http://localhost:3000';
+  return env.FRONTEND_URL || env.CLIENT_URL || 'http://localhost:3000';
 }
 
 export interface SubscribePublicInput {
@@ -401,10 +403,12 @@ export async function subscribePublic(input: SubscribePublicInput): Promise<Subs
   return { success: true, message: 'Un email de confirmation vous a été envoyé.', pendingConfirmation: true };
 }
 
-async function sendConfirmationEmail(to: string, token: string, name?: string): Promise<void> {
-  const confirmUrl = `${getBaseUrl()}/newsletter/confirm?token=${token}`;
-  const prenom = name?.split(/\s+/)[0] || 'Cher abonné';
-  await emailService.sendEmail({
+async function sendConfirmationEmail(to: string, token: string, name?: string): Promise<boolean> {
+  // Toute valeur du gabarit est échappée : le prénom vient d'un formulaire public
+  // (hameçonnage depuis notre domaine), l'URL est échappée par principe.
+  const confirmUrl = escapeHtml(`${getBaseUrl()}/newsletter/confirm?token=${encodeURIComponent(token)}`);
+  const prenom = escapeHtml(name?.trim().split(/\s+/)[0] || 'Cher abonné');
+  const result = await emailService.sendEmail({
     to,
     subject: 'Confirmez votre inscription à notre newsletter',
     html: `
@@ -416,6 +420,12 @@ async function sendConfirmationEmail(to: string, token: string, name?: string): 
       <p>— L'équipe ImmoTopia</p>
     `
   });
+  if (result?.sent === false) {
+    // Adresse refusée (FRI-08) : la réponse publique reste identique (pas d'énumération), l'échec est journalisé.
+    logger.warn('Newsletter confirmation email not sent', { reason: result.reason });
+    return false;
+  }
+  return true;
 }
 
 export async function confirmSubscription(token: string) {

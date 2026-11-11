@@ -168,8 +168,32 @@ describe('resolveGoogleUser', () => {
     expect(logAuthEvent).not.toHaveBeenCalled();
   });
 
-  it('rattache Google à un compte vérifié sans toucher au mot de passe', async () => {
-    mockPrisma.user.findMany.mockResolvedValue([{ ...activeUser, googleId: null }]);
+  it('AUTH-09 : compte vérifié jamais connecté (lastLoginAt nul) : mot de passe effacé et sessions révoquées', async () => {
+    mockPrisma.user.findMany.mockResolvedValue([{ ...activeUser, googleId: null, lastLoginAt: null }]);
+    mockPrisma.user.update.mockResolvedValue(activeUser);
+
+    await resolveGoogleUser(profile());
+
+    expect(mockPrisma.user.update.mock.calls[0][0].data).toEqual(
+      expect.objectContaining({ passwordHash: null, emailVerified: true })
+    );
+    expect(mockPrisma.refreshToken.updateMany).toHaveBeenCalledWith({
+      where: { userId: 'u1', revoked: false },
+      data: { revoked: true, revokedAt: expect.any(Date) }
+    });
+  });
+
+  it('AUTH-09 : la lecture du compte sélectionne lastLoginAt, jamais passwordHash', async () => {
+    mockPrisma.user.findMany.mockResolvedValue([{ ...activeUser, googleId: null, lastLoginAt: new Date() }]);
+    mockPrisma.user.update.mockResolvedValue(activeUser);
+    await resolveGoogleUser(profile());
+    const select = mockPrisma.user.findMany.mock.calls[0][0].select;
+    expect(select.lastLoginAt).toBe(true);
+    expect(select.passwordHash).toBeUndefined();
+  });
+
+  it('rattache Google à un compte vérifié déjà connecté par mot de passe sans toucher au mot de passe', async () => {
+    mockPrisma.user.findMany.mockResolvedValue([{ ...activeUser, googleId: null, lastLoginAt: new Date() }]);
     mockPrisma.user.update.mockResolvedValue(activeUser);
 
     await resolveGoogleUser(profile());

@@ -52,6 +52,7 @@ const groups = [
     name: 'isolation et lectures sur base reelle',
     files: [
       'isolation.test.ts',
+      'isolation-syndic-lot.test.ts',
       'external-access.db.test.ts',
       'patrimoine.property-asset.integration.test.ts',
       'signup-guard.integration.test.ts',

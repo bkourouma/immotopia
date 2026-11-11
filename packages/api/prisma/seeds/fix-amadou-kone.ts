@@ -1,9 +1,11 @@
 import { PrismaClient, MembershipStatus } from '@prisma/client';
+import { assertNotProduction } from './assert-not-production';
 
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('🔍 Vérification de la situation d\'Amadou Koné...\n');
+  assertNotProduction('fix-amadou-kone.ts');
+  console.log("🔍 Vérification de la situation d'Amadou Koné...\n");
 
   // Trouver l'utilisateur Amadou Koné
   const user = await prisma.user.findUnique({
@@ -24,7 +26,7 @@ async function main() {
 
   if (!user) {
     console.error('❌ Utilisateur Amadou Koné (admin1@agence-mali.com) introuvable!');
-    console.log('💡 Exécutez d\'abord le seed principal: npm run prisma:seed');
+    console.log("💡 Exécutez d'abord le seed principal: npm run prisma:seed");
     process.exit(1);
   }
 
@@ -37,10 +39,7 @@ async function main() {
   // Trouver le tenant "Agence Immobilière du Mali"
   const tenant = await prisma.tenant.findFirst({
     where: {
-      OR: [
-        { slug: 'agence-mali' },
-        { name: { contains: 'Agence Immobilière du Mali', mode: 'insensitive' } }
-      ]
+      OR: [{ slug: 'agence-mali' }, { name: { contains: 'Agence Immobilière du Mali', mode: 'insensitive' } }]
     }
   });
 
@@ -77,7 +76,7 @@ async function main() {
 
     // Activer la membership si elle n'est pas active
     if (membership.status !== MembershipStatus.ACTIVE) {
-      console.log('⚠️  Membership n\'est pas ACTIVE. Activation...');
+      console.log("⚠️  Membership n'est pas ACTIVE. Activation...");
       membership = await prisma.membership.update({
         where: { id: membership.id },
         data: {
@@ -94,7 +93,7 @@ async function main() {
 
   // Vérifier les rôles RBAC (userRoles sont sur User, pas Membership)
   const tenantRoles = user.userRoles.filter((ur: any) => ur.tenantId === tenant.id && ur.role.scope === 'TENANT');
-  
+
   console.log(`📋 Rôles RBAC actuels: ${tenantRoles.length}`);
   tenantRoles.forEach((ur: any) => {
     console.log(`   - ${ur.role.key} (${ur.role.name})`);
@@ -107,7 +106,7 @@ async function main() {
 
   if (!tenantAdminRole) {
     console.error('\n❌ Rôle TENANT_ADMIN introuvable!');
-    console.log('💡 Exécutez d\'abord le seed RBAC: npx ts-node prisma/seeds/rbac-seed.ts');
+    console.log("💡 Exécutez d'abord le seed RBAC: npx ts-node prisma/seeds/rbac-seed.ts");
     process.exit(1);
   }
 
@@ -116,7 +115,7 @@ async function main() {
 
   if (!hasTenantAdmin) {
     console.log('\n⚠️  Rôle TENANT_ADMIN manquant. Attribution...');
-    
+
     // Supprimer les anciens rôles tenant pour éviter les conflits
     await prisma.userRole.deleteMany({
       where: {
@@ -167,11 +166,10 @@ async function main() {
 }
 
 main()
-  .catch((e) => {
+  .catch(e => {
     console.error('❌ Erreur:', e);
     process.exit(1);
   })
   .finally(async () => {
     await prisma.$disconnect();
   });
-

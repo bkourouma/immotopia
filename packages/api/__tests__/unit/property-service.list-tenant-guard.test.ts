@@ -114,3 +114,31 @@ describe('listProperties — isolation tenant du OR (garde Prisma)', () => {
     expect(countMock.mock.calls[0][0].where).toEqual(where);
   });
 });
+
+describe('listProperties — lots d’immeuble comptés pour la seule agence (TEN-01)', () => {
+  beforeEach(() => {
+    findManyMock.mockClear();
+    countMock.mockClear();
+  });
+
+  const childScope = {
+    OR: [{ tenantId: TENANT_ID }, { mandates: { some: { tenantId: TENANT_ID, isActive: true } } }]
+  };
+
+  it('les statuts ET le compteur des lots excluent ceux d’une autre agence', async () => {
+    await listProperties(TENANT_ID, null, {});
+
+    const include = findManyMock.mock.calls[0][0].include;
+    // Mêmes lots que la fiche : biens de l'agence ou sous mandat actif de l'agence.
+    expect(include.containerChildren).toEqual({ where: childScope, select: { status: true } });
+    expect(include._count).toEqual({ select: { containerChildren: { where: childScope } } });
+  });
+
+  it('sans agence (espace particulier), aucun filtre ajouté', async () => {
+    await listProperties(null, 'user-1', {});
+
+    const include = findManyMock.mock.calls[0][0].include;
+    expect(include.containerChildren.where).toEqual({});
+    expect(include._count.select.containerChildren.where).toEqual({});
+  });
+});

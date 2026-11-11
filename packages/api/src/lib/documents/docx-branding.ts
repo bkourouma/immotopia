@@ -259,9 +259,10 @@ function ensureContentType(zip: PizZip, image: DocumentImage): boolean {
   if (!file) return false;
   const extension = EXTENSION_BY_FORMAT[image.format];
   const xml = file.asText();
-  if (new RegExp(`<Default[^>]+Extension="${extension}"`, 'i').test(xml)) return true;
+  // `[^<>]` et non `[^>]` : linéaire sur un modèle piégé (suite de `<Default` sans `>`).
+  if (new RegExp(`<Default[^<>]+Extension="${extension}"`, 'i').test(xml)) return true;
   const declaration = `<Default Extension="${extension}" ContentType="${MIME_BY_FORMAT[image.format]}"/>`;
-  zip.file('[Content_Types].xml', xml.replace(/(<Types[^>]*>)/, `$1${declaration}`));
+  zip.file('[Content_Types].xml', xml.replace(/(<Types[^<>]*>)/, `$1${declaration}`));
   return true;
 }
 
@@ -282,9 +283,14 @@ function addImageRelation(zip: PizZip, partPath: string, mediaName: string, inde
     next = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="${REL_PACKAGE}">${relation}</Relationships>`;
   } else if (/<\/Relationships>\s*$/.test(current)) {
     next = current.replace(/<\/Relationships>\s*$/, `${relation}</Relationships>`);
-  } else if (/<Relationships\b[^>]*\/>\s*$/.test(current)) {
+  } else if (/<Relationships\b[^<>]*\/>\s*$/.test(current)) {
     // Fichier de relations vide, balise auto-fermante : <Relationships xmlns="…"/>.
-    next = current.replace(/<Relationships\b([^>]*?)\s*\/>\s*$/, `<Relationships$1>${relation}</Relationships>`);
+    // Attributs capturés d'un bloc puis rognés : `([^>]*?)\s*\/>` était
+    // quadratique sur une longue suite d'espaces dans la balise.
+    next = current.replace(
+      /<Relationships\b([^<>]*)\/>\s*$/,
+      (_match, attributes: string) => `<Relationships${attributes.trimEnd()}>${relation}</Relationships>`
+    );
   } else {
     logger.error('DOCX logo ignored: unreadable relationships file', { relsPath });
     return null;

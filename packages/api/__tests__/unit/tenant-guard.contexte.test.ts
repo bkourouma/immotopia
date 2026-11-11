@@ -15,9 +15,11 @@ const membershipFindUnique = jest.fn();
 const userRoleFindMany = jest.fn();
 const tenantClientFindUnique = jest.fn();
 const tenantFindUnique = jest.fn();
+const userFindUnique = jest.fn();
 
 jest.mock('../../src/utils/database', () => ({
   prisma: {
+    user: { findUnique: (...a: any[]) => userFindUnique(...a) },
     membership: { findUnique: (...a: any[]) => membershipFindUnique(...a) },
     userRole: { findMany: (...a: any[]) => userRoleFindMany(...a) },
     tenantClient: { findUnique: (...a: any[]) => tenantClientFindUnique(...a) },
@@ -63,6 +65,7 @@ beforeEach(() => {
   userRoleFindMany.mockResolvedValue([{ role: { scope: 'TENANT' } }]);
   tenantClientFindUnique.mockResolvedValue(null);
   tenantFindUnique.mockResolvedValue({ status: 'ACTIVE' });
+  userFindUnique.mockResolvedValue({ globalRole: 'SUPER_ADMIN', isActive: true });
 });
 
 describe("requireTenantAccess pose le contexte d'agence pour toute la suite de la chaîne", () => {
@@ -99,7 +102,10 @@ describe("requireTenantAccess pose le contexte d'agence pour toute la suite de l
     await fini;
 
     expect(lire()).toBe('tenant-A');
-    // Aucune requête base n'était nécessaire pour le super-admin.
+    // Le rôle du jeton n'est qu'une indication : le super-admin est relu en
+    // base (une seule lecture de User), sans adhésion ni lecture de l'agence.
+    expect(userFindUnique).toHaveBeenCalledTimes(1);
+    expect(membershipFindUnique).not.toHaveBeenCalled();
     expect(tenantFindUnique).not.toHaveBeenCalled();
   });
 

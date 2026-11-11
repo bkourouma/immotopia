@@ -15,7 +15,8 @@ import {
   Collapse,
   Select,
   Divider,
-  Checkbox
+  Checkbox,
+  Alert
 } from 'antd';
 import { EditOutlined, MailOutlined, CodeOutlined, TeamOutlined, UserOutlined } from '@ant-design/icons';
 import { HtmlCodeEditor } from '../../components/HtmlCodeEditor';
@@ -29,6 +30,7 @@ import { VARIABLES_BY_EVENT_KEY, getEventGroupKey } from '../../constants/email-
 import { getVariablePlaceholder } from '../../constants/template-variables';
 import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion } from '../../utils/list-search';
+import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
@@ -62,6 +64,13 @@ export function EmailNotificationsUnifiedPage() {
   const [applyToOtherKeys, setApplyToOtherKeys] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm();
+  // Mêmes droits que l'API (écriture = TENANT_SETTINGS_EDIT). `permissions === null` une fois `ready` :
+  // aucune restriction (administrateur d'agence, super-admin, échec réseau : le serveur tranche).
+  // Avant `ready`, `permissions` vaut aussi `null` sans rien dire des droits : lecture seule tant que
+  // la réponse n'est pas arrivée (contre-audit A5), sans afficher « Lecture seule » pour autant.
+  const { permissions, ready } = useMyMenuAccess(tenantId);
+  const canEdit = ready && (permissions === null || permissions.has('TENANT_SETTINGS_EDIT'));
+  const showReadOnlyNotice = ready && !canEdit;
 
   const load = async () => {
     if (!tenantId) return;
@@ -167,7 +176,7 @@ export function EmailNotificationsUnifiedPage() {
   };
 
   const handleToggleEnabled = async (key: string, enabled: boolean) => {
-    if (!tenantId) return;
+    if (!tenantId || !canEdit) return;
     try {
       await emailNotificationConfigService.update(tenantId, key, { enabled });
       setItems(prev => prev.map(i => (i.key === key ? { ...i, enabled } : i)));
@@ -179,7 +188,7 @@ export function EmailNotificationsUnifiedPage() {
   };
 
   const fillWithDefaultTemplate = () => {
-    if (!selectedItem) return;
+    if (!canEdit || !selectedItem) return;
     form.setFieldsValue({
       subjectOverride: selectedItem.defaultSubject || '',
       bodyHtmlOverride: selectedItem.defaultBodyHtml || ''
@@ -188,7 +197,7 @@ export function EmailNotificationsUnifiedPage() {
   };
 
   const handleSaveTemplate = async () => {
-    if (!tenantId || !selectedItem) return;
+    if (!canEdit || !tenantId || !selectedItem) return;
     try {
       const values = await form.validateFields();
       const payload: UpdateEmailNotificationPayload = {
@@ -220,7 +229,7 @@ export function EmailNotificationsUnifiedPage() {
   };
 
   const handleReset = async () => {
-    if (!tenantId || !selectedItem) return;
+    if (!canEdit || !tenantId || !selectedItem) return;
     try {
       await emailNotificationConfigService.reset(tenantId, selectedItem.key);
       message.success(t('Template réinitialisé'));
@@ -236,6 +245,7 @@ export function EmailNotificationsUnifiedPage() {
   };
 
   const insertVariable = (variableName: string) => {
+    if (!canEdit) return;
     const placeholder = getVariablePlaceholder(variableName);
     const body = form.getFieldValue('bodyHtmlOverride') ?? '';
     form.setFieldsValue({ bodyHtmlOverride: body + placeholder });
@@ -270,7 +280,7 @@ export function EmailNotificationsUnifiedPage() {
       width: 90,
       exportValue: (record: EmailNotificationConfigItem) => record.enabled,
       render: (enabled: boolean, record: EmailNotificationConfigItem) => (
-        <Switch checked={enabled} onChange={checked => handleToggleEnabled(record.key, checked)} />
+        <Switch checked={enabled} disabled={!canEdit} onChange={checked => handleToggleEnabled(record.key, checked)} />
       )
     },
     {
@@ -323,6 +333,14 @@ export function EmailNotificationsUnifiedPage() {
           <Text strong style={{ display: 'block', marginBottom: 8 }}>
             {t('Choisir un événement déclencheur')}
           </Text>
+          {showReadOnlyNotice && (
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+              message={t("Lecture seule : vous n'avez pas le droit de modifier ces modèles d'e-mail")}
+            />
+          )}
           <Select
             showSearch
             optionFilterProp="label"
@@ -405,6 +423,7 @@ export function EmailNotificationsUnifiedPage() {
                               type="dashed"
                               size="small"
                               onClick={fillWithDefaultTemplate}
+                              disabled={!canEdit}
                               style={{ marginTop: 8 }}
                             >
                               {t('Utiliser ce modèle dans les champs ci-dessous')}
@@ -415,7 +434,7 @@ export function EmailNotificationsUnifiedPage() {
                     ]}
                   />
 
-                  <Form form={form} layout="vertical">
+                  <Form form={form} layout="vertical" disabled={!canEdit}>
                     <Form.Item name="subjectOverride" label={t('Sujet personnalisé (vide = sujet par défaut)')}>
                       <Input placeholder="Ex: Nouveau ticket - {{ticketTitle}}" />
                     </Form.Item>
@@ -424,7 +443,11 @@ export function EmailNotificationsUnifiedPage() {
                       label={t('Corps personnalisé HTML (vide = contenu par défaut)')}
                       extra="Utilisez les variables ci-dessous avec la syntaxe {{nomVariable}}."
                     >
-                      <HtmlCodeEditor placeholder="<p>Bonjour {{contactName}}, ...</p>" minHeight={280} />
+                      <HtmlCodeEditor
+                        placeholder="<p>Bonjour {{contactName}}, ...</p>"
+                        minHeight={280}
+                        readOnly={!canEdit}
+                      />
                     </Form.Item>
 
                     <div style={{ marginBottom: 16 }}>
@@ -441,8 +464,8 @@ export function EmailNotificationsUnifiedPage() {
                         {variablesForEvent.map(name => (
                           <Tag
                             key={name}
-                            style={{ cursor: 'pointer', marginBottom: 4 }}
-                            onClick={() => insertVariable(name)}
+                            style={{ cursor: canEdit ? 'pointer' : 'default', marginBottom: 4 }}
+                            onClick={canEdit ? () => insertVariable(name) : undefined}
                           >
                             {`{{${name}}}`}
                           </Tag>
@@ -481,10 +504,12 @@ export function EmailNotificationsUnifiedPage() {
                     )}
 
                     <Space>
-                      <Button type="primary" onClick={handleSaveTemplate} loading={saving}>
+                      <Button type="primary" onClick={handleSaveTemplate} loading={saving} disabled={!canEdit}>
                         {t('Enregistrer')}
                       </Button>
-                      <Button onClick={handleReset}>{t('Réinitialiser au modèle par défaut')}</Button>
+                      <Button onClick={handleReset} disabled={!canEdit}>
+                        {t('Réinitialiser au modèle par défaut')}
+                      </Button>
                     </Space>
                   </Form>
                 </>

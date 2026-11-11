@@ -1,10 +1,14 @@
 /**
  * resetMemberPassword : membre ACTIF seulement ; pas d'écrasement du mot de
  * passe GLOBAL d'un super-admin ni d'un compte actif dans d'autres agences
- * (lien de réinitialisation seul) ; select minimal.
+ * (lien de réinitialisation seul) ; select minimal. M1 : les sessions d'un
+ * compte partagé sont révoquées quand même (seul le super-admin y échappe).
  */
 const tx: any = {
-  user: { update: jest.fn() },
+  user: { update: jest.fn(), findUnique: jest.fn() },
+  membership: { count: jest.fn() },
+  userRole: { count: jest.fn() },
+  tenantClient: { count: jest.fn() },
   refreshToken: { updateMany: jest.fn() },
   passwordResetToken: { updateMany: jest.fn(), create: jest.fn() }
 };
@@ -48,6 +52,10 @@ beforeEach(() => {
   prismaMock.tenantClient.count.mockResolvedValue(0);
   prismaMock.user.findUnique.mockResolvedValue({ globalRole: 'USER' });
   tx.refreshToken.updateMany.mockResolvedValue({ count: 1 });
+  tx.user.findUnique.mockResolvedValue({ globalRole: 'USER' });
+  tx.membership.count.mockResolvedValue(0);
+  tx.userRole.count.mockResolvedValue(0);
+  tx.tenantClient.count.mockResolvedValue(0);
 });
 
 describe('resetMemberPassword', () => {
@@ -88,7 +96,9 @@ describe('resetMemberPassword', () => {
       where: { userId: 'u2', tenantId: { not: 't1' } }
     });
     expect(tx.user.update).not.toHaveBeenCalled();
-    expect(res.sessionsRevoked).toBe(false);
+    // M1 : hash intact, mais sessions révoquées (déconnexion sans danger ailleurs).
+    expect(tx.refreshToken.updateMany).toHaveBeenCalledTimes(1);
+    expect(res).toMatchObject({ sessionsRevoked: true, passwordReplaced: false });
     await expect(resetMemberPassword('u2', 't1', 'Abcdef1!xyz', 'admin')).rejects.toMatchObject({ statusCode: 403 });
   });
 
@@ -99,7 +109,16 @@ describe('resetMemberPassword', () => {
     expect(tx.refreshToken.updateMany).toHaveBeenCalled();
     expect(recordAuditEvent).toHaveBeenCalledWith(tx, expect.objectContaining({ entityId: 'u2', tenantId: 't1' }));
     expect(sendPasswordResetEmail).toHaveBeenCalledTimes(1);
-    expect(res).toMatchObject({ password: undefined, resetLinkSent: true, sessionsRevoked: true });
+    expect(res).toMatchObject({
+      password: undefined,
+      resetLinkSent: true,
+      sessionsRevoked: true,
+      passwordReplaced: true
+    });
+    expect(recordAuditEvent).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({ actionKey: 'SESSIONS_REVOKED', entityId: 'u2', actorUserId: 'admin' })
+    );
   });
 
   it('utilise un select minimal (jamais include user)', async () => {
@@ -121,7 +140,8 @@ describe('resetMemberPassword', () => {
         where: { userId: 'u2', OR: [{ tenantId: null }, { tenantId: { not: 't1' } }] }
       });
       expect(tx.user.update).not.toHaveBeenCalled();
-      expect(res.sessionsRevoked).toBe(false);
+      expect(tx.refreshToken.updateMany).toHaveBeenCalledTimes(1);
+      expect(res.sessionsRevoked).toBe(true);
       await expect(resetMemberPassword('u2', 't1', PW, 'admin')).rejects.toMatchObject({ statusCode: 403 });
     });
 
@@ -133,7 +153,8 @@ describe('resetMemberPassword', () => {
         where: { userId: 'u2', tenantId: { not: 't1' } }
       });
       expect(tx.user.update).not.toHaveBeenCalled();
-      expect(res.sessionsRevoked).toBe(false);
+      expect(tx.refreshToken.updateMany).toHaveBeenCalledTimes(1);
+      expect(res.sessionsRevoked).toBe(true);
       await expect(resetMemberPassword('u2', 't1', PW, 'admin')).rejects.toMatchObject({ statusCode: 403 });
     });
 

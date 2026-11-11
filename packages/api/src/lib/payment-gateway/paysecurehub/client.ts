@@ -116,11 +116,20 @@ export const paySecureHubClient: GatewayClient = {
     const amount = payments.amount === undefined || payments.amount === null ? null : Number(payments.amount);
     const fees = payments.fees === undefined || payments.fees === null ? null : Number(payments.fees);
 
+    const rawCurrency = payments.currency ?? payments.devise;
+    const currency =
+      typeof rawCurrency === 'number' && Number.isFinite(rawCurrency)
+        ? String(rawCurrency)
+        : typeof rawCurrency === 'string' && rawCurrency.trim()
+          ? rawCurrency.trim()
+          : null;
+
     return {
       rawState,
       mappedState: mapProviderState(rawState),
       transactionId: typeof payments.transactionId === 'string' ? payments.transactionId : null,
       amount: Number.isFinite(amount as number) ? (amount as number) : null,
+      currency,
       fees: Number.isFinite(fees as number) ? (fees as number) : null,
       serviceName: typeof payments.serviceName === 'string' ? payments.serviceName : null,
       error: typeof payments.error === 'string' ? payments.error : null,

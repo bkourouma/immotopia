@@ -16,9 +16,7 @@ async function getPhoneFromClient(client: any, tenantId: string, clientType: str
   // First, try to get phone from CRM Contact via crmContactId in details
   if (client.details) {
     try {
-      const details = typeof client.details === 'string' 
-        ? JSON.parse(client.details) 
-        : client.details;
+      const details = typeof client.details === 'string' ? JSON.parse(client.details) : client.details;
 
       // If we have a crmContactId, fetch the contact
       if (details?.crmContactId && tenantId) {
@@ -191,9 +189,10 @@ async function checkLeaseData(tenantId?: string): Promise<MissingDataReport[]> {
 
       if (lease.primaryRenter?.details) {
         try {
-          const details = typeof lease.primaryRenter.details === 'string'
-            ? JSON.parse(lease.primaryRenter.details)
-            : lease.primaryRenter.details;
+          const details =
+            typeof lease.primaryRenter.details === 'string'
+              ? JSON.parse(lease.primaryRenter.details)
+              : lease.primaryRenter.details;
           locataireContactId = details?.crmContactId;
         } catch (e) {
           // Ignore
@@ -202,9 +201,10 @@ async function checkLeaseData(tenantId?: string): Promise<MissingDataReport[]> {
 
       if (lease.ownerClient?.details) {
         try {
-          const details = typeof lease.ownerClient.details === 'string'
-            ? JSON.parse(lease.ownerClient.details)
-            : lease.ownerClient.details;
+          const details =
+            typeof lease.ownerClient.details === 'string'
+              ? JSON.parse(lease.ownerClient.details)
+              : lease.ownerClient.details;
           bailleurContactId = details?.crmContactId;
         } catch (e) {
           // Ignore
@@ -295,7 +295,6 @@ async function main() {
             console.log(`         → Renseigner dans: ${report.urls.locataireContactUrl}`);
           } else {
             console.log(`         → Renseigner dans le contact CRM du locataire`);
-            console.log(`         → Ou via API: PATCH /api/tenants/${report.tenantId}/client-details`);
           }
         }
       }
@@ -308,7 +307,6 @@ async function main() {
             console.log(`         → Renseigner dans: ${report.urls.bailleurContactUrl}`);
           } else {
             console.log(`         → Renseigner dans le contact CRM du bailleur`);
-            console.log(`         → Ou via API: PATCH /api/tenants/${report.tenantId}/client-details`);
           }
         }
       }
@@ -317,10 +315,10 @@ async function main() {
     }
 
     console.log('='.repeat(100));
-    
+
     const totalLeases = await prisma.rentalLease.count({ where: tenantId ? { tenant_id: tenantId } : {} });
     const completeLeases = totalLeases - reports.length;
-    
+
     console.log(`\n📊 Résumé:`);
     console.log(`   Total de baux vérifiés: ${totalLeases}`);
     console.log(`   Baux avec données manquantes: ${reports.length}`);
@@ -338,7 +336,6 @@ async function main() {
     const reportPath = path.join(__dirname, '..', 'missing-lease-data-report.json');
     fs.writeFileSync(reportPath, JSON.stringify(jsonReport, null, 2));
     console.log(`📄 Rapport JSON sauvegardé: ${reportPath}\n`);
-
   } catch (error) {
     console.error('❌ Erreur:', error);
     process.exit(1);

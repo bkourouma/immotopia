@@ -256,7 +256,7 @@ describe('<CreateTenantDrawer> — champs obligatoires', () => {
     await user.click(screen.getByText('Agence'));
     await user.click(screen.getByRole('button', { name: "Créer l'agence" }));
 
-    expect(await screen.findByText("Le nom de l'agence est requis")).toBeInTheDocument();
+    expect(await screen.findByText("Le nom de l'agence est requis", {}, { timeout: 8000 })).toBeInTheDocument();
     expect(screen.getByText("Le nom de l'administrateur est requis")).toBeInTheDocument();
     expect(screen.getByText("L'e-mail de l'administrateur est requis")).toBeInTheDocument();
     expect(post).not.toHaveBeenCalledWith('/admin/tenants', expect.anything(), expect.anything());

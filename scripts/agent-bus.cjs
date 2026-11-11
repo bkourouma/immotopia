@@ -5,7 +5,7 @@
 // Un dossier .agent-bus/ partagé par tous les worktrees (voir docs/workflows/
 // DEV_PROCESS.md et DEMO_DEBUG_PROCESS.md) sert de canal d'échange pour les
 // rapports d'anomalie (bugs/<ID>.md) et le journal des révisions livrées
-// (revisions.md). CommonJS, zéro dépendance, Node 20.
+// (revisions.md). CommonJS, zéro dépendance, Node 22.
 
 const fs = require("node:fs");
 const path = require("node:path");

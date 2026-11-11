@@ -43,6 +43,17 @@ import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import { createFakePrisma } from '../helpers/fake-prisma';
 
+// Le dépôt écrit sous la racine du projet (pas sous UPLOADS_DIR) : l'écriture
+// disque est simulée pour ne rien laisser dans le dépôt. Les lectures du
+// fichier (lib/files/private-files) restent réelles.
+const mockWriteFile = jest.fn(async () => undefined);
+const mockMkdir = jest.fn(async () => undefined);
+jest.mock('fs/promises', () => ({
+  ...jest.requireActual('fs/promises'),
+  writeFile: (...a: unknown[]) => (mockWriteFile as any)(...a),
+  mkdir: (...a: unknown[]) => (mockMkdir as any)(...a)
+}));
+
 const mockPrisma = createFakePrisma();
 
 jest.mock('../../src/utils/database', () => ({ prisma: mockPrisma }));
@@ -422,5 +433,76 @@ describe('/uploads/maintenance en accès direct', () => {
       expect(`${userId} : ${res.status}`).toBe(`${userId} : 404`);
     }
     expect((await request(app).get(url)).status).toBe(404);
+  });
+});
+
+describe('dépôt d’une pièce jointe (POST /maintenance/tenant/tickets/:ticketId/attachments)', () => {
+  const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex');
+  const upload = (userId: string, ticketId: string, tenantId = TENANT_A) =>
+    request(app)
+      .post(`/api/tenants/${tenantId}/maintenance/tenant/tickets/${ticketId}/attachments`)
+      .set('x-test-user', userId);
+
+  beforeEach(() => {
+    // Le dépôt exige MAINTENANCE_TENANT (requireMaintenanceTenantPermission).
+    mockPrisma.userRole.rows.push({
+      id: 'ur-up',
+      userId: USER_MARIAM,
+      tenantId: TENANT_A,
+      role: role(['MAINTENANCE_TENANT'])
+    });
+    clearPermissionCache();
+    mockWriteFile.mockClear();
+    mockMkdir.mockClear();
+  });
+
+  it('un vrai PNG est accepté (201) et écrit une fois', async () => {
+    const res = await upload(USER_MARIAM, T_AWA).attach('file', PNG, {
+      filename: 'fuite.png',
+      contentType: 'image/png'
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.file_url).toMatch(/.png$/);
+    expect(mockWriteFile).toHaveBeenCalledTimes(1);
+  });
+
+  it('un faux PNG (HTML déguisé) est refusé en 400, avec un message, sans écriture', async () => {
+    const res = await upload(USER_MARIAM, T_AWA).attach('file', Buffer.from('<html><script>alert(1)</script></html>'), {
+      filename: 'fuite.png',
+      contentType: 'image/png'
+    });
+    expect(res.status).toBe(400);
+    expect(typeof res.body.message).toBe('string');
+    expect(mockWriteFile).not.toHaveBeenCalled();
+  });
+
+  it('un faux PDF est refusé en 400, sans écriture', async () => {
+    const res = await upload(USER_MARIAM, T_AWA).attach('file', Buffer.from('<html>pas un pdf</html>'), {
+      filename: 'devis.pdf',
+      contentType: 'application/pdf'
+    });
+    expect(res.status).toBe(400);
+    expect(mockWriteFile).not.toHaveBeenCalled();
+  });
+
+  it('un ticket inexistant ou d’une autre agence donne 404', async () => {
+    const unknown = await upload(USER_MARIAM, UNKNOWN).attach('file', PNG, {
+      filename: 'a.png',
+      contentType: 'image/png'
+    });
+    expect(unknown.status).toBe(404);
+    const otherAgency = await upload(USER_MARIAM, T_B).attach('file', PNG, {
+      filename: 'a.png',
+      contentType: 'image/png'
+    });
+    expect(otherAgency.status).toBe(404);
+    expect(mockWriteFile).not.toHaveBeenCalled();
+  });
+
+  it('sans fichier : 400 « Aucun fichier fourni »', async () => {
+    const res = await upload(USER_MARIAM, T_AWA);
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe('Aucun fichier fourni');
   });
 });

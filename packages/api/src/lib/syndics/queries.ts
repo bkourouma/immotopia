@@ -87,7 +87,7 @@ import {
 import { recurrenceStepMonths, resolvePeriodBounds, shiftPeriodBounds, type PeriodBounds } from './period';
 // Lot S4 : quote-part annuelle du budget divisee par le nombre de periodes.
 import { annualShareForPeriod } from './charge-schedule-periods';
-import { AppError, ConflictError, QuotaExceededError } from '../../middleware/error-middleware';
+import { AppError, ConflictError, NotFoundError, QuotaExceededError } from '../../middleware/error-middleware';
 import { pendingDeclarationsByCall } from './declared-payment/declaration-queries';
 import { isOverdue as isDeclarationReviewOverdue } from './declared-payment/business-days';
 import { getDeclaredPaymentRules } from './declared-payment/settings';
@@ -309,7 +309,14 @@ export async function getSyndicateWithLotsAndStats(
     include: {
       property: {
         include: {
-          containerChildren: true
+          // Unités de l'immeuble : seulement celles de l'agence ou sous mandat
+          // actif de l'agence (même filtre que `childAccessWhere` de
+          // property-service, TEN-01), et seulement les champs d'identification :
+          // jamais des lignes Property complètes d'une autre agence.
+          containerChildren: {
+            where: { OR: [{ tenantId }, { mandates: { some: { tenantId, isActive: true } } }] },
+            select: { id: true, internalReference: true, title: true, propertyType: true }
+          }
         }
       },
       lots: {
@@ -731,6 +738,36 @@ export async function computeLotSharesWarnings(tenantId: string, syndicateId: st
   ];
 }
 
+/**
+ * TEN-02 : un bien rattache a un lot appartient a l'agence (meme NotFoundError
+ * qu'un bien inexistant) et n'est pas un immeuble parent. Partage par la creation
+ * et la mise a jour de lot.
+ */
+async function assertLotPropertyAssignable(tenantId: string, propertyId: string) {
+  const property = await prisma.property.findFirst({
+    where: { id: propertyId, tenantId },
+    select: { id: true, propertyType: true }
+  });
+
+  if (!property) {
+    throw new NotFoundError('Sous-propriete introuvable ou inaccessible');
+  }
+
+  if (property.propertyType === 'IMMEUBLE') {
+    throw unprocessableEntity(
+      'Un lot ne peut pas etre un immeuble parent; selectionnez une unite (appartement, villa, bureau, etc.)'
+    );
+  }
+}
+
+/** Un bail reference par un locataire de lot appartient a l'agence (NotFoundError sinon). */
+async function assertLeaseBelongsToTenant(tenantId: string, leaseId: string | null | undefined) {
+  await assertBelongsToTenant(prisma, 'rentalLease', leaseId, tenantId, {
+    tenantField: 'tenant_id',
+    message: 'Bail introuvable ou inaccessible'
+  });
+}
+
 export async function createSyndicateLot(
   tenantId: string,
   data: {
@@ -761,20 +798,7 @@ export async function createSyndicateLot(
   // Prisma SyndicateLot.propertyId (optionnel) et
   // docs/recette/SCENARIO_SYNDIC_ABONNEMENT.md (lot MC1).
   if (data.propertyId) {
-    const property = await prisma.property.findFirst({
-      where: { id: data.propertyId, tenantId },
-      select: { id: true, containerParentId: true, propertyType: true }
-    });
-
-    if (!property) {
-      throw notFound('Sous-propriete introuvable ou inaccessible');
-    }
-
-    if (property.propertyType === 'IMMEUBLE') {
-      throw unprocessableEntity(
-        'Un lot ne peut pas etre un immeuble parent; selectionnez une unite (appartement, villa, bureau, etc.)'
-      );
-    }
+    await assertLotPropertyAssignable(tenantId, data.propertyId);
   }
 
   if (data.coownerId) {
@@ -1171,6 +1195,11 @@ export async function updateSyndicateLotByTenant(
     data = { ...data, lotNumber: normalizeLotNumber(data.lotNumber) };
   }
 
+  // TEN-02 : meme controle d'agence et meme regle IMMEUBLE que la creation.
+  if (data.propertyId) {
+    await assertLotPropertyAssignable(tenantId, data.propertyId);
+  }
+
   if (data.coownerId) {
     const contact = await prisma.crmContact.findFirst({
       where: { id: data.coownerId, tenantId },
@@ -1339,6 +1368,7 @@ export async function addLotTenantBySyndicate(
   if (!tenantContact) {
     throw notFound('Contact locataire introuvable ou inaccessible');
   }
+  await assertLeaseBelongsToTenant(tenantId, data.leaseId);
 
   return prisma.$transaction(async tx => {
     await tx.lotTenantAssignment.updateMany({
@@ -5799,6 +5829,7 @@ export async function createLotTenantProfileBySyndicate(
   await assertSyndicateTenantOwnership(tenantId, syndicateId);
   await assertLotOwnershipForSyndicate(tenantId, syndicateId, data.lotId);
   await assertContactBelongsToTenant(tenantId, data.contactId);
+  await assertLeaseBelongsToTenant(tenantId, data.leaseId);
 
   return prisma.lotTenantProfile.create({
     data: {
@@ -5840,6 +5871,7 @@ export async function updateLotTenantProfileBySyndicate(
   if (!profile) {
     throw notFound('Profil locataire introuvable');
   }
+  await assertLeaseBelongsToTenant(tenantId, data.leaseId);
 
   return prisma.lotTenantProfile.update({
     where: { id: profileId },

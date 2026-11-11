@@ -13,6 +13,7 @@ import * as path from 'path';
 import * as fs from 'fs/promises';
 import crypto from 'crypto';
 import { t } from '../i18n';
+import { assertUploadMatchesDeclaredType } from '../utils/file-signature';
 import { selectNearLimitTenantIds } from './subscription-admin-extras-service';
 
 /** Champs d'une agence exposables sans authentification. */
@@ -632,41 +633,6 @@ export async function getUserTenantMemberships(userId: string) {
 }
 
 /**
- * Update a tenant client's details
- * @param userId - User ID
- * @param tenantId - Tenant ID
- * @param details - New details
- * @returns Updated tenant client
- */
-export async function updateTenantClientDetails(userId: string, tenantId: string, details: Prisma.InputJsonValue) {
-  return prisma.tenantClient.update({
-    where: {
-      userId_tenantId: {
-        userId,
-        tenantId
-      }
-    },
-    data: { details },
-    include: {
-      user: {
-        select: {
-          id: true,
-          email: true,
-          fullName: true
-        }
-      },
-      tenant: {
-        select: {
-          id: true,
-          name: true,
-          slug: true
-        }
-      }
-    }
-  });
-}
-
-/**
  * Remove a client from a tenant
  * @param userId - User ID
  * @param tenantId - Tenant ID
@@ -1004,17 +970,6 @@ export async function getOrCreateTenantClientFromContact(
 const LOGO_ALLOWED_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 const LOGO_MAX_SIZE_BYTES = 2 * 1024 * 1024;
 
-function extensionForLogoMimeType(mimeType: string): string {
-  switch (mimeType) {
-    case 'image/png':
-      return '.png';
-    case 'image/webp':
-      return '.webp';
-    default:
-      return '.jpg';
-  }
-}
-
 /**
  * Enregistre le logo d'une agence et met a jour `Tenant.logoUrl`.
  *
@@ -1041,14 +996,16 @@ export async function uploadTenantLogo(tenantId: string, file: Express.Multer.Fi
     throw new BadRequestError('Logo trop volumineux : 2 Mo maximum.');
   }
 
+  // Le contenu doit être une vraie image du type déclaré (un HTML ou un SVG
+  // déclaré image/png est refusé) ; l'extension vient du type réel détecté,
+  // jamais de `originalname`. Contrôle avant toute écriture disque.
+  const { extension: fileExtension } = assertUploadMatchesDeclaredType(file, {
+    allowedKinds: ['png', 'jpg', 'webp'],
+    message: 'Logo invalide : le contenu du fichier ne correspond pas à son type (PNG, JPEG ou WebP).'
+  });
+
   const uploadDir = path.join(getUploadsRoot(env.UPLOADS_DIR), 'properties', 'agency-logos', tenantId);
   await fs.mkdir(uploadDir, { recursive: true });
-
-  const originalExtension = path.extname(file.originalname).toLowerCase();
-  const fileExtension =
-    originalExtension && ['.png', '.jpg', '.jpeg', '.webp'].includes(originalExtension)
-      ? originalExtension
-      : extensionForLogoMimeType(file.mimetype);
   const fileName = `${crypto.randomUUID()}${fileExtension}`;
 
   await fs.writeFile(path.join(uploadDir, fileName), file.buffer);

@@ -63,9 +63,20 @@ const MAX_TITLE_CHARS = 120;
 const MAX_STEP_CHARS = 240;
 const MAX_STEPS = 8;
 /** Balises HTML et caractères de contrôle : le titre et les étapes sont du texte brut. */
-const HTML_TAG = /<\/?[A-Za-z!][^>]*>/;
+const HTML_TAG_OPEN = /<\/?[A-Za-z!]/;
 // eslint-disable-next-line no-control-regex
 const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/;
+
+/**
+ * Même verdict que l'ancienne `/<\/?[A-Za-z!][^>]*>/.test(value)` (une ouverture
+ * de balise suivie, plus loin, d'un `>`), en temps linéaire : l'ancienne forme
+ * repartait de chaque `<a` jusqu'à la fin du texte (contre-audit PR #205). La
+ * première ouverture est celle qui laisse le plus de place au `>`.
+ */
+export function containsHtmlTag(value: string): boolean {
+  const open = HTML_TAG_OPEN.exec(value);
+  return open !== null && value.indexOf('>', open.index + open[0].length) !== -1;
+}
 
 const plainText = (max: number) =>
   z
@@ -74,7 +85,9 @@ const plainText = (max: number) =>
     .min(1)
     .max(max)
     .refine(
-      value => !HTML_TAG.test(value) && !CONTROL_CHARS.test(value),
+      // Zod 3 exécute le `refine` même quand `max` a déjà échoué : un texte trop
+      // long est déjà refusé, inutile de le parcourir.
+      value => value.length > max || (!containsHtmlTag(value) && !CONTROL_CHARS.test(value)),
       'texte brut attendu (ni HTML ni caractère de contrôle)'
     );
 

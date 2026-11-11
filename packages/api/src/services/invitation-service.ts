@@ -1,6 +1,7 @@
 import { RESERVED_ROLE_KEYS } from '../lib/patrimoine/personal-permissions';
 import { prisma, PrismaTransactionClient } from '../utils/database';
 import { logger } from '../utils/logger';
+import { env } from '../config/env';
 import { GlobalRole, InvitationStatus, MembershipStatus } from '@prisma/client';
 import { emailService } from './email-service';
 import { hashPassword, validatePasswordStrength } from '../utils/password-utils';
@@ -15,9 +16,11 @@ import {
 import { assertBelongsToTenant } from '../utils/tenant-ownership';
 import crypto from 'crypto';
 import { t } from '../i18n';
+import { invalidateAllUserPermissionCache } from './permission-service';
+import { TENANT_ADMIN_ROLE_KEY, assertActorMayTouchAdmin, isTenantAdmin } from './tenant-admin-guard';
 
 export function getFrontendBaseUrl(): string {
-  return (process.env.FRONTEND_URL || process.env.CLIENT_URL || 'http://localhost:3000').replace(/\/$/, '');
+  return (env.FRONTEND_URL || env.CLIENT_URL || 'http://localhost:3000').replace(/\/$/, '');
 }
 
 /** URL d'acceptation d'une invitation, a partir du jeton en clair. Format partage par l'email et l'API. */
@@ -42,7 +45,7 @@ const TENANT_ROLE_LABELS_FR: Record<string, string> = {
  * Sans ce controle, l'endpoint d'invitation permettrait d'attribuer un role
  * PLATFORM a un simple collaborateur.
  */
-async function assertTenantRoles(roleIds: string[]): Promise<void> {
+async function assertTenantRoles(roleIds: string[], tenantId: string, actorUserId: string | undefined): Promise<void> {
   if (!roleIds || roleIds.length === 0) return;
   const roles = await prisma.role.findMany({
     where: { id: { in: roleIds } },
@@ -54,6 +57,11 @@ async function assertTenantRoles(roleIds: string[]): Promise<void> {
   }
   if (roles.some(role => role.scope !== 'TENANT')) {
     throw new BadRequestError("Seuls les roles d'agence peuvent etre attribues par invitation.");
+  }
+  // Inviter avec TENANT_ADMIN = attribuer ce rôle : réservé au super-admin et aux
+  // administrateurs de l'agence (un gestionnaire USERS_CREATE ne s'élève pas ainsi).
+  if (roles.some(role => role.key === TENANT_ADMIN_ROLE_KEY)) {
+    await assertActorMayTouchAdmin(actorUserId, tenantId);
   }
 }
 
@@ -269,9 +277,25 @@ export async function inviteCollaborator(data: InviteCollaboratorRequest) {
     if (existingMembership && existingMembership.status === MembershipStatus.ACTIVE) {
       throw new ConflictError('Cet utilisateur est déjà membre de ce tenant.');
     }
+
+    // Membre DÉSACTIVÉ : une invitation le réactiverait avec ses anciens rôles
+    // (administrateur compris) sans les contrôles de la réactivation. Il se
+    // réactive par l'action dédiée (POST /users/:userId/enable).
+    if (existingMembership && existingMembership.status === MembershipStatus.DISABLED) {
+      throw new ConflictError(
+        t("Ce membre est désactivé : réactivez-le depuis la liste des membres au lieu de l'inviter de nouveau.")
+      );
+    }
+
+    // Cible déjà administratrice de l'agence (invitation en attente d'un
+    // administrateur provisionné, par exemple) : l'inviter revient à lui rendre
+    // ce rôle, même avec une liste de rôles vide. Réservé à un administrateur.
+    if (await isTenantAdmin(existingUser.id, data.tenantId)) {
+      await assertActorMayTouchAdmin(data.invitedByUserId, data.tenantId);
+    }
   }
 
-  await assertTenantRoles(data.roleIds);
+  await assertTenantRoles(data.roleIds, data.tenantId, data.invitedByUserId);
 
   // Create invitation in database (write core shared with tenant-provisioning-service)
   const { invitation, token } = await prisma.$transaction(tx =>
@@ -288,7 +312,7 @@ export async function inviteCollaborator(data: InviteCollaboratorRequest) {
   const roleLabels = await resolveRoleLabels(data.roleIds);
   let emailSent = true;
   try {
-    await emailService.sendInviteEmail(
+    const sendResult = await emailService.sendInviteEmail(
       email,
       token, // Send plain token, not hash
       tenant.name,
@@ -296,11 +320,21 @@ export async function inviteCollaborator(data: InviteCollaboratorRequest) {
       invitation.expiresAt,
       data.tenantId
     );
-    logger.info('Invitation email sent', {
-      invitationId: invitation.id,
-      email,
-      tenantId: data.tenantId
-    });
+    if (sendResult?.sent === false) {
+      // Adresse refusée (FRI-08) : aucun e-mail parti, l'invitation reste créée.
+      emailSent = false;
+      logger.warn('Invitation email not sent', {
+        invitationId: invitation.id,
+        reason: sendResult.reason,
+        tenantId: data.tenantId
+      });
+    } else {
+      logger.info('Invitation email sent', {
+        invitationId: invitation.id,
+        email,
+        tenantId: data.tenantId
+      });
+    }
   } catch (error) {
     emailSent = false;
     logger.error('Failed to send invitation email', {
@@ -397,6 +431,51 @@ async function isNeverActivatedProvisionedAdmin(
   return inviter?.globalRole === 'SUPER_ADMIN' && inviter.isActive !== false;
 }
 
+/** Refus d'acceptation pour un membre désactivé de l'agence. */
+function disabledMemberMessage(): string {
+  return t("Votre accès à cette agence a été désactivé : demandez à l'agence de le réactiver.");
+}
+
+/**
+ * L'auteur d'une invitation doit avoir encore accès à l'agence au moment de
+ * l'acceptation : compte actif, et appartenance ACTIVE dans l'agence (sauf
+ * super-admin, de portée plateforme). Une invitation ne survit pas à la
+ * désactivation de son auteur.
+ */
+async function assertInviterStillActive(invitedBy: string, tenantId: string): Promise<void> {
+  const refusal = () =>
+    new ConflictError(t("Cette invitation n'est plus valable : son auteur n'a plus accès à l'agence."));
+  const inviter = await prisma.user.findUnique({
+    where: { id: invitedBy },
+    select: { globalRole: true, isActive: true }
+  });
+  if (!inviter || inviter.isActive === false) throw refusal();
+  if (inviter.globalRole === GlobalRole.SUPER_ADMIN) return;
+  const inviterMembership = await prisma.membership.findUnique({
+    where: { userId_tenantId: { userId: invitedBy, tenantId } },
+    select: { status: true }
+  });
+  if (inviterMembership?.status !== MembershipStatus.ACTIVE) throw refusal();
+}
+
+/**
+ * L'acceptation fait de l'invité un administrateur (rôle TENANT_ADMIN dans
+ * l'invitation, ou rôle déjà porté par un compte en attente) : l'auteur doit
+ * être super-admin ou administrateur ACTIF de l'agence au moment de l'acceptation.
+ */
+async function assertInviterMayGrantAdmin(
+  invitation: { invitedBy: string; tenantId: string },
+  client: Pick<PrismaTransactionClient, 'role'>,
+  roleIds: string[],
+  targetAlreadyAdmin: boolean
+): Promise<void> {
+  const grantsAdmin =
+    roleIds.length > 0 && (await client.role.count({ where: { id: { in: roleIds }, key: TENANT_ADMIN_ROLE_KEY } })) > 0;
+  if (!grantsAdmin && !targetAlreadyAdmin) return;
+  // Super-admin, ou administrateur ACTIF de l'agence (voir `actorMayTouchAdmin`).
+  await assertActorMayTouchAdmin(invitation.invitedBy, invitation.tenantId);
+}
+
 /** `b•••@gmail.com` : premiere lettre + domaine, jamais l'adresse complete. */
 function maskInvitedEmail(email: string): string {
   const at = email.lastIndexOf('@');
@@ -480,7 +559,14 @@ export async function acceptInvitation(data: AcceptInvitationRequest) {
     );
   }
 
+  // L'auteur de l'invitation doit avoir encore accès à l'agence (invitation
+  // posée avant sa désactivation) : contrôlé avant toute création de compte.
+  await assertInviterStillActive(invitation.invitedBy, invitation.tenantId);
+
   const isNewUser = !user;
+  // Compte existant portant déjà TENANT_ADMIN dans l'agence (administrateur
+  // provisionné en attente) : l'acceptation l'active en administrateur.
+  let targetAlreadyAdmin = false;
   // Vrai seulement pour l'administrateur d'une agence fraichement creee par
   // le super-admin : son compte n'a jamais ete active (voir plus bas).
   let activatesProvisionedAdmin = false;
@@ -536,7 +622,14 @@ export async function acceptInvitation(data: AcceptInvitationRequest) {
         });
         throw new ConflictError('Vous êtes déjà membre de ce tenant.');
       }
+      // Une invitation ne réactive JAMAIS un membre désactivé (il retrouverait
+      // ses anciens rôles, administrateur compris, sans les contrôles de la
+      // réactivation) : seule l'action dédiée de l'agence le réactive.
+      if (existingMembership.status === MembershipStatus.DISABLED) {
+        throw new ConflictError(disabledMemberMessage());
+      }
     }
+    targetAlreadyAdmin = await isTenantAdmin(user.id, invitation.tenantId);
     // Rien d'autre a ecrire sur le compte : ni mot de passe, ni nom, ni
     // statut — la session prouve deja que le compte est actif et verifie.
   } else {
@@ -611,6 +704,21 @@ export async function acceptInvitation(data: AcceptInvitationRequest) {
       }
     }
 
+    // Rejoué dans la transaction : un membre désactivé entre-temps n'est pas
+    // réactivé par l'invitation.
+    const current = await tx.membership.findUnique({
+      where: { userId_tenantId: { userId: activatedUser.id, tenantId: invitation.tenantId } },
+      select: { status: true }
+    });
+    if (current?.status === MembershipStatus.DISABLED) {
+      throw new ConflictError(disabledMemberMessage());
+    }
+
+    // Une invitation TENANT_ADMIN (ou l'activation d'un compte qui porte déjà
+    // ce rôle) posée par un non-administrateur, ou par un administrateur
+    // rétrogradé ou désactivé depuis, n'élève personne à l'acceptation.
+    await assertInviterMayGrantAdmin(invitation, tx, invitation.roleIds, targetAlreadyAdmin);
+
     const upserted = await tx.membership.upsert({
       where: {
         userId_tenantId: {
@@ -647,6 +755,10 @@ export async function acceptInvitation(data: AcceptInvitationRequest) {
     }
     return upserted;
   });
+
+  // Appartenance devenue ACTIVE et rôles posés : les permissions en cache
+  // (vides tant que l'appartenance était en attente) sont recalculées.
+  invalidateAllUserPermissionCache(user.id);
 
   if (invitation.roleIds.length > 0) {
     logger.info('Invitation roles assigned', {
@@ -739,9 +851,10 @@ export async function resendInvitation(invitationId: string, tenantId: string, a
   expiresAt.setDate(expiresAt.getDate() + 7); // Reset to 7 days
 
   // Send email
+  let emailSent = true;
   try {
     const roleLabels = await resolveRoleLabels(invitation.roleIds);
-    await emailService.sendInviteEmail(
+    const sendResult = await emailService.sendInviteEmail(
       invitation.email,
       token,
       invitation.tenant.name,
@@ -749,11 +862,17 @@ export async function resendInvitation(invitationId: string, tenantId: string, a
       expiresAt,
       invitation.tenantId
     );
-    logger.info('Invitation email resent', {
-      invitationId,
-      email: invitation.email,
-      actorUserId
-    });
+    if (sendResult?.sent === false) {
+      // Adresse refusée (FRI-08) : rien n'est parti ; le lien reste affiché au gestionnaire.
+      emailSent = false;
+      logger.warn('Invitation email not resent', { invitationId, reason: sendResult.reason, actorUserId });
+    } else {
+      logger.info('Invitation email resent', {
+        invitationId,
+        email: invitation.email,
+        actorUserId
+      });
+    }
   } catch (error) {
     logger.error('Failed to resend invitation email', {
       invitationId,
@@ -783,10 +902,10 @@ export async function resendInvitation(invitationId: string, tenantId: string, a
 
   // acceptUrl/emailSent : ajoutes pour F2 (le super-admin doit pouvoir copier
   // le lien et voir l'etat de l'envoi sans deviner). On atteint ce point
-  // uniquement si l'e-mail est parti (sinon le catch ci-dessus a deja leve) :
-  // emailSent vaut donc toujours true ici. Champs ajoutes en fin de reponse,
-  // aucun appelant existant ne lisait plus que `expiresAt`.
-  return { expiresAt, acceptUrl: buildInvitationAcceptUrl(token), emailSent: true };
+  // sans erreur de transport (sinon le catch ci-dessus a deja leve) ; emailSent
+  // vaut false si l'adresse a ete refusee (FRI-08). Champs ajoutes en fin de
+  // reponse, aucun appelant existant ne lisait plus que `expiresAt`.
+  return { expiresAt, acceptUrl: buildInvitationAcceptUrl(token), emailSent };
 }
 
 /**

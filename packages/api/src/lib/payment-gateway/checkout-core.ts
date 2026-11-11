@@ -184,6 +184,8 @@ export interface NormalizedProviderStatus {
   providerTransactionId: string | null;
   /** Entier tel que renvoyé par l'agrégateur, `null` si absent. */
   amount: number | null;
+  /** Devise rapportée par l'agrégateur, absente si non communiquée. */
+  currency?: string | null;
   providerFees: number | null;
   serviceName: string | null;
   /** Moyen réel déduit de `serviceName` (`OTHER` si inconnu ou carte). */
@@ -202,6 +204,7 @@ export function normalizeProviderStatus(ps: ProviderStatus): NormalizedProviderS
     state: ps.mappedState,
     providerTransactionId: ps.transactionId,
     amount: ps.amount,
+    currency: ps.currency ?? null,
     providerFees: ps.fees,
     serviceName: ps.serviceName,
     operator: operatorFromServiceName(ps.serviceName),
@@ -240,7 +243,70 @@ export interface DecideCheckoutTransitionInput {
   currentStatus: string;
   /** Montant attendu, en FCFA (arrondi à l'entier pour la comparaison). */
   expectedAmount: number;
-  provider: Pick<NormalizedProviderStatus, 'state' | 'amount' | 'rawState'>;
+  provider: Pick<NormalizedProviderStatus, 'state' | 'amount' | 'rawState'> & { currency?: string | null };
+  /** Devise attendue (défaut `XOF`). `FCFA` et `CFA` sont tolérés comme alias de `XOF`. */
+  expectedCurrency?: string;
+}
+
+const DEFAULT_EXPECTED_CURRENCY = 'XOF';
+
+/** Motif de revue d'un succès rapporté SANS montant (texte stocké sur la tentative). */
+export const AMOUNT_NOT_PROVIDED_REVIEW_REASON =
+  'Montant non communiqué par PaySecureHub : paiement à vérifier manuellement.';
+
+/** Début du motif de revue d'un succès rapporté dans une autre devise. */
+export const CURRENCY_MISMATCH_REVIEW_PREFIX = 'Devise reçue (';
+
+/** Ajouté au motif quand la revérification automatique d'une revue s'arrête (borne de 48 h). */
+export const REVIEW_RECHECK_ABANDONED_SUFFIX =
+  ' Revérification automatique arrêtée après 48 h : à vérifier auprès de PaySecureHub.';
+
+/**
+ * Une tentative en REVIEW peut-elle être revérifiée par la tâche planifiée ?
+ * Seulement un succès sans montant ou dans une autre devise : l'agrégateur peut
+ * compléter sa réponse ensuite. Jamais un montant divergent ni un état
+ * contraire (décision humaine), ni une revérification déjà abandonnée.
+ */
+export function isRecheckableReviewReason(reason: string | null | undefined): boolean {
+  if (!reason || reason.endsWith(REVIEW_RECHECK_ABANDONED_SUFFIX)) return false;
+  return reason === AMOUNT_NOT_PROVIDED_REVIEW_REASON || reason.startsWith(CURRENCY_MISMATCH_REVIEW_PREFIX);
+}
+
+/** Alias du franc CFA de l'Ouest (XOF), après normalisation ; `952` est son code numérique ISO 4217. XAF reste volontairement distinct. */
+const XOF_ALIASES = new Set(['XOF', 'FCFA', 'CFA', 'FRANCCFA', 'FRANCSCFA', '952']);
+
+function canonicalCurrency(code: unknown): string {
+  const normalized = String(code)
+    .toUpperCase()
+    .replace(/[\s.\-_]/g, '');
+  return XOF_ALIASES.has(normalized) ? 'XOF' : normalized;
+}
+
+/**
+ * Motif de revue d'un succès fournisseur qu'on ne peut pas encaisser tel quel
+ * (échec fermé), ou `null` si montant et devise concordent : montant absent,
+ * montant différent, devise différente (devise absente tolérée).
+ */
+export function successReviewReason(
+  provider: { amount: number | null; currency?: string | null },
+  expectedAmount: number,
+  expectedCurrency: string = DEFAULT_EXPECTED_CURRENCY
+): string | null {
+  if (provider.amount === null) {
+    return AMOUNT_NOT_PROVIDED_REVIEW_REASON;
+  }
+  if (Math.round(provider.amount) !== Math.round(expectedAmount)) {
+    return `Montant reçu (${provider.amount}) différent du montant attendu (${expectedAmount}).`;
+  }
+  const received: unknown = provider.currency;
+  const hasCurrency =
+    typeof received === 'number' ? Number.isFinite(received) : typeof received === 'string' && received.trim() !== '';
+  if (hasCurrency) {
+    if (canonicalCurrency(received) !== canonicalCurrency(expectedCurrency)) {
+      return `${CURRENCY_MISMATCH_REVIEW_PREFIX}${received}) différente de la devise attendue (${expectedCurrency}).`;
+    }
+  }
+  return null;
 }
 
 /** Motif de revue « état contraire après un paiement déjà encaissé » (règle 5), réutilisable par l'appelant. */
@@ -255,7 +321,8 @@ export function contraryAfterSuccessReviewReason(rawState: string | null): strin
  * - `TOUCH`   : en attente chez l'agrégateur, ou conclusion déjà écrite
  *               (rejeu idempotent, règle 6) : seul le suivi est mis à jour.
  * - `REVIEW`  : un succès déjà conclu ne redescend jamais (règle 5), ou le
- *               montant payé diffère du montant attendu.
+ *               montant payé est absent ou diffère du montant attendu, ou la
+ *               devise rapportée diffère de la devise attendue (échec fermé).
  * - `SUCCEED` / `FAIL` / `CANCEL` : l'appelant exécute la transition, sous
  *               claim atomique, dans la même transaction que ses écritures métier.
  *
@@ -275,12 +342,8 @@ export function decideCheckoutTransition(input: DecideCheckoutTransitionInput): 
   }
 
   if (provider.state === 'SUCCESS') {
-    if (provider.amount !== null && Math.round(provider.amount) !== Math.round(expectedAmount)) {
-      return {
-        action: 'REVIEW',
-        reviewReason: `Montant reçu (${provider.amount}) différent du montant attendu (${expectedAmount}).`
-      };
-    }
+    const reviewReason = successReviewReason(provider, expectedAmount, input.expectedCurrency);
+    if (reviewReason) return { action: 'REVIEW', reviewReason };
     return { action: 'SUCCEED' };
   }
 

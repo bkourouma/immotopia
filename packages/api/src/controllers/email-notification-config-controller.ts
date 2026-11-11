@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { logger } from '../utils/logger';
+import { BadRequestError } from '../middleware/error-middleware';
 import {
   listEmailNotificationConfigs,
   updateEmailNotificationConfig,
@@ -55,6 +56,11 @@ export async function updateHandler(req: Request, res: Response): Promise<void> 
     });
     res.json({ success: true, data: updated });
   } catch (error: any) {
+    // Valeur refusee par l'assainissement (TEN-05) : erreur typee du service, rendue en 400.
+    if (error instanceof BadRequestError) {
+      res.status(400).json({ success: false, message: error.message });
+      return;
+    }
     logger.error('Update email notification config', { error: error?.message });
     res.status(500).json({
       success: false,

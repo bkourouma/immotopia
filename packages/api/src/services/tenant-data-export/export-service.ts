@@ -6,6 +6,7 @@ import { logAuditEvent, recordAuditEvent } from '../audit-service';
 import { AuditActionKey } from '../../types/audit-types';
 import { AppError, ConflictError, NotFoundError } from '../../middleware/error-middleware';
 import { InsufficientDiskSpaceError, buildTenantArchive, type ExportDataSource } from './archive-builder';
+import { charSet, trimCharsLinear } from '../../utils/trim-chars';
 import { EXPORT_TTL_DAYS, defaultFileRoots, exportArchivePath, exportStagingDir, isInsideExportsRoot } from './storage';
 
 /**
@@ -332,12 +333,14 @@ export async function getTenantDataExport(tenantId: string, exportId: string): P
   return (await toDtos([await findExport(tenantId, exportId)]))[0];
 }
 
-function archiveFileName(slug: string, date: Date): string {
-  const safeSlug =
-    slug
-      .toLowerCase()
-      .replace(/[^a-z0-9-]+/g, '-')
-      .replace(/^-+|-+$/g, '') || 'agence';
+const isDash = charSet('-');
+
+/**
+ * Nom de l'archive. Le slug peut porter une longue suite de tirets : le
+ * rognage est linéaire (`/^-+|-+$/g` était quadratique sur des tirets internes).
+ */
+export function archiveFileName(slug: string, date: Date): string {
+  const safeSlug = trimCharsLinear(slug.toLowerCase().replace(/[^a-z0-9-]+/g, '-'), isDash) || 'agence';
   return `immotopia-export-${safeSlug}-${date.toISOString().slice(0, 10)}.zip`;
 }
 

@@ -106,17 +106,40 @@ export const requireTenantAccess = async (req: Request, res: Response, next: Nex
       return;
     }
 
-    // Super admin bypass - always allow access
+    // Super admin bypass : le rôle du jeton n'est qu'une indication. Il est relu
+    // en base (comme `requireSuperAdmin`) : un compte rétrogradé ou désactivé
+    // depuis l'émission du jeton (valable jusqu'à son expiration) perd le
+    // contournement tout de suite et suit le cheminement normal (adhésion).
+    // Erreur de lecture : refus uniforme (fail-closed), sans détail.
     if (req.user.globalRole === 'SUPER_ADMIN') {
-      req.tenantContext = {
-        tenantId: tenantId as string,
-        role: null,
-        isCollaborator: true, // Super admin has all access
-        isClient: false,
-        isSuperAdmin: true
-      };
-      proceedWithTenantContext(req, next);
-      return;
+      let account: { globalRole: string; isActive: boolean } | null;
+      try {
+        account = await prisma.user.findUnique({
+          where: { id: req.user.userId },
+          select: { globalRole: true, isActive: true }
+        });
+      } catch (lookupError) {
+        console.error('Tenant access check: relecture du super-admin impossible:', lookupError);
+        denyTenantAccess(res);
+        return;
+      }
+      // Compte désactivé depuis l'émission du jeton : refus uniforme, sans retomber
+      // sur une éventuelle adhésion (contre-audit PR #205).
+      if (account && !account.isActive) {
+        denyTenantAccess(res);
+        return;
+      }
+      if (account?.globalRole === 'SUPER_ADMIN' && account.isActive) {
+        req.tenantContext = {
+          tenantId: tenantId as string,
+          role: null,
+          isCollaborator: true, // Super admin has all access
+          isClient: false,
+          isSuperAdmin: true
+        };
+        proceedWithTenantContext(req, next);
+        return;
+      }
     }
 
     // Identifiant non textuel (tableau ou objet venu de la query ou du body) :

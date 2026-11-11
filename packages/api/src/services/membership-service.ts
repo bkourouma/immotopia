@@ -2,7 +2,7 @@ import { escapeLike } from '../utils/like-escape';
 import { RESERVED_ROLE_KEYS } from '../lib/patrimoine/personal-permissions';
 import { prisma, PrismaTransactionClient } from '../utils/database';
 import { logger } from '../utils/logger';
-import { MembershipStatus } from '@prisma/client';
+import { InvitationStatus, MembershipStatus } from '@prisma/client';
 import { hashPassword, validatePasswordStrength } from '../utils/password-utils';
 import { recordAuditEvent, AuditActionKey } from './audit-service';
 import { invalidateAllUserPermissionCache } from './permission-service';
@@ -10,22 +10,32 @@ import { emailService } from './email-service';
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../middleware/error-middleware';
 import crypto from 'crypto';
 import { t } from '../i18n';
-
-/** Rôle d'administrateur d'agence (voir `types/rbac-types.ts`). */
-const TENANT_ADMIN_ROLE_KEY = 'TENANT_ADMIN';
+import {
+  TENANT_ADMIN_ROLE_KEY,
+  actorMayTouchAdmin,
+  assertActorMayTouchAdmin,
+  assertActorMayTouchSuperAdmin,
+  isSharedOrPlatformAccount,
+  isTenantAdmin
+} from './tenant-admin-guard';
 
 /**
  * Refuse l'opération si `userId` est administrateur de l'agence et qu'aucun autre
  * administrateur ACTIF (membre actif, compte actif) ne resterait : l'agence se
  * retrouverait sans personne pour la gérer. Sans effet pour un non-administrateur.
+ * `targetIsAdmin` évite de recompter quand l'appelant le sait déjà.
  */
-async function assertNotLastActiveAdmin(userId: string, tenantId: string, message: string): Promise<void> {
-  const targetIsAdmin = await prisma.userRole.count({
-    where: { userId, tenantId, role: { key: TENANT_ADMIN_ROLE_KEY } }
-  });
-  if (targetIsAdmin === 0) return;
+async function assertNotLastActiveAdmin(
+  userId: string,
+  tenantId: string,
+  message: string,
+  targetIsAdmin?: boolean,
+  client: Pick<PrismaTransactionClient, 'userRole'> = prisma
+): Promise<void> {
+  const isAdmin = targetIsAdmin ?? (await isTenantAdmin(userId, tenantId, client));
+  if (!isAdmin) return;
 
-  const otherActiveAdmins = await prisma.userRole.count({
+  const otherActiveAdmins = await client.userRole.count({
     where: {
       tenantId,
       userId: { not: userId },
@@ -39,18 +49,50 @@ async function assertNotLastActiveAdmin(userId: string, tenantId: string, messag
 }
 
 /**
- * Revoke every active refresh token of a user inside the caller's transaction,
- * so the revocation commits together with its audit trace. Mirrors
- * `revokeUserSessions` (middleware/session-invalidation), which uses the global
- * client and cannot join a transaction.
+ * Verrou consultatif de transaction propre aux administrateurs d'une agence :
+ * deux changements qui peuvent retirer un administrateur (rôles, désactivation)
+ * se suivent, et la règle « au moins un administrateur actif » est rejouée sous
+ * ce verrou (sinon deux administrateurs se rétrogradant l'un l'autre en même
+ * temps laissaient l'agence sans administrateur). Relâché au commit/rollback.
  */
-async function revokeUserSessionsInTx(tx: PrismaTransactionClient, userId: string): Promise<number> {
+async function lockTenantAdminsTx(tx: PrismaTransactionClient, tenantId: string): Promise<void> {
+  const key = `tenant-admins:${tenantId}`;
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`;
+}
+
+/**
+ * Revoke every active refresh token of a user inside the caller's transaction,
+ * so the revocation and its SESSIONS_REVOKED audit trace commit together.
+ * Mirrors `revokeUserSessions` (middleware/session-invalidation), which uses the
+ * global client and cannot join a transaction.
+ * Toujours faite, compte partagé ou non (une déconnexion forcée est sans danger
+ * pour les autres agences, et un compte qui se fabriquerait une appartenance
+ * ailleurs ne doit pas y échapper) ; seule exception : un super-admin, dont les
+ * sessions sont de portée plateforme (`skipped` vaut alors true).
+ */
+async function revokeUserSessionsInTx(
+  tx: PrismaTransactionClient,
+  params: { userId: string; tenantId: string; targetGlobalRole: string | null | undefined; actorUserId?: string }
+): Promise<{ skipped: boolean; count: number }> {
+  const { userId, tenantId, targetGlobalRole, actorUserId } = params;
+  if (targetGlobalRole === 'SUPER_ADMIN') {
+    logger.info('Session revocation skipped for platform account', { userId, tenantId });
+    return { skipped: true, count: 0 };
+  }
   const result = await tx.refreshToken.updateMany({
     where: { userId, revoked: false },
     data: { revoked: true, revokedAt: new Date() }
   });
+  await recordAuditEvent(tx, {
+    actorUserId: actorUserId ?? null,
+    tenantId,
+    actionKey: AuditActionKey.SESSIONS_REVOKED,
+    entityType: 'User',
+    entityId: userId,
+    payload: { tokensRevoked: result.count }
+  });
   logger.info('Revoked user sessions', { userId, tokensRevoked: result.count });
-  return result.count;
+  return { skipped: false, count: result.count };
 }
 
 /**
@@ -259,6 +301,11 @@ export async function updateMemberRoles(
   data: UpdateMemberRolesRequest,
   actorUserId: string
 ) {
+  // Personne ne modifie ses propres rôles (auto-élévation ou auto-rétrogradation).
+  if (userId === actorUserId) {
+    throw new ForbiddenError(t('Vous ne pouvez pas modifier vos propres rôles.'));
+  }
+
   // Verify membership exists
   const membership = await prisma.membership.findUnique({
     where: {
@@ -266,12 +313,15 @@ export async function updateMemberRoles(
         userId,
         tenantId
       }
-    }
+    },
+    include: { user: { select: { globalRole: true } } }
   });
 
   if (!membership) {
     throw new NotFoundError('Membre introuvable.');
   }
+
+  await assertActorMayTouchSuperAdmin(membership.user?.globalRole, actorUserId);
 
   // Verify all roles exist and are tenant-scoped
   const roles = await prisma.role.findMany({
@@ -286,17 +336,45 @@ export async function updateMemberRoles(
     throw new BadRequestError('Un ou plusieurs roles sont invalides ou ne sont pas des roles tenant.');
   }
 
+  // Attribuer/retirer TENANT_ADMIN, ou modifier un compte qui le porte : réservé
+  // à un administrateur de l'agence ou au super-admin (un gestionnaire garde
+  // l'édition des rôles non-administrateur des membres non-administrateurs).
+  const targetIsAdmin = await isTenantAdmin(userId, tenantId);
+  const grantsAdmin = roles.some(role => role.key === TENANT_ADMIN_ROLE_KEY);
+  if (targetIsAdmin || grantsAdmin) {
+    await assertActorMayTouchAdmin(actorUserId, tenantId);
+  }
+
   // Retirer le rôle d'administrateur au dernier administrateur actif laisserait l'agence sans gestionnaire.
-  if (!roles.some(role => role.key === TENANT_ADMIN_ROLE_KEY)) {
+  if (!grantsAdmin) {
     await assertNotLastActiveAdmin(
       userId,
       tenantId,
-      "Impossible de retirer le rôle d'administrateur au dernier administrateur actif de l'agence."
+      "Impossible de retirer le rôle d'administrateur au dernier administrateur actif de l'agence.",
+      targetIsAdmin
     );
   }
 
   // Critical action: roles swap and audit trace commit together or not at all.
   await prisma.$transaction(async tx => {
+    // Contrôles rejoués sous le verrou des administrateurs de l'agence : entre
+    // la lecture ci-dessus et l'écriture, un autre administrateur a pu être
+    // rétrogradé, la cible promue ou l'acteur rétrogradé (TOCTOU).
+    await lockTenantAdminsTx(tx, tenantId);
+    const targetIsAdminNow = await isTenantAdmin(userId, tenantId, tx);
+    if (targetIsAdminNow || grantsAdmin) {
+      await assertActorMayTouchAdmin(actorUserId, tenantId);
+    }
+    if (!grantsAdmin) {
+      await assertNotLastActiveAdmin(
+        userId,
+        tenantId,
+        "Impossible de retirer le rôle d'administrateur au dernier administrateur actif de l'agence.",
+        targetIsAdminNow,
+        tx
+      );
+    }
+
     // Remove existing tenant roles for this user in this tenant
     await tx.userRole.deleteMany({
       where: {
@@ -360,25 +438,50 @@ export async function disableMember(userId: string, tenantId: string, actorUserI
         userId,
         tenantId
       }
-    }
+    },
+    include: { user: { select: { globalRole: true } } }
   });
 
   if (!membership) {
     throw new NotFoundError('Membre introuvable.');
   }
 
+  await assertActorMayTouchSuperAdmin(membership.user?.globalRole, actorUserId);
+
   if (membership.status === MembershipStatus.DISABLED) {
     throw new ConflictError('Ce membre est deja desactive.');
+  }
+
+  const targetIsAdmin = await isTenantAdmin(userId, tenantId);
+  if (targetIsAdmin) {
+    await assertActorMayTouchAdmin(actorUserId, tenantId);
   }
 
   await assertNotLastActiveAdmin(
     userId,
     tenantId,
-    "Impossible de désactiver le dernier administrateur actif de l'agence."
+    "Impossible de désactiver le dernier administrateur actif de l'agence.",
+    targetIsAdmin
   );
 
   // Update membership status (critical action: audit trace in the same transaction)
   const updated = await prisma.$transaction(async tx => {
+    // Contrôles rejoués sous le verrou des administrateurs (même verrou que
+    // `updateMemberRoles`) : statut d'administrateur de la cible, droit de
+    // l'acteur, règle du dernier administrateur actif.
+    await lockTenantAdminsTx(tx, tenantId);
+    const targetIsAdminNow = await isTenantAdmin(userId, tenantId, tx);
+    if (targetIsAdminNow) {
+      await assertActorMayTouchAdmin(actorUserId, tenantId);
+    }
+    await assertNotLastActiveAdmin(
+      userId,
+      tenantId,
+      "Impossible de désactiver le dernier administrateur actif de l'agence.",
+      targetIsAdminNow,
+      tx
+    );
+
     const result = await tx.membership.update({
       where: {
         userId_tenantId: {
@@ -391,8 +494,21 @@ export async function disableMember(userId: string, tenantId: string, actorUserI
       }
     });
 
-    // Revoke all sessions for this user
-    await revokeUserSessionsInTx(tx, userId);
+    // Les invitations encore en attente émises par ce membre tombent avec lui :
+    // une invitation (administrateur ou non) ne survit pas à la désactivation
+    // de son auteur.
+    await tx.invitation.updateMany({
+      where: { tenantId, invitedBy: userId, status: InvitationStatus.PENDING },
+      data: { status: InvitationStatus.REVOKED, revokedAt: new Date() }
+    });
+
+    // Revoke all sessions for this user (sauf super-admin, portée plateforme)
+    await revokeUserSessionsInTx(tx, {
+      userId,
+      tenantId,
+      targetGlobalRole: membership.user?.globalRole,
+      actorUserId
+    });
 
     await recordAuditEvent(tx, {
       actorUserId,
@@ -430,15 +546,22 @@ export async function enableMember(userId: string, tenantId: string, actorUserId
         userId,
         tenantId
       }
-    }
+    },
+    include: { user: { select: { globalRole: true } } }
   });
 
   if (!membership) {
-    throw new Error('Membre introuvable.');
+    throw new NotFoundError('Membre introuvable.');
   }
 
+  await assertActorMayTouchSuperAdmin(membership.user?.globalRole, actorUserId);
+
   if (membership.status === MembershipStatus.ACTIVE) {
-    throw new Error('Ce membre est deja actif.');
+    throw new ConflictError('Ce membre est deja actif.');
+  }
+
+  if (await isTenantAdmin(userId, tenantId)) {
+    await assertActorMayTouchAdmin(actorUserId, tenantId);
   }
 
   // Update membership status (critical action: audit trace in the same transaction)
@@ -517,21 +640,13 @@ export async function resetMemberPassword(
 
   // Le mot de passe est GLOBAL (table User) : l'écraser depuis une agence
   // toucherait aussi les autres agences du compte, ou un super-admin. Pour ces
-  // comptes protégés, seul le lien à usage unique est émis ; le hash n'est pas
-  // modifié et les sessions ne sont pas révoquées (elles sont communes à toutes
-  // les agences du compte).
+  // comptes protégés, seul le lien à usage unique est émis et le hash n'est pas
+  // modifié. Les sessions, elles, sont révoquées quand même (sauf super-admin) :
+  // une déconnexion forcée est sans danger pour les autres agences.
   // Est aussi protégé : un compte portant un rôle de portée plateforme ou d'une
   // autre agence, un profil client dans une autre agence, ou une appartenance
   // (même non active : invitation, désactivée) ailleurs.
-  const [otherMemberships, foreignRoles, foreignClients] = await Promise.all([
-    prisma.membership.count({ where: { userId, tenantId: { not: tenantId } } }),
-    prisma.userRole.count({
-      where: { userId, OR: [{ tenantId: null }, { tenantId: { not: tenantId } }] }
-    }),
-    prisma.tenantClient.count({ where: { userId, tenantId: { not: tenantId } } })
-  ]);
-  const protectedAccount =
-    membership.user.globalRole === 'SUPER_ADMIN' || otherMemberships > 0 || foreignRoles > 0 || foreignClients > 0;
+  const protectedAccount = await isSharedOrPlatformAccount(prisma, userId, tenantId, membership.user.globalRole);
 
   if (protectedAccount && newPassword) {
     throw new ForbiddenError(
@@ -542,26 +657,14 @@ export async function resetMemberPassword(
   }
 
   // Un administrateur d'agence ne peut être touché que par le super-admin ou un
-  // administrateur de la même agence : sinon (gestionnaire), le compte est traité
-  // comme protégé. Pas de mot de passe imposé (on se connecterait à sa place),
-  // et ni écrasement du hash ni révocation de ses sessions : seul le lien de
-  // réinitialisation, envoyé à son adresse, est émis.
-  let adminShielded = false;
-  const targetIsAdmin = await prisma.userRole.count({
-    where: { userId, tenantId, role: { key: TENANT_ADMIN_ROLE_KEY } }
-  });
-  if (targetIsAdmin > 0) {
-    let actorMayTouchAdmin = false;
-    if (actorUserId) {
-      const actor = await prisma.user.findUnique({ where: { id: actorUserId }, select: { globalRole: true } });
-      actorMayTouchAdmin =
-        actor?.globalRole === 'SUPER_ADMIN' ||
-        (await prisma.userRole.count({
-          where: { userId: actorUserId, tenantId, role: { key: TENANT_ADMIN_ROLE_KEY } }
-        })) > 0;
-    }
-    adminShielded = !actorMayTouchAdmin;
-  }
+  // administrateur ACTIF de la même agence : sinon (gestionnaire), le compte est
+  // traité comme protégé. Pas de mot de passe imposé (on se connecterait à sa
+  // place), et ni écrasement du hash ni révocation de ses sessions (un
+  // gestionnaire ne déconnecte pas un administrateur, comme pour
+  // `revokeMemberSessions`) : seul le lien de réinitialisation, envoyé à son
+  // adresse, est émis.
+  const targetIsAdmin = await isTenantAdmin(userId, tenantId);
+  const adminShielded = targetIsAdmin && !(await actorMayTouchAdmin(actorUserId, tenantId));
   if (adminShielded && newPassword) {
     throw new ForbiddenError(
       t(
@@ -598,16 +701,24 @@ export async function resetMemberPassword(
 
   // Critical action: password change, session revocation, reset token and
   // audit trace commit together or not at all.
-  await prisma.$transaction(async tx => {
+  const sessionsRevoked = await prisma.$transaction(async tx => {
     if (passwordHash) {
       await tx.user.update({
         where: { id: userId },
         data: { passwordHash }
       });
-
-      // Revoke all sessions
-      await revokeUserSessionsInTx(tx, userId);
     }
+
+    // Révocation des sessions : toujours, sauf administrateur protégé d'un
+    // gestionnaire et super-admin (portée plateforme, sauté par la fonction).
+    const revocation = adminShielded
+      ? { skipped: true, count: 0 }
+      : await revokeUserSessionsInTx(tx, {
+          userId,
+          tenantId,
+          targetGlobalRole: membership.user.globalRole,
+          actorUserId
+        });
 
     await tx.passwordResetToken.updateMany({
       where: { userId, used: false },
@@ -627,6 +738,7 @@ export async function resetMemberPassword(
         entityId: userId
       });
     }
+    return !revocation.skipped;
   });
 
   // Send password reset notification email
@@ -649,7 +761,8 @@ export async function resetMemberPassword(
   return {
     password: generated ? undefined : password,
     resetLinkSent: true,
-    sessionsRevoked: !(protectedAccount || adminShielded)
+    passwordReplaced: passwordHash !== null,
+    sessionsRevoked
   };
 }
 
@@ -666,27 +779,40 @@ export async function revokeMemberSessions(userId: string, tenantId: string, act
         userId,
         tenantId
       }
-    }
+    },
+    select: { id: true, user: { select: { globalRole: true } } }
   });
 
   if (!membership) {
-    throw new Error('Membre introuvable.');
+    throw new NotFoundError('Membre introuvable.');
   }
 
-  // Revoke all sessions (critical action: audit trace in the same transaction)
-  await prisma.$transaction(async tx => {
-    await revokeUserSessionsInTx(tx, userId);
+  // Les sessions d'un super-admin sont de portée plateforme : une agence n'y touche pas.
+  if (membership.user.globalRole === 'SUPER_ADMIN') {
+    throw new ForbiddenError(
+      t("Les sessions d'un super-administrateur ne peuvent pas être révoquées depuis une agence.")
+    );
+  }
 
-    await recordAuditEvent(tx, {
-      actorUserId,
+  if (await isTenantAdmin(userId, tenantId)) {
+    await assertActorMayTouchAdmin(actorUserId, tenantId);
+  }
+
+  // Revoke all sessions (critical action: SESSIONS_REVOKED audit trace in the
+  // same transaction). Toujours faite, même pour un compte présent dans d'autres
+  // agences : sinon le titulaire d'une session volée y échapperait en se créant
+  // une appartenance ailleurs (le super-admin est refusé plus haut).
+  const { count: tokensRevoked } = await prisma.$transaction(tx =>
+    revokeUserSessionsInTx(tx, {
+      userId,
       tenantId,
-      actionKey: AuditActionKey.SESSIONS_REVOKED,
-      entityType: 'User',
-      entityId: userId
-    });
-  });
+      targetGlobalRole: membership.user.globalRole,
+      actorUserId
+    })
+  );
 
-  logger.info('Member sessions revoked', { userId, tenantId, actorUserId });
+  logger.info('Member sessions revoked', { userId, tenantId, actorUserId, tokensRevoked });
+  return { sessionsRevoked: true, tokensRevoked };
 }
 
 /**

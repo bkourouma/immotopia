@@ -617,14 +617,18 @@ function buildDocxBuffer(content: string): Buffer {
 }
 
 function plainText(xml: string): string {
-  return xml
-    .replace(/<\/w:p>/g, '\n')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'");
+  return (
+    xml
+      .replace(/<\/w:p>/g, '\n')
+      // `<[^<>]*>` (linéaire) et non `<[^>]+>` (quadratique sur une suite de `<`
+      // sans `>` dans un modèle d'agence piégé).
+      .replace(/<[^<>]*>/g, '')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+  );
 }
 
 /**

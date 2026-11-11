@@ -4,11 +4,30 @@ import { env } from '../config/env';
 const ALLOWED_ORIGINS = [env.FRONTEND_URL];
 
 /**
+ * Ajoute `Origin` à `Vary` sans écraser un `Vary` déjà posé (compression, autre
+ * middleware). `Access-Control-Allow-Origin` dépend de l'en-tête `Origin` :
+ * sans `Vary: Origin`, un cache partagé peut resservir à une origine la réponse
+ * construite pour une autre.
+ */
+function appendVaryOrigin(res: Response): void {
+  const current = res.getHeader('Vary');
+  const existing = (Array.isArray(current) ? current.join(',') : String(current ?? ''))
+    .split(',')
+    .map(v => v.trim())
+    .filter(Boolean);
+  if (existing.some(v => v === '*' || v.toLowerCase() === 'origin')) return;
+  res.setHeader('Vary', [...existing, 'Origin'].join(', '));
+}
+
+/**
  * CORS middleware
  * Allows only frontend domain to access the API
  */
 export function corsMiddleware(req: Request, res: Response, next: NextFunction): void {
   const origin = req.headers.origin;
+
+  // La valeur d'Access-Control-Allow-Origin dépend de l'origine : toujours Vary.
+  appendVaryOrigin(res);
 
   // Allow requests from frontend domain
   if (origin && ALLOWED_ORIGINS.includes(origin)) {

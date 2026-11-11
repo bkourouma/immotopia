@@ -21,6 +21,23 @@ const PACKS: Array<[string, string, string, string]> = [
   ['patrimoine-pro', 'Pack Patrimoine Pro', 'Admin Test Patrimoine Pro', 'patrimoine-pro']
 ];
 
+describe('aucun compte de la plateforme dans le bundle (FRI-01)', () => {
+  const ALL_ACCOUNTS = DEV_TENANT_ACCOUNTS.flatMap(group => group.accounts);
+
+  it('ne liste aucun groupe « platform » ni persona super-administrateur', () => {
+    expect(DEV_TENANT_ACCOUNTS.map(group => group.id)).not.toContain('platform');
+    expect(ALL_ACCOUNTS.filter(account => account.persona === 'Super-admin')).toEqual([]);
+    expect(ALL_ACCOUNTS.filter(account => /super.?admin/i.test(account.fullName))).toEqual([]);
+  });
+
+  it('n’embarque ni l’e-mail ni le mot de passe du super-administrateur', () => {
+    const serialized = JSON.stringify(DEV_TENANT_ACCOUNTS);
+    expect(serialized).not.toContain('admin@immobillier.com');
+    expect(serialized).not.toContain('Admin@123456');
+    expect(ALL_ACCOUNTS.some(account => account.email.toLowerCase().endsWith('@immobillier.com'))).toBe(false);
+  });
+});
+
 describe('comptes de démonstration par pack', () => {
   it('expose douze groupes (6 packs x 6 mois / 3 ans), en tête, dans l’ordre attendu', () => {
     expect(PACK_GROUPS.map(group => group.id)).toEqual(
@@ -80,7 +97,7 @@ describe('comptes de démonstration par pack', () => {
   });
 
   it('garde les comptes historiques, sans doublon d’adresse ni d’identifiant', () => {
-    expect(LEGACY_GROUPS.map(group => group.id)).toContain('platform');
+    expect(LEGACY_GROUPS.map(group => group.id)).toEqual(['385a1e76-ac08-4db5-9802-8b2ddfb1672b']);
     const emails = DEV_TENANT_ACCOUNTS.flatMap(group => group.accounts.map(account => account.email.toLowerCase()));
     expect(new Set(emails).size).toBe(emails.length);
     const ids = DEV_TENANT_ACCOUNTS.map(group => group.id);

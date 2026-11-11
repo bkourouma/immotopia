@@ -238,7 +238,8 @@ import {
   reconcilePlatformCheckoutPublic,
   recordManualPayment,
   getInvoiceCheckoutForTenant,
-  applyPlatformProviderStatus
+  applyPlatformProviderStatus,
+  proofExtension
 } from '../../src/services/platform-payment-service';
 import {
   updateSubscriptionItem,
@@ -440,6 +441,29 @@ describe("Paiement en ligne d'une facture d'abonnement (compte ImmoTopia)", () =
     });
     expect(result.status).toBe('REVIEW');
     expect(store.invoices[0].status).toBe('ISSUED');
+  });
+
+  it.each([
+    ['montant absent', null, undefined, /Montant non communiqué/],
+    ['devise différente', Number(35282), 'EUR', /Devise reçue \(EUR\)/]
+  ])('SUR-02 succès fournisseur avec %s : REVIEW, facture non réglée', async (_l, amount, currency, reason) => {
+    const checkout = await startInvoiceCheckout(TENANT_A, 'inv-a', 'user-a');
+    const row = store.checkouts.find(c => c.id === checkout.id)!;
+    const result = await applyPlatformProviderStatus(row as any, {
+      rawState: 'SUCCESSFUL',
+      mappedState: 'SUCCESS',
+      transactionId: 'T1',
+      amount: amount as number | null,
+      currency,
+      fees: 0,
+      serviceName: 'Wave',
+      error: null,
+      raw: {}
+    });
+    expect(result.status).toBe('REVIEW');
+    expect(result.reviewReason).toMatch(reason);
+    expect(store.invoices[0].status).toBe('ISSUED');
+    expect(store.payments).toHaveLength(0);
   });
 
   it('double encaissement : facture déjà réglée à la main, le succès en ligne passe en REVIEW', async () => {
@@ -774,5 +798,28 @@ describe("Reglement d'une facture d'upgrade (lot 4D) : crochet dans la porte uni
       .map(c => c[0])
       .find(e => e.actionKey === 'SUBSCRIPTION_UPGRADE_NOT_APPLIED');
     expect(notApplied.payload).toMatchObject({ reason: 'ALREADY_ON_TARGET', source: 'MANUAL' });
+  });
+});
+
+describe('Extension du justificatif (SUR-04, pas de repli sur le nom client)', () => {
+  it("derive l'extension du seul type declare, sur liste blanche", () => {
+    expect(proofExtension('application/pdf')).toBe('.pdf');
+    expect(proofExtension('image/jpeg')).toBe('.jpg');
+    expect(proofExtension('image/png')).toBe('.png');
+    expect(proofExtension('image/tiff')).toBe('.tif');
+  });
+
+  it('reste aligné sur les types du filtre multer (PROOF_TYPES du contrôleur de facturation)', () => {
+    // Liste en dur : PROOF_TYPES de platform-billing-controller.ts (PDF, JPEG, PNG, TIFF).
+    const multerTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 'image/tiff'];
+    for (const type of multerTypes) expect(proofExtension(type)).not.toBe('.bin');
+    // image/webp n'est pas accepté par le multer : extension inerte.
+    expect(proofExtension('image/webp')).toBe('.bin');
+  });
+
+  it('un type hors liste blanche donne .bin, jamais une extension venue du nom de fichier', () => {
+    expect(proofExtension('text/html')).toBe('.bin');
+    expect(proofExtension('image/svg+xml')).toBe('.bin');
+    expect(proofExtension('')).toBe('.bin');
   });
 });

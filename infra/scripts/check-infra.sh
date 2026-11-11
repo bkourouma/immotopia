@@ -30,6 +30,80 @@ for script in infra/scripts/*.sh; do
   if bash -n "$script" 2>/dev/null; then ok "bash -n $script"; else ko "bash -n $script"; bash -n "$script" || true; fi
 done
 
+# --- 1b. En-tetes de securite nginx et masquage des jetons ---------------------
+# Dans nginx, un `add_header` pose dans un `location` annule l'heritage du niveau
+# `server` : chaque location qui en definit un doit repeter les cinq en-tetes, et
+# le niveau `server` doit les porter aussi.
+SPA_CONF="infra/nginx/spa.conf"
+SEC_HEADERS="Content-Security-Policy-Report-Only Permissions-Policy X-Content-Type-Options X-Frame-Options Referrer-Policy"
+if [[ -f "$SPA_CONF" ]]; then
+  header_report="$(tr -d '' < "$SPA_CONF" | awk -v required="$SEC_HEADERS" '
+    BEGIN { n = split(required, req, " ") }
+    function check(label,   i, missing) {
+      missing = ""
+      for (i = 1; i <= n; i++) if (!(req[i] in seen)) missing = missing " " req[i]
+      if (missing != "") print "MANQUE " label ":" missing; else print "BON " label
+    }
+    {
+      line = $0
+      sub(/^[ 	]+/, "", line)
+      if (line ~ /^#/) next
+      opens = gsub(/\{/, "{", line); closes = gsub(/\}/, "}", line)
+      if (line ~ /^server[ 	]*\{/ ) { depth = 1; in_server = 1; delete seen; has = 0; label = "server"; next }
+      if (in_server && depth == 1 && line ~ /^location[ 	]/) {
+        # fin du niveau server : verdict, puis ouverture du location
+        if (!server_done) { check("server"); server_done = 1 }
+        label = line; sub(/[ 	]*\{.*/, "", label); delete seen; has = 0; in_loc = 1
+      }
+      if (line ~ /^add_header[ 	]/) { has = 1; name = line; sub(/^add_header[ 	]+/, "", name); sub(/[ 	].*/, "", name); seen[name] = 1 }
+      depth += opens - closes
+      if (in_loc && depth == 1) { in_loc = 0; if (has) check(label); delete seen; has = 0 }
+    }
+    END { if (in_server && !server_done) check("server") }
+  ')"
+  checked_blocks="$(printf '%s
+' "$header_report" | grep -c '^BON ' || true)"
+  while IFS= read -r l; do
+    [[ "$l" == MANQUE* ]] && ko "spa.conf, en-tetes de securite : ${l#MANQUE }"
+  done <<< "$header_report"
+  if ! printf '%s
+' "$header_report" | grep -q '^MANQUE '; then
+    if printf '%s
+' "$header_report" | grep -q '^BON server$' && (( checked_blocks > 1 )); then
+      ok "spa.conf : le niveau server et chacun des $((checked_blocks - 1)) location(s) avec add_header portent les 5 en-tetes de securite"
+    else
+      ko "spa.conf : niveau server ou location introuvable pour le controle des en-tetes (analyse : $checked_blocks bloc(s))"
+    fi
+  fi
+else
+  ko "$SPA_CONF introuvable"
+fi
+
+# Masquage des jetons : chaque vhost porte ses map (URI et Referer, trois passes
+# chacune) et leurs variables ne se recoupent ni dans un fichier ni entre fichiers
+# (ils sont tous inclus dans le meme contexte http).
+all_map_vars=""
+for conf in infra/nginx/spa.conf infra/nginx/app.immotopia.cloud.conf infra/nginx/clients.immotopia.cloud.conf; do
+  if [[ ! -f "$conf" ]]; then ko "$conf introuvable"; continue; fi
+  vars="$(tr -d '' < "$conf" | grep -E '^map[[:space:]]' | awk '{print $3}')"
+  nmaps="$(printf '%s
+' "$vars" | grep -c . || true)"
+  ntoken="$(tr -d '' < "$conf" | grep -c 'token=' || true)"
+  if (( nmaps >= 8 && ntoken >= 6 )); then ok "$conf : $nmaps map dont $ntoken passes de masquage de jeton"; else ko "$conf : map de masquage de jeton manquants ($nmaps map, $ntoken passes ; attendu >= 8 et >= 6)"; fi
+  # Contre-audit PR #205 : le nom du parametre peut contenir un point (hub.verify_token de Meta).
+  nnarrow="$(grep -c '\[a-z_\]\*token=' "$conf" || true)"
+  [[ "$nnarrow" == 0 ]] || ko "$conf : $nnarrow passe(s) de masquage en [a-z_]*token= (attendu [a-z_.]*token=, sinon hub.verify_token reste en clair)"
+  dup="$(printf '%s
+' "$vars" | sort | uniq -d | tr '
+' ' ')"
+  [[ -z "$dup" ]] || ko "$conf : variables de map en double : $dup"
+  all_map_vars+="$vars"$'
+'
+done
+dup_all="$(printf '%s' "$all_map_vars" | sort | uniq -d | tr '
+' ' ')"
+if [[ -z "$dup_all" ]]; then ok "variables de map sans doublon entre les trois fichiers nginx"; else ko "variables de map en double entre fichiers nginx : $dup_all"; fi
+
 # --- 2. Arguments d'environnement obligatoires ------------------------------
 for script in deploy make-env set-google-oauth set-email-smtp backup bootstrap pull-backups; do
   for arg in "" "dev" "production"; do

@@ -78,8 +78,17 @@ export function startLandLeaseAccrualJob(): void {
       const periode = moisEchu(new Date());
       try {
         logger.info('Starting scheduled land lease accrual job', periode);
-        const compteRendu = await withJobLock('land-lease-accrual-monthly', 60 * 60 * 1000, () =>
-          runMonthlyLandLeaseAccruals(periode)
+        // Mode fermé : withJobLock retente la prise du verrou (3 essais espacés)
+        // avant de sauter le passage. S'il est quand même sauté, le mois n'est
+        // PAS repris automatiquement le mois suivant (seul le mois échu est
+        // constaté) : rattrapage manuel par `triggerLandLeaseAccruals` avec la
+        // période, sans risque grâce à l'idempotence par (bail, année, mois)
+        // vérifiée dans le service (lecture préalable + unicité en base).
+        const compteRendu = await withJobLock(
+          'land-lease-accrual-monthly',
+          60 * 60 * 1000,
+          () => runMonthlyLandLeaseAccruals(periode),
+          { failOpen: false }
         );
         if (!compteRendu) return; // une autre instance a pris le passage
         logger.info('Land lease accrual job completed', {

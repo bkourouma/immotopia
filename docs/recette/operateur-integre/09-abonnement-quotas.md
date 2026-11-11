@@ -23,7 +23,7 @@ Environnement : voir le cadre commun (web `http://localhost:3311`, API
   Rubis OI » au patrimoine, qui le clôture définitivement) **n'a pas encore
   été jouée**. C'est cette hypothèse qui rend les jauges Chantiers et
   Copropriétés à 3/3 en entrant dans cette partie.
-- Compte super-admin `admin@immobillier.com` / `Admin@123456`.
+- Compte super-admin `admin@immobillier.com` / `<mot de passe local>`.
 - Fiche de l'agence côté super-admin : `/admin/tenants/<TENANT>`, onglet
   « Abonnement » (`TENANT` = identifiant de « Groupe Intégré Recette OI »,
   visible dans l'URL de sa fiche, `Administration > Agences`).

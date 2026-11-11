@@ -2,6 +2,7 @@ import { logger } from '../utils/logger';
 import { prisma } from '../utils/database';
 import { getPropertyDisplayLabel } from '../utils/property-display';
 import { MaintenanceTicketStatus } from '@prisma/client';
+import { env } from '../config/env';
 
 /**
  * Get status label in French
@@ -110,7 +111,7 @@ export async function sendTicketCreatedNotification(tenantId: string, ticketId: 
         })
       : '';
 
-    const baseUrl = process.env.FRONTEND_URL || process.env.CLIENT_URL || 'http://localhost:3000';
+    const baseUrl = env.FRONTEND_URL || env.CLIENT_URL || 'http://localhost:3000';
     const targetPath = `/tenant/${tenantId}/admin/maintenance/tickets/${ticketId}`;
     const validationUrl = `${baseUrl}/login?redirect=${encodeURIComponent(targetPath)}`;
 
@@ -514,7 +515,7 @@ export async function sendStatusChangeNotification(
       return;
     }
 
-    const baseUrl = process.env.FRONTEND_URL || process.env.CLIENT_URL || 'http://localhost:3000';
+    const baseUrl = env.FRONTEND_URL || env.CLIENT_URL || 'http://localhost:3000';
     const portalPath = '/tenant/maintenance';
     const portalUrl = `${baseUrl}/login?redirect=${encodeURIComponent(portalPath)}`;
 

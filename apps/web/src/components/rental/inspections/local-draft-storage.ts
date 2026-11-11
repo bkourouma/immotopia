@@ -1,4 +1,5 @@
 import { InspectionDeduction, InspectionMeters, InspectionRoom } from '../../../services/lease-inspections-service';
+import { INSPECTION_DRAFT_KEY_PREFIX, purgePersonalLocalData } from '../../../utils/personal-local-data';
 
 /**
  * Brouillon local d'un état des lieux — protège la saisie d'une visite contre
@@ -24,7 +25,7 @@ export interface InspectionLocalDraft {
 }
 
 function storageKey(inspectionId: string): string {
-  return `immotopia:inspection-draft:${inspectionId}`;
+  return `${INSPECTION_DRAFT_KEY_PREFIX}${inspectionId}`;
 }
 
 export function saveLocalDraft(inspectionId: string, draft: Omit<InspectionLocalDraft, 'savedAt'>): void {
@@ -53,4 +54,13 @@ export function clearLocalDraft(inspectionId: string): void {
   } catch {
     // Rien à faire : au pire la copie locale obsolète reste, sans conséquence.
   }
+}
+
+/**
+ * Supprime tous les brouillons locaux (déconnexion : ils contiennent les noms
+ * et commentaires de la visite). Purge aussi les autres données personnelles
+ * locales, voir `utils/personal-local-data.ts`.
+ */
+export function purgeLocalDrafts(): void {
+  purgePersonalLocalData();
 }

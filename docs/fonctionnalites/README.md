@@ -11,7 +11,7 @@ vitrine.
 
 Hiérarchie : pack > module > fonctionnalité > sous-fonctionnalité, la
 sous-fonctionnalité étant la plus petite action utilisateur identifiable
-(1176 lignes au 09/11/2026).
+(1176 lignes au 10/11/2026).
 
 ## Feuilles du classeur
 

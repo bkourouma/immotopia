@@ -66,6 +66,32 @@ describe('corsMiddleware', () => {
   });
 });
 
+describe('corsMiddleware : Vary: Origin (AUTH-11)', () => {
+  it.each([
+    ['origine autorisée', { origin: 'http://localhost:3000' }],
+    ['origine inconnue', { origin: 'https://evil.test' }],
+    ['sans origine', {}]
+  ])('pose Vary: Origin (%s)', (_nom, headers) => {
+    const res = reponseFactice();
+    corsMiddleware(requeteFactice({ headers, method: 'GET' }), res as any, jest.fn());
+    expect(res.getHeader('Vary')).toBe('Origin');
+  });
+
+  it("ajoute Origin à un Vary existant sans l'écraser", () => {
+    const res = reponseFactice();
+    res.setHeader('Vary', 'Accept-Encoding');
+    corsMiddleware(requeteFactice({ method: 'GET' }), res as any, jest.fn());
+    expect(res.getHeader('Vary')).toBe('Accept-Encoding, Origin');
+  });
+
+  it('ne duplique pas Origin', () => {
+    const res = reponseFactice();
+    res.setHeader('Vary', 'origin, Accept-Encoding');
+    corsMiddleware(requeteFactice({ method: 'GET' }), res as any, jest.fn());
+    expect(res.getHeader('Vary')).toBe('origin, Accept-Encoding');
+  });
+});
+
 describe('corsMiddleware : origine lue dans la configuration validée (config/env)', () => {
   function chargerAvec(frontendUrl: string) {
     let middleware!: typeof corsMiddleware;
