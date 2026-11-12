@@ -76,6 +76,26 @@ describe('listTenantExtensionOffers', () => {
     expect(list).not.toContain(EXTENSION.BIENS_10);
   });
 
+  it('Syndic : option AG en direct et visio a 20 000 FCFA ; absente sans le pack Syndic', async () => {
+    holdPacks([PACK.SYNDIC]);
+    const offers = await listTenantExtensionOffers('t1');
+    expect(offers.find(o => o.code === EXTENSION.AG_EN_DIRECT)).toMatchObject({
+      name: 'AG en direct et visio',
+      monthlyPrice: 20_000,
+      capacities: {},
+      isSellable: true
+    });
+    for (const other of [[PACK.AGENCE], [PACK.PROMOTEUR], [PACK.PATRIMOINE_ESSENTIEL]]) {
+      holdPacks(other);
+      expect(await codes()).not.toContain(EXTENSION.AG_EN_DIRECT);
+    }
+  });
+
+  it("Operateur integre : l'option est incluse, donc non proposee", async () => {
+    holdPacks([PACK.INTEGRE]);
+    expect(await codes()).not.toContain(EXTENSION.AG_EN_DIRECT);
+  });
+
   it('Patrimoine Essentiel : bloc de biens uniquement', async () => {
     holdPacks([PACK.PATRIMOINE_ESSENTIEL]);
     expect(await codes()).toEqual([EXTENSION.BIENS_10]);

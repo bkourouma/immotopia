@@ -14,7 +14,8 @@
  * - `warn`    : le refus est journalise (logger) et compte
  *               (`getSubscriptionGuardCounters`), la requete passe ;
  * - `enforce` : 403 MODULE_NOT_INCLUDED / MODULE_READ_ONLY /
- *               SUBSCRIPTION_READ_ONLY, via les erreurs typees.
+ *               SUBSCRIPTION_READ_ONLY / OPTION_NOT_INCLUDED (option payante,
+ *               ex. SYNDIC_LIVE), via les erreurs typees.
  *
  * Jamais bloques : routes EXEMPT de la table (portails, auto-inscription,
  * droits), super-admin, clients de l'agence (`tenantContext.isClient` :
@@ -34,7 +35,7 @@
 import { NextFunction, Request, Response } from 'express';
 import { getEntitlements } from '../services/subscription-v2-service';
 import { getSubscriptionEnforcement } from '../lib/subscription/enforcement';
-import { assertModuleAccess, assertSubscriptionWritable } from '../lib/subscription/guards';
+import { assertModuleAccess, assertOptionIncluded, assertSubscriptionWritable } from '../lib/subscription/guards';
 import type { Feature } from '../lib/subscription/features';
 import { evaluateFeatureAccess, FeatureDenialCode } from '../lib/subscription/feature-access';
 import {
@@ -144,6 +145,8 @@ async function checkFeature(req: Request, tenantId: string, feature: Feature, wr
   // enforce : les gardes de la vague 1 levent l'erreur typee (403 + code).
   if (decision.code === 'SUBSCRIPTION_READ_ONLY') {
     assertSubscriptionWritable(entitlements);
+  } else if (decision.code === 'OPTION_NOT_INCLUDED') {
+    assertOptionIncluded(entitlements, feature);
   } else if (decision.moduleKey) {
     assertModuleAccess(entitlements, decision.moduleKey, { write });
   }

@@ -27,6 +27,7 @@ import {
   type LiveContext
 } from './meeting-live-context';
 import { MEETING_LINK_OBJECT_TYPE } from './meeting-participants';
+import { isTenantOptionAvailable } from '../subscription/option-access';
 import { isVisioEnabled } from '../../services/livekit-service';
 import { isMediaAllowed, normalizeMediaPolicy } from './meeting-visio-media-rules';
 import { hasActiveRecording } from './meeting-recording';
@@ -129,6 +130,9 @@ export interface Access {
 async function resolveAccess(token: string): Promise<Access> {
   const link = await verifySecureLink(token, 'GENERAL_MEETING_ACCESS');
   if (link.objectType !== MEETING_LINK_OBJECT_TYPE) throw invalidSecureLinkError();
+  // Option payante « AG en direct » (SYNDIC_LIVE) : sans elle, meme 404 uniforme qu'un lien invalide,
+  // pour ne rien reveler de l'abonnement de l'agence a qui detient un jeton.
+  if (!(await isTenantOptionAvailable(link.tenantId, 'SYNDIC_LIVE'))) throw invalidSecureLinkError();
 
   const participant = await runWithTenantContext({ tenantId: link.tenantId }, () =>
     prisma.gMParticipant.findFirst({

@@ -123,7 +123,7 @@ function MeetingCard({ meeting }: { meeting: CoOwnerMeeting }) {
           )}
         </div>
 
-        {meeting.liveAvailable ? <JoinLiveButton meetingId={meeting.id} /> : null}
+        {meeting.liveAvailable && meeting.liveOptionEnabled ? <JoinLiveButton meetingId={meeting.id} /> : null}
 
         {meeting.status === 'COMPLETED' ? (
           <div>

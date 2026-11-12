@@ -163,6 +163,43 @@ export const TENANT_ROUTE_FEATURES: readonly RouteFeatureRule[] = [
   // ------------------------------------------------------------ syndic
   { prefix: '/syndics', feature: 'SYNDIC' },
   { prefix: '/syndic-mandating-agencies', feature: 'SYNDIC', note: 'Agences mandantes du cabinet de syndic (lot S1).' },
+  // AG en direct et visio : OPTION payante (decision du 12/11), plus specifique que `/syndics`.
+  // L'AG classique (convocation, resolutions, vote saisi, pouvoirs, compte rendu) reste SYNDIC.
+  {
+    prefix: '/syndics/:syndicId/assemblees/:meetingId/direct',
+    feature: 'SYNDIC_LIVE',
+    note: "Console de l'AG en direct (spec 043)."
+  },
+  {
+    prefix: '/syndics/:syndicId/assemblees/:meetingId/presences',
+    feature: 'SYNDIC_LIVE',
+    note: 'Emargement en direct, par lot ou en masse (spec 043).'
+  },
+  {
+    prefix: '/syndics/:syndicId/assemblees/:meetingId/resolutions/:resolutionId/ouvrir-vote',
+    feature: 'SYNDIC_LIVE',
+    note: "Ouverture du vote en ligne d'une resolution (spec 043)."
+  },
+  {
+    prefix: '/syndics/:syndicId/assemblees/:meetingId/resolutions/:resolutionId/clore-vote',
+    feature: 'SYNDIC_LIVE',
+    note: "Cloture du vote en ligne d'une resolution (spec 043)."
+  },
+  {
+    prefix: '/syndics/:syndicId/assemblees/:meetingId/participants',
+    feature: 'SYNDIC_LIVE',
+    note: "Participants et liens personnels (emission, revocation) de l'AG en direct (spec 043)."
+  },
+  {
+    prefix: '/syndics/:syndicId/assemblees/:meetingId/visio',
+    feature: 'SYNDIC_LIVE',
+    note: 'Visio integree et discussion ecrite moderee (specs 045 et 046).'
+  },
+  {
+    prefix: '/syndics/:syndicId/assemblees/:meetingId/enregistrements',
+    feature: 'SYNDIC_LIVE',
+    note: 'Enregistrements de la visio (spec 045).'
+  },
 
   // ------------------------------------------------------------ construction
   {
@@ -217,7 +254,10 @@ function splitPath(path: string): string[] {
 /** Segments : `:x` = joker ; un joker suivi d'un suffixe (`:id.pdf`) reste un joker. */
 function segmentMatches(pattern: string, actual: string): boolean {
   if (pattern.startsWith(':')) return true;
-  return pattern === actual;
+  // Insensible a la casse : le routeur Express 4 l'est par defaut, donc `/Syndics/s/Assemblees/m/DIRECT`
+  // atteint le meme controleur que la forme canonique. Une comparaison stricte laisserait contourner
+  // le garde d'abonnement (route classee a un niveau moindre, voire non classee) en changeant la casse.
+  return pattern.toLowerCase() === actual.toLowerCase();
 }
 
 type CompiledRule = ReturnType<typeof compile<RouteFeatureRule>>;

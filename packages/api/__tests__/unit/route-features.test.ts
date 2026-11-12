@@ -138,6 +138,40 @@ describe("Abonnements — classement des routes d'agence (vague 2, lot A)", () =
     expect(classifyTenantRoute('/finance/billing-runs')).toBe('CORE');
     expect(classifyTenantRoute('/finance/clients/balance')).toBe('CORE');
     expect(classifyTenantRoute('/syndics/abc/lots')).toBe('SYNDIC');
+    // AG en direct et visio : option SYNDIC_LIVE ; l'AG classique reste SYNDIC.
+    for (const live of [
+      '/syndics/s/assemblees/m/direct',
+      '/syndics/s/assemblees/m/presences',
+      '/syndics/s/assemblees/m/presences/lot1',
+      '/syndics/s/assemblees/m/resolutions/r/ouvrir-vote',
+      '/syndics/s/assemblees/m/resolutions/r/clore-vote',
+      '/syndics/s/assemblees/m/participants',
+      '/syndics/s/assemblees/m/participants/c/lien',
+      '/syndics/s/assemblees/m/participants/c/liens',
+      '/syndics/s/assemblees/m/visio',
+      '/syndics/s/assemblees/m/visio/jeton',
+      '/syndics/s/assemblees/m/visio/discussion/messages/x/masquer',
+      '/syndics/s/assemblees/m/enregistrements/rec/fichier'
+    ]) {
+      expect(classifyTenantRoute(live)).toBe('SYNDIC_LIVE');
+    }
+    // Express 4 route sans tenir compte de la casse : changer la casse ne doit pas contourner le garde.
+    expect(classifyTenantRoute('/Syndics/s/Assemblees/m/DIRECT')).toBe('SYNDIC_LIVE');
+    expect(classifyTenantRoute('/SYNDICS/s/assemblees/m/Visio/jeton')).toBe('SYNDIC_LIVE');
+    expect(classifyTenantRoute('/syndics/s/assemblees/m/ENREGISTREMENTS/rec/fichier')).toBe('SYNDIC_LIVE');
+    expect(classifyTenantRoute('/SYNDICS/abc/lots')).toBe('SYNDIC');
+    expect(classifyTenantRoute('/CRM/Deals')).toBe('CRM');
+    for (const classic of [
+      '/syndics/s/assemblees',
+      '/syndics/s/assemblees/m',
+      '/syndics/s/assemblees/m/convocation',
+      '/syndics/s/assemblees/m/resolutions',
+      '/syndics/s/assemblees/m/resolutions/r/votes',
+      '/syndics/s/assemblees/m/pouvoirs',
+      '/syndics/s/assemblees/m/compte-rendu'
+    ]) {
+      expect(classifyTenantRoute(classic)).toBe('SYNDIC');
+    }
     expect(classifyTenantRoute('/properties/abc/valuations')).toBe('PATRIMOINE');
     expect(classifyTenantRoute('/patrimoine/cash-plan')).toBe('PATRIMOINE');
     expect(classifyTenantRoute('/patrimoine/cash-plan/settings')).toBe('PATRIMOINE');

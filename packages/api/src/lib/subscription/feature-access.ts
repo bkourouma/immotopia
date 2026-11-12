@@ -10,19 +10,24 @@
  * 3. sinon -> MODULE_NOT_INCLUDED, lecture comprise ;
  * 4. puis, pour une ecriture, abonnement en lecture seule (D8) ->
  *    SUBSCRIPTION_READ_ONLY.
+ * Une fonctionnalite d'OPTION (SYNDIC_LIVE, features.ts) n'est ouverte par aucun module :
+ * elle doit figurer dans `features` des droits, sinon OPTION_NOT_INCLUDED (lecture comprise).
  */
 
 import type { ModuleKeyCode } from './catalog';
 import type { TenantEntitlements } from './entitlements';
-import { Feature, modulesForFeature } from './features';
+import { Feature, isOptionFeature, modulesForFeature } from './features';
 
-export type FeatureDenialCode = 'MODULE_NOT_INCLUDED' | 'MODULE_READ_ONLY' | 'SUBSCRIPTION_READ_ONLY';
+export type FeatureDenialCode =
+  'MODULE_NOT_INCLUDED' | 'MODULE_READ_ONLY' | 'SUBSCRIPTION_READ_ONLY' | 'OPTION_NOT_INCLUDED';
 
 export type FeatureAccessDecision =
-  | { allowed: true }
-  | { allowed: false; code: FeatureDenialCode; moduleKey: ModuleKeyCode | null };
+  { allowed: true } | { allowed: false; code: FeatureDenialCode; moduleKey: ModuleKeyCode | null };
 
-type EntitlementsView = Pick<TenantEntitlements, 'moduleAccess' | 'readOnly'>;
+type EntitlementsView = Pick<TenantEntitlements, 'moduleAccess' | 'readOnly'> & {
+  /** Fonctionnalites ouvertes (TenantEntitlements.features) : lues pour les fonctionnalites d'option. */
+  features?: readonly string[];
+};
 
 /** Module a citer dans un refus : celui qui est en lecture seule, a defaut le premier qui ouvre la fonctionnalite. */
 export function evaluateFeatureAccess(
@@ -30,6 +35,16 @@ export function evaluateFeatureAccess(
   feature: Feature,
   write: boolean
 ): FeatureAccessDecision {
+  if (isOptionFeature(feature)) {
+    // Option (SYNDIC_LIVE) : tout ou rien, lecture comprise ; pas de lecture seule residuelle.
+    if (!entitlements.features?.includes(feature)) {
+      return { allowed: false, code: 'OPTION_NOT_INCLUDED', moduleKey: null };
+    }
+    if (write && entitlements.readOnly) {
+      return { allowed: false, code: 'SUBSCRIPTION_READ_ONLY', moduleKey: null };
+    }
+    return { allowed: true };
+  }
   const providers = modulesForFeature(feature);
   const accessOf = (moduleKey: ModuleKeyCode) => entitlements.moduleAccess[moduleKey] ?? 'NONE';
 

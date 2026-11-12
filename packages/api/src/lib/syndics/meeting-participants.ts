@@ -1,7 +1,9 @@
 import { prisma, type PrismaTransactionClient } from '../../utils/database';
 import { env } from '../../config/env';
 import { logger } from '../../utils/logger';
-import { ConflictError, NotFoundError } from '../../middleware/error-middleware';
+import { ConflictError, NotFoundError, OptionNotIncludedError } from '../../middleware/error-middleware';
+import { EXTENSION } from '../subscription/catalog';
+import { isTenantOptionAvailable } from '../subscription/option-access';
 import { t } from '../../i18n';
 import { logAuditEvent } from '../../services/audit-service';
 import { AuditActionKey } from '../../types/audit-types';
@@ -218,6 +220,8 @@ export async function createConvocationLink(
   contactId: string
 ): Promise<string> {
   try {
+    // Sans l'option « AG en direct », la convocation part sans lien (le lien ne mene a rien).
+    if (!(await isTenantOptionAvailable(tenantId, 'SYNDIC_LIVE'))) return '';
     const { url } = await issueLink(tenantId, meeting, contactId, null);
     return url;
   } catch (error) {
@@ -241,6 +245,9 @@ export async function issueCoOwnerPortalMeetingLink(
     throw new NotFoundError(t('Assemblée générale introuvable ou inaccessible'));
   }
   assertLinkable(meeting);
+  if (!(await isTenantOptionAvailable(scope.tenantId, 'SYNDIC_LIVE'))) {
+    throw new OptionNotIncludedError('SYNDIC_LIVE', EXTENSION.AG_EN_DIRECT);
+  }
 
   const ctx = await loadLiveContext(prisma, scope.tenantId, meeting);
   const contactId = scope.contactIds.find(id => votableLotsFor(ctx, id).length > 0);

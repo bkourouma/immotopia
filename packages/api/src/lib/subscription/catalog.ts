@@ -21,6 +21,10 @@
  * a 5 000 XOF par mois et par bloc (decision du 19/10) : une base existante garde l'ancien
  * prix tant que `npm run db:seed:catalog` n'est pas relance.
  *
+ * L'option AG en direct et visio (EXT_AG_EN_DIRECT, decision du 12/11) est amorcee par la
+ * migration 20261112090000_ag_en_direct_catalogue ; elle ouvre la fonctionnalite SYNDIC_LIVE
+ * (features.ts), sans module ni capacite.
+ *
  * Voir docs/architecture/PLAN-ABONNEMENTS.md.
  */
 
@@ -69,7 +73,9 @@ export const EXTENSION = {
   /** Lot 041 (W-D6) : bloc de 500 photos analysees par mois, Promoteur et Integre. */
   INVENTAIRE_WHATSAPP: 'EXT_INVENTAIRE_WHATSAPP',
   /** Spec 044 : bloc de 50 signatures electroniques par mois, cumulable, packs d'agence. */
-  SIGNATURES_SUPPLEMENTAIRES: 'EXT_SIGNATURES_SUPPLEMENTAIRES'
+  SIGNATURES_SUPPLEMENTAIRES: 'EXT_SIGNATURES_SUPPLEMENTAIRES',
+  /** Option payante du pack Syndic (decision du 12/11) : AG en direct et visio. Incluse d'office dans l'Integre. */
+  AG_EN_DIRECT: 'EXT_AG_EN_DIRECT'
 } as const;
 
 /** Palier commun aux deux packs Patrimoine : Essentiel et Pro ne se cumulent pas (`rules.tierGroup`). */
@@ -376,6 +382,24 @@ export const DEFAULT_CATALOG: readonly CatalogItemDef[] = [
     isSellable: true,
     sortOrder: 160,
     capacities: { SIGNATURES_MENSUELLES: 50 }
+  },
+  {
+    // Decision du fondateur (12/11) : l'AG en direct et sa visio sont une option payante du pack
+    // Syndic ; l'AG classique (convocation, resolutions, vote saisi, PV) reste incluse. Ni module
+    // ni capacite : l'extension ouvre la fonctionnalite SYNDIC_LIVE (features.ts, OPTION_PROVIDERS).
+    // L'Operateur integre l'inclut d'office : il ne la voit donc pas en offre.
+    code: EXTENSION.AG_EN_DIRECT,
+    kind: 'EXTENSION',
+    name: 'AG en direct et visio',
+    description: 'Assemblées générales en direct pour les copropriétaires : vote en ligne et visioconférence',
+    monthlyPrice: 20_000,
+    setupPrice: 0,
+    modules: [],
+    exclusiveGroup: null,
+    rules: { requiresAnyOf: [PACK.SYNDIC] },
+    isSellable: true,
+    sortOrder: 170,
+    capacities: {}
   },
   ...(
     [

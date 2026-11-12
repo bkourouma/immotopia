@@ -14,6 +14,7 @@
  */
 
 import { CAPACITY_KEYS, CapacityKeyCode, MODULE_KEYS, ModuleKeyCode } from './catalog';
+import { withOptionFeatures } from './features';
 
 export type ItemStatusCode = 'SCHEDULED' | 'ACTIVE' | 'ENDED';
 export type SubscriptionStatusCode = 'TRIALING' | 'ACTIVE' | 'PAST_DUE' | 'CANCELED' | 'SUSPENDED';
@@ -499,7 +500,8 @@ export function buildEntitlements(input: BuildEntitlementsInput): TenantEntitlem
     packs: heldPackCodes(live),
     modules,
     moduleAccess: access,
-    features: input.featuresFor(modules),
+    // Options (SYNDIC_LIVE) : ouvertes par une extension ou un pack, pas par un module (features.ts).
+    features: withOptionFeatures(input.featuresFor(modules), live),
     ownAssetsOnly: isOwnAssetsOnly(modules),
     capacities,
     quotaPolicy: sub?.quotaPolicy ?? 'BILL_OVERAGE',

@@ -12,6 +12,7 @@
 import {
   ModuleNotIncludedError,
   ModuleReadOnlyError,
+  OptionNotIncludedError,
   OwnAssetsOnlyError,
   QuotaExceededError,
   SubscriptionReadOnlyError,
@@ -20,6 +21,7 @@ import {
 import { logger } from '../../utils/logger';
 import type { CapacityKeyCode, ModuleKeyCode } from './catalog';
 import { isCapacityExtensible } from './pricing';
+import { Feature, OPTION_PROVIDERS } from './features';
 import { evaluateQuota, QuotaEvaluation, TenantEntitlements } from './entitlements';
 
 function refuse(
@@ -55,6 +57,19 @@ export function assertModuleAccess(
     return;
   }
   refuse(entitlements, new ModuleNotIncludedError(moduleKey), { moduleKey, write: options.write });
+}
+
+/**
+ * Acces a une option payante (SYNDIC_LIVE) : refuse en `enforce` quand la fonctionnalite
+ * n'est pas dans les droits, journalise en `warn`, ignore en `off`.
+ */
+export function assertOptionIncluded(
+  entitlements: Pick<TenantEntitlements, 'tenantId' | 'enforcement' | 'features'>,
+  feature: Feature
+): void {
+  if (entitlements.features.includes(feature)) return;
+  const extensionCode = OPTION_PROVIDERS[feature]?.extensions[0] ?? null;
+  refuse(entitlements, new OptionNotIncludedError(feature, extensionCode), { feature });
 }
 
 /** Ecriture refusee quand l'abonnement est en lecture seule (fin d'essai ou impaye apres grace, D8). */

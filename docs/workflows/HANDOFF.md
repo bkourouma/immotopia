@@ -118,6 +118,16 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 **Pièges** — Le README du dossier recette est généré par un script hors dépôt à partir des sections : après un changement de section, le régénérer ou corriger à la main. Section 8 du scénario relue une seule fois (par le vérificateur).
 
+## feat/syndic-ag-direct-extension — 2026-11-12
+
+**État** — Branche depuis `origin/main` `5c63965a`, worktree `.claude/worktrees/ag-direct-ext` (jonctions `node_modules` vers le checkout principal). L'AG en direct et sa visio deviennent l'option payante « AG en direct et visio » (`EXT_AG_EN_DIRECT`, 20 000 FCFA HT par mois, prix posé par le pilote faute de chiffre du fondateur, modifiable dans le catalogue). Incluse d'office dans l'Opérateur intégré. Décision du fondateur le 2026-11-12.
+
+**Fait** — API : fonctionnalité `SYNDIC_LIVE` déduite des éléments d'abonnement (`lib/subscription/features.ts`, `OPTION_PROVIDERS`), sans nouveau module ni enum Prisma. Routes `direct`, `presences`, `participants`, `visio/**`, `enregistrements`, ouverture et clôture de vote refusées en 403 `OPTION_NOT_INCLUDED` en mode `enforce`. Routes publiques par jeton : 404 « Lien invalide ou expiré » (`resolveAccess`). Portail : `liveOptionEnabled`. Migration `20261112090000_ag_en_direct_catalogue`. Correctif de l'audit : le classement des routes ignore maintenant la casse (Express 4 route sans casse, le garde se contournait par `/Syndics/.../DIRECT`, défaut préexistant pour tous les modules). Web : `useLiveOption`, `LiveOptionNotice`, bouton « Demander l'option » vers `settings/abonnement?offre=EXT_AG_EN_DIRECT`. Classeur des fonctionnalités et miroir à 1209 lignes. Recette Chrome dans `docs/recette/syndic-chrome/` (l'étape H attend le refus sans l'option).
+
+**Reste** — Rien n'a tourné contre une base : migration, `npm run db:seed:catalog` et rejeu navigateur à faire (staging puis scénario Chrome, mode `enforce`). Non testés automatiquement : `liveOptionEnabled` côté API, refus du lien du portail, convocation sans lien. Décisions ouvertes (aussi dans la feuille Notes du classeur) : lecture des enregistrements d'AG après retrait de l'option, lien de visio externe (Zoom, Meet) masqué sans l'option, message de refus du portail rédigé pour l'agence. Aucun octroi aux agences existantes : à annoncer avant de passer la production en `enforce`.
+
+**Pièges** — Le web lit l'option dans `entitlements.features`, pas dans `NavFeature`. Un seul runner de tests à la fois : la suite `MeetingLiveConsole.test.tsx` met jusqu'à une quinzaine de minutes sur ce poste chargé.
+
 ## Recette du scénario de gestion locative — 2026-11-09
 
 **État** — Branche locale `codex/recette-immotopia-2026-11-09` issue de `main` à `333a357e`. Correctifs et tests dans `259e03c3`. La branche a été réconciliée avec `origin/main` à `0794d6b1` pour la PR #199. Le PDF conserve la traduction et les retenues fractionnaires. Les modifications du wiki ont été reportées sur le classeur de main. Le parcours navigateur de création, signature, facturation, déclaration et affectation du virement, relevé, rapport et reversement a abouti sur `BAIL-2026-0126`. Le détail des cas rejoués, des écarts de données de test et du périmètre restant figure dans [le bilan de recette](../recette/gestion-locative/SCENARIO-2026-11-09.md).
