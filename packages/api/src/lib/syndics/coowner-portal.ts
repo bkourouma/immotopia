@@ -2,6 +2,7 @@ import type { MeetingStatus, Prisma, TransactionType } from '@prisma/client';
 import { prisma } from '../../utils/database';
 import { escapeLike } from '../../utils/like-escape';
 import { NotFoundError } from '../../middleware/error-middleware';
+import { isTenantOptionAvailable } from '../subscription/option-access';
 import { isExternalDocumentUrl, localSyndicateDocumentPath, readSyndicateDocumentFile } from './document-files';
 import { computeOutstanding, deriveChargeCallStatus, roundMoney, type ChargeCallStatusValue } from './finance-utils';
 import { computeResolutionTally, normalizeMajorityRule, type MajorityRule } from './meeting-majority';
@@ -759,6 +760,7 @@ export async function listCoOwnerMeetings(scope: CoOwnerPortalScope, selectedIds
   });
   if (meetings.length === 0) return [];
   const now = Date.now();
+  const liveOptionEnabled = await isTenantOptionAvailable(scope.tenantId, 'SYNDIC_LIVE');
 
   const meetingIds = meetings.map(meeting => meeting.id);
   const agendaItems = await prisma.gMAgendaItem.findMany({
@@ -823,6 +825,8 @@ export async function listCoOwnerMeetings(scope: CoOwnerPortalScope, selectedIds
       status: meeting.status,
       // Spec 043 : « Rejoindre l'AG en direct » des J-1 et jusqu'a la cloture.
       liveAvailable: isLiveAvailable(meeting.status, meeting.scheduledAt, now),
+      // Option payante « AG en direct » de l'agence (SYNDIC_LIVE) : le web n'affiche « Rejoindre » que si vrai.
+      liveOptionEnabled,
       syndicate: syndicates.get(meeting.syndicateId)?.name ?? null,
       agenda: agendaItems
         .filter(item => item.meetingId === meeting.id)

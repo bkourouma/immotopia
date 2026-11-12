@@ -29,7 +29,10 @@ async function denialFor(tenantId: string, feature: Feature, write: boolean): Pr
     if (entitlements.enforcement !== 'enforce') return null;
     const decision = evaluateFeatureAccess(entitlements, feature, write);
     // La lecture seule de l'abonnement entier relève des gardes de routes, pas d'ici.
-    if (decision.allowed || decision.code === 'SUBSCRIPTION_READ_ONLY') return null;
+    // Une option payante (SYNDIC_LIVE) ne filtre aucun evenement de notification.
+    if (decision.allowed || decision.code === 'SUBSCRIPTION_READ_ONLY' || decision.code === 'OPTION_NOT_INCLUDED') {
+      return null;
+    }
     return { code: decision.code, moduleKey: decision.moduleKey };
   } catch (error) {
     const mode = getSubscriptionEnforcement();

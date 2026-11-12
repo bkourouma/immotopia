@@ -82,6 +82,9 @@ function buildApp() {
   const ok = (_req: any, res: any) => res.json({ ok: true });
   app.all('/api/tenants/:tenantId/syndics', ok);
   app.all('/api/tenants/:tenantId/syndics/:id', ok);
+  app.all('/api/tenants/:tenantId/syndics/:id/assemblees/:m/direct', ok);
+  app.all('/api/tenants/:tenantId/syndics/:id/assemblees/:m/visio/jeton', ok);
+  app.all('/api/tenants/:tenantId/syndics/:id/assemblees/:m/resolutions', ok);
   app.all('/api/tenants/:tenantId/properties', ok);
   app.post('/api/tenants/:tenantId/properties/search', ok);
   app.all('/api/tenants/:tenantId/finance/sites', ok);
@@ -273,5 +276,64 @@ describe('mode enforce', () => {
     // Route non classee par la table : seul requireFeature('SYNDIC') la garde.
     expect(res.status).toBe(403);
     expect(res.body.code).toBe('MODULE_NOT_INCLUDED');
+  });
+});
+
+describe('option AG en direct (SYNDIC_LIVE)', () => {
+  const live = (features: string[], readOnly = false) => ({
+    ...entitlements({ MODULE_SYNDIC: 'FULL' }, readOnly),
+    features
+  });
+  const DIRECT = `/api/tenants/${TENANT}/syndics/s1/assemblees/m1/direct`;
+  const VISIO = `/api/tenants/${TENANT}/syndics/s1/assemblees/m1/visio/jeton`;
+  const CLASSIC = `/api/tenants/${TENANT}/syndics/s1/assemblees/m1/resolutions`;
+
+  it('evaluateFeatureAccess : option absente = OPTION_NOT_INCLUDED, presente = permise', () => {
+    expect(evaluateFeatureAccess(live(['CORE', 'SYNDIC']), 'SYNDIC_LIVE', false)).toEqual({
+      allowed: false,
+      code: 'OPTION_NOT_INCLUDED',
+      moduleKey: null
+    });
+    expect(evaluateFeatureAccess(live(['CORE', 'SYNDIC', 'SYNDIC_LIVE']), 'SYNDIC_LIVE', true)).toEqual({
+      allowed: true
+    });
+    expect(evaluateFeatureAccess(live(['SYNDIC_LIVE'], true), 'SYNDIC_LIVE', true)).toMatchObject({
+      code: 'SUBSCRIPTION_READ_ONLY'
+    });
+  });
+
+  it('enforce : 403 OPTION_NOT_INCLUDED en lecture et ecriture, le reste du syndic passe', async () => {
+    mode = 'enforce';
+    getEntitlements.mockResolvedValue(live(['CORE', 'SYNDIC']));
+    for (const url of [DIRECT, VISIO]) {
+      const get = await request(app).get(url);
+      expect(get.status).toBe(403);
+      expect(get.body.code).toBe('OPTION_NOT_INCLUDED');
+      expect(get.body.data).toEqual({ option: 'SYNDIC_LIVE', extensionCode: 'EXT_AG_EN_DIRECT' });
+      expect(get.body.message).toContain('AG en direct');
+      expect((await request(app).post(url)).status).toBe(403);
+    }
+    expect((await request(app).post(CLASSIC)).status).toBe(200);
+    expect((await request(app).get(`/api/tenants/${TENANT}/syndics/s1`)).status).toBe(200);
+  });
+
+  it('enforce : avec l option, la console en direct et la visio passent', async () => {
+    mode = 'enforce';
+    getEntitlements.mockResolvedValue(live(['CORE', 'SYNDIC', 'SYNDIC_LIVE']));
+    expect((await request(app).get(DIRECT)).status).toBe(200);
+    expect((await request(app).post(VISIO)).status).toBe(200);
+  });
+
+  it('warn : laisse passer, journalise et compte', async () => {
+    mode = 'warn';
+    getEntitlements.mockResolvedValue(live(['CORE', 'SYNDIC']));
+    expect((await request(app).get(DIRECT)).status).toBe(200);
+    expect(getSubscriptionGuardCounters()).toEqual({ 'OPTION_NOT_INCLUDED:SYNDIC_LIVE': 1 });
+  });
+
+  it('off : aucune lecture des droits', async () => {
+    mode = 'off';
+    expect((await request(app).get(DIRECT)).status).toBe(200);
+    expect(getEntitlements).not.toHaveBeenCalled();
   });
 });

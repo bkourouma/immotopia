@@ -104,6 +104,8 @@ describe('Catalogue par defaut = grille du site', () => {
         item.code === EXTENSION.INVENTAIRE_WHATSAPP ||
         // Spec 044 : vient de 20261015120000_signatures_incluses_packs (verifiee par signature-catalog.test.ts).
         item.code === EXTENSION.SIGNATURES_SUPPLEMENTAIRES ||
+        // Decision du 12/11 : vient de 20261112090000_ag_en_direct_catalogue (verifiee ci-dessous).
+        item.code === EXTENSION.AG_EN_DIRECT ||
         item.code.startsWith('SETUP_PATRIMOINE_')
       ) {
         continue;
@@ -113,6 +115,19 @@ describe('Catalogue par defaut = grille du site', () => {
         new RegExp(`'${item.code}', '${item.kind}', '[^']*', [^\\n]*, ${item.monthlyPrice}, ${item.setupPrice},`)
       );
     }
+  });
+
+  it("la migration AG en direct amorce l'extension (prix, règle Syndic, aucune capacité, aucun octroi)", () => {
+    const sql = fs.readFileSync(
+      path.join(__dirname, '../../prisma/migrations/20261112090000_ag_en_direct_catalogue/migration.sql'),
+      'utf8'
+    );
+    const item = DEFAULT_CATALOG.find(c => c.code === EXTENSION.AG_EN_DIRECT)!;
+    expect(sql).toContain(`'${item.code}', '${item.kind}', '${item.name}'`);
+    expect(sql).toContain(`${item.monthlyPrice}, ${item.setupPrice}, ARRAY[]::"ModuleKey"[]`);
+    expect(sql).toContain(`'{"requiresAnyOf":["SYNDIC"]}'::jsonb, true, ${item.sortOrder}`);
+    expect(sql).toContain('ON CONFLICT ("code") DO NOTHING');
+    expect(sql).not.toMatch(/subscription_items|catalog_capacities|ALTER TYPE/i);
   });
 
   it('la migration Particulier amorce exactement les deux packs (prix, capacite ACTIFS, palier)', () => {

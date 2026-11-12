@@ -59,6 +59,8 @@ export const ErrorCode = {
   // Abonnements par packs (docs/architecture/PLAN-ABONNEMENTS.md).
   MODULE_NOT_INCLUDED: 'MODULE_NOT_INCLUDED',
   MODULE_READ_ONLY: 'MODULE_READ_ONLY',
+  // Option payante absente de l'abonnement (ex. AG en direct, SYNDIC_LIVE) : 403.
+  OPTION_NOT_INCLUDED: 'OPTION_NOT_INCLUDED',
   SUBSCRIPTION_READ_ONLY: 'SUBSCRIPTION_READ_ONLY',
   QUOTA_EXCEEDED: 'QUOTA_EXCEEDED',
   OWN_ASSETS_ONLY: 'OWN_ASSETS_ONLY',
@@ -322,6 +324,21 @@ export class InvitationForAnotherAccountError extends AppError {
 export class ModuleNotIncludedError extends AppError {
   constructor(moduleKey: string, message = "Ce module n'est pas compris dans l'abonnement de votre agence.") {
     super(message, 403, ErrorCode.MODULE_NOT_INCLUDED, undefined, { moduleKey });
+  }
+}
+
+/**
+ * Option payante non comprise dans l'abonnement de l'agence (403). `data.option` porte la
+ * fonctionnalite (SYNDIC_LIVE) et `data.extensionCode` l'extension du catalogue qui l'ouvre,
+ * pour que le front propose la souscription.
+ */
+export class OptionNotIncludedError extends AppError {
+  constructor(
+    option: string,
+    extensionCode: string | null,
+    message = "L'option « AG en direct » n'est pas comprise dans votre abonnement. Souscrivez-la pour utiliser l'AG en direct et la visio."
+  ) {
+    super(message, 403, ErrorCode.OPTION_NOT_INCLUDED, undefined, { option, extensionCode });
   }
 }
 

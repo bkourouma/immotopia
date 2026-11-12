@@ -17,16 +17,35 @@ La seule source de prix est la grille du site
 
 ## 2. Catalogue (global, éditable, D12)
 
-| Code           | Nature                           |                                                                               HT/mois |   Mise en route | Modules   | Capacité incluse                      |
-| -------------- | -------------------------------- | ------------------------------------------------------------------------------------: | --------------: | --------- | ------------------------------------- |
-| `AGENCE`       | PACK                             |                                                                                29 900 |         100 000 | AGENCY    | 100 lots                              |
-| `SYNDIC`       | PACK                             |                                                                                49 900 |         150 000 | SYNDIC    | 2 copropriétés, 100 lots              |
-| `PROMOTEUR`    | PACK                             |                                                                               149 900 |         450 000 | PROMOTER  | 2 chantiers, 150 lots                 |
-| `INTEGRE`      | PACK, `exclusiveGroup = INTEGRE` |                                                                               249 900 |         650 000 | les trois | 3 chantiers, 3 copropriétés, 300 lots |
-| `EXT_LOTS_10`  | EXTENSION                        | 1 500 (1 000 avec Promoteur ou Intégré ; 750 pour l'Agence seule au-delà du 300e lot) |               — | —         | 10 lots                               |
-| `EXT_COPRO`    | EXTENSION (Syndic ou Intégré)    |                                                                                10 000 |               — | —         | 1 copropriété                         |
-| `EXT_CHANTIER` | EXTENSION (Promoteur ou Intégré) |                                                        40 000 (35 000 avec l'Intégré) |               — | —         | 1 chantier                            |
-| `SETUP_<PACK>` | SETUP, facturé une fois          |                                                                                     0 | montant du pack | —         | —                                     |
+| Code               | Nature                           |                                                                               HT/mois |   Mise en route | Modules                          | Capacité incluse                      |
+| ------------------ | -------------------------------- | ------------------------------------------------------------------------------------: | --------------: | -------------------------------- | ------------------------------------- |
+| `AGENCE`           | PACK                             |                                                                                29 900 |         100 000 | AGENCY                           | 100 lots                              |
+| `SYNDIC`           | PACK                             |                                                                                49 900 |         150 000 | SYNDIC                           | 2 copropriétés, 100 lots              |
+| `PROMOTEUR`        | PACK                             |                                                                               149 900 |         450 000 | PROMOTER                         | 2 chantiers, 150 lots                 |
+| `INTEGRE`          | PACK, `exclusiveGroup = INTEGRE` |                                                                               249 900 |         650 000 | les trois                        | 3 chantiers, 3 copropriétés, 300 lots |
+| `EXT_LOTS_10`      | EXTENSION                        | 1 500 (1 000 avec Promoteur ou Intégré ; 750 pour l'Agence seule au-delà du 300e lot) |               — | —                                | 10 lots                               |
+| `EXT_COPRO`        | EXTENSION (Syndic ou Intégré)    |                                                                                10 000 |               — | —                                | 1 copropriété                         |
+| `EXT_CHANTIER`     | EXTENSION (Promoteur ou Intégré) |                                                        40 000 (35 000 avec l'Intégré) |               — | —                                | 1 chantier                            |
+| `EXT_AG_EN_DIRECT` | EXTENSION (Syndic)               |                                                                                20 000 |               — | — (fonctionnalité `SYNDIC_LIVE`) | —                                     |
+| `SETUP_<PACK>`     | SETUP, facturé une fois          |                                                                                     0 | montant du pack | —                                | —                                     |
+
+**Option « AG en direct et visio » (décision du fondateur, 12/11/2026).**
+`EXT_AG_EN_DIRECT` (EXTENSION, **20 000 FCFA HT/mois**, mise en route 0, aucune
+capacité, `requiresAnyOf: [SYNDIC]`) ouvre la fonctionnalité d'**option**
+`SYNDIC_LIVE`. L'Opérateur intégré l'inclut d'office (il ne la voit donc pas en
+offre) ; sans l'option, l'AG classique (convocation, résolutions, vote saisi par le
+syndic, pouvoirs, procès-verbal) reste incluse au pack Syndic et seule la couche
+« en direct » est refusée. Choix de conception : **pas de module** (pas de valeur
+`ModuleKey`, pas de `TenantModule`, aucun octroi aux agences existantes) mais une
+fonctionnalité déduite des éléments en vigueur (`OPTION_PROVIDERS`,
+`withOptionFeatures` dans `features.ts`), à condition que la fonctionnalité de
+base `SYNDIC` soit ouverte. Amorcée par la migration
+`20261112090000_ag_en_direct_catalogue` (idempotente) et par
+`npm run db:seed:catalog`. Gardes : routes d'agence en direct, visio et
+enregistrements (`route-features.ts`, classées `SYNDIC_LIVE`), routes publiques par
+jeton (`lib/subscription/option-access.ts`, même 404 « lien invalide » qu'un jeton
+inconnu), portail copropriétaire (`liveOptionEnabled`, accès refusé en `enforce`),
+lien de convocation (absent sans l'option).
 
 **Packs Particulier (lot 4A, spec 026).** `PARTICULIER_GRATUIT` (0 FCFA, mise en
 route 0, 10 actifs) et `PARTICULIER_PLUS` (**2 900 FCFA HT/mois, provisoire**,
@@ -319,8 +338,10 @@ sont impayées.
   `ANNUAL_MONTHS`, `PLATFORM_TAX_RATE_PERCENT`, `PLATFORM_INVOICE_ISSUER`,
   `packsForModules(modules)`.
 - `features` : `MODULE_FEATURES`, `featuresForModules(modules)`,
-  `modulesForFeature(feature)`. Fonctionnalités : CORE, CRM, SALES, RENTAL,
-  PATRIMOINE, SYNDIC, CONSTRUCTION.
+  `modulesForFeature(feature)`, `OPTION_PROVIDERS`, `isOptionFeature`,
+  `withOptionFeatures(features, items)`. Fonctionnalités : CORE, CRM, SALES,
+  RENTAL, PATRIMOINE, SYNDIC, CONSTRUCTION, et l'option SYNDIC_LIVE (aucun
+  module : extension `EXT_AG_EN_DIRECT` ou pack INTEGRE).
 - `entitlements` : `buildEntitlements(input)` → `TenantEntitlements`,
   `validateExclusivity`, `computeCapacityLimits`, `resolveModuleAccess`,
   `resolveSubscriptionPhase`, `evaluateQuota(capacity, increment, policy,
@@ -417,12 +438,13 @@ dryRun })` : contrôle de cohérence.
 
 ### Erreurs — `middleware/error-middleware.ts`
 
-| Classe                      | HTTP | `code`                   | `data`                                    |
-| --------------------------- | ---- | ------------------------ | ----------------------------------------- |
-| `ModuleNotIncludedError`    | 403  | `MODULE_NOT_INCLUDED`    | `{ moduleKey }`                           |
-| `ModuleReadOnlyError`       | 403  | `MODULE_READ_ONLY`       | `{ moduleKey }`                           |
-| `SubscriptionReadOnlyError` | 403  | `SUBSCRIPTION_READ_ONLY` | `{ reason }`                              |
-| `QuotaExceededError`        | 409  | `QUOTA_EXCEEDED`         | `{ capacityKey, limit, used, requested }` |
+| Classe                      | HTTP | `code`                   | `data`                                                         |
+| --------------------------- | ---- | ------------------------ | -------------------------------------------------------------- |
+| `ModuleNotIncludedError`    | 403  | `MODULE_NOT_INCLUDED`    | `{ moduleKey }`                                                |
+| `ModuleReadOnlyError`       | 403  | `MODULE_READ_ONLY`       | `{ moduleKey }`                                                |
+| `SubscriptionReadOnlyError` | 403  | `SUBSCRIPTION_READ_ONLY` | `{ reason }`                                                   |
+| `OptionNotIncludedError`    | 403  | `OPTION_NOT_INCLUDED`    | `{ option: 'SYNDIC_LIVE', extensionCode: 'EXT_AG_EN_DIRECT' }` |
+| `QuotaExceededError`        | 409  | `QUOTA_EXCEEDED`         | `{ capacityKey, limit, used, requested }`                      |
 
 ### Routes
 

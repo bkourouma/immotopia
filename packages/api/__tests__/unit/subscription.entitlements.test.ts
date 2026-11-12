@@ -517,3 +517,72 @@ describe('Synthese des droits', () => {
     expect(e.ownAssetsOnly).toBe(false);
   });
 });
+
+describe('Option AG en direct (SYNDIC_LIVE)', () => {
+  function featuresOf(items: EntitlementItem[], moduleRows: ModuleRow[] = []): string[] {
+    return buildEntitlements({
+      tenantId: 't-live',
+      subscription: {
+        id: 's-1',
+        status: 'ACTIVE',
+        trialEndsAt: null,
+        pastDueAt: null,
+        currentPeriodStart: days(-10),
+        currentPeriodEnd: days(20),
+        cancelAt: null,
+        canceledAt: null,
+        graceDays: 7,
+        billingCycle: 'MONTHLY',
+        quotaPolicy: 'BILL_OVERAGE',
+        manualReadOnlyAt: null,
+        manualReadOnlyReason: null
+      },
+      items,
+      overrides: [],
+      moduleRows,
+      usage: {},
+      enforcement: 'enforce',
+      featuresFor: featuresForModules,
+      now: NOW
+    }).features;
+  }
+
+  it('catalogue : extension vendable 20 000 FCFA, sans capacite, reservee au pack Syndic', () => {
+    const def = DEFAULT_CATALOG.find(d => d.code === 'EXT_AG_EN_DIRECT')!;
+    expect(def).toMatchObject({
+      kind: 'EXTENSION',
+      name: 'AG en direct et visio',
+      monthlyPrice: 20_000,
+      setupPrice: 0,
+      isSellable: true,
+      modules: [],
+      capacities: {},
+      rules: { requiresAnyOf: ['SYNDIC'] }
+    });
+  });
+
+  it('Syndic seul : pas de SYNDIC_LIVE', () => {
+    expect(featuresOf([item(PACK.SYNDIC)])).toEqual(['CORE', 'SYNDIC']);
+  });
+
+  it('Syndic + extension : SYNDIC_LIVE ; extension retiree (ENDED) : plus de SYNDIC_LIVE', () => {
+    expect(featuresOf([item(PACK.SYNDIC), item('EXT_AG_EN_DIRECT')])).toEqual(['CORE', 'SYNDIC', 'SYNDIC_LIVE']);
+    expect(featuresOf([item(PACK.SYNDIC), item('EXT_AG_EN_DIRECT', { status: 'ENDED' })])).toEqual(['CORE', 'SYNDIC']);
+    expect(featuresOf([item(PACK.SYNDIC), item('EXT_AG_EN_DIRECT', { endsAt: days(-1) })])).toEqual(['CORE', 'SYNDIC']);
+  });
+
+  it('Operateur integre : SYNDIC_LIVE d office, sans extension', () => {
+    expect(featuresOf([item(PACK.INTEGRE)])).toContain('SYNDIC_LIVE');
+  });
+
+  it('sans module Syndic (Agence + extension orpheline) : pas de SYNDIC_LIVE', () => {
+    expect(featuresOf([item(PACK.AGENCE), item('EXT_AG_EN_DIRECT')])).not.toContain('SYNDIC_LIVE');
+  });
+
+  it('module Syndic retire (lecture seule) : l option disparait avec lui', () => {
+    const rows: ModuleRow[] = [
+      { moduleKey: 'MODULE_SYNDIC', enabled: false, source: 'OVERRIDE', expiresAt: null, disabledAt: days(-2) }
+    ];
+    expect(featuresOf([item(PACK.SYNDIC), item('EXT_AG_EN_DIRECT')], rows)).not.toContain('SYNDIC_LIVE');
+  });
+});
