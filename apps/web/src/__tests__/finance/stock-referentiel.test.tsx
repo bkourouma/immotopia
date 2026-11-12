@@ -1292,7 +1292,7 @@ describe('Onglets paresseux et pagination locale', () => {
     expect(screen.getAllByText(/^REF-[0-9]{2}$/)).toHaveLength(20);
     expect(screen.queryByText('REF-21')).not.toBeInTheDocument();
 
-    await user.click(screen.getByTitle('2'));
+    await user.click(screen.getByRole('button', { name: 'Page 2' }));
 
     await screen.findByText('REF-21', {}, { timeout: 8000 });
     expect(screen.getAllByText(/^REF-[0-9]{2}$/)).toHaveLength(5);

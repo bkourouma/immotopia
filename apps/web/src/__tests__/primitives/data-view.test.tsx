@@ -219,7 +219,7 @@ describe('DataView — pagination serveur', () => {
   it('remonte le changement de page à l’appelant', async () => {
     const onPageChange = vi.fn();
     view({ onPageChange });
-    await userEvent.click(screen.getByTitle('2'));
+    await userEvent.click(screen.getByRole('button', { name: 'Page 2' }));
     expect(onPageChange).toHaveBeenCalledWith(2, 20);
   });
 });

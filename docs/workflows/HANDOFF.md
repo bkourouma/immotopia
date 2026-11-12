@@ -17,6 +17,16 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 
 Modèle de section : voir le bloc « Modèle de section » plus bas.
 
+## chore/deps-patch-minor — 2026-11-11
+
+**État** — PR 218 vers `main` (fusion par l'utilisateur), reprend la PR Dependabot 212 (28 mises à jour mineures : antd 6.7, Radix, TanStack Query, aws-sdk, docxtemplater, pizzip…). PR Dependabot 214 (`@vitejs/plugin-react` 6) et 215 (`vitest` 5) fermées le 2026-11-11 : sauts de versions majeures (module introuvable, matchers non typés), à traiter en migration dédiée ; envisager une règle `ignore` des versions majeures dans `.github/dependabot.yml`.
+
+**Fait** — antd 6.7 ne change plus de page au clic sur le `<li title="N">` de la pagination mais sur le bouton « Page N » : 34 fichiers de test web cliquent ce bouton (`getByRole('button', { name: 'Page N' })`). Budget du chunk d'entrée relevé à 234 496 o (marge 297 o), motif daté dans `apps/web/scripts/measure-entry.mjs`. Vérifié en local : 35 fichiers web touchés (699 tests), typecheck web et API, lint, architecture, 7 suites DOCX.
+
+**Reste à faire** — CI de la PR 218 ; fermer la PR 212 après fusion ; contrôle visuel de la pagination antd et des composants Radix en navigateur (non fait) ; suite web et suite API complètes non rejouées en local.
+
+**Pièges** — un worktree à part (`.claude/worktrees/deps-lot`, vrai `npm ci`, sans jonction) évite de modifier le `node_modules` du checkout principal ; retirer le worktree avec `git worktree remove` seulement après la fusion.
+
 ## orch/2026-11-09-paiement-locatif — 2026-11-10
 
 **État** — Branche d'intégration `orch/2026-11-09-paiement-locatif` depuis `origin/main` `aa857a25`, poussée ; PR vers `main` (fusion par l'utilisateur, rien déployé, aucune migration appliquée sur une base). Spec [049](../../specs/049-locatif-paiement-parite-syndic/spec.md) (contrats dans `contracts.md`). Orchestration chef-orchestre : lots 0 à 11, suivi local dans `.orchestration/2026-11-09-paiement-locatif/suivi.md`.

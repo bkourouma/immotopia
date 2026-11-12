@@ -148,7 +148,7 @@ describe('SyndicMandatingAgencies : recherche', () => {
     expect(screen.getByText('Mandant 20')).toBeTruthy();
     expect(screen.queryByText('Mandant 21')).toBeNull();
 
-    await user.click(screen.getByTitle('2'));
+    await user.click(screen.getByRole('button', { name: 'Page 2' }));
     await screen.findByText('Mandant 21', undefined, T);
     expect(screen.queryByText('Mandant 01')).toBeNull();
   });

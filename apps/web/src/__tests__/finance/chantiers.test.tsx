@@ -545,7 +545,7 @@ describe('Détail d’un chantier', () => {
     expect(screen.getByText('Pièce numéro 20')).toBeInTheDocument();
     expect(screen.queryByText('Pièce numéro 21')).not.toBeInTheDocument();
 
-    await user.click(screen.getByTitle('2'));
+    await user.click(screen.getByRole('button', { name: 'Page 2' }));
     expect(await screen.findByText('Pièce numéro 21')).toBeInTheDocument();
     expect(screen.getByText('Pièce numéro 25')).toBeInTheDocument();
     expect(screen.queryByText('Pièce numéro 20')).not.toBeInTheDocument();

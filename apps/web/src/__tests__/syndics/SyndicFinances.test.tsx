@@ -300,7 +300,7 @@ describe('SyndicFinances — onglets paresseux', () => {
     expect(listChargeCallsPage).toHaveBeenCalledWith('tenant-1', 'syndic-1', { page: 1, limit: 20 });
     expect(listAllChargeCalls).not.toHaveBeenCalled();
 
-    await user.click(screen.getAllByTitle('2')[0]);
+    await user.click(screen.getAllByRole('button', { name: 'Page 2' })[0]);
     await waitFor(() =>
       expect(listChargeCallsPage).toHaveBeenLastCalledWith('tenant-1', 'syndic-1', { page: 2, limit: 20 })
     );

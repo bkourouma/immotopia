@@ -193,7 +193,7 @@ describe('Appels de charges — paiement en ligne', () => {
 
     const payButton = await screen.findByRole('button', { name: 'Payer en ligne' }, WAIT);
     expect(payButton).toBeDisabled();
-    expect(screen.getByText('Paiement en cours')).toBeInTheDocument();
+    expect(await screen.findByText('Paiement en cours', {}, WAIT)).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('checkbox', { name: "Sélectionner l'appel 2026-T1" }));
     await userEvent.click(screen.getByRole('checkbox', { name: "Sélectionner l'appel 2026-T2" }));

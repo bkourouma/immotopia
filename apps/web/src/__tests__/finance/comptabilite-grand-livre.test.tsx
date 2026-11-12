@@ -166,7 +166,7 @@ describe('Grand livre — sans compte (récapitulatif)', () => {
   it('pagination serveur : page 2', async () => {
     renderPage();
     await screen.findByRole('button', { name: '411000' });
-    await userEvent.click(await screen.findByTitle('2'));
+    await userEvent.click(await screen.findByRole('button', { name: 'Page 2' }));
     await waitFor(() => expect(dernierRecap()[1]).toMatchObject({ page: 2, limit: 50 }));
   });
 
@@ -264,7 +264,7 @@ describe('Grand livre — avec compte', () => {
     expect(document.body.textContent).toMatch(/2\s?222\s?222/);
 
     getAccountLedger.mockResolvedValue(grandLivre({ items: [ligne(101, 9_999_999)], page: 2 }));
-    await userEvent.click(await screen.findByTitle('2'));
+    await userEvent.click(await screen.findByRole('button', { name: 'Page 2' }));
     await waitFor(() => expect(dernierCompte()[1]).toMatchObject({ page: 2, limit: 100 }));
     await screen.findByText('PIECE-101');
     expect(document.body.textContent).toMatch(/9\s?999\s?999/);

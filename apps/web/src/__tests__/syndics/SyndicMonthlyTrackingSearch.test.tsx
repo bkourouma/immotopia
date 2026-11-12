@@ -137,7 +137,7 @@ describe('SyndicMonthlyTracking : recherche et pagination', () => {
     expect(screen.getByText('LOT-20')).toBeTruthy();
     expect(screen.queryByText('LOT-21')).toBeNull();
 
-    await user.click(screen.getByTitle('2'));
+    await user.click(screen.getByRole('button', { name: 'Page 2' }));
 
     await screen.findByText('LOT-21', undefined, T);
     expect(screen.getByText('LOT-25')).toBeTruthy();

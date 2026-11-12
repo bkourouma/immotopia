@@ -111,7 +111,7 @@ describe('ExternalAccessViewPage : recherche et pagination des biens', () => {
     // La synthèse (calculée par le serveur) reste au-dessus.
     expect(screen.getByText('Biens concernés')).toBeInTheDocument();
 
-    await user.click(screen.getByTitle('2'));
+    await user.click(screen.getByRole('button', { name: 'Page 2' }));
     expect(await screen.findByText('BIEN-006 — Résidence 6', undefined, T)).toBeInTheDocument();
     expect(screen.getByText('BIEN-007 — Résidence 7')).toBeInTheDocument();
     expect(screen.queryByText('BIEN-001 — Résidence 1')).not.toBeInTheDocument();

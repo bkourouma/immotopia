@@ -123,7 +123,7 @@ describe('SyndicsList — pagination écran (lot syndic-ecarts, tâche 1)', () =
     expect(screen.queryByText('Résidence 25')).not.toBeInTheDocument();
 
     // 25 copropriétés, 12 par page : 3 pages.
-    await user.click(screen.getByTitle('3'));
+    await user.click(screen.getByRole('button', { name: 'Page 3' }));
     expect(await screen.findByText('Résidence 25')).toBeInTheDocument();
 
     // La recherche filtre depuis n'importe quelle page et revient à la page 1.

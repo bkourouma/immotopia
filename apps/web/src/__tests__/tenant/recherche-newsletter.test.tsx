@@ -111,7 +111,7 @@ describe('NewsletterCampaignsPage — recherche serveur', () => {
       <NewsletterCampaignsPage />
     );
     await screen.findByText('Campagne 1', undefined, T);
-    fireEvent.click(screen.getByTitle('2'));
+    fireEvent.click(screen.getByRole('button', { name: 'Page 2' }));
     await vi.waitFor(
       () => expect(svc.listCampaigns).toHaveBeenLastCalledWith('t1', { status: 'DRAFT', page: 2, limit: 20 }),
       T

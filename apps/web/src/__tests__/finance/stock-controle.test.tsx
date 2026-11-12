@@ -794,7 +794,7 @@ describe('Contrôle — onglets paresseux et plafond des tableaux', () => {
     monter(`/tenant/${TENANT}/finance/stock/controle?onglet=indicateurs`);
     await screen.findByText('Par mois', {}, { timeout: 8000 });
     await waitFor(() => expect(document.querySelectorAll('tbody tr.ant-table-row').length).toBe(20), { timeout: 8000 });
-    await user.click(screen.getByTitle('2'));
+    await user.click(screen.getByRole('button', { name: 'Page 2' }));
     await waitFor(() => expect(document.querySelectorAll('tbody tr.ant-table-row').length).toBe(5));
   }, 40000);
 });

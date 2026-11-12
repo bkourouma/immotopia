@@ -433,7 +433,7 @@ describe('File de validation — pagination locale et sélection', () => {
     expect(await screen.findByText('20 pièces sélectionnées')).toBeInTheDocument();
 
     // Changer de page vide la sélection : on ne valide jamais des pièces invisibles.
-    await user.click(screen.getByTitle('2'));
+    await user.click(screen.getByRole('button', { name: 'Page 2' }));
     expect(await screen.findByText('Pièce 21', {}, { timeout: 8000 })).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByText(/pièces? sélectionnées?/)).not.toBeInTheDocument());
   }, 30000);

@@ -83,6 +83,7 @@ describe('Contacts — fenêtre « Modifier »', { timeout: 60_000 }, () => {
     const user = userEvent.setup({ delay: null });
     mount();
 
+    await waitFor(() => expect(document.querySelector('.ant-spin-blur')).toBeNull(), { timeout: 8000 });
     await user.click(await screen.findByRole('button', { name: /edit/i }, { timeout: 8000 }));
 
     const note = await screen.findByTestId('portal-email-notice', {}, { timeout: 8000 });
@@ -96,6 +97,7 @@ describe('Contacts — fenêtre « Modifier »', { timeout: 60_000 }, () => {
     const user = userEvent.setup({ delay: null });
     mount();
 
+    await waitFor(() => expect(document.querySelector('.ant-spin-blur')).toBeNull(), { timeout: 8000 });
     await user.click(await screen.findByRole('button', { name: /edit/i }, { timeout: 8000 }));
 
     expect(await screen.findByDisplayValue('nouvelle@example.ci', {}, { timeout: 8000 })).toBeInTheDocument();

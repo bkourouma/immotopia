@@ -203,7 +203,7 @@ describe('Journal — comptabilité de l’agence', () => {
   it('changer de page appelle la page 2', async () => {
     renderPage();
     await screen.findByText('JRN-0001');
-    await userEvent.click(await screen.findByTitle('2'));
+    await userEvent.click(await screen.findByRole('button', { name: 'Page 2' }));
     await waitFor(() => expect(dernierAppel()[1]).toMatchObject({ page: 2, limit: 50 }));
     expect(screen.getByTestId('recherche').textContent).toContain('page=2');
   });

@@ -114,7 +114,7 @@ async function selectionnerSurDeuxPages(user: ReturnType<typeof userEvent.setup>
   mount();
   await screen.findByText('05/2026', {}, { timeout: 8000 });
   fireEvent.click(await screen.findByRole('checkbox', { name: 'Sélectionner 05/2026' }));
-  await user.click(await screen.findByTitle('2'));
+  await user.click(await screen.findByRole('button', { name: 'Page 2' }));
   await screen.findByText('06/2026', {}, { timeout: 8000 });
   fireEvent.click(await screen.findByRole('checkbox', { name: 'Sélectionner 06/2026' }));
 }
@@ -165,7 +165,7 @@ describe('Portail locataire — sélection des échéances sur plusieurs pages',
     mount();
     await screen.findByText('05/2026', {}, { timeout: 8000 });
     fireEvent.click(screen.getByRole('checkbox', { name: 'Sélectionner 05/2026' }));
-    await user.click(await screen.findByTitle('2'));
+    await user.click(await screen.findByRole('button', { name: 'Page 2' }));
     await screen.findByText('06/2026', {}, { timeout: 8000 });
 
     expect(screen.getByRole('checkbox', { name: 'Sélectionner 06/2026' })).toBeDisabled();
@@ -195,7 +195,7 @@ describe('Portail locataire — sélection des échéances sur plusieurs pages',
     mount();
     await screen.findByText('05/2026', {}, { timeout: 8000 });
     fireEvent.click(await screen.findByRole('checkbox', { name: 'Sélectionner 05/2026' }));
-    await user.click(await screen.findByTitle('2'));
+    await user.click(await screen.findByRole('button', { name: 'Page 2' }));
     await screen.findByText('06/2026', {}, { timeout: 8000 });
 
     expect(screen.getByText('1 échéance(s) sélectionnée(s)')).toBeInTheDocument();
@@ -238,9 +238,9 @@ describe('Portail locataire — sélection des échéances sur plusieurs pages',
           }
         : reponsePage(2)
     );
-    await user.click(await screen.findByTitle('2'));
+    await user.click(await screen.findByRole('button', { name: 'Page 2' }));
     await screen.findByText('06/2026', {}, { timeout: 8000 });
-    await user.click(await screen.findByTitle('1'));
+    await user.click(await screen.findByRole('button', { name: 'Page 1' }));
     await screen.findByText('05/2026', {}, { timeout: 8000 });
 
     await waitFor(() => expect(normaliser(screen.getByText(/Total à payer/).textContent)).toBe('20000'));
@@ -262,7 +262,7 @@ describe('Portail locataire — sélection des échéances sur plusieurs pages',
           }
         : reponsePage(2)
     );
-    await user.click(await screen.findByTitle('1'));
+    await user.click(await screen.findByRole('button', { name: 'Page 1' }));
     await screen.findByText('05/2026', {}, { timeout: 8000 });
 
     await waitFor(() => expect(screen.getByText('1 échéance(s) sélectionnée(s)')).toBeInTheDocument());
@@ -291,7 +291,7 @@ describe('Portail locataire — sélection des échéances sur plusieurs pages',
     await screen.findByText('P01', {}, { timeout: 8000 });
     // « Tout sélectionner » : 20 lignes de la page 1, puis seulement 4 des 5 de la page 2.
     fireEvent.click(screen.getAllByRole('checkbox')[0]);
-    await user.click(await screen.findByTitle('2'));
+    await user.click(await screen.findByRole('button', { name: 'Page 2' }));
     await screen.findByText('P21', {}, { timeout: 8000 });
     fireEvent.click(screen.getAllByRole('checkbox')[0]);
     await waitFor(() => expect(screen.getByText('24 échéance(s) sélectionnée(s)')).toBeInTheDocument());

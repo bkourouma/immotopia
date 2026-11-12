@@ -199,7 +199,7 @@ describe('SyndicsList : recherche multicritères locale', () => {
     await screen.findByText('Immeuble 01', undefined, T);
     expect(screen.queryByText('Immeuble 25')).not.toBeInTheDocument();
 
-    await user.click(screen.getByTitle('3'));
+    await user.click(screen.getByRole('button', { name: 'Page 3' }));
     expect(await screen.findByText('Immeuble 25', undefined, T)).toBeInTheDocument();
 
     await user.type(within(screen.getByRole('search')).getByRole('textbox'), 'Immeuble 07');

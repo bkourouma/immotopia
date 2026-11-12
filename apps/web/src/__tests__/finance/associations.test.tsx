@@ -655,7 +655,7 @@ describe('Recherche multicritères des associations', () => {
 
     // Page 2 du relevé : la première ligne n'est plus affichée.
     const modale = screen.getByRole('dialog');
-    await user.click(within(modale).getByTitle('2'));
+    await user.click(within(modale).getByRole('button', { name: 'Page 2' }));
     await waitFor(() => expect(screen.queryByText('Bien 01')).not.toBeInTheDocument(), T);
 
     // Saisie d'une période : retour en page 1.
