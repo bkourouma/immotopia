@@ -5,7 +5,11 @@
 #   docker build -f packages/api/Dockerfile .
 # docker-compose.yml already sets the context accordingly.
 
-FROM node:26-alpine AS build
+# Node 22 (et non 26) : avec l'image node:26-alpine, `npm prune --omit=dev` relance le
+# script `postinstall` (`prisma generate`) apres avoir retire `prisma` (devDependency) et
+# echoue en `prisma: not found` (code 127), ce qui bloque le deploiement. Le passage a
+# Node 26 (PR Dependabot) est a refaire avec `--ignore-scripts` sur le prune, apres essai.
+FROM node:22-alpine AS build
 WORKDIR /repo
 
 # OpenSSL is required by Prisma's query engine on Alpine.
@@ -79,7 +83,7 @@ FROM build AS prod-deps
 RUN npm prune --omit=dev
 
 
-FROM node:26-alpine AS runtime
+FROM node:22-alpine AS runtime
 WORKDIR /app
 
 # LibreOffice (Writer seul) convertit les DOCX en PDF pour la signature
