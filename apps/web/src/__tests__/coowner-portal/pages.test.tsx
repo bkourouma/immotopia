@@ -235,7 +235,7 @@ describe('Mes appels de charges', () => {
     mount('/copropriete/appels');
 
     expect(await screen.findByText('Mes appels de charges', {}, WAIT)).toBeInTheDocument();
-    expect(screen.getByText('En retard')).toBeInTheDocument();
+    expect(await screen.findByText('En retard', {}, WAIT)).toBeInTheDocument();
     expect(screen.getByText('Payé', { selector: '.ant-tag' })).toBeInTheDocument();
     expect(screen.getAllByText('10/01/2026').length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: /payer/i })).not.toBeInTheDocument();
