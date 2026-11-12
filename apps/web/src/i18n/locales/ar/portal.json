@@ -4,6 +4,7 @@
   "{{count}} échéance(s) sélectionnée(s)": "تم اختيار {{count}} موعد استحقاق",
   "{{max}} échéances au plus par paiement en ligne.": "بحد أقصى {{max}} مواعيد استحقاق لكل دفعة إلكترونية.",
   "{{overdueInstallmentsCount}} échéances en retard": "{{overdueInstallmentsCount}} أقساط متأخّرة",
+  "{{price}} HT par mois": "{{price}} دون ضريبة شهريًا",
   "{{price}} HT par mois et par unité": "{{price}} دون ضريبة شهريًا للوحدة",
   "{{value}} jour(s)": "{{value}} يوم (أيام)",
   "{{value}} seront dus aux prochaines échéances ; ce montant n’est pas inclus dans le reste à payer.": "سيُستحق {{value}} ضمن الأقساط القادمة؛ ولا يدخل هذا المبلغ في المتبقّي للسداد.",

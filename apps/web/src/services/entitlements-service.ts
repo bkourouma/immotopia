@@ -17,6 +17,11 @@ export interface MenuEntitlements {
   phase: string;
   enforcement: 'off' | 'warn' | 'enforce';
   /**
+   * Fonctionnalités ouvertes (modules + options). Contient `SYNDIC_LIVE` quand l'agence a
+   * l'option « AG en direct et visio » (hooks/useLiveOption.ts). Absent d'un serveur ancien.
+   */
+  features?: string[];
+  /**
    * Barrière « détenu en propre » (pack Patrimoine, lot P1) : vrai quand le
    * seul module pleinement ouvert est MODULE_PATRIMOINE. Sert à masquer les
    * entrées de menu qui ne concernent que la gestion pour un tiers

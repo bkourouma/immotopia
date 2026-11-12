@@ -1,7 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { App } from 'antd';
-import { act, fireEvent, render as baseRender, screen, waitFor, within } from '@testing-library/react';
+import { act, configure, fireEvent, render as baseRender, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { MeetingLiveConsole } from '../../components/syndics/MeetingLiveConsole';
 import type {
@@ -75,6 +75,17 @@ vi.mock('../../services/syndic-service', async () => {
     setVisioParticipantWriting: (...a: unknown[]) => api.setVisioParticipantWriting(...a)
   };
 });
+
+// Droits de l'agence : serveur en mode `off` (aucun refus d'option) — la console habituelle se monte.
+vi.mock('../../services/entitlements-service', () => ({
+  getMenuEntitlements: vi.fn().mockResolvedValue({
+    moduleAccess: {},
+    readOnly: false,
+    phase: 'ACTIVE',
+    enforcement: 'off',
+    features: []
+  })
+}));
 
 // La salle (LiveKit) est chargée à la demande : on la remplace par un témoin qui demande son jeton.
 vi.mock('../../components/syndics/visio/MeetingVisioRoom', () => {
@@ -246,6 +257,10 @@ function mount(
     </App>
   );
 }
+
+// La console attend la lecture des droits de l'agence avant de se monter : le rendu complet (antd, jsdom) se fait donc
+// après le retour de `mount()`. Sur un poste chargé il dépasse la seconde par défaut des recherches asynchrones.
+configure({ asyncUtilTimeout: 10000 });
 
 beforeEach(() => {
   vi.clearAllMocks();

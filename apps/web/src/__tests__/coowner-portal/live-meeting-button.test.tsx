@@ -41,6 +41,7 @@ function meeting(overrides: Partial<CoOwnerMeeting> = {}): CoOwnerMeeting {
     status: 'PLANNED',
     syndicate: 'Résidence Les Acacias',
     liveAvailable: true,
+    liveOptionEnabled: true,
     agenda: [],
     resolutions: [],
     ...overrides
@@ -76,6 +77,13 @@ afterEach(() => {
 describe('Portail copropriétaire — AG en direct', () => {
   it('ne propose pas le bouton quand l’AG n’est pas disponible en direct', async () => {
     listMyMeetings.mockResolvedValue([meeting({ liveAvailable: false })]);
+    mount();
+    await screen.findByText('Résidence Les Acacias');
+    expect(screen.queryByRole('button', { name: "Rejoindre l'AG en direct" })).toBeNull();
+  });
+
+  it('ne propose pas le bouton quand l’agence n’a pas l’option AG en direct', async () => {
+    listMyMeetings.mockResolvedValue([meeting({ liveAvailable: true, liveOptionEnabled: false })]);
     mount();
     await screen.findByText('Résidence Les Acacias');
     expect(screen.queryByRole('button', { name: "Rejoindre l'AG en direct" })).toBeNull();

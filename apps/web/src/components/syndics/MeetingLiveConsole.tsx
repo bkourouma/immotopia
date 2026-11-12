@@ -1,5 +1,19 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { App, Alert, Button, Card, Col, Input, Modal, Progress, Row, Space, Statistic, Typography } from 'antd';
+import {
+  App,
+  Alert,
+  Button,
+  Card,
+  Col,
+  Input,
+  Modal,
+  Progress,
+  Row,
+  Skeleton,
+  Space,
+  Statistic,
+  Typography
+} from 'antd';
 import {
   closeResolutionVote,
   getLiveMeeting,
@@ -26,6 +40,9 @@ import { useMeetingDiscussion } from './visio/use-meeting-discussion';
 import { MeetingRecordingsCard } from './visio/MeetingRecordingsCard';
 import { contactName } from './meeting-governance';
 import { clampPercent } from './live/live-labels';
+import { LiveOptionNotice } from './live/LiveOptionNotice';
+import { useLiveOption } from '../../hooks/useLiveOption';
+import { isOptionNotIncludedError } from '../../utils/option-not-included';
 import { t } from '../../i18n/t';
 
 const { Text } = Typography;
@@ -146,12 +163,18 @@ const QuorumPanel: React.FC<{ live: LiveMeetingAdminView }> = ({ live }) => {
   );
 };
 
+interface MeetingLiveConsoleBodyProps extends MeetingLiveConsoleProps {
+  /** Une requête a été refusée en 403 `OPTION_NOT_INCLUDED` : la console cède la place à l'état « option non souscrite ». */
+  onOptionRefused: () => void;
+}
+
 /**
  * Console « En direct » du détail d'une AG (spec 043) : quorum, émargement des
  * lots, ouverture et clôture des votes, participants et liens personnels.
  * Interrogation toutes les 5 s pendant la séance, en pause onglet masqué ou menu d'émargement ouvert.
+ * Montée seulement quand l'option « AG en direct et visio » est ouverte (voir `MeetingLiveConsole`).
  */
-export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
+const MeetingLiveConsoleBody: React.FC<MeetingLiveConsoleBodyProps> = ({
   tenantId,
   syndicId,
   meetingId,
@@ -160,9 +183,18 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
   refreshKey,
   proxies,
   onMeetingChanged,
-  onLiveChanged
+  onLiveChanged,
+  onOptionRefused
 }) => {
   const { message } = App.useApp();
+  const onOptionRefusedRef = useRef(onOptionRefused);
+  onOptionRefusedRef.current = onOptionRefused;
+  /** Vrai (et signalé) quand l'erreur est un refus d'option : pas de message d'échec générique à afficher. */
+  const optionRefused = useCallback((err: unknown): boolean => {
+    if (!isOptionNotIncludedError(err)) return false;
+    onOptionRefusedRef.current();
+    return true;
+  }, []);
   const [live, setLive] = useState<LiveMeetingAdminView | null>(null);
   const [participants, setParticipants] = useState<MeetingParticipantView[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -236,6 +268,7 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
       setError(null);
       failuresRef.current = 0;
     } catch (err) {
+      if (optionRefused(err)) return false;
       // Un échec passager garde les dernières données à l'écran ; attente croissante (10 s, puis 15 s).
       setError(errorText(err, t('Impossible de charger la séance en direct')));
       failuresRef.current += 1;
@@ -243,7 +276,7 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
     }
     // Interrogation tant que l'AG n'est ni terminée ni annulée (les copropriétaires rejoignent avant l'ouverture).
     return frozen ? false : undefined;
-  }, [tenantId, syndicId, meetingId, frozen, applyLive]);
+  }, [tenantId, syndicId, meetingId, frozen, applyLive, optionRefused]);
 
   const { refresh } = useVisiblePolling(load, { enabled: !lotMenuOpen, resetKey: resetToken });
 
@@ -310,12 +343,12 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
         applyLive(view);
         message.success(okText);
       } catch (err) {
-        message.error(errorText(err, failText));
+        if (!optionRefused(err)) message.error(errorText(err, failText));
       } finally {
         setLotsBusy(lotIds, false);
       }
     },
-    [applyLive, message, setLotsBusy]
+    [applyLive, message, setLotsBusy, optionRefused]
   );
 
   const handleSetLot = useCallback(
@@ -350,7 +383,9 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
       applyLive(view);
       message.success(open ? t('Vote ouvert') : t('Vote clos'));
     } catch (err) {
-      message.error(errorText(err, open ? t('Ouverture du vote impossible') : t('Clôture du vote impossible')));
+      if (!optionRefused(err)) {
+        message.error(errorText(err, open ? t('Ouverture du vote impossible') : t('Clôture du vote impossible')));
+      }
     } finally {
       setBusyResolutionId(null);
     }
@@ -370,7 +405,7 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
       forceParticipants.current = true;
       refresh();
     } catch (err) {
-      message.error(errorText(err, t('Génération du lien impossible')));
+      if (!optionRefused(err)) message.error(errorText(err, t('Génération du lien impossible')));
     } finally {
       setBusyContactId(null);
     }
@@ -395,7 +430,7 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
       forceParticipants.current = true;
       refresh();
     } catch (err) {
-      message.error(errorText(err, t('Révocation impossible')));
+      if (!optionRefused(err)) message.error(errorText(err, t('Révocation impossible')));
     } finally {
       setBusyContactId(null);
     }
@@ -621,6 +656,22 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
       </Modal>
     </Space>
   );
+};
+
+/**
+ * Console « En direct » d'une AG, sous réserve de l'option payante « AG en direct et visio »
+ * (`SYNDIC_LIVE`, extension `EXT_AG_EN_DIRECT`). Sans l'option (serveur en `enforce`), aucune
+ * route « en direct » n'est appelée : l'état « option non souscrite » prend la place de la console.
+ * Même état si une requête revient en 403 `OPTION_NOT_INCLUDED` (droits mis en cache, mode changé).
+ */
+export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = props => {
+  const option = useLiveOption(props.tenantId);
+  const [refused, setRefused] = useState(false);
+  const handleRefused = useCallback(() => setRefused(true), []);
+
+  if (refused || option === 'missing') return <LiveOptionNotice tenantId={props.tenantId} />;
+  if (option === 'loading') return <Skeleton active paragraph={{ rows: 3 }} aria-label={t('Chargement')} />;
+  return <MeetingLiveConsoleBody {...props} onOptionRefused={handleRefused} />;
 };
 
 export default MeetingLiveConsole;

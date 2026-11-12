@@ -115,8 +115,11 @@ interface RequestValues {
 /** Aide sous le sélecteur : description de l'offre et prix d'une unité (ou tarif à confirmer). */
 function offerHelp(offer: ExtensionOffer | undefined): string | undefined {
   if (!offer) return undefined;
+  const hasQuantity = Object.keys(offer.capacities).length > 0;
   const price = offer.isSellable
-    ? t('{{price}} HT par mois et par unité', { price: formatFcfa(offer.monthlyPrice) })
+    ? hasQuantity
+      ? t('{{price}} HT par mois et par unité', { price: formatFcfa(offer.monthlyPrice) })
+      : t('{{price}} HT par mois', { price: formatFcfa(offer.monthlyPrice) })
     : t('Tarif à confirmer');
   return offer.description ? `${offer.description} — ${price}` : price;
 }
@@ -194,13 +197,24 @@ export const TenantSubscriptionSettings: React.FC = () => {
     }
   }, [tenantId, loadEntitlements, canView]);
 
+  // Offre pré-sélectionnée par `?offre=<code>` (ex. lien « Demander l'option » de l'AG en direct).
+  const requestedOffer = new URLSearchParams(location.search).get('offre');
+  useEffect(() => {
+    if (requestedOffer && offers.some(offer => offer.code === requestedOffer)) {
+      requestForm.setFieldValue('catalogCode', requestedOffer);
+    }
+  }, [requestedOffer, offers, requestForm]);
+
+  // Offre sans capacité (option comme « AG en direct et visio ») : une seule unité, pas de quantité.
+  const offerHasQuantity = !selectedOffer || Object.keys(selectedOffer.capacities).length > 0;
+
   const handleRequestExtension = async (values: RequestValues) => {
     if (!tenantId) return;
     setSending(true);
     try {
       const created = await createExtensionRequest(tenantId, {
         catalogCode: values.catalogCode ?? null,
-        quantity: values.catalogCode ? (values.quantity ?? 1) : null,
+        quantity: values.catalogCode ? (offerHasQuantity ? (values.quantity ?? 1) : 1) : null,
         message: values.message
       });
       setRequests(previous => [created, ...previous]);
@@ -399,9 +413,11 @@ export const TenantSubscriptionSettings: React.FC = () => {
               options={offers.map(offer => ({ value: offer.code, label: offer.name }))}
             />
           </Form.Item>
-          <Form.Item label={t('Quantité')} name="quantity">
-            <InputNumber<number> min={1} max={1000} style={{ width: '100%' }} />
-          </Form.Item>
+          {offerHasQuantity && (
+            <Form.Item label={t('Quantité')} name="quantity">
+              <InputNumber<number> min={1} max={1000} style={{ width: '100%' }} />
+            </Form.Item>
+          )}
           <Form.Item
             label={t('Votre demande')}
             name="message"

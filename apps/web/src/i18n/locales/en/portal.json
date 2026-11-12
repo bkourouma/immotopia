@@ -4,6 +4,7 @@
   "{{count}} échéance(s) sélectionnée(s)": "{{count}} due date(s) selected",
   "{{max}} échéances au plus par paiement en ligne.": "A maximum of {{max}} due dates per online payment.",
   "{{overdueInstallmentsCount}} échéances en retard": "{{overdueInstallmentsCount}} overdue instalments",
+  "{{price}} HT par mois": "{{price}} excl. tax per month",
   "{{price}} HT par mois et par unité": "{{price}} excl. tax per month and per unit",
   "{{value}} jour(s)": "{{value}} day(s)",
   "{{value}} seront dus aux prochaines échéances ; ce montant n’est pas inclus dans le reste à payer.": "{{value}} will fall due with the upcoming installments; this amount is not included in the amount left to pay.",

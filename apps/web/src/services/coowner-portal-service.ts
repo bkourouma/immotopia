@@ -130,6 +130,8 @@ export interface CoOwnerMeeting {
   syndicate: string | null;
   /** AG planifiée ou en cours, à J-1 ou plus tard : le lien en direct peut être délivré (spec 043). */
   liveAvailable?: boolean;
+  /** Option payante « AG en direct » de l'agence : « Rejoindre » n'est proposé que si vrai. */
+  liveOptionEnabled?: boolean;
   agenda: Array<{ id: string; orderIndex: number; title: string }>;
   /** Vide tant que l'assemblée n'est pas clôturée. */
   resolutions: CoOwnerResolution[];
