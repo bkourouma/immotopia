@@ -1,4 +1,10 @@
 import { Router } from 'express';
+import {
+  getRentalAlertPropertiesHandler,
+  listRentalAlertsHandler,
+  removeRentalAlertHandler,
+  saveRentalAlertHandler
+} from '../controllers/assistant-rental-alert-controller';
 import multer from 'multer';
 import { MAX_DICTATION_BYTES, transcribeHandler } from '../controllers/ai-transcription-controller';
 import { MAX_ASSISTANT_FILES, MAX_ASSISTANT_FILE_BYTES } from '../lib/ai/assistant-files';
@@ -73,6 +79,10 @@ router.use(requireTenantCollaborator);
 
 // Ce que l'interface peut proposer ; répond `enabled: false` quand l'assistant est désactivé.
 router.get('/status', requireAiStatusAccess, getStatusHandler);
+router.get('/rental-alerts', requireAiStatusAccess, listRentalAlertsHandler);
+router.get('/rental-alerts/properties', requireAiStatusAccess, getRentalAlertPropertiesHandler);
+router.put('/rental-alerts/:id', requireAiStatusAccess, aiActionRateLimiter, saveRentalAlertHandler);
+router.delete('/rental-alerts/:id', requireAiStatusAccess, aiActionRateLimiter, removeRentalAlertHandler);
 router.post('/notifications', requireAiStatusAccess, aiActionRateLimiter, notifyAssistantColleaguesHandler);
 router.patch('/follow-ups/:id', requireAiStatusAccess, aiActionRateLimiter, decideFollowUpHandler);
 router.get('/tasks', requireAiStatusAccess, listAssistantTasksHandler);

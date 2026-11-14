@@ -17,6 +17,7 @@ import { PropertyResultCard } from './PropertyResultCard';
 import { SafeMarkdown } from './SafeMarkdown';
 import { WritePlanCard } from './WritePlanCard';
 import { FollowUpCard } from './FollowUpCard';
+import { rentalAlertDescription, rentalAlertLabels, rentalAlertParams } from './rental-alert-labels';
 
 export interface CopilotMessageListProps {
   messages: CopilotUiMessage[];
@@ -44,7 +45,8 @@ function Attachment({
   onApprovePlan,
   onRefusePlan,
   onOpenArtifact,
-  streaming
+  streaming,
+  conversationId
 }: { attachment: CopilotAttachment } & Omit<CopilotMessageListProps, 'messages'>): React.ReactElement {
   switch (attachment.kind) {
     case 'properties':
@@ -114,6 +116,18 @@ function Attachment({
         />
       );
     case 'prepared_alert': {
+      if (attachment.alert.kind === 'rental') {
+        const { rule, propertyLabel } = attachment.alert;
+        return (
+          <Card title={rentalAlertLabels()[rule.kind]} size="small">
+            <p>{rentalAlertDescription(rule)}</p>
+            {propertyLabel && <p>{propertyLabel}</p>}
+            <Link to={`/tenant/${encodeURIComponent(tenantId)}/assistant?${rentalAlertParams(rule, conversationId)}`}>
+              {t('Ouvrir le formulaire d’alerte')}
+            </Link>
+          </Card>
+        );
+      }
       const { siteId, siteName, thresholdPercent } = attachment.alert;
       const path = `/tenant/${encodeURIComponent(tenantId)}/finance/chantiers/${encodeURIComponent(siteId)}/budget`;
       return (
@@ -223,6 +237,7 @@ export function CopilotMessageList({
                 <Attachment
                   attachment={attachment}
                   streaming={streaming}
+                  conversationId={conversationId}
                   tenantId={tenantId}
                   propertyId={propertyId}
                   onConfirm={onConfirm}

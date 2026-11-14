@@ -1,4 +1,9 @@
 {
+  "Cette confirmation correspond déjà à une autre alerte.": "This confirmation already belongs to another alert.",
+  "Fin de bail à surveiller": "Lease expiration approaching",
+  "Déclaration locative en attente": "Rental payment declaration pending",
+  "Seuil des impayés atteint": "Rent arrears threshold reached",
+  "Ouvrez vos alertes locatives pour consulter la règle.": "Open your rental alerts to view this rule.",
   "Plusieurs chantiers portent ce nom.": "Several sites have this name.",
   "Le chantier est clôturé.": "The site is closed.",
   "Le seuil a été modifié. Rechargez le formulaire.": "The threshold has changed. Reload the form.",

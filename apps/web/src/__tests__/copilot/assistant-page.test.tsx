@@ -17,6 +17,9 @@ vi.mock('../../services/copilot-service', () => {
     getArtifactVersion: vi.fn(),
     listSavedAnalyses: vi.fn(),
     listScheduledReports: vi.fn(),
+    listRentalAlerts: vi.fn(),
+    rentalAlertProperties: vi.fn(),
+    saveRentalAlert: vi.fn(),
     setScheduledReportActive: vi.fn(),
     listTasks: vi.fn(),
     createTask: vi.fn(),
@@ -115,6 +118,30 @@ function setDesktop(desktop: boolean) {
 
 describe('AssistantPage — artefacts', () => {
   afterEach(() => setDesktop(false));
+
+  it('préremplit et enregistre une alerte locative seulement après validation', async () => {
+    getStatus.mockResolvedValue({ ...ENABLED, tools: [...ENABLED.tools, 'prepare_rent_arrears_alert'] });
+    vi.mocked(copilotService.listRentalAlerts).mockResolvedValue({ items: [] });
+    vi.mocked(copilotService.rentalAlertProperties).mockResolvedValue([
+      { id: 'p1', title: 'Atrium', internalReference: 'REF-1' }
+    ]);
+    vi.mocked(copilotService.saveRentalAlert).mockResolvedValue(undefined);
+    renderPage('/tenant/t1/assistant?alertes-locatives=1&regle=overdue_rent&jours=7&bien=p1&minimum=25000&devise=XOF');
+    const amount = await screen.findByLabelText('Solde minimal');
+    expect(amount).toHaveValue('25000');
+    const save = screen.getByRole('button', { name: 'Enregistrer' });
+    await waitFor(() => expect(save).toBeEnabled());
+    expect(copilotService.rentalAlertProperties).toHaveBeenCalledWith('t1', { id: 'p1' }, expect.anything());
+    expect(copilotService.saveRentalAlert).not.toHaveBeenCalled();
+    fireEvent.click(save);
+    expect(copilotService.saveRentalAlert).toHaveBeenCalledWith('t1', expect.any(String), {
+      kind: 'overdue_rent',
+      propertyId: 'p1',
+      days: 7,
+      minimumAmount: 25000,
+      currency: 'XOF'
+    });
+  });
 
   it('rouvre un formulaire métier depuis une alerte budgétaire conservée dans le fil', async () => {
     getStatus.mockResolvedValue(ENABLED);

@@ -29,14 +29,23 @@ export type CopilotToolName =
   | 'list_capabilities'
   | 'call_read'
   | 'propose_follow_up'
-  | 'prepare_budget_alert';
+  | 'prepare_budget_alert'
+  | 'prepare_lease_expiry_alert'
+  | 'prepare_declaration_alert'
+  | 'prepare_rent_arrears_alert';
 
-export type PreparedAlert = {
-  kind: 'construction_budget';
-  siteId: string;
-  siteName: string;
-  thresholdPercent: number;
-};
+export type RentalAlertRule = { propertyId?: string; days: number } & (
+  { kind: 'lease_expiry' | 'declaration_pending' } | { kind: 'overdue_rent'; minimumAmount: number; currency: string }
+);
+
+export type PreparedAlert =
+  | {
+      kind: 'construction_budget';
+      siteId: string;
+      siteName: string;
+      thresholdPercent: number;
+    }
+  | { kind: 'rental'; rule: RentalAlertRule; propertyLabel?: string };
 
 export interface FollowUpProposal {
   id: string;

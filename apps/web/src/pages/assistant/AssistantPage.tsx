@@ -10,6 +10,7 @@ import { SavedAnalyses } from '../../components/copilot/SavedAnalyses';
 import { AnalysisShares } from '../../components/copilot/AnalysisShares';
 import { ShareAnalysisDialog } from '../../components/copilot/ShareAnalysisDialog';
 import { ScheduledReports } from '../../components/copilot/ScheduledReports';
+import { RentalAlerts } from '../../components/copilot/RentalAlerts';
 import { AssistantTasks } from '../../components/copilot/AssistantTasks';
 import { CreateAssistantTaskDialog } from '../../components/copilot/CreateAssistantTaskDialog';
 import { NotifyColleaguesDialog } from '../../components/copilot/NotifyColleaguesDialog';
@@ -85,10 +86,25 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
   const activeId = params.get('c');
   const sharedId = params.get('partage');
   const reportsOpen = params.get('rapports') === '1';
+  const rentalAlertsOpen = params.get('alertes-locatives') === '1';
+  const canOpenRentalAlerts = status.tools.some(tool =>
+    ['prepare_lease_expiry_alert', 'prepare_declaration_alert', 'prepare_rent_arrears_alert'].includes(tool)
+  );
   const taskId = params.get('tache') ?? undefined;
   const tasksOpen = !!taskId || params.get('taches') === '1';
   const [taskDraft, setTaskDraft] = useState<{ analysis?: SavedAnalysis }>();
   const [notificationDraft, setNotificationDraft] = useState<{ analysis?: SavedAnalysis }>();
+  function closeRentalAlerts(closeDrawer: boolean) {
+    setParams(
+      previous => {
+        const next = new URLSearchParams(previous);
+        for (const key of ['regle', 'jours', 'bien', 'minimum', 'devise']) next.delete(key);
+        if (closeDrawer) next.delete('alertes-locatives');
+        return next;
+      },
+      { replace: true }
+    );
+  }
   const analysisConversation = params.get('fil');
   const analysisArtifact = params.get('analyse');
   const initialAnalysis =
@@ -435,6 +451,15 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
         />
       )}
       {reportsOpen && <ScheduledReports tenantId={tenantId} onClose={() => setReportsOpen(false)} />}
+      {rentalAlertsOpen && (
+        <RentalAlerts
+          tenantId={tenantId}
+          tools={status.tools}
+          params={params}
+          onClose={() => closeRentalAlerts(true)}
+          onDraftClosed={() => closeRentalAlerts(false)}
+        />
+      )}
       {notificationDraft && (
         <NotifyColleaguesDialog
           tenantId={tenantId}
@@ -530,6 +555,20 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
             <Button type="text" onClick={() => setReportsOpen(true)}>
               {t('Rapports')}
             </Button>
+            {canOpenRentalAlerts && (
+              <Button
+                type="text"
+                onClick={() =>
+                  setParams(previous => {
+                    const next = new URLSearchParams(previous);
+                    next.set('alertes-locatives', '1');
+                    return next;
+                  })
+                }
+              >
+                {t('Alertes locatives')}
+              </Button>
+            )}
             <Button type="text" onClick={() => setNotificationDraft({})}>
               {t('Notifier des collègues')}
             </Button>

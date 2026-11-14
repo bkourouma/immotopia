@@ -237,6 +237,28 @@ function savedAnalysisPath(tenantId: string, { conversationId, artifactId }: Sav
 }
 
 export const copilotService = {
+  async listRentalAlerts(tenantId: string, cursor?: string, signal?: AbortSignal) {
+    const response = await apiClient.get(`/tenants/${tenantId}/ai/rental-alerts`, { params: { cursor }, signal });
+    return unwrap<{
+      items: Array<{
+        id: string;
+        rule?: import('../types/copilot').RentalAlertRule;
+        property?: { title: string; internalReference: string | null };
+        unavailable?: boolean;
+      }>;
+      nextCursor?: string;
+    }>(response.data);
+  },
+  async rentalAlertProperties(tenantId: string, params: { q?: string; id?: string }, signal: AbortSignal) {
+    const response = await apiClient.get(`/tenants/${tenantId}/ai/rental-alerts/properties`, { params, signal });
+    return unwrap<Array<{ id: string; title: string; internalReference: string | null }>>(response.data);
+  },
+  async saveRentalAlert(tenantId: string, id: string, rule: import('../types/copilot').RentalAlertRule) {
+    await apiClient.put(`/tenants/${tenantId}/ai/rental-alerts/${id}`, rule);
+  },
+  async deleteRentalAlert(tenantId: string, id: string) {
+    await apiClient.delete(`/tenants/${tenantId}/ai/rental-alerts/${id}`);
+  },
   async decideFollowUp(tenantId: string, id: string, confirm: boolean) {
     const response = await apiClient.patch(`/tenants/${tenantId}/ai/follow-ups/${id}`, { confirm });
     return unwrap<{ status: import('../types/copilot').FollowUpProposal['status'] }>(response.data);

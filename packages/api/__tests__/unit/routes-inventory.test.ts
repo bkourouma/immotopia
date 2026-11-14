@@ -398,6 +398,10 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
     const expected: Array<[string, string]> = [
       ['GET', '/api/tenants/:tenantId/ai/status'],
       ['GET', '/api/tenants/:tenantId/ai/reports'],
+      ['GET', '/api/tenants/:tenantId/ai/rental-alerts'],
+      ['GET', '/api/tenants/:tenantId/ai/rental-alerts/properties'],
+      ['PUT', '/api/tenants/:tenantId/ai/rental-alerts/:id'],
+      ['DELETE', '/api/tenants/:tenantId/ai/rental-alerts/:id'],
       ['POST', '/api/tenants/:tenantId/ai/notifications'],
       ['PATCH', '/api/tenants/:tenantId/ai/follow-ups/:id'],
       ['GET', '/api/tenants/:tenantId/ai/tasks'],

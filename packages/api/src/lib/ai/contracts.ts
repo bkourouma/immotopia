@@ -52,14 +52,19 @@ export type CopilotToolName =
   | 'call_read'
   | 'plan_write'
   | 'propose_follow_up'
-  | 'prepare_budget_alert';
+  | 'prepare_budget_alert'
+  | 'prepare_lease_expiry_alert'
+  | 'prepare_declaration_alert'
+  | 'prepare_rent_arrears_alert';
 
-export type PreparedAlert = {
-  kind: 'construction_budget';
-  siteId: string;
-  siteName: string;
-  thresholdPercent: number;
-};
+export type PreparedAlert =
+  | {
+      kind: 'construction_budget';
+      siteId: string;
+      siteName: string;
+      thresholdPercent: number;
+    }
+  | { kind: 'rental'; rule: import('./rental-alerts').RentalAlertRule; propertyLabel?: string };
 
 export type FollowUpProposal = {
   id: string;

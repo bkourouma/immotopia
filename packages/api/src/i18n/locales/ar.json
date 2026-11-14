@@ -1,4 +1,9 @@
 {
+  "Cette confirmation correspond déjà à une autre alerte.": "يرتبط هذا التأكيد بالفعل بتنبيه آخر.",
+  "Fin de bail à surveiller": "اقتراب انتهاء عقد الإيجار",
+  "Déclaration locative en attente": "تصريح سداد إيجار قيد الانتظار",
+  "Seuil des impayés atteint": "تم بلوغ حد متأخرات الإيجار",
+  "Ouvrez vos alertes locatives pour consulter la règle.": "افتح تنبيهات الإيجار للاطلاع على القاعدة.",
   "Plusieurs chantiers portent ce nom.": "تحمل عدة مواقع هذا الاسم.",
   "Le chantier est clôturé.": "الموقع مغلق.",
   "Le seuil a été modifié. Rechargez le formulaire.": "تغيّر الحد. أعد تحميل النموذج.",

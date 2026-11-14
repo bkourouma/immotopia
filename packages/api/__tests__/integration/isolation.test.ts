@@ -33,6 +33,7 @@ import app from '../../src/app';
 import { prisma } from '../../src/utils/database';
 import { signProposal } from '../../src/lib/ai/proposal-token';
 import { runAssistantReports } from '../../src/jobs/assistant-report-job';
+import { runAssistantRentalAlerts } from '../../src/jobs/assistant-rental-alert-job';
 import * as reportEmail from '../../src/services/email-service';
 import { assistantScope, getConversation } from '../../src/lib/ai/conversations';
 import { toolsForUser } from '../../src/lib/ai/tools/registry';
@@ -252,6 +253,111 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
   });
 
   describe('Assistant — historique privé', () => {
+    it('prépare et exécute les trois alertes locatives sans doublon', async () => {
+      const actor = await createTenantMemberUser(tenantA, 'rental-alert-owner', 'TEST_RENTAL_ALERT_MANAGER', [
+        'RENTAL_LEASES_VIEW',
+        'RENTAL_PAYMENTS_VIEW',
+        'RENTAL_INSTALLMENTS_VIEW'
+      ]);
+      const rental = await createRentalFixtureDirect(tenantA.id, actor.id, 'rental-alert-a');
+      const foreign = await createRentalFixtureDirect(tenantB.id, adminB.id, 'rental-alert-b');
+      const lease = await prisma.rentalLease.findFirstOrThrow({ where: { tenant_id: tenantA.id, id: rental.leaseId } });
+      await prisma.rentalLease.updateMany({
+        where: { tenant_id: tenantA.id, id: rental.leaseId },
+        data: { end_date: new Date('2030-01-10') }
+      });
+      await prisma.rentalInstallment.updateMany({
+        where: { tenant_id: tenantA.id, id: rental.installmentId },
+        data: { due_date: new Date('2030-01-01T12:00:00Z'), status: 'PARTIAL', currency: 'FCFA', amount_paid: 50000 }
+      });
+      const declaration = await prisma.rentalPaymentDeclaration.create({
+        data: {
+          tenant_id: tenantA.id,
+          lease_id: rental.leaseId,
+          declared_by: lease.primary_renter_client_id,
+          amount: 20000,
+          payment_date: new Date('2030-01-02'),
+          payment_method: 'CASH',
+          created_at: new Date('2030-01-02')
+        }
+      });
+      const base = `/api/tenants/${tenantA.id}/ai`;
+      const rulesPath = base + '/rental-alerts';
+      const lookup = await request(app)
+        .get(rulesPath + '/properties')
+        .query({ id: rental.propertyId })
+        .set(authed(actor));
+      expect(lookup.body.data).toEqual([expect.objectContaining({ id: rental.propertyId })]);
+      const rules = [
+        { kind: 'lease_expiry', days: 5, propertyId: rental.propertyId },
+        { kind: 'declaration_pending', days: 3, propertyId: rental.propertyId },
+        { kind: 'overdue_rent', days: 6, currency: 'XOF', minimumAmount: 50000, propertyId: rental.propertyId }
+      ];
+      const tools = ['prepare_lease_expiry_alert', 'prepare_declaration_alert', 'prepare_rent_arrears_alert'];
+      mockFakeScript = [
+        {
+          toolCalls: rules.map(({ kind, ...input }, index) => ({ name: tools[index], input }))
+        },
+        { text: 'Formulaires prêts.' }
+      ];
+      try {
+        const chat = await request(app)
+          .post(base + '/chat')
+          .set(authed(actor))
+          .send({
+            turnId: randomUUID(),
+            messages: [{ role: 'user', content: 'Prépare les trois alertes.' }]
+          });
+        expect(chat.status).toBe(200);
+        const events = chat.text
+          .split('\n')
+          .filter(line => line.startsWith('data: {'))
+          .map(line => JSON.parse(line.slice(6)));
+        expect(events.filter(event => event.type === 'prepared_alert').map(event => event.alert.rule)).toEqual(rules);
+        expect((await request(app).get(rulesPath).set(authed(actor))).body.data.items).toEqual([]);
+        const save = (id: string, rule: unknown) =>
+          request(app)
+            .put(rulesPath + '/' + id)
+            .set(authed(actor))
+            .send(rule);
+        expect((await save(randomUUID(), { ...rules[0], propertyId: foreign.propertyId })).status).toBe(404);
+        const ids = rules.map(() => randomUUID());
+        for (const [index, rule] of rules.entries()) expect((await save(ids[index], rule)).status).toBe(204);
+        expect((await save(ids[0], rules[0])).status).toBe(204);
+        expect((await save(ids[0], { ...rules[0], days: 9 })).status).toBe(409);
+        expect((await request(app).get(rulesPath).set(authed(adminA))).body.data.items).toEqual([]);
+        const notifications = () =>
+          prisma.userNotification.count({
+            where: { tenantId: tenantA.id, recipientUserId: actor.id, key: 'ASSISTANT_RENTAL_ALERT' }
+          });
+        const dueAt = new Date('2030-01-07T08:00:00Z');
+        await Promise.all([runAssistantRentalAlerts(dueAt), runAssistantRentalAlerts(dueAt)]);
+        expect(await notifications()).toBe(3);
+        await runAssistantRentalAlerts(new Date('2030-01-08T08:00:00Z'));
+        expect(await notifications()).toBe(3);
+        await prisma.rentalPaymentDeclaration.updateMany({
+          where: { tenant_id: tenantA.id, id: declaration.id },
+          data: { status: 'APPROVED' }
+        });
+        await runAssistantRentalAlerts(new Date('2030-01-09T08:00:00Z'));
+        await prisma.rentalPaymentDeclaration.updateMany({
+          where: { tenant_id: tenantA.id, id: declaration.id },
+          data: { status: 'PENDING' }
+        });
+        await runAssistantRentalAlerts(new Date('2030-01-10T08:00:00Z'));
+        expect(await notifications()).toBe(4);
+        expect((await save(randomUUID(), rules[1])).status).toBe(204);
+        await prisma.membership.updateMany({
+          where: { tenantId: tenantA.id, userId: actor.id },
+          data: { status: 'DISABLED' }
+        });
+        await runAssistantRentalAlerts(new Date('2030-01-11T08:00:00Z'));
+        expect(await notifications()).toBe(4);
+      } finally {
+        mockFakeScript = undefined;
+      }
+    });
+
     it('prépare le seuil budgétaire sans écriture puis applique la règle métier après validation', async () => {
       const actor = await createTenantMemberUser(tenantA, 'budget-alert-owner', 'TEST_BUDGET_ALERT_MANAGER', [
         'FINANCE_SITES_MANAGE',

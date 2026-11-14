@@ -59,7 +59,10 @@ const TOOL_CAPABILITIES: Record<CopilotToolName, { group: string; text: string }
     group: 'followUp',
     text: 'des tâches, notifications, envois ou rapports proposés à la confirmation'
   },
-  prepare_budget_alert: { group: 'budgetAlert', text: 'le formulaire prérempli d’alerte budgétaire d’un chantier' }
+  prepare_budget_alert: { group: 'budgetAlert', text: 'le formulaire prérempli d’alerte budgétaire d’un chantier' },
+  prepare_lease_expiry_alert: { group: 'rentalAlert', text: 'des formulaires préremplis de surveillance locative' },
+  prepare_declaration_alert: { group: 'rentalAlert', text: 'des formulaires préremplis de surveillance locative' },
+  prepare_rent_arrears_alert: { group: 'rentalAlert', text: 'des formulaires préremplis de surveillance locative' }
 };
 
 /**

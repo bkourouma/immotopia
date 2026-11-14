@@ -460,6 +460,7 @@ model User {
   createdAssistantTasks AssistantTask[] @relation("AssistantTaskCreator")
   assignedAssistantTasks AssistantTask[] @relation("AssistantTaskAssignee")
   assistantNotificationRequests AssistantNotificationRequest[]
+  assistantRentalAlerts AssistantRentalAlert[]
   id                        String               @id @default(uuid())
   platformAiSettingsUpdated PlatformAiSettings[] @relation("PlatformAiSettingsUpdatedBy")
   email                     String               @unique
@@ -601,6 +602,7 @@ model Tenant {
   assistantConversations AssistantConversation[]
   assistantTasks AssistantTask[]
   assistantNotificationRequests AssistantNotificationRequest[]
+  assistantRentalAlerts AssistantRentalAlert[]
   id        String     @id @default(uuid())
   name      String
   slug      String     @unique
@@ -11753,4 +11755,21 @@ model AssistantFollowUp {
 
   @@index([tenantId, ownerId, turnId], map: "assistant_follow_ups_turn_idx")
   @@map("assistant_follow_ups")
+}
+
+model AssistantRentalAlert {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  ownerId     String   @map("owner_id")
+  rule        Json
+  matched     Boolean  @default(false)
+  nextCheckAt DateTime @default(now()) @map("next_check_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([nextCheckAt, id], map: "assistant_rental_alerts_due_idx")
+  @@index([tenantId, ownerId, createdAt(sort: Desc), id], map: "assistant_rental_alerts_owner_idx")
+  @@map("assistant_rental_alerts")
 }

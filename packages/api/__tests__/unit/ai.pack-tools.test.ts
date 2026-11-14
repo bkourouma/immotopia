@@ -58,7 +58,13 @@ function toolsOfPack(modules: ModuleKeyCode[], readOnly = false) {
   return toolsForUser(ALL_PERMS, read).filter(tool => tool.kind !== 'proposal' || write.has(tool.feature));
 }
 
-const RENTAL_TOOLS = ['search_leases', 'list_lease_documents', 'propose_rental_document', 'lease_portfolio'];
+const RENTAL_TOOLS = [
+  'search_leases',
+  'list_lease_documents',
+  'propose_rental_document',
+  'lease_portfolio',
+  'prepare_lease_expiry_alert'
+];
 const CORE_TOOLS = [
   'search_properties',
   'list_property_documents',
