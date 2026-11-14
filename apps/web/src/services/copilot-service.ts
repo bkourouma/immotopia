@@ -2,6 +2,8 @@ import apiClient from '../utils/api-client';
 import { postEventStream } from '../utils/event-stream';
 import type {
   ActionExecutedPayload,
+  ArtifactDownloadFormat,
+  ArtifactVersionPayload,
   AssistantConversation,
   AssistantConversationSummary,
   ChatRequest,
@@ -145,25 +147,35 @@ async function downloadArtifact(
   tenantId: string,
   conversationId: string,
   artifactId: string,
-  format: 'pdf' | 'pptx' | 'csv' | 'xlsx'
+  format: ArtifactDownloadFormat,
+  version?: number
 ) {
   return apiClient.get<Blob>(
     `/tenants/${tenantId}/ai/conversations/${conversationId}/artifacts/${artifactId}/${format}`,
     {
-      responseType: 'blob'
+      responseType: 'blob',
+      params: { version }
     }
   );
 }
 
-async function refreshArtifact(tenantId: string, conversationId: string, artifactId: string) {
-  const { data } = await apiClient.get(
-    `/tenants/${tenantId}/ai/conversations/${conversationId}/artifacts/${artifactId}`
-  );
-  return data.data;
+function artifactPath(tenantId: string, conversationId: string, artifactId: string) {
+  return `/tenants/${tenantId}/ai/conversations/${conversationId}/artifacts/${artifactId}`;
+}
+
+async function getArtifactVersion(tenantId: string, conversationId: string, artifactId: string, version?: number) {
+  const response = await apiClient.get(artifactPath(tenantId, conversationId, artifactId), { params: { version } });
+  return unwrap<ArtifactVersionPayload>(response.data);
+}
+
+async function refreshArtifact(tenantId: string, conversationId: string, artifactId: string, expectedVersion: number) {
+  const response = await apiClient.post(artifactPath(tenantId, conversationId, artifactId), { expectedVersion });
+  return unwrap<{ artifact: unknown; version: number }>(response.data);
 }
 
 export const copilotService = {
   refreshArtifact,
+  getArtifactVersion,
   downloadArtifact,
   getStatus,
   streamChat,

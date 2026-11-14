@@ -260,6 +260,7 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
             }
           ]
         },
+        { toolCalls: [{ name: 'rental_receipts', input: { month: '2025-06' } }] },
         { text: 'Résultat synthétique.' }
       ];
       const stream = await request(app).post(`${baseA}/chat`).set(authed(adminA)).send(payload);
@@ -312,6 +313,28 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
             .set(authed(adminB))
         ).status
       ).toBe(404);
+
+      const receiptsId = persisted.body.data.turns[0].result[1].artifact.id;
+      const versionPath = `${baseA}/conversations/${conversationId}/artifacts/${receiptsId}`;
+      const original = await request(app).get(versionPath).set(authed(adminA));
+      expect(original.body.data.version).toBe(1);
+      const attempts = await Promise.all(
+        [1, 1].map(expectedVersion => request(app).post(versionPath).set(authed(adminA)).send({ expectedVersion }))
+      );
+      expect(attempts.map(result => result.status).sort()).toEqual([201, 409]);
+      const latest = await request(app).get(versionPath).set(authed(adminA));
+      expect(latest.body.data).toMatchObject({ version: 2, latest: 2, versions: [{ version: 2 }, { version: 1 }] });
+      const historical = await request(app).get(versionPath).query({ version: 1 }).set(authed(adminA));
+      expect(historical.body.data.artifact).toEqual(original.body.data.artifact);
+      const historicalFile = await request(app)
+        .get(versionPath + '/csv')
+        .query({ version: 1 })
+        .set(authed(adminA));
+      expect(historicalFile.status).toBe(200);
+      expect((await request(app).get(versionPath).set(authed(colleague))).status).toBe(404);
+      expect((await request(app).post(versionPath).set(authed(colleague)).send({ expectedVersion: 2 })).status).toBe(
+        404
+      );
 
       expect(otherOwner.status).toBe(404);
       expect(otherTenant.status).toBe(404);

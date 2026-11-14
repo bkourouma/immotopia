@@ -29,7 +29,9 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 **Dernier lot** — Les tableaux locatifs enregistrent leur requête et le mois résolu. Les graphiques et indicateurs conservent leurs références de calcul. Un rapport recalcule ses tableaux et garde son texte historique. Le recalcul est consultatif et conserve le résultat enregistré. Les exports PDF, PowerPoint, Excel et CSV des résultats compatibles recalculent selon les droits actuels. Les artefacts historiques sans requête conservent leurs valeurs enregistrées.
 
-**Suite** — Persister les versions et généraliser le rejeu à un catalogue métier. Enrichir les exports avec des graphiques natifs, puis ajouter les pièces jointes et la transcription. Poursuivre le partage, les épingles, les actions de suivi, les envois, l’administration et les six langues. Recetter avec un fournisseur réel et un navigateur.
+**Versions d’artefacts** — Le résultat d’origine est la version 1. Un recalcul ajoute une version immuable avec contrôle de concurrence. Le panneau peut rouvrir et télécharger les versions et l’API applique le périmètre de la conversation.
+
+**Suite** — Ajouter le versionnement des modifications d’artefacts par l’utilisateur et par le modèle. Généraliser le rejeu à un catalogue métier. Enrichir les exports avec des graphiques natifs, puis ajouter les pièces jointes et la transcription. Poursuivre le partage, les épingles, les actions de suivi, les envois, l’administration et les six langues. Recetter avec un fournisseur réel et un navigateur.
 
 ## chore/deps-patch-minor — 2026-11-11
 

@@ -209,6 +209,27 @@ describe('ArtifactPanel — rapports et indicateurs', () => {
 });
 
 describe('ArtifactPanel — recalcul', () => {
+  it('télécharge la version affichée et transmet la version attendue au recalcul', async () => {
+    const current = { ...table, canRefresh: true };
+    const onReadVersion = vi.fn().mockResolvedValue({
+      artifact: current,
+      version: 2,
+      latest: 2,
+      versions: [
+        { version: 2, createdAt: '2026-11-14T00:00:00.000Z' },
+        { version: 1, createdAt: null }
+      ]
+    });
+    const onRefresh = vi.fn().mockResolvedValue(undefined);
+    const onDownloadFile = vi.fn().mockResolvedValue(undefined);
+    renderPanel([current], undefined, { onReadVersion, onRefresh, onDownloadFile });
+    await screen.findByRole('combobox', { name: 'Version du résultat' });
+    fireEvent.click(screen.getByRole('button', { name: 'Télécharger' }));
+    fireEvent.click(await screen.findByText('CSV'));
+    await waitFor(() => expect(onDownloadFile).toHaveBeenCalledWith('t1', 'csv', 2));
+    fireEvent.click(screen.getByRole('button', { name: 'Recalculer' }));
+    await waitFor(() => expect(onRefresh).toHaveBeenCalledWith('t1', 2));
+  });
   it('recalcule un résultat enregistré et demande son export au serveur', async () => {
     const onRefresh = vi.fn().mockResolvedValue(undefined);
     const onDownloadFile = vi.fn().mockResolvedValue(undefined);

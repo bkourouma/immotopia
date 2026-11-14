@@ -254,6 +254,18 @@ export interface ArtifactIndicator {
 
 export type ArtifactDocumentBlock = { kind: 'text'; content: string } | { kind: 'table'; table: AnalysisTable };
 
+export interface ArtifactVersionInfo {
+  version: number;
+  createdAt: string | null;
+}
+
+export interface ArtifactVersionPayload {
+  artifact: unknown;
+  version: number;
+  latest: number;
+  versions: ArtifactVersionInfo[];
+}
+
 export type ArtifactDownloadFormat = 'pdf' | 'pptx' | 'csv' | 'xlsx';
 
 export type CopilotArtifact = { canRefresh?: boolean } & (

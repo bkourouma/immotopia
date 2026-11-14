@@ -1,12 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { buildArtifactPdf } from '../lib/ai/artifact-pdf';
+import { appendArtifactVersion, readArtifactVersions } from '../lib/ai/artifact-versions';
 import { canReplayArtifact, replayArtifact } from '../lib/ai/artifact-replay';
 import { buildArtifactPowerPoint } from '../lib/ai/artifact-pptx';
 import { buildArtifactCsv, buildArtifactXlsx } from '../lib/ai/artifact-spreadsheet';
 import type { Request, Response } from 'express';
 import { AiDisabledError } from '../middleware/ai-access-middleware';
-import { AppError, asyncHandler, ForbiddenError } from '../middleware/error-middleware';
+import { AppError, asyncHandler, ConflictError, ForbiddenError } from '../middleware/error-middleware';
 import { t } from '../i18n';
 import {
   chatRequestSchema,
@@ -35,7 +36,6 @@ import {
   deleteConversation,
   finishAssistantTurn,
   getConversation,
-  getStoredArtifact,
   historyQuery,
   listConversations,
   updateConversation
@@ -140,6 +140,9 @@ export const getConversationHandler = asyncHandler(async (req: Request, res: Res
 
 const artifactExportParams = z.object({ id: z.string().uuid(), artifactId: z.string().uuid() });
 
+const versionNumber = z.number().int().positive().max(2147483647);
+const requestedVersion = z.object({ version: z.coerce.number().pipe(versionNumber).optional() });
+
 const artifactExportFormat = z.enum(['pdf', 'pptx', 'csv', 'xlsx']);
 const artifactExporters = {
   pdf: { build: buildArtifactPdf, type: 'application/pdf' },
@@ -155,14 +158,21 @@ export const downloadArtifactHandler = asyncHandler(async (req: Request, res: Re
   const { id, artifactId } = artifactExportParams.parse(req.params);
   const format = artifactExportFormat.parse(req.params.format);
   const { owner, scopeKey, permissions, tools } = await conversationScope(req);
-  const stored = await getStoredArtifact(owner, id, artifactId, scopeKey);
-  const artifact = await replayArtifact(stored, {
-    tenantId: owner.tenantId,
-    userId: owner.ownerId,
-    conversationId: id,
-    permissions,
-    tools
-  });
+  const { version } = requestedVersion.parse(req.query);
+  const { artifact: stored } = await readArtifactVersions(
+    { ...owner, conversationId: id, artifactId },
+    scopeKey,
+    version
+  );
+  const artifact = version
+    ? stored
+    : await replayArtifact(stored, {
+        tenantId: owner.tenantId,
+        userId: owner.ownerId,
+        conversationId: id,
+        permissions,
+        tools
+      });
   const exporter = artifactExporters[format];
   const file = await exporter.build(artifact);
   const filename =
@@ -179,10 +189,21 @@ export const downloadArtifactHandler = asyncHandler(async (req: Request, res: Re
   res.type(exporter.type).send(file);
 });
 
+export const getArtifactVersionHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { id, artifactId } = artifactExportParams.parse(req.params);
+  const { version } = requestedVersion.parse(req.query);
+  const { owner, scopeKey } = await conversationScope(req);
+  const data = await readArtifactVersions({ ...owner, conversationId: id, artifactId }, scopeKey, version);
+  res.set('Cache-Control', 'private, no-store').json({ success: true, data });
+});
+
 export const refreshArtifactHandler = asyncHandler(async (req: Request, res: Response) => {
   const { id, artifactId } = artifactExportParams.parse(req.params);
   const { owner, scopeKey, permissions, tools } = await conversationScope(req);
-  const stored = await getStoredArtifact(owner, id, artifactId, scopeKey);
+  const location = { ...owner, conversationId: id, artifactId };
+  const { artifact: stored, latest } = await readArtifactVersions(location, scopeKey);
+  const { expectedVersion } = z.object({ expectedVersion: versionNumber }).strict().parse(req.body);
+  if (expectedVersion !== latest) throw new ConflictError(t('Une version plus récente est déjà disponible.'));
   if (!canReplayArtifact(stored)) throw new AppError(t('Cette analyse ne peut pas être recalculée.'), 422);
   const artifact = await replayArtifact(stored, {
     tenantId: owner.tenantId,
@@ -191,7 +212,8 @@ export const refreshArtifactHandler = asyncHandler(async (req: Request, res: Res
     permissions,
     tools
   });
-  res.set('Cache-Control', 'private, no-store').json({ success: true, data: artifact });
+  const version = await appendArtifactVersion(location, latest, artifact);
+  res.status(201).set('Cache-Control', 'private, no-store').json({ success: true, data: { artifact, version } });
 });
 
 export const updateConversationHandler = asyncHandler(async (req: Request, res: Response) => {

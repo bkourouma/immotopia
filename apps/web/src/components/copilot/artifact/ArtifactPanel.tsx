@@ -1,9 +1,14 @@
-import React, { Suspense, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useRef, useState } from 'react';
 import { CloseOutlined, DownloadOutlined } from '@ant-design/icons';
 import { Button, Dropdown, Select, Skeleton, Typography } from 'antd';
 import { feedback } from '../../../lib/feedback';
 import { t } from '../../../i18n/t';
-import type { ArtifactDownloadFormat, ArtifactProvenance, CopilotArtifact } from '../../../types/copilot';
+import type {
+  ArtifactDownloadFormat,
+  ArtifactProvenance,
+  ArtifactVersionInfo,
+  CopilotArtifact
+} from '../../../types/copilot';
 import { downloadChartPng, downloadCsv, downloadMarkdown, downloadXlsx } from '../../../utils/copilot-artifact-export';
 import { SafeMarkdown } from '../SafeMarkdown';
 import { ArtifactTable } from './ArtifactTable';
@@ -18,8 +23,17 @@ export interface ArtifactPanelProps {
   selectedId?: string;
   onSelect(id: string): void;
   onClose(): void;
-  onDownloadFile?(artifactId: string, format: ArtifactDownloadFormat): Promise<void>;
-  onRefresh?(artifactId: string): Promise<void>;
+  onDownloadFile?(artifactId: string, format: ArtifactDownloadFormat, version?: number): Promise<void>;
+  onReadVersion?(
+    artifactId: string,
+    version?: number
+  ): Promise<{
+    artifact: CopilotArtifact;
+    version: number;
+    latest: number;
+    versions: ArtifactVersionInfo[];
+  }>;
+  onRefresh?(artifactId: string, expectedVersion?: number): Promise<void>;
 }
 
 function ArtifactSource({ provenance }: { provenance: ArtifactProvenance }) {
@@ -126,13 +140,46 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
   onSelect,
   onClose,
   onRefresh,
+  onReadVersion,
   onDownloadFile
 }) => {
   const bodyRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const artifact = artifacts.find(a => a.id === selectedId) ?? artifacts[artifacts.length - 1];
-  if (!artifact) return null;
+  const root = artifacts.find(a => a.id === selectedId) ?? artifacts[artifacts.length - 1];
+  const rootId = root?.id;
+  const [requested, setRequested] = useState<{ id: string; version: number }>();
+  const [loaded, setLoaded] = useState<Awaited<ReturnType<NonNullable<ArtifactPanelProps['onReadVersion']>>>>();
+  const [revision, setRevision] = useState(0);
+  const viewed = requested?.id === rootId ? requested?.version : undefined;
+  useEffect(() => {
+    if (!rootId || !onReadVersion) return;
+    let cancelled = false;
+    // Keep the version list visible while loading another snapshot.
+    void onReadVersion(rootId, viewed)
+      .then(result => {
+        if (!cancelled) setLoaded(result);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRequested(undefined);
+          feedback.error(t('Cette version est indisponible.'));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [rootId, onReadVersion, viewed, revision]);
+  if (!root) return null;
+  const snapshot = onReadVersion && loaded?.artifact.id === root.id ? loaded : undefined;
+  const artifact = snapshot?.artifact ?? root;
+  const versionPending = Boolean(
+    onReadVersion &&
+    (viewed !== undefined ? snapshot?.version !== viewed : snapshot && snapshot.version !== snapshot.latest)
+  );
+  const downloadVersion = snapshot && !versionPending ? snapshot.version : undefined;
+  const downloadFile = (format: ArtifactDownloadFormat) =>
+    downloadVersion ? onDownloadFile?.(artifact.id, format, downloadVersion) : onDownloadFile?.(artifact.id, format);
 
   const run = async (job: () => void | Promise<void>) => {
     setBusy(true);
@@ -148,16 +195,20 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
   async function refresh(id: string) {
     setRefreshing(true);
     try {
-      await onRefresh?.(id);
+      if (snapshot) await onRefresh?.(id, snapshot.latest);
+      else await onRefresh?.(id);
+      setRequested(undefined);
+      setRevision(value => value + 1);
     } catch {
+      setRevision(value => value + 1);
       feedback.error(t('Cette analyse ne peut pas être recalculée.'));
     } finally {
       setRefreshing(false);
     }
   }
 
-  const csv = () => run(() => (onDownloadFile ? onDownloadFile(artifact.id, 'csv') : downloadCsv(artifact)));
-  const xlsx = () => run(() => (onDownloadFile ? onDownloadFile(artifact.id, 'xlsx') : downloadXlsx(artifact)));
+  const csv = () => run(() => (onDownloadFile ? downloadFile('csv') : downloadCsv(artifact)));
+  const xlsx = () => run(() => (onDownloadFile ? downloadFile('xlsx') : downloadXlsx(artifact)));
   const downloads =
     artifact.kind === 'table' || artifact.kind === 'indicators'
       ? [
@@ -179,14 +230,14 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
     downloads.push({
       key: 'pdf',
       label: t('PDF (.pdf)'),
-      onClick: () => run(() => onDownloadFile(artifact.id, 'pdf'))
+      onClick: () => run(() => downloadFile('pdf'))
     });
 
   if (onDownloadFile)
     downloads.push({
       key: 'pptx',
       label: t('PowerPoint (.pptx)'),
-      onClick: () => run(() => onDownloadFile(artifact.id, 'pptx'))
+      onClick: () => run(() => downloadFile('pptx'))
     });
 
   return (
@@ -209,7 +260,21 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
             </Typography.Title>
           )}
         </div>
-        {onRefresh && artifact.canRefresh && (
+        {snapshot && snapshot.versions.length > 1 && (
+          <Select
+            aria-label={t('Version du résultat')}
+            value={viewed ?? 0}
+            onChange={version => setRequested(version === 0 ? undefined : { id: root.id, version })}
+            options={[
+              { value: 0, label: t('Dernière version') },
+              ...snapshot.versions.map(item => ({
+                value: item.version,
+                label: t('Version {{version}}', { version: item.version })
+              }))
+            ]}
+          />
+        )}
+        {onRefresh && artifact.canRefresh && (!onReadVersion || (!!snapshot && !viewed)) && (
           <Button loading={refreshing} onClick={() => void refresh(artifact.id)}>
             {t('Recalculer')}
           </Button>
@@ -220,7 +285,11 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
           </Button>
         ) : (
           <Dropdown menu={{ items: downloads }} trigger={['click']}>
-            <Button icon={<DownloadOutlined aria-hidden />} loading={busy}>
+            <Button
+              icon={<DownloadOutlined aria-hidden />}
+              loading={busy}
+              disabled={versionPending || (!!onReadVersion && !snapshot)}
+            >
               {t('Télécharger')}
             </Button>
           </Dropdown>
@@ -234,7 +303,11 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
       </header>
       {'provenance' in artifact && artifact.provenance && <ArtifactSource provenance={artifact.provenance} />}
       <div ref={bodyRef} style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-        <ArtifactBody artifact={artifact} />
+        {versionPending ? (
+          <Skeleton active aria-label={t('Chargement de la version')} />
+        ) : (
+          <ArtifactBody artifact={artifact} />
+        )}
       </div>
     </div>
   );

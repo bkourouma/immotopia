@@ -2837,6 +2837,7 @@
   "Une sortie comporte au moins une ligne.": "An issue has at least one line.",
   "Une sortie comporte au plus 50 lignes.": "An issue has at most 50 lines.",
   "Une valeur dépasse la limite autorisée.": "A value exceeds the allowed limit.",
+  "Une version plus récente est déjà disponible.": "A newer version is already available.",
   "Unité": "Unit",
   "URL invalide.": "Invalid URL.",
   "Usagé": "Used",

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ClearOutlined, DatabaseOutlined } from '@ant-design/icons';
 import { Button, Drawer, Result, Skeleton, Switch, Typography } from 'antd';
 import type { TextAreaRef } from 'antd/es/input/TextArea';
@@ -180,17 +180,29 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
     setDesktopOpen(false);
     setDrawerOpen(false);
   };
+  const readVersion = useCallback(
+    async (artifactId: string, version?: number) => {
+      if (!conversationId) throw new Error(t('Cette version est indisponible.'));
+      const result = await copilotService.getArtifactVersion(tenantId, conversationId, artifactId, version);
+      const artifact = sanitizeArtifact(result.artifact);
+      if (!artifact || artifact.id !== artifactId) throw new Error(t('Cette version est indisponible.'));
+      return { ...result, artifact };
+    },
+    [conversationId, tenantId]
+  );
   const panel = (
     <ArtifactPanel
+      key={conversationId ?? ''}
+      onReadVersion={conversationId && !streaming ? readVersion : undefined}
       artifacts={chat.artifacts}
       selectedId={chat.selectedArtifactId}
       onSelect={chat.selectArtifact}
       onClose={closePanel}
       onRefresh={
         conversationId && !streaming && chat.replaceArtifact
-          ? async artifactId => {
+          ? async (artifactId, expectedVersion = 1) => {
               const artifact = sanitizeArtifact(
-                await copilotService.refreshArtifact(tenantId, conversationId, artifactId)
+                (await copilotService.refreshArtifact(tenantId, conversationId, artifactId, expectedVersion)).artifact
               );
               if (!artifact || artifact.id !== artifactId)
                 throw new Error(t('Cette analyse ne peut pas être recalculée.'));
@@ -200,8 +212,8 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
       }
       onDownloadFile={
         conversationId && !streaming
-          ? async (artifactId, format) => {
-              const file = await copilotService.downloadArtifact(tenantId, conversationId, artifactId, format);
+          ? async (artifactId, format, version) => {
+              const file = await copilotService.downloadArtifact(tenantId, conversationId, artifactId, format, version);
               saveBlob(file.data, filenameFromDisposition(file.headers['content-disposition'], `ImmoTopia.${format}`));
             }
           : undefined
