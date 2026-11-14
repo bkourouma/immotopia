@@ -112,7 +112,8 @@ export async function resolveSavedAssistantScope(
   toolNames: string[]
 ): Promise<string> {
   const scopeKey = assistantScope(permissions, toolNames);
-  const beforeCommercialAnalysis = toolNames.filter(
+  const beforeOwnershipAnalysis = toolNames.filter(name => name !== 'owner_statements' && name !== 'owner_payouts');
+  const beforeCommercialAnalysis = beforeOwnershipAnalysis.filter(
     name => !['crm_pipeline', 'sale_mandates', 'construction_budget'].includes(name)
   );
   const beforeRentalAlerts = beforeCommercialAnalysis.filter(
@@ -128,9 +129,15 @@ export async function resolveSavedAssistantScope(
   // The migration only adds available tools. Losing access does not migrate a thread.
   const earlierScopes = [
     ...new Set(
-      [beforeCommercialAnalysis, beforeRentalAlerts, beforeSiteAlert, beforeBudget, previousTools, originalTools].map(
-        tools => assistantScope(permissions, tools)
-      )
+      [
+        beforeOwnershipAnalysis,
+        beforeCommercialAnalysis,
+        beforeRentalAlerts,
+        beforeSiteAlert,
+        beforeBudget,
+        previousTools,
+        originalTools
+      ].map(tools => assistantScope(permissions, tools))
     )
   ];
   await prisma.$executeRaw`

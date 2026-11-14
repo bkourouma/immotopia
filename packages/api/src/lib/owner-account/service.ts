@@ -33,7 +33,7 @@ type Decimalish = { toString(): string } | number | null | undefined;
 const amount = (value: Decimalish) => (value === null || value === undefined ? 0 : Number(value));
 const due = (storedBalance: Decimalish) => roundMoney(-amount(storedBalance)) || 0;
 
-function payoutNumber(year: number, sequence: number) {
+export function payoutNumber(year: number, sequence: number) {
   return `REV-${year}-${String(sequence).padStart(4, '0')}`;
 }
 

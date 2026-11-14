@@ -253,6 +253,135 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
   });
 
   describe('Assistant — historique privé', () => {
+    it('affiche les relevés de gérance et les reversements validés de la période sans synchroniser les comptes', async () => {
+      const actor = await createTenantMemberUser(tenantA, 'owner-analysis', 'TEST_OWNER_ANALYSIS', [
+        'OWNER_STATEMENTS_VIEW',
+        'FINANCE_ACCOUNTS_READ'
+      ]);
+      const [propertyId, otherProperty, contact, foreignContact] = await Promise.all([
+        createPropertyDirect(tenantA.id, 'Bien du relevé'),
+        createPropertyDirect(tenantA.id, 'Bien hors filtre'),
+        createContactDirect(tenantA.id, 'Propriétaire du relevé'),
+        createContactDirect(tenantB.id, 'Propriétaire autre agence')
+      ]);
+      const period = '2026-10';
+      const financials = {
+        period,
+        totalRevenue: 1000,
+        totalExpenses: 190,
+        totalManagementFees: 100,
+        totalManagementFeesVat: 18,
+        netAmount: 810,
+        currency: 'EUR',
+        status: 'SENT'
+      } as const;
+      const statement = await prisma.ownerStatement.create({
+        data: { ...financials, tenantId: tenantA.id, ownerContactId: contact, propertyIds: [propertyId] }
+      });
+      const [owner, foreignOwner] = await Promise.all([
+        prisma.tenantClient.create({ data: { tenantId: tenantA.id, userId: actor.id, clientType: 'OWNER' } }),
+        prisma.tenantClient.create({ data: { tenantId: tenantB.id, userId: adminB.id, clientType: 'OWNER' } })
+      ]);
+      try {
+        await prisma.ownerStatement.createMany({
+          data: [
+            { ...financials, tenantId: tenantB.id, ownerContactId: foreignContact, netAmount: 7000 },
+            {
+              ...financials,
+              tenantId: tenantA.id,
+              ownerContactId: contact,
+              period: '2026-09',
+              propertyIds: [otherProperty]
+            }
+          ]
+        });
+        const payout = {
+          year: 2026,
+          accountId: randomUUID(),
+          method: 'CASH',
+          paidAt: new Date('2026-10-31T23:00:00Z')
+        } as const;
+        await prisma.ownerPayout.createMany({
+          data: [
+            { ...payout, sequence: 301, tenantId: tenantA.id, ownerClientId: owner.id, amount: 610 },
+            { ...payout, sequence: 302, tenantId: tenantA.id, ownerClientId: owner.id, amount: 300, status: 'VOIDED' },
+            {
+              ...payout,
+              sequence: 303,
+              tenantId: tenantA.id,
+              ownerClientId: owner.id,
+              amount: 400,
+              paidAt: new Date('2026-11-01')
+            },
+            { ...payout, sequence: 301, tenantId: tenantB.id, ownerClientId: foreignOwner.id, amount: 8000 }
+          ]
+        });
+        mockFakeScript = [
+          {
+            toolCalls: [
+              { name: 'owner_statements', input: { periodFrom: '2026-09', periodTo: period, propertyId } },
+              { name: 'owner_payouts', input: { periodFrom: period } },
+              { name: 'owner_payouts', input: { periodFrom: period, ownerClientId: foreignOwner.id } }
+            ]
+          },
+          { text: 'Relevés et reversements prêts.' }
+        ];
+        const base = `/api/tenants/${tenantA.id}`;
+        const response = await request(app)
+          .post(base + '/ai/chat')
+          .set(authed(actor))
+          .send({
+            turnId: randomUUID(),
+            messages: [{ role: 'user', content: 'Résume la gérance et les reversements de la période.' }]
+          });
+        expect(response.status).toBe(200);
+        const events = response.text
+          .split('\n')
+          .filter(line => line.startsWith('data: {'))
+          .map(line => JSON.parse(line.slice(6)));
+        const artifacts = events.filter(event => event.type === 'artifact').map(event => event.artifact);
+        expect(artifacts).toHaveLength(2);
+        const statements = artifacts.find(artifact => artifact.query.tool === 'owner_statements');
+        const payouts = artifacts.find(artifact => artifact.query.tool === 'owner_payouts');
+        const api = await request(app)
+          .get(base + '/owner-statements')
+          .query({ period })
+          .set(authed(actor));
+        expect(api.status).toBe(200);
+        expect(statements.rows).toEqual([
+          expect.objectContaining({
+            period,
+            revenue: Number(api.body.data[0].totalRevenue),
+            expenses: 190,
+            fees: 100,
+            vat: 18,
+            net: 810,
+            currency: 'EUR',
+            href: expect.stringContaining(statement.id)
+          })
+        ]);
+        expect(payouts.query).toMatchObject({ periodFrom: period, periodTo: period });
+        expect(payouts.rows).toEqual([expect.objectContaining({ paidAt: '2026-10-31', amount: 610, currency: 'XOF' })]);
+        expect(
+          await prisma.thirdPartyAccount.count({ where: { tenantId: tenantA.id, tenantClientId: owner.id } })
+        ).toBe(0);
+        await prisma.ownerStatement.updateMany({
+          where: { tenantId: tenantA.id, id: statement.id },
+          data: { netAmount: 800 }
+        });
+        const conversationId = events.find(event => event.type === 'meta').conversationId;
+        const replay = await request(app)
+          .post(`${base}/ai/conversations/${conversationId}/artifacts/${statements.id}`)
+          .set(authed(actor))
+          .send({ expectedVersion: 1 });
+        expect(replay.status).toBe(201);
+        expect(replay.body.data.artifact.rows).toEqual([expect.objectContaining({ net: 800 })]);
+      } finally {
+        await prisma.ownerPayout.deleteMany({ where: { tenantId: tenantA.id, ownerClientId: owner.id } });
+        await prisma.ownerPayout.deleteMany({ where: { tenantId: tenantB.id, ownerClientId: foreignOwner.id } });
+      }
+    });
+
     it('recalcule le pipeline CRM et filtre les échéances des mandats de vente de l’agence', async () => {
       const actor = await createTenantMemberUser(tenantA, 'commercial-assistant', 'TEST_COMMERCIAL_ASSISTANT', [
         'CRM_CONTACTS_VIEW',
@@ -678,7 +807,9 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
                 'prepare_budget_alert',
                 'prepare_lease_expiry_alert',
                 'prepare_declaration_alert',
-                'prepare_rent_arrears_alert'
+                'prepare_rent_arrears_alert',
+                'owner_statements',
+                'owner_payouts'
               ].includes(name)
           )
       );

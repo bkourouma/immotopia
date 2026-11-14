@@ -80,6 +80,11 @@ const CORE_TOOLS = [
 ];
 
 describe('ImmoCopilot — outils et prompt par pack', () => {
+  it('garde les relevés et les reversements séparés selon les permissions locatives', () => {
+    expect(toolsForUser(['OWNER_STATEMENTS_VIEW'], ['RENTAL']).map(tool => tool.name)).toEqual(['owner_statements']);
+    expect(toolsForUser(['FINANCE_ACCOUNTS_READ'], ['RENTAL']).map(tool => tool.name)).toEqual(['owner_payouts']);
+    expect(toolsForUser(['OWNER_STATEMENTS_VIEW', 'FINANCE_ACCOUNTS_READ'], ['CORE'])).toEqual([]);
+  });
   it('expose chaque analyse commerciale uniquement avec son module et son droit de lecture', () => {
     const permissions = ['CRM_DEALS_VIEW', 'FINANCE_REPORTS_READ'];
     expect(toolsForUser(permissions, ['CRM']).map(tool => tool.name)).toEqual(['crm_pipeline']);

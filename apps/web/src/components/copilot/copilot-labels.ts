@@ -76,6 +76,8 @@ export function copilotToolLabel(tool: CopilotToolName): string {
     crm_pipeline: t('Pipeline des affaires'),
     sale_mandates: t('Échéances des mandats de vente'),
     construction_budget: t('Suivi budgétaire des chantiers'),
+    owner_statements: t('Montants des relevés de gérance'),
+    owner_payouts: t('Reversements propriétaires exécutés'),
     propose_follow_up: t('Préparation d’une action'),
     prepare_budget_alert: t('Préparation d’une alerte budgétaire'),
     prepare_lease_expiry_alert: t('Préparation d’une alerte locative'),

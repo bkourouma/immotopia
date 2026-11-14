@@ -34,6 +34,8 @@ const TOOL_CAPABILITIES: Record<CopilotToolName, { group: string; text: string }
   crm_pipeline: { group: 'crmPipeline', text: 'les affaires ouvertes et leur valeur par étape du pipeline CRM' },
   sale_mandates: { group: 'saleMandates', text: 'les échéances des mandats de vente actifs' },
   construction_budget: { group: 'constructionBudget', text: 'les budgets actuels et les écarts des chantiers' },
+  owner_statements: { group: 'ownerStatements', text: 'les montants des relevés de gérance' },
+  owner_payouts: { group: 'ownerPayouts', text: 'les reversements propriétaires validés' },
   syndicate_budget: {
     group: 'syndicateBudget',
     text: 'le prévisionnel, le réalisé et les écarts des budgets de copropriété'

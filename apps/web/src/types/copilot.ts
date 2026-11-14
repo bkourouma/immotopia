@@ -22,6 +22,8 @@ export type CopilotToolName =
   | 'crm_pipeline'
   | 'sale_mandates'
   | 'construction_budget'
+  | 'owner_statements'
+  | 'owner_payouts'
   | 'chart_analysis'
   | 'show_indicators'
   | 'compose_report'

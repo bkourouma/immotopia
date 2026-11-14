@@ -6,7 +6,8 @@ import type {
   CrmDealStage,
   MaintenanceTicketPriority,
   MaintenanceTicketStatus,
-  PropertyType
+  PropertyType,
+  StatementStatus
 } from '@prisma/client';
 
 /**
@@ -46,6 +47,8 @@ export type CopilotToolName =
   | 'crm_pipeline'
   | 'sale_mandates'
   | 'construction_budget'
+  | 'owner_statements'
+  | 'owner_payouts'
   | 'chart_analysis'
   | 'show_indicators'
   | 'compose_report'
@@ -375,7 +378,16 @@ export type AnalysisQuery =
   | { tool: 'lease_portfolio'; start: string; end: string; propertyId?: string }
   | { tool: 'crm_pipeline'; assignedToUserId?: string; stages?: Exclude<CrmDealStage, 'WON' | 'LOST'>[] }
   | { tool: 'sale_mandates'; start: string; end: string; propertyId?: string; agentUserId?: string }
-  | { tool: 'construction_budget'; siteId?: string; status?: ConstructionSiteStatus; onlyOverBudget?: boolean };
+  | { tool: 'construction_budget'; siteId?: string; status?: ConstructionSiteStatus; onlyOverBudget?: boolean }
+  | {
+      tool: 'owner_statements';
+      periodFrom: string;
+      periodTo: string;
+      ownerContactId?: string;
+      propertyId?: string;
+      status?: StatementStatus;
+    }
+  | { tool: 'owner_payouts'; periodFrom: string; periodTo: string; ownerClientId?: string };
 
 export interface ArtifactProvenance {
   source: string;

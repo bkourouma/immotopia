@@ -21,6 +21,7 @@ import { showIndicatorsTool } from './show-indicators';
 import { composeReportTool } from './compose-report';
 import { leasePortfolioTool, propertyPortfolioTool } from './portfolio';
 import { constructionBudgetTool, crmPipelineTool, saleMandatesTool } from './commercial-analysis';
+import { ownerPayoutsTool, ownerStatementsTool } from './owner-financial-analysis';
 
 /**
  * Registre des outils exposés au LLM. L'exécution d'un document
@@ -41,6 +42,8 @@ export const ALL_TOOLS: readonly CopilotToolDefinition[] = [
   crmPipelineTool,
   saleMandatesTool,
   constructionBudgetTool,
+  ownerStatementsTool,
+  ownerPayoutsTool,
   chartAnalysisTool,
   showIndicatorsTool,
   composeReportTool,
