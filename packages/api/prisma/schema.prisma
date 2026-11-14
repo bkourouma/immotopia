@@ -456,6 +456,7 @@ enum PropertyVisitStatus {
 // User entity
 model User {
   assistantConversations AssistantConversation[]
+  assistantAnalysisShares AssistantAnalysisShare[] @relation("AssistantAnalysisRecipient")
   id                        String               @id @default(uuid())
   platformAiSettingsUpdated PlatformAiSettings[] @relation("PlatformAiSettingsUpdatedBy")
   email                     String               @unique
@@ -11619,8 +11620,26 @@ model AssistantSavedAnalysis {
   createdAt      DateTime @default(now()) @map("created_at")
 
   conversation AssistantConversation @relation(fields: [tenantId, ownerId, conversationId], references: [tenantId, ownerId, id], onDelete: Cascade, map: "assistant_saved_analyses_conversation_fkey")
+  shares AssistantAnalysisShare[]
 
   @@id([tenantId, ownerId, conversationId, artifactId])
   @@index([tenantId, ownerId, createdAt(sort: Desc), conversationId, artifactId], map: "assistant_saved_analyses_list_idx")
   @@map("assistant_saved_analyses")
+}
+
+model AssistantAnalysisShare {
+  id             String   @id @default(uuid())
+  tenantId       String   @map("tenant_id")
+  ownerId        String   @map("owner_id")
+  conversationId String   @map("conversation_id")
+  artifactId     String   @map("artifact_id")
+  recipientId    String   @map("recipient_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  analysis AssistantSavedAnalysis @relation(fields: [tenantId, ownerId, conversationId, artifactId], references: [tenantId, ownerId, conversationId, artifactId], onDelete: Cascade, map: "assistant_analysis_shares_analysis_fkey")
+  recipient User @relation("AssistantAnalysisRecipient", fields: [recipientId], references: [id], onDelete: Cascade, map: "assistant_analysis_shares_recipient_fkey")
+
+  @@unique([tenantId, ownerId, conversationId, artifactId, recipientId], map: "assistant_analysis_shares_recipient_key")
+  @@index([tenantId, recipientId, createdAt(sort: Desc), id], map: "assistant_analysis_shares_inbox_idx")
+  @@map("assistant_analysis_shares")
 }

@@ -6,11 +6,18 @@ import { appendArtifactVersion, readArtifactVersions } from '../lib/ai/artifact-
 import { canReplayArtifact, replayArtifact } from '../lib/ai/artifact-replay';
 import { buildArtifactPowerPoint } from '../lib/ai/artifact-pptx';
 import { listSavedAnalyses, removeSavedAnalysis, saveAnalysis } from '../lib/ai/saved-analyses';
+import {
+  assertAnalysisCollaborator,
+  createAnalysisShare,
+  listAnalysisShares,
+  readAnalysisShare,
+  revokeAnalysisShare
+} from '../lib/ai/analysis-shares';
 import { buildArtifactCsv, buildArtifactXlsx } from '../lib/ai/artifact-spreadsheet';
 import type { Request, Response } from 'express';
 import { AiDisabledError } from '../middleware/ai-access-middleware';
 import { env } from '../config/env';
-import { AppError, asyncHandler, ConflictError, ForbiddenError } from '../middleware/error-middleware';
+import { AppError, asyncHandler, ConflictError, ForbiddenError, NotFoundError } from '../middleware/error-middleware';
 import { t } from '../i18n';
 import {
   chatRequestSchema,
@@ -19,7 +26,7 @@ import {
   executeRequestSchema,
   rejectRequestSchema
 } from '../lib/ai/contracts';
-import type { CopilotStatus, CopilotToolDefinition } from '../lib/ai/contracts';
+import type { CopilotArtifact, CopilotStatus, CopilotToolDefinition } from '../lib/ai/contracts';
 import { executeCapability } from '../lib/ai/actions/execute-capability';
 import { executeRentalDocument } from '../lib/ai/actions/execute-rental-document';
 import { ProposalError, peekProposalAction, redeemProposal, verifyAnyProposal } from '../lib/ai/proposal-token';
@@ -39,6 +46,7 @@ import {
   deleteConversation,
   finishAssistantTurn,
   getConversation,
+  getStoredArtifact,
   getConversationAttachment,
   saveResponseFeedback,
   prepareRegeneration,
@@ -52,6 +60,7 @@ import { evaluateFeatureAccess } from '../lib/subscription/feature-access';
 import { getSubscriptionEnforcement } from '../lib/subscription/enforcement';
 import { getEntitlements } from '../services/subscription-v2-service';
 import { getUserPermissions, hasPermission } from '../services/permission-service';
+import { listAssignableMembers } from '../services/membership-service';
 import { assertModuleAccess, assertSubscriptionWritable } from '../lib/subscription/guards';
 import { logger } from '../utils/logger';
 
@@ -279,6 +288,105 @@ const artifactExporters = {
   csv: { build: buildArtifactCsv, type: 'text/csv; charset=utf-8' }
 };
 
+type ShareParty = Awaited<ReturnType<typeof resolveAvailableTools>>;
+
+async function readSharedTable(
+  artifact: CopilotArtifact,
+  tenantId: string,
+  userId: string,
+  conversationId: string,
+  owner: ShareParty,
+  recipient: ShareParty
+) {
+  const permissions = new Set([...recipient.permissions].filter(permission => owner.permissions.has(permission)));
+  const tools = recipient.tools.filter(tool => owner.tools.some(source => source.name === tool.name));
+  return replayArtifact(artifact, { tenantId, userId, conversationId, permissions, tools }, true);
+}
+
+export const listAnalysisSharesHandler = asyncHandler(async (req, res) => {
+  const { tenantId, userId } = requireContext(req);
+  const { direction, cursor } = z
+    .object({
+      direction: z.enum(['incoming', 'outgoing']).default('incoming'),
+      cursor: z.string().uuid().optional()
+    })
+    .strict()
+    .parse(req.query);
+  const data = await listAnalysisShares({ tenantId, ownerId: userId }, direction === 'incoming', cursor);
+  res.set('Cache-Control', 'private, no-store').json({ success: true, data });
+});
+
+export const listAnalysisRecipientsHandler = asyncHandler(async (req, res) => {
+  const { owner } = await conversationScope(req);
+  const members = await listAssignableMembers(owner.tenantId);
+  const data = members
+    .filter(member => member.userId !== owner.ownerId && member.roles.length > 0)
+    .map(({ userId, displayName }) => ({ userId, displayName }));
+  res.set('Cache-Control', 'private, no-store').json({ success: true, data });
+});
+
+export const createAnalysisShareHandler = asyncHandler(async (req, res) => {
+  const reference = analysisReference.extend({ recipientId: z.string().uuid() }).strict().parse(req.body);
+  const source = await conversationScope(req);
+  const { tenantId, ownerId } = source.owner;
+  if (reference.recipientId === ownerId) throw new NotFoundError();
+  await assertAnalysisCollaborator(tenantId, reference.recipientId);
+  const recipient = await resolveAvailableTools(reference.recipientId, tenantId, true);
+  const stored = await getStoredArtifact(source.owner, reference.conversationId, reference.artifactId, source.scopeKey);
+  await readSharedTable(stored, tenantId, reference.recipientId, reference.conversationId, source, recipient);
+  const data = await createAnalysisShare(source.owner, source.scopeKey, reference);
+  res.set('Cache-Control', 'private, no-store').json({ success: true, data });
+});
+
+async function getSharedAnalysis(req: Request) {
+  const { tenantId, userId } = requireContext(req);
+  const { id } = conversationParams.parse(req.params);
+  const share = await readAnalysisShare(tenantId, userId, id);
+  if (!share) throw new NotFoundError();
+  await Promise.all([
+    assertAnalysisCollaborator(tenantId, userId),
+    assertAnalysisCollaborator(tenantId, share.ownerId)
+  ]);
+  const [recipient, owner] = await Promise.all([
+    resolveAvailableTools(userId, tenantId, true),
+    resolveAvailableTools(share.ownerId, tenantId, true)
+  ]);
+  const sourceScope = await resolveSavedAssistantScope(
+    { tenantId, ownerId: share.ownerId },
+    owner.permissions,
+    owner.tools.map(tool => tool.name)
+  );
+  const authorized = await readAnalysisShare(tenantId, userId, id, sourceScope);
+  if (!authorized) throw new NotFoundError();
+  const artifact = await readSharedTable(
+    authorized.analysis.original as unknown as CopilotArtifact,
+    tenantId,
+    userId,
+    share.conversationId,
+    owner,
+    recipient
+  );
+  if (!(await readAnalysisShare(tenantId, userId, id, sourceScope))) throw new NotFoundError();
+  return artifact;
+}
+
+export const getSharedAnalysisHandler = asyncHandler(async (req, res) => {
+  const artifact = await getSharedAnalysis(req);
+  res.set('Cache-Control', 'private, no-store').json({ success: true, data: { artifact } });
+});
+
+export const revokeAnalysisShareHandler = asyncHandler(async (req, res) => {
+  const { tenantId, userId } = requireContext(req);
+  const { id } = conversationParams.parse(req.params);
+  await revokeAnalysisShare({ tenantId, ownerId: userId }, id);
+  res.sendStatus(204);
+});
+
+export const downloadSharedAnalysisHandler = asyncHandler(async (req, res) => {
+  const format = artifactExportFormat.parse(req.params.format);
+  await sendArtifactExport(res, await getSharedAnalysis(req), format);
+});
+
 export const downloadArtifactHandler = asyncHandler(async (req: Request, res: Response) => {
   const { id, artifactId } = artifactExportParams.parse(req.params);
   const format = artifactExportFormat.parse(req.params.format);
@@ -298,6 +406,14 @@ export const downloadArtifactHandler = asyncHandler(async (req: Request, res: Re
         permissions,
         tools
       });
+  await sendArtifactExport(res, artifact, format);
+});
+
+async function sendArtifactExport(
+  res: Response,
+  artifact: CopilotArtifact,
+  format: z.infer<typeof artifactExportFormat>
+) {
   const exporter = artifactExporters[format];
   const file = await exporter.build(artifact);
   const filename =
@@ -312,7 +428,7 @@ export const downloadArtifactHandler = asyncHandler(async (req: Request, res: Re
     `attachment; filename="ImmoTopia.${format}"; filename*=UTF-8''${encodeURIComponent(filename)}.${format}`
   );
   res.type(exporter.type).send(file);
-});
+}
 
 export const getArtifactVersionHandler = asyncHandler(async (req: Request, res: Response) => {
   const { id, artifactId } = artifactExportParams.parse(req.params);

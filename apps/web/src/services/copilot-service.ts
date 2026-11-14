@@ -189,12 +189,34 @@ async function updateArtifactVersion(
 
 export type SavedAnalysisReference = { conversationId: string; artifactId: string };
 export type SavedAnalysis = SavedAnalysisReference & { title: string; createdAt: string };
+export type AnalysisShare = { id: string; colleague: string; createdAt: string; title?: string };
 
 function savedAnalysisPath(tenantId: string, { conversationId, artifactId }: SavedAnalysisReference) {
   return `/tenants/${tenantId}/ai/analyses/${conversationId}/${artifactId}`;
 }
 
 export const copilotService = {
+  async listAnalysisRecipients(tenantId: string) {
+    const response = await apiClient.get(`/tenants/${tenantId}/ai/shares/recipients`);
+    return unwrap<Array<{ userId: string; displayName: string }>>(response.data);
+  },
+  async listAnalysisShares(tenantId: string, direction: 'incoming' | 'outgoing', cursor?: string) {
+    const response = await apiClient.get(`/tenants/${tenantId}/ai/shares`, { params: { direction, cursor } });
+    return unwrap<{ items: AnalysisShare[]; nextCursor?: string }>(response.data);
+  },
+  async shareAnalysis(tenantId: string, { conversationId, artifactId }: SavedAnalysisReference, recipientId: string) {
+    await apiClient.post(`/tenants/${tenantId}/ai/shares`, { conversationId, artifactId, recipientId });
+  },
+  async revokeAnalysisShare(tenantId: string, id: string) {
+    await apiClient.delete(`/tenants/${tenantId}/ai/shares/${id}`);
+  },
+  async getSharedAnalysis(tenantId: string, id: string) {
+    const response = await apiClient.get(`/tenants/${tenantId}/ai/shares/${id}`);
+    return unwrap<{ artifact: unknown }>(response.data).artifact;
+  },
+  downloadSharedAnalysis(tenantId: string, id: string, format: ArtifactDownloadFormat) {
+    return apiClient.get<Blob>(`/tenants/${tenantId}/ai/shares/${id}/${format}`, { responseType: 'blob' });
+  },
   async listSavedAnalyses(tenantId: string, cursor?: SavedAnalysisReference, signal?: AbortSignal) {
     const response = await apiClient.get(`/tenants/${tenantId}/ai/analyses`, { params: cursor, signal });
     return unwrap<{ items: SavedAnalysis[]; nextCursor?: SavedAnalysisReference }>(response.data);

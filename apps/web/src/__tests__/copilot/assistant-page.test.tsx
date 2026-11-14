@@ -16,6 +16,8 @@ vi.mock('../../services/copilot-service', () => {
     saveResponseFeedback: vi.fn(),
     getArtifactVersion: vi.fn(),
     listSavedAnalyses: vi.fn(),
+    listAnalysisShares: vi.fn(),
+    getSharedAnalysis: vi.fn(),
     removeSavedAnalysis: vi.fn(),
     downloadAttachment: vi.fn(),
     transcribe: vi.fn()
@@ -103,6 +105,27 @@ function setDesktop(desktop: boolean) {
 
 describe('AssistantPage — artefacts', () => {
   afterEach(() => setDesktop(false));
+
+  it('ouvre un tableau reçu dans un panneau en lecture seule', async () => {
+    getStatus.mockResolvedValue(ENABLED);
+    vi.mocked(copilotService.listAnalysisShares).mockResolvedValue({
+      items: [{ id: 'p1', colleague: 'Camille', createdAt: '2026-11-14' }]
+    });
+    vi.mocked(copilotService.getSharedAnalysis).mockResolvedValue({
+      id: 'a1',
+      kind: 'table',
+      title: 'Charges par lot',
+      columns: [{ key: 'lot', label: 'Lot' }],
+      rows: [{ lot: 'A01' }]
+    });
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Partages' }));
+    const drawer = await screen.findByRole('dialog', { name: 'Partages' });
+    fireEvent.click(await within(drawer).findByRole('button', { name: 'Ouvrir' }));
+    expect(await within(drawer).findByText('A01')).toBeInTheDocument();
+    expect(within(drawer).getByRole('button', { name: 'Télécharger' })).toBeEnabled();
+    expect(within(drawer).queryByRole('button', { name: 'Enregistrer dans Mes analyses' })).toBeNull();
+  });
 
   it('ouvre et retire une analyse enregistrée depuis la page Assistant', async () => {
     getStatus.mockResolvedValue(ENABLED);

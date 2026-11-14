@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, Button, Drawer, Empty, Popconfirm, Spin } from 'antd';
+import { Alert, Button, Drawer, Empty, Modal, Popconfirm, Select, Spin } from 'antd';
 import { t } from '../../i18n/t';
 import { feedback } from '../../lib/feedback';
 import { copilotService, type SavedAnalysis, type SavedAnalysisReference } from '../../services/copilot-service';
@@ -65,6 +65,39 @@ export function SavedAnalyses({ tenantId, onClose }: { tenantId: string; onClose
   const [busy, setBusy] = useState(true);
   const [failed, setFailed] = useState(false);
   const [reload, setReload] = useState(0);
+  const [shareItem, setShareItem] = useState<SavedAnalysis>();
+  const [recipient, setRecipient] = useState<string>();
+  const [sharing, setSharing] = useState(false);
+  const [recipients, setRecipients] = useState<Array<{ userId: string; displayName: string }>>([]);
+  useEffect(() => {
+    if (!shareItem) return;
+    let active = true;
+    void copilotService
+      .listAnalysisRecipients(tenantId)
+      .then(items => {
+        if (active) setRecipients(items);
+      })
+      .catch(() => {
+        if (active) feedback.error(t('Impossible de charger les destinataires.'));
+      });
+    return () => {
+      active = false;
+    };
+  }, [shareItem, tenantId]);
+
+  async function share() {
+    if (!shareItem || !recipient || sharing) return;
+    setSharing(true);
+    try {
+      await copilotService.shareAnalysis(tenantId, shareItem, recipient);
+      setShareItem(undefined);
+      feedback.success(t('Analyse partagée.'));
+    } catch {
+      feedback.error(t('Le partage exige un tableau recalculable et un destinataire habilité.'));
+    } finally {
+      setSharing(false);
+    }
+  }
   useEffect(() => {
     const controller = new AbortController();
     setBusy(true);
@@ -105,6 +138,28 @@ export function SavedAnalyses({ tenantId, onClose }: { tenantId: string; onClose
       size="min(780px, 100vw)"
       extra={selected && <Button onClick={() => setSelected(undefined)}>{t('Retour aux analyses')}</Button>}
     >
+      <Modal
+        open={!!shareItem}
+        title={t('Partager une analyse')}
+        okText={t('Partager')}
+        cancelText={t('Annuler')}
+        onCancel={() => {
+          if (!sharing) setShareItem(undefined);
+        }}
+        onOk={() => void share()}
+        confirmLoading={sharing}
+        okButtonProps={{ disabled: !recipient }}
+      >
+        <p>{t('Le collègue reçoit un tableau recalculé selon vos droits communs.')}</p>
+        <Select
+          aria-label={t('Destinataire')}
+          placeholder={t('Destinataire')}
+          value={recipient}
+          onChange={setRecipient}
+          options={recipients.map(item => ({ value: item.userId, label: item.displayName }))}
+          style={{ width: '100%' }}
+        />
+      </Modal>
       {selected ? (
         <SavedAnalysisPreview tenantId={tenantId} item={selected} onBack={() => setSelected(undefined)} />
       ) : (
@@ -137,6 +192,16 @@ export function SavedAnalyses({ tenantId, onClose }: { tenantId: string; onClose
                     onClick={() => setSelected(item)}
                   >
                     {item.title || t('Résultat')}
+                  </Button>
+                  <Button
+                    type="text"
+                    onClick={() => {
+                      setRecipient(undefined);
+                      setRecipients([]);
+                      setShareItem(item);
+                    }}
+                  >
+                    {t('Partager')}
                   </Button>
                   <Popconfirm
                     title={t('Retirer cette analyse de la liste ?')}

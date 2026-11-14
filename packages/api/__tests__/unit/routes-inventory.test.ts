@@ -396,6 +396,12 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
   it('assistant’assistant ImmoCopilot avec les gardes d’agence et de collaborateur', () => {
     const expected: Array<[string, string]> = [
       ['GET', '/api/tenants/:tenantId/ai/status'],
+      ['GET', '/api/tenants/:tenantId/ai/shares'],
+      ['GET', '/api/tenants/:tenantId/ai/shares/recipients'],
+      ['POST', '/api/tenants/:tenantId/ai/shares'],
+      ['GET', '/api/tenants/:tenantId/ai/shares/:id'],
+      ['GET', '/api/tenants/:tenantId/ai/shares/:id/:format'],
+      ['DELETE', '/api/tenants/:tenantId/ai/shares/:id'],
       ['GET', '/api/tenants/:tenantId/ai/analyses'],
       ['PUT', '/api/tenants/:tenantId/ai/analyses/:conversationId/:artifactId'],
       ['DELETE', '/api/tenants/:tenantId/ai/analyses/:conversationId/:artifactId'],

@@ -589,6 +589,100 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       }
     });
 
+    it('partage un tableau recalculé, exclut le titre privé et révoque la lecture et l’export', async () => {
+      const owner = await createTenantAdminUser(tenantA, 'share-owner');
+      const recipient = await createTenantAdminUser(tenantA, 'share-recipient');
+      const base = `/api/tenants/${tenantA.id}/ai`;
+      mockFakeScript = [
+        { toolCalls: [{ name: 'rental_receipts', input: { month: '2025-06' } }] },
+        { text: 'Voici le tableau.' }
+      ];
+      try {
+        const stream = await request(app)
+          .post(base + '/chat')
+          .set(authed(owner))
+          .send({
+            turnId: randomUUID(),
+            messages: [{ role: 'user', content: 'Fais le bilan des encaissements.' }]
+          });
+        const events = stream.text
+          .split('\n')
+          .filter(line => line.startsWith('data: {'))
+          .map(line => JSON.parse(line.slice(6)));
+        const { conversationId } = events.find(event => event.type === 'meta');
+        const { artifact } = events.find(event => event.type === 'artifact');
+        const artifactId = artifact.id;
+        expect(
+          (
+            await request(app)
+              .post(`${base}/conversations/${conversationId}/artifacts/${artifactId}`)
+              .set(authed(owner))
+              .send({ expectedVersion: 1, title: 'Titre privé à exclure' })
+          ).status
+        ).toBe(201);
+        expect(
+          (await request(app).put(`${base}/analyses/${conversationId}/${artifactId}`).set(authed(owner))).status
+        ).toBe(200);
+        for (const [recipientId, status] of [
+          [adminB.id, 404],
+          [recipient.id, 200]
+        ] as const) {
+          const sent = await request(app)
+            .post(base + '/shares')
+            .set(authed(owner))
+            .send({ conversationId, artifactId, recipientId });
+          expect(sent.status).toBe(status);
+          if (status === 404) continue;
+          const link = base + '/shares/' + sent.body.data.id;
+          expect(
+            (
+              await request(app)
+                .get(base + '/shares')
+                .set(authed(recipient))
+            ).body.data.items[0].id
+          ).toBe(sent.body.data.id);
+          const opened = await request(app).get(link).set(authed(recipient));
+          expect(opened.status).toBe(200);
+          expect(opened.body.data.artifact.title).toBe(artifact.title);
+          expect(
+            (
+              await request(app)
+                .get(link + '/csv')
+                .set(authed(recipient))
+            ).status
+          ).toBe(200);
+          expect((await request(app).get(link).set(authed(adminA))).status).toBe(404);
+          await prisma.membership.updateMany({
+            where: { tenantId: tenantA.id, userId: recipient.id },
+            data: { status: 'DISABLED' }
+          });
+          expect([403, 404]).toContain((await request(app).get(link).set(authed(recipient))).status);
+          expect([403, 404]).toContain(
+            (
+              await request(app)
+                .get(link + '/csv')
+                .set(authed(recipient))
+            ).status
+          );
+          await prisma.membership.updateMany({
+            where: { tenantId: tenantA.id, userId: recipient.id },
+            data: { status: 'ACTIVE' }
+          });
+          expect((await request(app).delete(link).set(authed(owner))).status).toBe(204);
+          expect((await request(app).get(link).set(authed(recipient))).status).toBe(404);
+          expect(
+            (
+              await request(app)
+                .get(link + '/csv')
+                .set(authed(recipient))
+            ).status
+          ).toBe(404);
+        }
+      } finally {
+        mockFakeScript = undefined;
+      }
+    });
+
     it('conserve une analyse enregistrée après régénération, avec ses versions et son périmètre privé', async () => {
       const colleague = await createTenantAdminUser(tenantA, 'analyses-colleague');
       const analyst = await createTenantAdminUser(tenantA, 'analyses-owner');

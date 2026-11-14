@@ -62,7 +62,8 @@ export async function replayArtifact(
     conversationId: string;
     permissions: Set<string>;
     tools: readonly CopilotToolDefinition[];
-  }
+  },
+  shared = false
 ): Promise<CopilotArtifact> {
   const allowed = new Set(scope.tools.map(tool => tool.name));
   const ctx: CopilotToolContext = {
@@ -92,20 +93,23 @@ export async function replayArtifact(
   }
 
   async function table(previous: AnalysisTable): Promise<AnalysisTable> {
-    if (!previous.query) return previous;
+    if (!previous.query) {
+      if (shared) throw unavailable();
+      return previous;
+    }
     const fresh = await read(previous.query);
-    return { ...fresh, id: previous.id, title: previous.title };
+    return { ...fresh, id: previous.id, title: shared ? fresh.title : previous.title };
   }
 
   if (artifact.kind === 'table') return table(artifact);
-  if (artifact.kind === 'document') {
+  if (artifact.kind === 'document' && !shared) {
     const blocks = [];
     for (const block of artifact.blocks) {
       blocks.push(block.kind === 'table' ? { ...block, table: await table(block.table) } : block);
     }
     return { ...artifact, blocks };
   }
-  if ((artifact.kind === 'chart' || artifact.kind === 'indicators') && artifact.replay) {
+  if (!shared && (artifact.kind === 'chart' || artifact.kind === 'indicators') && artifact.replay) {
     const tool: CopilotToolDefinition = artifact.kind === 'chart' ? chartAnalysisTool : showIndicatorsTool;
     if (artifact.replay.tool !== tool.name || !allowed.has(tool.name)) throw new ForbiddenError();
     const input = tool.inputSchema.parse(artifact.replay.input);
@@ -114,5 +118,6 @@ export async function replayArtifact(
     if (result.uiEvent?.type !== 'artifact') throw unavailable();
     return { ...result.uiEvent.artifact, id: artifact.id, title: artifact.title };
   }
+  if (shared) throw unavailable();
   return artifact;
 }
