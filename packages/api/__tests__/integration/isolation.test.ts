@@ -247,6 +247,57 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
   });
 
   describe('Assistant — historique privé', () => {
+    it('analyse les tickets de maintenance de l’agence avec les mêmes statuts ouverts que le tableau de bord', async () => {
+      const agency = await createTestTenant('Maintenance-Assistant');
+      createdTenantIds.push(agency.id);
+      const admin = await createTenantAdminUser(agency, 'maintenance-assistant');
+      const property = await createPropertyDirect(agency.id, 'Bien de maintenance');
+      const foreignProperty = await createPropertyDirect(tenantB.id, 'Autre agence');
+      const own = await createMaintenanceTicketDirect(agency.id, property, 'Ouvert urgent');
+      await createMaintenanceTicketDirect(tenantB.id, foreignProperty, 'Ticket confidentiel');
+      await prisma.maintenanceTicket.updateMany({
+        where: { id: own, tenant_id: agency.id },
+        data: { priority: 'URGENT' }
+      });
+      const closed = await createMaintenanceTicketDirect(agency.id, property, 'Résolu');
+      await prisma.maintenanceTicket.updateMany({
+        where: { id: closed, tenant_id: agency.id },
+        data: { status: 'RESOLVED', declared_at: new Date('2025-01-01'), resolved_at: new Date('2025-01-04') }
+      });
+      const base = `/api/tenants/${agency.id}`;
+      mockFakeScript = [{ toolCalls: [{ name: 'maintenance_overview', input: {} }] }, { text: 'Bilan.' }];
+      try {
+        const result = await request(app)
+          .post(base + '/ai/chat')
+          .set(authed(admin))
+          .send({
+            turnId: randomUUID(),
+            messages: [{ role: 'user', content: 'Analyse les tickets' }]
+          });
+        expect(result.status).toBe(200);
+        const event = result.text.split('\n').find(line => line.startsWith('data: {"type":"artifact"'))!;
+        const { artifact } = JSON.parse(event.slice(6));
+        const dashboard = await request(app)
+          .get(base + '/dashboard')
+          .set(authed(admin));
+        expect(dashboard.status).toBe(200);
+        expect(artifact.rows).toHaveLength(2);
+        expect(artifact.rows).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              status: 'DECLARED',
+              priority: 'URGENT',
+              count: 1,
+              open: dashboard.body.data.maintenance.open
+            }),
+            expect.objectContaining({ status: 'RESOLVED', count: 1, open: 0, averageResolution: 3 })
+          ])
+        );
+      } finally {
+        mockFakeScript = undefined;
+      }
+    });
+
     it('régénère seulement le dernier tour et conserve la réponse en cas de sortie vide', async () => {
       const tenantA = await createTestTenant('Avis-Révisions');
       createdTenantIds.push(tenantA.id);

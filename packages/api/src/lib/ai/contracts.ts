@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { PropertyType } from '@prisma/client';
+import type { MaintenanceTicketPriority, MaintenanceTicketStatus, PropertyType } from '@prisma/client';
 
 /**
  * Contrats figés d'ImmoCopilot (docs/architecture/PLAN_IMMOCOPILOT.md, §3).
@@ -29,6 +29,7 @@ export type CopilotToolName =
   | 'search_leases'
   | 'rental_arrears'
   | 'rental_receipts'
+  | 'maintenance_overview'
   | 'property_portfolio'
   | 'lease_portfolio'
   | 'chart_analysis'
@@ -307,6 +308,13 @@ export type ArtifactCell = string | number | null;
 
 export type AnalysisQuery =
   | { tool: 'rental_arrears' | 'rental_receipts'; month: string }
+  | {
+      tool: 'maintenance_overview';
+      propertyId?: string;
+      vendorId?: string;
+      priority?: MaintenanceTicketPriority;
+      status?: MaintenanceTicketStatus;
+    }
   | { tool: 'property_portfolio'; groupBy: 'propertyType' | 'zone'; propertyType?: PropertyType; zone?: string }
   | { tool: 'lease_portfolio'; start: string; end: string; propertyId?: string };
 

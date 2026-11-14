@@ -51,6 +51,11 @@ export function getCopilotSuggestions(pathname: string, tools: readonly CopilotT
         text: t('Quels baux se terminent dans les 30 prochains jours ?'),
         requires: 'lease_portfolio'
       },
+      {
+        id: 'default-maintenance',
+        text: t('Quels tickets de maintenance sont encore ouverts ou urgents ?'),
+        requires: 'maintenance_overview'
+      },
       { id: 'default-leases', text: t('Cherche un bail par numéro'), requires: 'search_leases' },
       { id: 'default-receipt', text: t('Génère une quittance de loyer'), requires: 'propose_rental_document' }
     ];

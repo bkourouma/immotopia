@@ -60,6 +60,7 @@ const ALL_PERMS = [
   'PROPERTIES_VIEW',
   'RENTAL_INSTALLMENTS_VIEW',
   'RENTAL_PAYMENTS_VIEW',
+  'MAINTENANCE_ADMIN',
   'RENTAL_LEASES_VIEW',
   'RENTAL_DOCUMENTS_VIEW',
   'RENTAL_DOCUMENTS_GENERATE'
@@ -125,7 +126,8 @@ describe('registre', () => {
         'show_indicators',
         'compose_report',
         'property_portfolio',
-        'lease_portfolio'
+        'lease_portfolio',
+        'maintenance_overview'
       ].sort()
     );
     expect(ALL_TOOLS.some(t => /execute/i.test(t.name))).toBe(false);
@@ -145,6 +147,7 @@ describe('registre', () => {
     ['compose_report', 'PROPERTIES_VIEW'],
     ['property_portfolio', 'PROPERTIES_VIEW'],
     ['lease_portfolio', 'RENTAL_LEASES_VIEW'],
+    ['maintenance_overview', 'MAINTENANCE_ADMIN'],
     ['list_capabilities', 'PROPERTIES_VIEW'],
     ['call_read', 'PROPERTIES_VIEW'],
     ['plan_write', 'PROPERTIES_VIEW']
@@ -195,6 +198,7 @@ describe('registre', () => {
       'compose_report',
       'list_capabilities',
       'list_property_documents',
+      'maintenance_overview',
       'plan_write',
       'property_portfolio',
       'search_properties',

@@ -1,3 +1,4 @@
+import { OPEN_TICKET_STATUSES } from '../utils/maintenance-ticket-status';
 import { prisma } from '../utils/database';
 import { isOccupiedPropertyStatus, propertyOccupancyRate } from '../utils/property-occupancy';
 import { getUserPermissions } from './permission-service';
@@ -200,11 +201,6 @@ const TICKET_PRIORITY_ORDER: string[] = [
 const WORK_PROGRAM_STATUS_ORDER: string[] = ['PLANNED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'];
 
 /** Statuts de ticket qui comptent comme « ouvert » : ni résolu, ni annulé. */
-const OPEN_TICKET_STATUSES: MaintenanceTicketStatus[] = [
-  MaintenanceTicketStatus.DECLARED,
-  MaintenanceTicketStatus.IN_PROGRESS,
-  MaintenanceTicketStatus.ASSIGNED
-];
 
 /** Premier instant du mois courant, en heure locale du serveur. */
 function startOfCurrentMonth(now: Date): Date {

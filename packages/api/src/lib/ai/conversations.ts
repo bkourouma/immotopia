@@ -75,7 +75,14 @@ export function assistantScope(permissions: Set<string>, toolNames: string[]): s
   // Les outils de présentation ajoutés ici transforment uniquement des jeux déjà accessibles.
   // Leur disponibilité ne change donc pas le périmètre des fils enregistrés.
   // Les analyses du parc et des baux suivent les mêmes gardes de lecture que la recherche.
-  const additionalTools = new Set(['show_indicators', 'compose_report', 'property_portfolio', 'lease_portfolio']);
+  // L’analyse de maintenance applique MAINTENANCE_ADMIN et le module CORE existants.
+  const additionalTools = new Set([
+    'show_indicators',
+    'compose_report',
+    'property_portfolio',
+    'lease_portfolio',
+    'maintenance_overview'
+  ]);
   const readScope = toolNames.filter(name => !additionalTools.has(name));
   return createHash('sha256')
     .update(JSON.stringify([[...permissions].sort(), readScope.sort()]))

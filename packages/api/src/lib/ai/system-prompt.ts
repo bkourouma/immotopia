@@ -31,6 +31,7 @@ const TOOL_CAPABILITIES: Record<CopilotToolName, { group: string; text: string }
   rental_arrears: { group: 'rentalArrears', text: 'les échéances locatives non soldées par bien et par mois clos' },
   property_portfolio: { group: 'portfolio', text: 'l’occupation et la disponibilité du parc actuel' },
   lease_portfolio: { group: 'leasePortfolio', text: 'les baux actifs et les fins de bail par bien' },
+  maintenance_overview: { group: 'maintenance', text: 'les tickets de maintenance ouverts, urgents et leurs délais' },
   rental_receipts: { group: 'rentalReceipts', text: 'les encaissements locatifs par mois clos et devise' },
   chart_analysis: { group: 'charts', text: 'des graphiques fondés sur les tableaux calculés par le serveur' },
   show_indicators: { group: 'indicators', text: 'des indicateurs chiffrés issus des analyses' },
