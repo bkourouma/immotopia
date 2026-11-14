@@ -212,6 +212,7 @@ export const TenantActivityLog: React.FC = () => {
 
       <Card>
         <Table<TenantAuditLog>
+          helpId="administration.agence.activite.journal"
           aria-label={t("Journal d'activité")}
           search={search.searchProps}
           exportFilename={t("Journal d'activité")}

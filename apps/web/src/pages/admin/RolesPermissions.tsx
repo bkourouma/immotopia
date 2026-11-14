@@ -52,6 +52,7 @@ import { ListSearch } from '../../components/primitives';
 import { useLocalListSearch } from '../../utils/list-search';
 import { MenuTenantSelect, MenuScopeChoice, sameMenuScope } from '../../components/admin/MenuTenantSelect';
 import { t } from '../../i18n/t';
+import { HelpButton, HelpSectionTitle, helpAnchor } from '../../help';
 import { localizedRecord } from '../../i18n/localized';
 
 const { Title, Text } = Typography;
@@ -604,6 +605,7 @@ export const RolesPermissions: React.FC = () => {
           <span>
             {t('Menus —')} {selectedRole.name}
           </span>
+          <HelpButton size="small" helpId="administration.pilotage.roles.menus" />
           <Tag color={SCOPE_TAGS[selectedRole.scope].color}>{SCOPE_TAGS[selectedRole.scope].label}</Tag>
           {!awaitingTenant && (
             <Badge
@@ -750,6 +752,7 @@ export const RolesPermissions: React.FC = () => {
           <span>
             {t('Permissions —')} {selectedRole.name}
           </span>
+          <HelpButton size="small" helpId="administration.pilotage.roles.permissions" />
           <Tag color={SCOPE_TAGS[selectedRole.scope].color}>{SCOPE_TAGS[selectedRole.scope].label}</Tag>
         </Space>
       }
@@ -844,9 +847,9 @@ export const RolesPermissions: React.FC = () => {
       )}
 
       <Row gutter={24}>
-        <Col xs={24} lg={7} xl={6}>
+        <Col xs={24} lg={7} xl={6} {...helpAnchor('roles-liste')}>
           <Card
-            title={t('Rôles')}
+            title={<HelpSectionTitle title={t('Rôles')} helpId="administration.pilotage.roles.liste" />}
             size="small"
             extra={
               <Tooltip title={t('Recharger les rôles et les menus')}>
@@ -901,7 +904,7 @@ export const RolesPermissions: React.FC = () => {
           </Card>
         </Col>
 
-        <Col xs={24} lg={17} xl={18}>
+        <Col xs={24} lg={17} xl={18} {...helpAnchor('roles-onglets')}>
           <Tabs
             defaultActiveKey="menus"
             items={[

@@ -3,6 +3,7 @@ import { App, Card, Switch, Typography, Spin } from 'antd';
 import { MailOutlined } from '@ant-design/icons';
 import { ownerPortalService } from '../../services/ownerPortalService';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 const { Title, Paragraph } = Typography;
 
@@ -64,7 +65,12 @@ export default function OwnerPreferences() {
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
           <MailOutlined style={{ fontSize: 24, color: '#1890ff', marginTop: 4 }} />
           <div>
-            <Typography.Text strong>{t('Recevoir la newsletter')}</Typography.Text>
+            <Typography.Text strong>
+              <HelpSectionTitle
+                title={t('Recevoir la newsletter')}
+                helpId="portails.proprietaire.preferences.newsletter"
+              />
+            </Typography.Text>
             <Paragraph type="secondary" style={{ marginTop: 4, marginBottom: 8 }}>
               {t(
                 'Acceptez de recevoir les newsletters et communications de votre agence (actualités, conseils, offres).'

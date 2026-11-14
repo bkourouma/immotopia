@@ -17,6 +17,7 @@ import { Table } from '../../primitives';
 import { getRoleLabelFr } from '../../../constants/permissions-labels';
 import { activeLocale } from '../../../i18n/format';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 
 const STATUS_STYLES = {
   ACTIVE: 'bg-green-100 text-green-800',
@@ -218,7 +219,12 @@ export const CollaboratorsTab: React.FC<{ tenantId: string }> = ({ tenantId }) =
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <h3 className="text-lg font-medium text-gray-900">{t('Collaborateurs ({{count}})', { count: total })}</h3>
+        <h3 className="text-lg font-medium text-gray-900">
+          <HelpSectionTitle
+            title={t('Collaborateurs ({{count}})', { count: total })}
+            helpId="administration.plateforme-agences.detail.collaborateurs"
+          />
+        </h3>
         <button
           onClick={() => navigate(`/admin/tenants/${tenantId}/collaborators/invite`)}
           className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary hover:bg-primary-hover"
@@ -247,6 +253,7 @@ export const CollaboratorsTab: React.FC<{ tenantId: string }> = ({ tenantId }) =
         loading={loading}
         scroll={{ x: 'max-content' }}
         aria-label={t('Collaborateurs')}
+        helpId="administration.plateforme-agences.detail.collaborateurs.tableau"
         locale={search.isFiltered ? undefined : { emptyText: t('Aucun collaborateur') }}
         pagination={search.tablePagination(total)}
       />

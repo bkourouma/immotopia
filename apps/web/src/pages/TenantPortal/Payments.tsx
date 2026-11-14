@@ -43,6 +43,7 @@ import {
 } from '../../services/payment-gateway-service';
 import { redirectToExternalUrl } from '../../utils/external-redirect';
 import { t } from '../../i18n/t';
+import { HelpButton, HelpSectionTitle, helpAnchor } from '../../help';
 
 import { activeLocale, dateFormat } from '../../i18n/format';
 import { formatMontantLocatif } from '../../lib/rental-labels';
@@ -162,6 +163,7 @@ function MonReleve() {
       ) : (
         <div style={{ overflowX: 'auto' }}>
           <Table
+            helpId="portails.locataire.paiements.releve"
             {...local.tableProps}
             exportFilename={t('Mon relevé')}
             rowKey="id"
@@ -822,6 +824,7 @@ export default function TenantPayments() {
             setDeclarationFor(null);
             setDeclarationModalVisible(true);
           }}
+          {...helpAnchor('paiements-declarer')}
         >
           {t('Déclarer un paiement')}
         </Button>
@@ -840,13 +843,19 @@ export default function TenantPayments() {
         <Row gutter={[16, 16]}>
           <Col xs={24} sm={12} lg={6}>
             <Card>
-              <Statistic title={t('Total échéances')} value={data.summary.total} prefix={<DollarOutlined />} />
+              <Statistic
+                title={
+                  <HelpSectionTitle title={t('Total échéances')} helpId="portails.locataire.paiements.indicateurs" />
+                }
+                value={data.summary.total}
+                prefix={<DollarOutlined />}
+              />
             </Card>
           </Col>
           <Col xs={24} sm={12} lg={6}>
             <Card>
               <Statistic
-                title={t('Payées')}
+                title={<HelpSectionTitle title={t('Payées')} helpId="portails.locataire.paiements.indicateurs" />}
                 value={data.summary.paid}
                 valueStyle={{ color: '#3f8600' }}
                 prefix={<DollarOutlined />}
@@ -856,7 +865,7 @@ export default function TenantPayments() {
           <Col xs={24} sm={12} lg={6}>
             <Card>
               <Statistic
-                title={t('En attente')}
+                title={<HelpSectionTitle title={t('En attente')} helpId="portails.locataire.paiements.indicateurs" />}
                 value={data.summary.due}
                 valueStyle={{ color: '#faad14' }}
                 prefix={<DollarOutlined />}
@@ -866,7 +875,7 @@ export default function TenantPayments() {
           <Col xs={24} sm={12} lg={6}>
             <Card>
               <Statistic
-                title={t('En retard')}
+                title={<HelpSectionTitle title={t('En retard')} helpId="portails.locataire.paiements.indicateurs" />}
                 value={data.summary.overdue}
                 valueStyle={{ color: '#cf1322' }}
                 prefix={<DollarOutlined />}
@@ -877,21 +886,25 @@ export default function TenantPayments() {
       )}
 
       {/* Mes déclarations (spec 049) : requêtes lancées seulement quand la section est ouverte */}
-      <Collapse
-        activeKey={
-          (declarationsOpen ?? Boolean(data?.installments.some(item => item.pendingDeclaration)))
-            ? ['declarations']
-            : []
-        }
-        onChange={keys => setDeclarationsOpen((Array.isArray(keys) ? keys : [keys]).includes('declarations'))}
-        items={[
-          {
-            key: 'declarations',
-            label: t('Mes déclarations'),
-            children: <MyDeclarationsList onChanged={rechargerApresDeclaration} />
+      <div {...helpAnchor('paiements-declarations')}>
+        <Collapse
+          activeKey={
+            (declarationsOpen ?? Boolean(data?.installments.some(item => item.pendingDeclaration)))
+              ? ['declarations']
+              : []
           }
-        ]}
-      />
+          onChange={keys => setDeclarationsOpen((Array.isArray(keys) ? keys : [keys]).includes('declarations'))}
+          items={[
+            {
+              key: 'declarations',
+              label: (
+                <HelpSectionTitle title={t('Mes déclarations')} helpId="portails.locataire.paiements.declarations" />
+              ),
+              children: <MyDeclarationsList onChanged={rechargerApresDeclaration} />
+            }
+          ]}
+        />
+      </div>
 
       {/* Tabs for Installments and Payment History */}
       <Tabs
@@ -925,7 +938,11 @@ export default function TenantPayments() {
                     {availability.mode === 'SIMULATOR' ? (
                       <Alert type="info" showIcon message={t('Mode démonstration')} />
                     ) : null}
-                    <div className="it-toolbar__actions" style={{ alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+                    <div
+                      className="it-toolbar__actions"
+                      style={{ alignItems: 'center', flexWrap: 'wrap', gap: 12 }}
+                      {...helpAnchor('paiements-en-ligne')}
+                    >
                       <Space direction="vertical" size={0}>
                         <Text>
                           {selectedInstallmentIds.length > 0
@@ -948,6 +965,7 @@ export default function TenantPayments() {
                           </Text>
                         ) : null}
                       </Space>
+                      <HelpButton helpId="portails.locataire.paiements.paiement-en-ligne" size="small" />
                       <Button
                         type="primary"
                         icon={<CreditCardOutlined aria-hidden />}
@@ -961,8 +979,9 @@ export default function TenantPayments() {
                   </Space>
                 ) : null}
                 {data ? (
-                  <div style={{ overflowX: 'auto' }}>
+                  <div style={{ overflowX: 'auto' }} {...helpAnchor('paiements-tableau')}>
                     <Table
+                      helpId="portails.locataire.paiements.echeances"
                       search={echSearch.barre}
                       exportFilename={t('Liste des échéances')}
                       // Export de TOUTES les échéances, avec les mêmes filtres que la liste affichée.
@@ -1053,6 +1072,7 @@ export default function TenantPayments() {
                   {paymentHistoryData || paymentHistoryError ? (
                     <div style={{ overflowX: 'auto' }}>
                       <Table
+                        helpId="portails.locataire.paiements.historique"
                         search={hisSearch.barre}
                         exportFilename={t('Historique des paiements')}
                         // Export de TOUT l'historique, avec les mêmes filtres que la liste affichée.
@@ -1250,7 +1270,9 @@ export default function TenantPayments() {
 
       {/* Installment Details Modal */}
       <Modal
-        title={t("Détails de l'échéance")}
+        title={
+          <HelpSectionTitle title={t("Détails de l'échéance")} helpId="portails.locataire.paiements.detail-echeance" />
+        }
         open={detailsModalVisible}
         onCancel={handleCloseDetails}
         footer={null}

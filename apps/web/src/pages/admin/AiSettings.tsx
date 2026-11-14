@@ -20,6 +20,7 @@ import type { AiEffort, AiModelOption, AiProviderId, AiSettings } from '../../ty
 import { handleApiError } from '../../utils/error-handler';
 import { dateFormat } from '../../i18n/format';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -216,7 +217,7 @@ export const AiSettingsPage: React.FC = () => {
         )}
       />
 
-      <Card title={t('Fournisseur')}>
+      <Card title={<HelpSectionTitle title={t('Fournisseur')} helpId="administration.pilotage.ia.fournisseur" />}>
         <Radio.Group
           value={draft.provider}
           onChange={e => {
@@ -248,7 +249,7 @@ export const AiSettingsPage: React.FC = () => {
       </Card>
 
       {draft.provider === 'openrouter' || draft.provider === 'anthropic' ? (
-        <Card title={t('Modèle')}>
+        <Card title={<HelpSectionTitle title={t('Modèle')} helpId="administration.pilotage.ia.modele" />}>
           {draft.provider === 'openrouter' ? (
             <Space direction="vertical" style={{ width: '100%' }}>
               {modelsUnavailable && !modelsLoading ? (
@@ -295,7 +296,11 @@ export const AiSettingsPage: React.FC = () => {
       ) : null}
 
       {draft.provider === 'anthropic' ? (
-        <Card title={t('Options Anthropic')}>
+        <Card
+          title={
+            <HelpSectionTitle title={t('Options Anthropic')} helpId="administration.pilotage.ia.options-anthropic" />
+          }
+        >
           <Space direction="vertical" size="middle">
             <div>
               <Paragraph style={{ marginBottom: 8 }}>{t('Effort de raisonnement')}</Paragraph>

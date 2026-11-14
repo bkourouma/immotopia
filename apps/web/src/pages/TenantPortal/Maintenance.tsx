@@ -40,6 +40,7 @@ import { collectAllPages } from '../../utils/table-export/collect';
 import { useListSearch } from '../../hooks/useListSearch';
 import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -365,13 +366,19 @@ export default function TenantMaintenance() {
         <Row gutter={[16, 16]}>
           <Col xs={24} sm={12} lg={6}>
             <Card>
-              <Statistic title={t('Total tickets')} value={data.summary.total} prefix={<ToolOutlined />} />
+              <Statistic
+                title={
+                  <HelpSectionTitle title={t('Total tickets')} helpId="portails.locataire.incidents.indicateurs" />
+                }
+                value={data.summary.total}
+                prefix={<ToolOutlined />}
+              />
             </Card>
           </Col>
           <Col xs={24} sm={12} lg={6}>
             <Card>
               <Statistic
-                title={t('Ouverts')}
+                title={<HelpSectionTitle title={t('Ouverts')} helpId="portails.locataire.incidents.indicateurs" />}
                 value={data.summary.open}
                 valueStyle={{ color: '#faad14' }}
                 prefix={<ToolOutlined />}
@@ -381,7 +388,7 @@ export default function TenantMaintenance() {
           <Col xs={24} sm={12} lg={6}>
             <Card>
               <Statistic
-                title={t('En cours')}
+                title={<HelpSectionTitle title={t('En cours')} helpId="portails.locataire.incidents.indicateurs" />}
                 value={data.summary.inProgress}
                 valueStyle={{ color: '#1890ff' }}
                 prefix={<ToolOutlined />}
@@ -391,7 +398,7 @@ export default function TenantMaintenance() {
           <Col xs={24} sm={12} lg={6}>
             <Card>
               <Statistic
-                title={t('Résolus')}
+                title={<HelpSectionTitle title={t('Résolus')} helpId="portails.locataire.incidents.indicateurs" />}
                 value={data.summary.resolved}
                 valueStyle={{ color: '#3f8600' }}
                 prefix={<ToolOutlined />}
@@ -413,6 +420,7 @@ export default function TenantMaintenance() {
           <Alert message={t('Erreur')} description={error} type="error" showIcon style={{ marginBottom: 16 }} />
         ) : null}
         <Table
+          helpId="portails.locataire.incidents.liste"
           search={search.searchProps}
           exportFilename={t('Liste des tickets')}
           // Export de TOUS les tickets, avec les mêmes critères que la liste affichée.
@@ -460,7 +468,7 @@ export default function TenantMaintenance() {
           selectedTicket ? (
             <Space>
               <ToolOutlined />
-              <span>{selectedTicket.title}</span>
+              <HelpSectionTitle title={selectedTicket.title} helpId="portails.locataire.incidents.detail" />
             </Space>
           ) : (
             t('Détails du ticket')

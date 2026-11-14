@@ -313,6 +313,7 @@ export const AuditLogs: React.FC = () => {
 
       <Card>
         <Table<PlatformAuditLog>
+          helpId="administration.pilotage.audit.tableau"
           aria-label={t("Journal d'audit")}
           search={search.searchProps}
           exportFilename={t("Journal d'audit")}

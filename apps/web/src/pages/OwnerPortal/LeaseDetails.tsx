@@ -30,6 +30,7 @@ import { ownerPortalService } from '../../services/ownerPortalService';
 import { ListSearch, Table } from '../../components/primitives';
 import { listPagination, noResults, useLeaseDetailsSearch, useLeaseTabs } from './search/useLeaseDetailsSearch';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 import { activeLocale, formatFcfa } from '../../i18n/format';
 const { Title, Text } = Typography;
@@ -298,7 +299,14 @@ export default function LeaseDetails() {
           }
           key="info"
         >
-          <Card title={t('Informations du bail')}>
+          <Card
+            title={
+              <HelpSectionTitle
+                title={t('Informations du bail')}
+                helpId="portails.proprietaire.bail-detail.informations"
+              />
+            }
+          >
             <Descriptions column={{ xs: 1, sm: 2 }} bordered>
               <Descriptions.Item label={t('Propriété')}>{data.lease.property.address}</Descriptions.Item>
               <Descriptions.Item label={t('Numéro de bail')}>{data.lease.lease_number}</Descriptions.Item>
@@ -329,7 +337,14 @@ export default function LeaseDetails() {
           }
           key="renters"
         >
-          <Card title={t('Locataire principal')}>
+          <Card
+            title={
+              <HelpSectionTitle
+                title={t('Locataire principal')}
+                helpId="portails.proprietaire.bail-detail.locataires"
+              />
+            }
+          >
             <Descriptions column={{ xs: 1, sm: 2 }} bordered>
               <Descriptions.Item label={t('Nom')}>{data.lease.primaryRenter.user.fullName}</Descriptions.Item>
               <Descriptions.Item label={t('Email')}>{data.lease.primaryRenter.user.email}</Descriptions.Item>
@@ -363,6 +378,7 @@ export default function LeaseDetails() {
           <Card title={t('Calendrier des échéances')}>
             {data.installments.length > 0 ? (
               <Table
+                helpId="portails.proprietaire.bail-detail.echeances"
                 aria-label={t('Calendrier des échéances')}
                 exportFilename={t('Calendrier des échéances')}
                 exportFetchAll={installmentsSearch.exportAll}
@@ -387,7 +403,14 @@ export default function LeaseDetails() {
           }
           key="payments"
         >
-          <Card title={t('Historique des paiements')}>
+          <Card
+            title={
+              <HelpSectionTitle
+                title={t('Historique des paiements')}
+                helpId="portails.proprietaire.bail-detail.paiements"
+              />
+            }
+          >
             <ListSearch {...paymentsSearch.search} />
             {data.paymentHistory.length > 0 ? (
               <List
@@ -444,7 +467,9 @@ export default function LeaseDetails() {
           }
           key="balance"
         >
-          <Card title={t('Solde du bail')}>
+          <Card
+            title={<HelpSectionTitle title={t('Solde du bail')} helpId="portails.proprietaire.bail-detail.solde" />}
+          >
             <Row gutter={[16, 16]}>
               <Col xs={24} sm={12} lg={8}>
                 <Statistic
@@ -513,7 +538,11 @@ export default function LeaseDetails() {
         >
           {data.deposit ? (
             <>
-              <Card title={t('Dépôt de garantie')}>
+              <Card
+                title={
+                  <HelpSectionTitle title={t('Dépôt de garantie')} helpId="portails.proprietaire.bail-detail.depot" />
+                }
+              >
                 <Row gutter={[16, 16]}>
                   <Col xs={24} sm={12} lg={8}>
                     <Statistic

@@ -31,6 +31,7 @@ import { App } from 'antd';
 import { StatusTag, useConfirmAction } from '../../components/primitives';
 import { getModuleKeyLabelFr } from '../../constants/module-labels';
 import { t } from '../../i18n/t';
+import { HelpButton } from '../../help';
 
 import { activeLocale } from '../../i18n/format';
 
@@ -259,6 +260,9 @@ export const TenantDetail: React.FC = () => {
         <div className="bg-white rounded-lg shadow p-6">
           {activeTab === 'overview' && (
             <div className="space-y-6">
+              <div className="flex justify-end">
+                <HelpButton helpId="administration.plateforme-agences.detail.apercu" />
+              </div>
               <div className="flex items-center gap-4">
                 {(tenant as TenantWithBranding).logoUrl ? (
                   <img
@@ -359,6 +363,9 @@ export const TenantDetail: React.FC = () => {
 
           {activeTab === 'stats' && stats && (
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+              <div className="flex justify-end md:col-span-2">
+                <HelpButton helpId="administration.plateforme-agences.detail.statistiques" />
+              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">{t('Collaborateurs actifs')}</label>
                 <p className="mt-1 text-2xl font-bold text-gray-900">{stats.activeCollaborators}</p>

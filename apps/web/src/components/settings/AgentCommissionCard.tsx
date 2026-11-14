@@ -12,6 +12,7 @@ import { Table } from '../primitives';
 import { isModuleNotIncludedError } from '../../utils/module-not-included';
 import { useLocalListSearch } from '../../utils/list-search';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 const { Text } = Typography;
 
@@ -143,7 +144,14 @@ export const AgentCommissionCard: React.FC<AgentCommissionCardProps> = ({ tenant
   }
 
   return (
-    <Card title={t('Commission des collaborateurs')}>
+    <Card
+      title={
+        <HelpSectionTitle
+          title={t('Commission des collaborateurs')}
+          helpId="administration.agence.finance.commissions"
+        />
+      }
+    >
       <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
         {t('Part des honoraires HT reversée au collaborateur sur les baux dont il est le gestionnaire.')}
       </Text>
@@ -151,6 +159,7 @@ export const AgentCommissionCard: React.FC<AgentCommissionCardProps> = ({ tenant
       <Table
         {...local.tableProps}
         search={agents.length > SEARCH_THRESHOLD ? local.searchProps : undefined}
+        helpId="administration.agence.finance.commissions.tableau"
         aria-label={t('Commission des collaborateurs')}
         exportFilename={t('Commission des collaborateurs')}
         exportFetchAll={local.exportAll}

@@ -15,6 +15,7 @@ import {
 } from '../../../types/maintenance-types';
 import { useAuth } from '../../../hooks/useAuth';
 import { formatTicketDate } from '../../../utils/date-utils';
+import { HelpSectionTitle } from '../../../help';
 import { t } from '../../../i18n/t';
 import { localizedRecord } from '../../../i18n/localized';
 
@@ -200,7 +201,12 @@ export const TicketDetail: React.FC = () => {
               <Form form={form} layout="vertical" onFinish={handleSave}>
                 <Space direction="vertical" size="large" style={{ width: '100%' }}>
                   <div>
-                    <Title level={5}>{t('Informations')}</Title>
+                    <Title level={5}>
+                      <HelpSectionTitle
+                        title={t('Informations')}
+                        helpId="administration.maintenance-gestion.ticket-detail.informations"
+                      />
+                    </Title>
                     <Space direction="vertical" size="small">
                       <div>
                         <Text strong>{t('Catégorie:')} </Text>
@@ -261,7 +267,15 @@ export const TicketDetail: React.FC = () => {
                     </Select>
                   </Form.Item>
 
-                  <Form.Item name="assignedVendorId" label={t('Prestataire assigné')}>
+                  <Form.Item
+                    name="assignedVendorId"
+                    label={
+                      <HelpSectionTitle
+                        title={t('Prestataire assigné')}
+                        helpId="administration.maintenance-gestion.ticket-detail.assignation"
+                      />
+                    }
+                  >
                     <VendorSelect tenantId={effectiveTenantId || ''} />
                   </Form.Item>
 
@@ -294,14 +308,24 @@ export const TicketDetail: React.FC = () => {
               <Divider />
 
               <div>
-                <Title level={5}>{t('Historique des statuts')}</Title>
+                <Title level={5}>
+                  <HelpSectionTitle
+                    title={t('Historique des statuts')}
+                    helpId="administration.maintenance-gestion.ticket-detail.historique"
+                  />
+                </Title>
                 <TicketTimeline statusHistory={ticket.statusHistory || []} />
               </div>
 
               <Divider />
 
               <div>
-                <Title level={5}>{t('Pièces jointes')}</Title>
+                <Title level={5}>
+                  <HelpSectionTitle
+                    title={t('Pièces jointes')}
+                    helpId="administration.maintenance-gestion.ticket-detail.pieces-jointes"
+                  />
+                </Title>
                 {effectiveTenantId && (
                   <AttachmentList
                     attachments={ticket.attachments || []}
@@ -313,7 +337,12 @@ export const TicketDetail: React.FC = () => {
               <Divider />
 
               <div>
-                <Title level={5}>{t('Commentaires')}</Title>
+                <Title level={5}>
+                  <HelpSectionTitle
+                    title={t('Commentaires')}
+                    helpId="administration.maintenance-gestion.ticket-detail.commentaires"
+                  />
+                </Title>
                 <CommentThread comments={ticket.comments || []} />
 
                 <div style={{ marginTop: 16 }}>

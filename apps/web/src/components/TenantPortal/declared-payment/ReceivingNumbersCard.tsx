@@ -3,6 +3,7 @@ import { App, Button, Card, Space, Typography } from 'antd';
 import { CopyOutlined } from '@ant-design/icons';
 import { PhoneNumber } from '../../primitives';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 
 import type { DeclarePaymentReceivingNumber } from '../../../types/rental-declared-payment';
 import { formatPhoneForDisplay, operatorLabel } from './labels';
@@ -54,7 +55,16 @@ export function ReceivingNumbersCard({
   const consigne = instructions?.trim() ? instructions : null;
 
   return (
-    <Card size="small" variant={bordered ? 'outlined' : 'borderless'} title={t('Numéros pour payer par mobile money')}>
+    <Card
+      size="small"
+      variant={bordered ? 'outlined' : 'borderless'}
+      title={
+        <HelpSectionTitle
+          title={t('Numéros pour payer par mobile money')}
+          helpId="portails.locataire.paiements.numeros-reception"
+        />
+      }
+    >
       <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
         <Typography.Paragraph style={{ marginBottom: 0 }}>
           {t('Faites votre transfert depuis votre téléphone vers l’un de ces numéros, puis déclarez-le ici.')}

@@ -186,6 +186,7 @@ export default function Patrimoine() {
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} lg={6}>
           <StatCard
+            helpId="portails.proprietaire.patrimoine.indicateurs"
             title={t('Nombre de biens')}
             value={summary.propertyCount}
             icon={<GoldOutlined style={{ color: '#722ed1' }} />}
@@ -243,6 +244,7 @@ export default function Patrimoine() {
       <Card title={t('Vos biens')}>
         {properties.length > 0 ? (
           <Table
+            helpId="portails.proprietaire.patrimoine.biens"
             aria-label={t('Vos biens')}
             exportFilename={t('Vos biens')}
             exportFetchAll={local.exportAll}

@@ -9,6 +9,7 @@ import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion } from '../../utils/list-search';
 import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 import { formatFcfa } from '../../i18n/format';
 const { Title, Text } = Typography;
@@ -164,6 +165,7 @@ export default function Revenues() {
         <Row gutter={[16, 16]}>
           <Col xs={24} sm={12} lg={6}>
             <StatCard
+              helpId="portails.proprietaire.revenus.indicateurs"
               title={t('Ce mois')}
               value={formatCurrency(summary.currentMonth)}
               icon={<DollarOutlined style={{ color: '#52c41a' }} />}
@@ -198,7 +200,7 @@ export default function Revenues() {
       )}
 
       {/* Filters (T088) */}
-      <Card title={t('Filtres')}>
+      <Card title={<HelpSectionTitle title={t('Filtres')} helpId="portails.proprietaire.revenus.filtres" />}>
         <div className="it-filters">
           <div className="it-filters__field">
             <Text strong>{t('Période')}</Text>
@@ -230,13 +232,18 @@ export default function Revenues() {
       {/* Revenue by Month Chart (T085) */}
       <Card
         title={
-          <Space>
-            <CalendarOutlined />
-            <span>
-              {t('Revenus par mois (')}
-              {selectedYear})
-            </span>
-          </Space>
+          <HelpSectionTitle
+            helpId="portails.proprietaire.revenus.graphique"
+            title={
+              <Space>
+                <CalendarOutlined />
+                <span>
+                  {t('Revenus par mois (')}
+                  {selectedYear})
+                </span>
+              </Space>
+            }
+          />
         }
       >
         {revenuesByMonth.length > 0 ? (
@@ -247,13 +254,16 @@ export default function Revenues() {
       </Card>
 
       {/* Revenue by Property Chart (T086) */}
-      <Card title={t('Revenus par propriété')}>
+      <Card
+        title={<HelpSectionTitle title={t('Revenus par propriété')} helpId="portails.proprietaire.revenus.par-bien" />}
+      >
         {revenuesByProperty.length > 0 ? (
           <>
             <RevenueChart data={revenuesByProperty} type="bar" dataKey="revenue" xAxisKey="propertyAddress" />
             {/* Revenue by Property Table (T087) */}
             <div style={{ marginTop: 24 }}>
               <Table
+                helpId="portails.proprietaire.revenus.tableau"
                 aria-label={t('Revenus par propriété')}
                 {...local.tableProps}
                 exportFilename={t('Revenus par propriété')}

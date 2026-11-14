@@ -102,6 +102,7 @@ export default function HelpFeedbackPage({ scope = 'platform' }: { scope?: Scope
   } else {
     content = (
       <Table<HelpFeedbackItem>
+        helpId="administration.avis-aide.tableau"
         rowKey="helpId"
         columns={columns}
         dataSource={items}

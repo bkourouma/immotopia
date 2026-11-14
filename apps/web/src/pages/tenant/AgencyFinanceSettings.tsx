@@ -38,6 +38,7 @@ import { DirectDebitCreditorsCard } from '../../components/rental/direct-debit/D
 import { ReceivingNumbersCard as RentalReceivingNumbersCard } from '../../components/rental/declared-payment/ReceivingNumbersCard';
 import { DeclaredSettingsCard as RentalDeclaredSettingsCard } from '../../components/rental/declared-payment/DeclaredSettingsCard';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -212,7 +213,10 @@ export const AgencyFinanceSettings: React.FC = () => {
         onFinish={handleSubmit}
         onFinishFailed={onAntFormValidationFailed(form)}
       >
-        <Card title={t('Fiscalité')} style={{ marginBottom: 16 }}>
+        <Card
+          title={<HelpSectionTitle title={t('Fiscalité')} helpId="administration.agence.finance.fiscalite" />}
+          style={{ marginBottom: 16 }}
+        >
           <Row gutter={16}>
             <Col xs={24} md={12}>
               <Form.Item
@@ -242,7 +246,12 @@ export const AgencyFinanceSettings: React.FC = () => {
         </Card>
 
         {rental ? (
-          <Card title={t('Honoraires de gestion')} style={{ marginBottom: 16 }}>
+          <Card
+            title={
+              <HelpSectionTitle title={t('Honoraires de gestion')} helpId="administration.agence.finance.honoraires" />
+            }
+            style={{ marginBottom: 16 }}
+          >
             <FeeTermsFields />
             {exampleFee !== null ? (
               <Alert
@@ -273,7 +282,12 @@ export const AgencyFinanceSettings: React.FC = () => {
         ) : null}
 
         <Card
-          title={rental ? t('Comptes comptables de la gestion locative') : t('Comptes comptables de la caisse')}
+          title={
+            <HelpSectionTitle
+              title={rental ? t('Comptes comptables de la gestion locative') : t('Comptes comptables de la caisse')}
+              helpId="administration.agence.finance.comptes"
+            />
+          }
           style={{ marginBottom: 16 }}
         >
           {rental ? (
@@ -338,7 +352,12 @@ export const AgencyFinanceSettings: React.FC = () => {
 
         {rental ? (
           <>
-            <Card title={t('Pénalités de retard')} style={{ marginBottom: 16 }}>
+            <Card
+              title={
+                <HelpSectionTitle title={t('Pénalités de retard')} helpId="administration.agence.finance.penalites" />
+              }
+              style={{ marginBottom: 16 }}
+            >
               <Row gutter={16}>
                 <Col xs={24} md={12}>
                   <Form.Item
@@ -369,7 +388,15 @@ export const AgencyFinanceSettings: React.FC = () => {
               </Row>
             </Card>
 
-            <Card title={t('Retenue à la source sur loyers')} style={{ marginBottom: 16 }}>
+            <Card
+              title={
+                <HelpSectionTitle
+                  title={t('Retenue à la source sur loyers')}
+                  helpId="administration.agence.finance.retenue"
+                />
+              }
+              style={{ marginBottom: 16 }}
+            >
               <Form.Item
                 label={t('Appliquer une retenue à la source sur les loyers')}
                 name="withholdingEnabled"
