@@ -32,6 +32,7 @@ import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion } from '../../utils/list-search';
 import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { t } from '../../i18n/t';
+import { HelpButton, HelpSectionTitle } from '../../help';
 
 const { Title, Text } = Typography;
 
@@ -331,7 +332,10 @@ export function EmailNotificationsUnifiedPage() {
 
         <div id="email-notif-edit-section">
           <Text strong style={{ display: 'block', marginBottom: 8 }}>
-            {t('Choisir un événement déclencheur')}
+            <HelpSectionTitle
+              title={t('Choisir un événement déclencheur')}
+              helpId="communication.canaux.email.evenement"
+            />
           </Text>
           {showReadOnlyNotice && (
             <Alert
@@ -388,6 +392,7 @@ export function EmailNotificationsUnifiedPage() {
                     <Tag color="blue" style={{ marginTop: 6 }}>
                       {t('Template pour :')} {selectedItem.recipientLabel}
                     </Tag>
+                    <HelpButton size="small" helpId="communication.canaux.email.modele" />
                   </Card>
 
                   <Collapse
@@ -454,7 +459,10 @@ export function EmailNotificationsUnifiedPage() {
                       <Space align="center" style={{ marginBottom: 8 }}>
                         <CodeOutlined />
                         <Text type="secondary" strong>
-                          {t('Variables pour cet événement')}
+                          <HelpSectionTitle
+                            title={t('Variables pour cet événement')}
+                            helpId="communication.canaux.email.variables"
+                          />
                         </Text>
                         <Text type="secondary" style={{ fontSize: 12 }}>
                           {t('Cliquez pour insérer dans le corps du template.')}
@@ -485,7 +493,12 @@ export function EmailNotificationsUnifiedPage() {
                       >
                         <Space align="center" style={{ marginBottom: 8 }}>
                           <TeamOutlined style={{ color: '#52c41a' }} />
-                          <Text strong>{t("Appliquer ce template à d'autres destinataires")}</Text>
+                          <Text strong>
+                            <HelpSectionTitle
+                              title={t("Appliquer ce template à d'autres destinataires")}
+                              helpId="communication.canaux.email.appliquer"
+                            />
+                          </Text>
                         </Space>
                         <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
                           {t(
@@ -530,6 +543,7 @@ export function EmailNotificationsUnifiedPage() {
       <Card title={t('Liste des notifications email')}>
         <Spin spinning={loading}>
           <Table
+            helpId="communication.canaux.email.tableau"
             exportFilename={t('Liste des notifications email')}
             {...local.tableProps}
             exportFetchAll={local.exportAll}

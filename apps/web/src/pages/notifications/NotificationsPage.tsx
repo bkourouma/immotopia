@@ -14,6 +14,7 @@ import { NotificationList } from '../../components/notifications/NotificationLis
 import { safeInternalLink } from '../../components/notifications/notification-labels';
 import { useNotificationScope } from '../../components/notifications/useNotificationScope';
 import { t } from '../../i18n/t';
+import { HelpButton } from '../../help';
 
 const { Title } = Typography;
 
@@ -101,7 +102,8 @@ export const NotificationsPage: React.FC<NotificationsPageProps> = ({ scope: sco
       <Card>
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           <ListSearch {...search.searchProps} resultCount={total} aria-label={t('Rechercher dans les notifications')} />
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
+            <HelpButton helpId="communication.messagerie.notifications.liste" size="small" />
             <Button onClick={() => void handleMarkAll()}>{t('Tout marquer comme lu')}</Button>
           </div>
           {error && <Alert type="error" showIcon message={error} />}

@@ -3,6 +3,7 @@ import { App, Modal, Upload } from 'antd';
 import { InboxOutlined } from '@ant-design/icons';
 import type { ImportResult } from '../../services/newsletter.service';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 const { Dragger } = Upload;
 
@@ -59,7 +60,9 @@ export function ImportCsvModal({ open, onClose, onImport }: ImportCsvModalProps)
 
   return (
     <Modal
-      title={t('Importer des abonnés (CSV)')}
+      title={
+        <HelpSectionTitle title={t('Importer des abonnés (CSV)')} helpId="communication.newsletter.listes.import" />
+      }
       open={open}
       onOk={handleOk}
       onCancel={handleClose}

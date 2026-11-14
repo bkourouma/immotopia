@@ -13,6 +13,7 @@ import { useLocalListSearch } from '../../utils/list-search';
 import { newsletterService, type NewsletterList, type NewsletterSubscriber } from '../../services/newsletter.service';
 import type { ContactSearchResultItem } from '../../services/contact-search.service';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 import { collectAllPages } from '../../utils/table-export/collect';
 
 // Stables : déclarés hors du composant (le filtrage local reste mémoïsé).
@@ -246,13 +247,20 @@ export function NewsletterListsPage() {
             >
               {t('Retour aux listes')}
             </Button>
-            <Card title={selectedList.name}>
+            <Card
+              title={<HelpSectionTitle title={selectedList.name} helpId="communication.newsletter.listes.abonnes" />}
+            >
               {canEditList && selectedList.publicSubscribeToken != null && selectedList.publicSubscribeToken && (
                 <Collapse
                   items={[
                     {
                       key: 'public-form',
-                      label: t("Formulaire d'inscription publique"),
+                      label: (
+                        <HelpSectionTitle
+                          title={t("Formulaire d'inscription publique")}
+                          helpId="communication.newsletter.listes.inscription"
+                        />
+                      ),
                       children: (
                         <div>
                           <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
@@ -351,7 +359,7 @@ export function NewsletterListsPage() {
       </div>
 
       <Modal
-        title={t('Nouvelle liste')}
+        title={<HelpSectionTitle title={t('Nouvelle liste')} helpId="communication.newsletter.listes.creation" />}
         open={createModalOpen}
         onCancel={() => setCreateModalOpen(false)}
         footer={null}
@@ -388,7 +396,7 @@ export function NewsletterListsPage() {
       </Modal>
 
       <Modal
-        title={t('Modifier la liste')}
+        title={<HelpSectionTitle title={t('Modifier la liste')} helpId="communication.newsletter.listes.creation" />}
         open={editModalOpen}
         onCancel={() => {
           setEditModalOpen(false);
@@ -447,7 +455,12 @@ export function NewsletterListsPage() {
       <ImportCsvModal open={importModalOpen} onClose={() => setImportModalOpen(false)} onImport={handleImport} />
 
       <Modal
-        title={t('Recherche avancée de contacts CRM')}
+        title={
+          <HelpSectionTitle
+            title={t('Recherche avancée de contacts CRM')}
+            helpId="communication.newsletter.listes.ajout-crm"
+          />
+        }
         open={advancedSearchModalOpen}
         onCancel={() => setAdvancedSearchModalOpen(false)}
         footer={null}

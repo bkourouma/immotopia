@@ -23,6 +23,7 @@ import { Table, useConfirmAction } from '../../components/primitives';
 import { collectAllPages } from '../../utils/table-export/collect';
 import { t } from '../../i18n/t';
 import { localizedRecord } from '../../i18n/localized';
+import { HelpSectionTitle } from '../../help';
 
 const statusColors: Record<string, string> = {
   DRAFT: 'default',
@@ -377,6 +378,7 @@ export function NewsletterCampaignsPage() {
         <Card>
           <Table
             aria-label={t('Campagnes newsletter')}
+            helpId="communication.newsletter.campagnes.tableau"
             search={search.searchProps}
             exportFilename={t('Campagnes newsletter')}
             exportFetchAll={() =>
@@ -401,7 +403,9 @@ export function NewsletterCampaignsPage() {
       </div>
 
       <Modal
-        title={t('Nouvelle campagne')}
+        title={
+          <HelpSectionTitle title={t('Nouvelle campagne')} helpId="communication.newsletter.campagnes.formulaire" />
+        }
         open={createModalOpen}
         onCancel={() => setCreateModalOpen(false)}
         footer={null}
@@ -418,7 +422,9 @@ export function NewsletterCampaignsPage() {
       </Modal>
 
       <Modal
-        title={t('Modifier la campagne')}
+        title={
+          <HelpSectionTitle title={t('Modifier la campagne')} helpId="communication.newsletter.campagnes.formulaire" />
+        }
         open={editModalOpen}
         onCancel={() => {
           setEditModalOpen(false);
@@ -442,7 +448,7 @@ export function NewsletterCampaignsPage() {
       </Modal>
 
       <Modal
-        title={t('Aperçu')}
+        title={<HelpSectionTitle title={t('Aperçu')} helpId="communication.newsletter.campagnes.apercu" />}
         open={previewModalOpen}
         onCancel={() => {
           setPreviewModalOpen(false);
@@ -473,7 +479,9 @@ export function NewsletterCampaignsPage() {
       </Modal>
 
       <Modal
-        title={t("Planifier l'envoi")}
+        title={
+          <HelpSectionTitle title={t("Planifier l'envoi")} helpId="communication.newsletter.campagnes.planification" />
+        }
         open={scheduleModalOpen}
         onOk={handleScheduleCampaign}
         onCancel={() => {

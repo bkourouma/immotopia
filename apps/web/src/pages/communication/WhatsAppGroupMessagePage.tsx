@@ -13,6 +13,7 @@ import {
 } from '@ant-design/icons';
 import { whatsappNotificationConfigService } from '../../services/whatsapp-notification-config-service';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 const { Title, Text } = Typography;
 
@@ -187,7 +188,12 @@ export function WhatsAppGroupMessagePage() {
           showIcon
           type="info"
           style={{ marginTop: 12 }}
-          message={t('Format WhatsApp')}
+          message={
+            <HelpSectionTitle
+              title={t('Format WhatsApp')}
+              helpId="communication.canaux.whatsapp-groupe.mise-en-forme"
+            />
+          }
           description={t(
             'Utilisez les boutons: ils inserent le format WhatsApp (*gras*, _italique_, ~barre~, `code`). Evitez d inclure les espaces a l interieur des symboles.'
           )}
@@ -264,7 +270,7 @@ export function WhatsAppGroupMessagePage() {
               </Col>
               <Col xs={24} md={10}>
                 <Text strong style={{ display: 'block', marginBottom: 8 }}>
-                  {t('Image jointe')}
+                  <HelpSectionTitle title={t('Image jointe')} helpId="communication.canaux.whatsapp-groupe.image" />
                 </Text>
                 <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
                   {t('Cette image sera envoyee avec votre message comme legende.')}
@@ -280,7 +286,12 @@ export function WhatsAppGroupMessagePage() {
         <Divider />
 
         <Space style={{ width: '100%', justifyContent: 'space-between' }} wrap>
-          <Text type="secondary">{t('Le message part vers votre destination groupe configuree sur WaSender.')}</Text>
+          <Text type="secondary">
+            <HelpSectionTitle
+              title={t('Le message part vers votre destination groupe configuree sur WaSender.')}
+              helpId="communication.canaux.whatsapp-groupe.envoi"
+            />
+          </Text>
           <Button
             type="primary"
             icon={<SendOutlined />}

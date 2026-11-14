@@ -2,6 +2,7 @@ import React from 'react';
 import { Card, Typography } from 'antd';
 import { Link } from 'react-router-dom';
 import { StateBlock } from '../primitives';
+import { HelpSectionTitle } from '../../help';
 import { t } from '../../i18n/t';
 
 const { Text } = Typography;
@@ -45,6 +46,8 @@ export interface ChartCardProps {
   empty?: boolean;
   emptyText?: string;
   legend?: ChartCardLegendItem[];
+  /** Fiche d'aide de la carte : un « ? » est posé à côté du titre. */
+  helpId?: string;
   children: React.ReactNode;
 }
 
@@ -59,6 +62,7 @@ export const ChartCard: React.FC<ChartCardProps> = ({
   empty,
   emptyText = t('Aucune donnée sur cette période.'),
   legend,
+  helpId,
   children
 }) => (
   <Card
@@ -81,7 +85,9 @@ export const ChartCard: React.FC<ChartCardProps> = ({
       }}
     >
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{title}</div>
+        <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+          {helpId ? <HelpSectionTitle title={title} helpId={helpId} /> : title}
+        </div>
         {subtitle && (
           <Text type="secondary" style={{ fontSize: 'var(--font-size-sm)' }}>
             {subtitle}
