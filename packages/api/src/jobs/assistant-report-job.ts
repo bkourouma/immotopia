@@ -51,7 +51,7 @@ async function readReportSource(report: AssistantScheduledReport, owner: Awaited
 }
 
 async function deliver(report: AssistantScheduledReport, dueAt: Date, recipientId: string): Promise<DeliveryStatus> {
-  const { tenantId, ownerId, conversationId } = report;
+  const { tenantId, conversationId } = report;
   const key = { tenantId, reportId: report.id, dueAt, recipientId };
   const previous = await prisma.assistantReportDelivery.findFirst({ where: key, select: { status: true } });
   if (previous) {
@@ -87,7 +87,9 @@ async function deliver(report: AssistantScheduledReport, dueAt: Date, recipientI
     );
     const attachments = [];
     for (const format of report.formats) {
-      if (!Object.hasOwn(exporters, format)) throw new AppError(t('Format de rapport invalide.'), 422);
+      if (!Object.prototype.hasOwnProperty.call(exporters, format)) {
+        throw new AppError(t('Format de rapport invalide.'), 422);
+      }
       const content = await exporters[format as keyof typeof exporters](artifact);
       attachments.push({ filename: `ImmoTopia.${format}`, content });
     }

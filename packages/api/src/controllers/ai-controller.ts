@@ -42,7 +42,7 @@ import {
   executeRequestSchema,
   rejectRequestSchema
 } from '../lib/ai/contracts';
-import type { CopilotArtifact, CopilotStatus, CopilotToolDefinition } from '../lib/ai/contracts';
+import type { CopilotArtifact, CopilotStatus } from '../lib/ai/contracts';
 import { executeCapability } from '../lib/ai/actions/execute-capability';
 import { executeRentalDocument } from '../lib/ai/actions/execute-rental-document';
 import { ProposalError, peekProposalAction, redeemProposal, verifyAnyProposal } from '../lib/ai/proposal-token';
