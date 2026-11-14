@@ -77,6 +77,8 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 **Partage à plusieurs collègues** — Après `aaa892a0`, le formulaire accepte jusqu’à 20 destinataires et un message facultatif de 2 000 caractères. Chaque destinataire est contrôlé avant la transaction. Une erreur d’écriture annule le lot, notifications comprises. Les nouveaux destinataires reçoivent une notification générique et retrouvent le message dans Partages. Un nouveau lot peut inclure un destinataire déjà servi sans modifier son message ni le renotifier. Migration `20261115050000_assistant_share_message`.
 
+**Partage de conversations** — Après `65aa9a6a`, le bouton de partage du fil réutilise le formulaire pour 1 à 20 collègues. Le destinataire consulte les artefacts calculables des 100 derniers tours et peut les exporter individuellement dans son périmètre commun avec l’auteur. Les questions, réponses libres et pièces jointes restent privées. La révocation fonctionne des deux côtés. Migration `20261115060000_assistant_conversation_shares`. Les épingles restent disponibles au niveau d’un artefact partagé individuellement.
+
 ## chore/deps-patch-minor — 2026-11-11
 
 **État** — PR 218 vers `main` (fusion par l'utilisateur), reprend la PR Dependabot 212 (28 mises à jour mineures : antd 6.7, Radix, TanStack Query, aws-sdk, docxtemplater, pizzip…). PR Dependabot 214 (`@vitejs/plugin-react` 6) et 215 (`vitest` 5) fermées le 2026-11-11 : sauts de versions majeures (module introuvable, matchers non typés), à traiter en migration dédiée ; envisager une règle `ignore` des versions majeures dans `.github/dependabot.yml`.

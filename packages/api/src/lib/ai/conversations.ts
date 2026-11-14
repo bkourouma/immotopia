@@ -179,6 +179,22 @@ export async function getConversation(owner: AssistantOwner, id: string, scopeKe
   };
 }
 
+export async function getConversationArtifactTurns(owner: AssistantOwner, id: string, scopeKey: string) {
+  await assertConversation(owner, id, scopeKey);
+  const turns = await prisma.assistantTurn.findMany({
+    where: { ...owner, conversationId: id, conversation: { scopeKey } },
+    orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
+    take: 100,
+    select: { id: true, startedAt: true, result: true }
+  });
+  return turns.reverse().map(({ result, ...turn }) => ({
+    ...turn,
+    artifacts: Array.isArray(result)
+      ? (result as unknown as ResultEvent[]).filter(event => event.type === 'artifact').map(event => event.artifact)
+      : []
+  }));
+}
+
 export async function saveResponseFeedback(
   owner: AssistantOwner,
   conversationId: string,

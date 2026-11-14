@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, Button, Drawer, Empty, Input, Modal, Popconfirm, Select, Spin } from 'antd';
+import { Alert, Button, Drawer, Empty, Popconfirm, Spin } from 'antd';
 import { t } from '../../i18n/t';
 import { feedback } from '../../lib/feedback';
 import { copilotService, type SavedAnalysis, type SavedAnalysisReference } from '../../services/copilot-service';
@@ -7,6 +7,7 @@ import type { CopilotArtifact } from '../../types/copilot';
 import { sanitizeArtifact } from '../../utils/copilot-artifact';
 import { filenameFromDisposition, saveBlob } from '../../utils/save-blob';
 import { ArtifactPanel } from './artifact/ArtifactPanel';
+import { ShareAnalysisDialog } from './ShareAnalysisDialog';
 
 function SavedAnalysisPreview({
   tenantId,
@@ -82,39 +83,6 @@ export function SavedAnalyses({
   const [failed, setFailed] = useState(false);
   const [reload, setReload] = useState(0);
   const [shareItem, setShareItem] = useState<SavedAnalysis>();
-  const [selectedRecipients, setSelectedRecipients] = useState<string[]>([]);
-  const [message, setMessage] = useState('');
-  const [sharing, setSharing] = useState(false);
-  const [recipients, setRecipients] = useState<Array<{ userId: string; displayName: string }>>([]);
-  useEffect(() => {
-    if (!shareItem) return;
-    let active = true;
-    void copilotService
-      .listAnalysisRecipients(tenantId)
-      .then(items => {
-        if (active) setRecipients(items);
-      })
-      .catch(() => {
-        if (active) feedback.error(t('Impossible de charger les destinataires.'));
-      });
-    return () => {
-      active = false;
-    };
-  }, [shareItem, tenantId]);
-
-  async function share() {
-    if (!shareItem || !selectedRecipients.length || sharing) return;
-    setSharing(true);
-    try {
-      await copilotService.shareAnalysis(tenantId, shareItem, selectedRecipients, message.trim() || undefined);
-      setShareItem(undefined);
-      feedback.success(t('Analyse partagée.'));
-    } catch {
-      feedback.error(t('Le partage exige des données recalculables et un destinataire habilité.'));
-    } finally {
-      setSharing(false);
-    }
-  }
   useEffect(() => {
     const controller = new AbortController();
     setBusy(true);
@@ -155,39 +123,9 @@ export function SavedAnalyses({
       size="min(780px, 100vw)"
       extra={selected && <Button onClick={() => setSelected(undefined)}>{t('Retour aux analyses')}</Button>}
     >
-      <Modal
-        open={!!shareItem}
-        title={t('Partager une analyse')}
-        okText={t('Partager')}
-        cancelText={t('Annuler')}
-        onCancel={() => {
-          if (!sharing) setShareItem(undefined);
-        }}
-        onOk={() => void share()}
-        confirmLoading={sharing}
-        okButtonProps={{ disabled: !selectedRecipients.length }}
-      >
-        <p>{t('Le collègue voit les résultats recalculés selon vos droits communs.')}</p>
-        <Select
-          mode="multiple"
-          maxCount={20}
-          aria-label={t('Destinataires')}
-          placeholder={t('Destinataires')}
-          value={selectedRecipients}
-          onChange={setSelectedRecipients}
-          options={recipients.map(item => ({ value: item.userId, label: item.displayName }))}
-          style={{ width: '100%' }}
-        />
-        <Input.TextArea
-          aria-label={t('Message facultatif')}
-          placeholder={t('Message facultatif')}
-          value={message}
-          onChange={event => setMessage(event.target.value)}
-          maxLength={2000}
-          rows={3}
-          style={{ marginBlockStart: 12 }}
-        />
-      </Modal>
+      {shareItem && (
+        <ShareAnalysisDialog tenantId={tenantId} reference={shareItem} onClose={() => setShareItem(undefined)} />
+      )}
       {selected ? (
         <SavedAnalysisPreview tenantId={tenantId} item={selected} onBack={() => setSelected(undefined)} />
       ) : (
@@ -224,9 +162,6 @@ export function SavedAnalyses({
                   <Button
                     type="text"
                     onClick={() => {
-                      setSelectedRecipients([]);
-                      setMessage('');
-                      setRecipients([]);
                       setShareItem(item);
                     }}
                   >

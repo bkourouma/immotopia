@@ -26,6 +26,8 @@ export function AnalysisShares({
   const [failed, setFailed] = useState(false);
   const [selection, setSelection] = useState<string | undefined>(initialShareId);
   const [artifact, setArtifact] = useState<CopilotArtifact>();
+  const [threadArtifacts, setThreadArtifacts] = useState<CopilotArtifact[]>();
+  const [selectedArtifactId, setSelectedArtifactId] = useState<string>();
   const [unavailable, setUnavailable] = useState(false);
 
   useEffect(() => {
@@ -56,6 +58,19 @@ export function AnalysisShares({
     void copilotService
       .getSharedAnalysis(tenantId, selection)
       .then(payload => {
+        if (!active) return;
+        if (payload && typeof payload === 'object' && 'turns' in payload && Array.isArray(payload.turns)) {
+          setThreadArtifacts(
+            payload.turns.flatMap(turn =>
+              Array.isArray(turn?.artifacts)
+                ? (turn.artifacts as unknown[])
+                    .map(sanitizeArtifact)
+                    .filter((item): item is CopilotArtifact => item !== null)
+                : []
+            )
+          );
+          return;
+        }
         const result = sanitizeArtifact(payload);
         if (!result) throw new Error();
         if (active) setArtifact(result);
@@ -85,20 +100,28 @@ export function AnalysisShares({
       {selection ? (
         <>
           <Button onClick={() => setSelection(undefined)}>{t('Retour aux partages')}</Button>
-          {artifact ? (
+          {artifact || threadArtifacts?.length ? (
             <ArtifactPanel
               serverDownloadsOnly
-              artifacts={[artifact]}
-              onSelect={() => undefined}
+              artifacts={artifact ? [artifact] : (threadArtifacts ?? [])}
+              selectedId={selectedArtifactId}
+              onSelect={setSelectedArtifactId}
               onClose={() => setSelection(undefined)}
-              onDownloadFile={async (_id, format) => {
-                const result = await copilotService.downloadSharedAnalysis(tenantId, selection, format);
+              onDownloadFile={async (id, format) => {
+                const result = await copilotService.downloadSharedAnalysis(
+                  tenantId,
+                  selection,
+                  format,
+                  threadArtifacts ? id : undefined
+                );
                 saveBlob(
                   result.data,
                   filenameFromDisposition(result.headers['content-disposition'], `ImmoTopia.${format}`)
                 );
               }}
             />
+          ) : threadArtifacts ? (
+            <Empty description={t('Aucun résultat consultable dans cette conversation.')} />
           ) : unavailable ? (
             <Alert type="error" message={t('Cette analyse partagée est indisponible.')} />
           ) : (
@@ -147,26 +170,30 @@ export function AnalysisShares({
                     <Button
                       onClick={() => {
                         setArtifact(undefined);
+                        setThreadArtifacts(undefined);
+                        setSelectedArtifactId(undefined);
                         setUnavailable(false);
                         setSelection(row.id);
                       }}
                     >
                       {t('Ouvrir')}
                     </Button>
-                    <Button
-                      onClick={async () => {
-                        try {
-                          await copilotService.setAnalysisPin(tenantId, row.id, !row.pinned);
-                          setItems(previous =>
-                            previous.map(item => (item.id === row.id ? { ...item, pinned: !row.pinned } : item))
-                          );
-                        } catch {
-                          feedback.error(t('Impossible de modifier l’épingle.'));
-                        }
-                      }}
-                    >
-                      {row.pinned ? t('Désépingler') : t('Épingler au tableau de bord')}
-                    </Button>
+                    {row.kind !== 'conversation' && (
+                      <Button
+                        onClick={async () => {
+                          try {
+                            await copilotService.setAnalysisPin(tenantId, row.id, !row.pinned);
+                            setItems(previous =>
+                              previous.map(item => (item.id === row.id ? { ...item, pinned: !row.pinned } : item))
+                            );
+                          } catch {
+                            feedback.error(t('Impossible de modifier l’épingle.'));
+                          }
+                        }}
+                      >
+                        {row.pinned ? t('Désépingler') : t('Épingler au tableau de bord')}
+                      </Button>
+                    )}
                     <Popconfirm title={t('Retirer cette analyse de la liste ?')} onConfirm={() => revoke(row.id)}>
                       <Button danger type="text">
                         {t('Retirer')}

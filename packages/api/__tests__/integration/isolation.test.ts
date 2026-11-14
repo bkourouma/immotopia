@@ -597,6 +597,14 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       const base = `/api/tenants/${tenantA.id}/ai`;
       mockFakeScript = [
         { toolCalls: [{ name: 'rental_receipts', input: { month: '2025-06' } }] },
+        {
+          toolCalls: [
+            {
+              name: 'show_artifact',
+              input: { kind: 'markdown', title: 'Titre confidentiel', content: 'Note confidentielle' }
+            }
+          ]
+        },
         { text: 'Voici le tableau.' }
       ];
       try {
@@ -641,6 +649,42 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
               .set(authed(secondRecipient))
           ).body.data.items
         ).toEqual([]);
+        const sharedThread = await request(app)
+          .post(base + '/shares')
+          .set(authed(owner))
+          .send({
+            conversationId,
+            recipientIds: [secondRecipient.id]
+          });
+        expect(sharedThread.status).toBe(200);
+        const threadLink = base + '/shares/' + sharedThread.body.data.items[0].id;
+        const view = await request(app).get(threadLink).set(authed(secondRecipient));
+        expect(view.status).toBe(200);
+        expect(view.body.data.conversation.turns[0].artifacts.map((item: { id: string }) => item.id)).toEqual([
+          artifactId
+        ]);
+        expect(view.text).not.toMatch(/confidentiel|Voici le tableau|Fais le bilan|"query"/);
+        expect(
+          (
+            await request(app)
+              .get(threadLink + '/csv')
+              .query({ artifactId })
+              .set(authed(secondRecipient))
+          ).status
+        ).toBe(200);
+        const privateId = events.find(event => event.type === 'artifact' && event.artifact.kind === 'markdown').artifact
+          .id;
+        expect(
+          (
+            await request(app)
+              .get(threadLink + '/csv')
+              .query({ artifactId: privateId })
+              .set(authed(secondRecipient))
+          ).status
+        ).toBe(422);
+        expect((await request(app).get(threadLink).set(authed(adminA))).status).toBe(404);
+        expect((await request(app).delete(threadLink).set(authed(secondRecipient))).status).toBe(204);
+        expect((await request(app).get(threadLink).set(authed(secondRecipient))).status).toBe(404);
         for (const [recipientId, status] of [
           [adminB.id, 404],
           [recipient.id, 200]

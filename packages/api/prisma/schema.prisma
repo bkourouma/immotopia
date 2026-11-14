@@ -11534,6 +11534,7 @@ model AssistantConversation {
   turns  AssistantTurn[]
   artifactVersions AssistantArtifactVersion[]
   savedAnalyses    AssistantSavedAnalysis[]
+  shares           AssistantAnalysisShare[]
 
   @@unique([tenantId, ownerId, id])
   @@index([tenantId, ownerId, archived, pinned, updatedAt, id], map: "assistant_conversations_history_idx")
@@ -11633,16 +11634,18 @@ model AssistantAnalysisShare {
   tenantId       String   @map("tenant_id")
   ownerId        String   @map("owner_id")
   conversationId String   @map("conversation_id")
-  artifactId     String   @map("artifact_id")
+  artifactId     String?  @map("artifact_id")
   recipientId    String   @map("recipient_id")
   createdAt      DateTime @default(now()) @map("created_at")
   pinnedAt       DateTime? @map("pinned_at")
   message        String?   @db.VarChar(2000)
 
-  analysis AssistantSavedAnalysis @relation(fields: [tenantId, ownerId, conversationId, artifactId], references: [tenantId, ownerId, conversationId, artifactId], onDelete: Cascade, map: "assistant_analysis_shares_analysis_fkey")
+  analysis AssistantSavedAnalysis? @relation(fields: [tenantId, ownerId, conversationId, artifactId], references: [tenantId, ownerId, conversationId, artifactId], onDelete: Cascade, map: "assistant_analysis_shares_analysis_fkey")
+  conversation AssistantConversation @relation(fields: [tenantId, ownerId, conversationId], references: [tenantId, ownerId, id], onDelete: Cascade, map: "assistant_analysis_shares_conversation_fkey")
   recipient User @relation("AssistantAnalysisRecipient", fields: [recipientId], references: [id], onDelete: Cascade, map: "assistant_analysis_shares_recipient_fkey")
 
   @@unique([tenantId, ownerId, conversationId, artifactId, recipientId], map: "assistant_analysis_shares_recipient_key")
+  // Les partages de fil sans artefact sont dédupliqués par un index partiel SQL.
   @@index([tenantId, recipientId, createdAt(sort: Desc), id], map: "assistant_analysis_shares_inbox_idx")
   @@map("assistant_analysis_shares")
 }

@@ -188,6 +188,7 @@ async function updateArtifactVersion(
 }
 
 export type SavedAnalysisReference = { conversationId: string; artifactId: string };
+export type SharedConversation = { turns: Array<{ id: string; startedAt: string; artifacts: unknown[] }> };
 export type SavedAnalysis = SavedAnalysisReference & { title: string; createdAt: string; pinnedAt?: string | null };
 export type AnalysisShare = {
   id: string;
@@ -196,6 +197,7 @@ export type AnalysisShare = {
   title?: string;
   pinned?: boolean;
   message?: string | null;
+  kind?: 'artifact' | 'conversation';
 };
 
 function savedAnalysisPath(tenantId: string, { conversationId, artifactId }: SavedAnalysisReference) {
@@ -231,7 +233,7 @@ export const copilotService = {
   },
   async shareAnalysis(
     tenantId: string,
-    { conversationId, artifactId }: SavedAnalysisReference,
+    { conversationId, artifactId }: { conversationId: string; artifactId?: string },
     recipientIds: string[],
     message?: string
   ) {
@@ -242,10 +244,14 @@ export const copilotService = {
   },
   async getSharedAnalysis(tenantId: string, id: string, signal?: AbortSignal) {
     const response = await apiClient.get(`/tenants/${tenantId}/ai/shares/${id}`, { signal });
-    return unwrap<{ artifact: unknown }>(response.data).artifact;
+    const data = unwrap<{ artifact?: unknown; conversation?: SharedConversation }>(response.data);
+    return data.artifact ?? data.conversation;
   },
-  downloadSharedAnalysis(tenantId: string, id: string, format: ArtifactDownloadFormat) {
-    return apiClient.get<Blob>(`/tenants/${tenantId}/ai/shares/${id}/${format}`, { responseType: 'blob' });
+  downloadSharedAnalysis(tenantId: string, id: string, format: ArtifactDownloadFormat, artifactId?: string) {
+    return apiClient.get<Blob>(`/tenants/${tenantId}/ai/shares/${id}/${format}`, {
+      responseType: 'blob',
+      params: { artifactId }
+    });
   },
   async listSavedAnalyses(tenantId: string, cursor?: SavedAnalysisReference, signal?: AbortSignal) {
     const response = await apiClient.get(`/tenants/${tenantId}/ai/analyses`, { params: cursor, signal });

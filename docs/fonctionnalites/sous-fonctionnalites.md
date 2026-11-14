@@ -9,11 +9,11 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Finance | 196 |
 | CRM et Ventes | 70 |
 | Maintenance | 34 |
-| Communication et Documents | 103 |
+| Communication et Documents | 104 |
 | Syndic copropriete | 247 |
 | Administration plateforme | 142 |
 | Portails externes | 84 |
-| **Total** | **1253** |
+| **Total** | **1254** |
 
 ## Sous-fonctionnalités
 
@@ -826,6 +826,7 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Ouvrir une analyse épinglée | Ouvrir un résultat épinglé après vérification des droits actuels. | Partage reçu ou analyse personnelle | Vignette et accès au résultat recalculé | Analyse épinglée | Propriétaire ou destinataire actif | Agence (collaborateur) | GET /api/tenants/:tenantId/ai/shares/pins et GET /api/tenants/:tenantId/ai/shares/:id ou GET /api/tenants/:tenantId/ai/analyses/pins et GET /api/tenants/:tenantId/ai/analyses/:conversationId/:artifactId/pin | Accès à l’assistant et droits sur les données | Disponible | Tableau de bord > Analyses épinglées |
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Épingler ou retirer une analyse personnelle | Retrouver une analyse de sa bibliothèque dans son tableau de bord. | Analyse personnelle | Épingle personnelle | Analyse enregistrée | Propriétaire de l’analyse | Agence (collaborateur) | PUT /api/tenants/:tenantId/ai/analyses/:conversationId/:artifactId/pin | Accès à l’assistant et au fil privé | Disponible | Assistant > Mes analyses |
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Recevoir une notification de partage | Retrouver dans le centre de notifications un lien vers une nouvelle analyse reçue. | Nouveau partage adressé au collaborateur | Notification interne dans la langue du destinataire | Analyse partagée | Destinataire actif | Agence (collaborateur) | GET /api/tenants/:tenantId/notifications | Accès à sa boîte de réception et droits actuels à l’ouverture du partage | Disponible | Notifications > Reçues |
+| Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Partager une conversation | Donner à des collègues accès aux résultats autorisés d’un fil en lecture seule. | Conversation et destinataires | Artefacts recalculés avec export individuel | Conversation privée | Propriétaire du fil et destinataire habilité | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/shares | Accès à l’assistant et droits sur les données | Disponible | Assistant > Partager la conversation |
 
 ### Syndic copropriete
 

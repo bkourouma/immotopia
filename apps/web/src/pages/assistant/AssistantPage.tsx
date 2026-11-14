@@ -8,6 +8,7 @@ import type { DashboardTask } from '../../services/dashboard-service';
 import { ConversationHistory } from '../../components/copilot/ConversationHistory';
 import { SavedAnalyses } from '../../components/copilot/SavedAnalyses';
 import { AnalysisShares } from '../../components/copilot/AnalysisShares';
+import { ShareAnalysisDialog } from '../../components/copilot/ShareAnalysisDialog';
 import { copilotService } from '../../services/copilot-service';
 import { feedback } from '../../lib/feedback';
 import { ArtifactPanel } from '../../components/copilot/artifact/ArtifactPanel';
@@ -89,6 +90,7 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
   const [historyOpen, setHistoryOpen] = useState(false);
   const [analysesOpen, setAnalysesOpen] = useState(false);
   const [sharesOpen, setSharesOpen] = useState(false);
+  const [sharedConversation, setSharedConversation] = useState<string>();
   const [historyRefresh, setHistoryRefresh] = useState(0);
   const [archivedThread, setArchivedThread] = useState(false);
   const [briefing, setBriefing] = useState<DashboardTask[]>([]);
@@ -377,6 +379,13 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
 
   return (
     <div style={{ display: 'flex', height: pageHeight(hasTabs), minHeight: 320, gap: 'var(--space-4)' }}>
+      {sharedConversation && (
+        <ShareAnalysisDialog
+          tenantId={tenantId}
+          reference={{ conversationId: sharedConversation }}
+          onClose={() => setSharedConversation(undefined)}
+        />
+      )}
       {(analysesOpen || initialAnalysis) && (
         <SavedAnalyses
           key={analysisArtifact ?? ''}
@@ -445,6 +454,11 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
             <Button type="text" onClick={() => setSharesOpen(true)}>
               {t('Partages')}
             </Button>
+            {conversationId && activeId === conversationId && !streaming && (
+              <Button type="text" onClick={() => setSharedConversation(conversationId)}>
+                {t('Partager la conversation')}
+              </Button>
+            )}
             {!showArtifact && (
               <Button type="text" onClick={() => setHistoryOpen(true)}>
                 {t('Historique')}

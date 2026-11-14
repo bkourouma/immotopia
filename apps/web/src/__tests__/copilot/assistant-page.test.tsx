@@ -107,6 +107,18 @@ function setDesktop(desktop: boolean) {
 describe('AssistantPage — artefacts', () => {
   afterEach(() => setDesktop(false));
 
+  it('ouvre les résultats d’une conversation partagée en lecture seule', async () => {
+    getStatus.mockResolvedValue(ENABLED);
+    vi.mocked(copilotService.listAnalysisShares).mockResolvedValue({ items: [] });
+    vi.mocked(copilotService.getSharedAnalysis).mockResolvedValueOnce({
+      turns: [{ id: 'turn-1', startedAt: '2026-11-14', artifacts: [ARTIFACT_EVENT.artifact] }]
+    });
+    renderPage('/tenant/t1/assistant?partage=thread-share');
+    const drawer = await screen.findByRole('dialog', { name: 'Partages' });
+    expect(await within(drawer).findByText('important')).toBeInTheDocument();
+    expect(within(drawer).queryByRole('button', { name: 'Enregistrer dans Mes analyses' })).toBeNull();
+  });
+
   it('ouvre le partage indiqué par le lien de notification', async () => {
     getStatus.mockResolvedValue(ENABLED);
     vi.mocked(copilotService.listAnalysisShares).mockResolvedValue({ items: [] });

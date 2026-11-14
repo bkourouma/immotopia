@@ -55,6 +55,7 @@ import {
   deleteConversation,
   finishAssistantTurn,
   getConversation,
+  getConversationArtifactTurns,
   getStoredArtifact,
   getConversationAttachment,
   saveResponseFeedback,
@@ -365,7 +366,10 @@ export const listAnalysisRecipientsHandler = asyncHandler(async (req, res) => {
 });
 
 export const createAnalysisShareHandler = asyncHandler(async (req, res) => {
-  const shareInput = analysisReference.extend({ message: z.string().trim().max(2000).optional() });
+  const shareInput = analysisReference.extend({
+    artifactId: z.string().uuid().optional(),
+    message: z.string().trim().max(2000).optional()
+  });
   const reference = z
     .union([
       shareInput.extend({ recipientId: z.string().uuid() }).strict(),
@@ -382,9 +386,26 @@ export const createAnalysisShareHandler = asyncHandler(async (req, res) => {
       return resolveAvailableTools(recipientId, tenantId, true);
     })
   );
-  const stored = await getStoredArtifact(source.owner, reference.conversationId, reference.artifactId, source.scopeKey);
-  for (const [index, recipient] of recipients.entries()) {
-    await recalculateSharedArtifact(stored, tenantId, recipientIds[index], reference.conversationId, source, recipient);
+  if (reference.artifactId) {
+    const stored = await getStoredArtifact(
+      source.owner,
+      reference.conversationId,
+      reference.artifactId,
+      source.scopeKey
+    );
+    for (const [index, recipient] of recipients.entries()) {
+      await recalculateSharedArtifact(
+        stored,
+        tenantId,
+        recipientIds[index],
+        reference.conversationId,
+        source,
+        recipient
+      );
+    }
+  } else {
+    if (recipients.some(recipient => !recipient.tools.length)) throw new ForbiddenError();
+    await getConversationArtifactTurns(source.owner, reference.conversationId, source.scopeKey);
   }
   const shares = await createAnalysisShares(source.owner, source.scopeKey, {
     conversationId: reference.conversationId,
@@ -396,7 +417,7 @@ export const createAnalysisShareHandler = asyncHandler(async (req, res) => {
   res.set('Cache-Control', 'private, no-store').json({ success: true, data });
 });
 
-async function getSharedAnalysis(tenantId: string, userId: string, id: string) {
+async function getSharedAnalysis(tenantId: string, userId: string, id: string, requestedArtifactId?: string) {
   const share = await readAnalysisShare(tenantId, userId, id);
   if (!share) throw new NotFoundError();
   await Promise.all([
@@ -414,23 +435,58 @@ async function getSharedAnalysis(tenantId: string, userId: string, id: string) {
   );
   const authorized = await readAnalysisShare(tenantId, userId, id, sourceScope);
   if (!authorized) throw new NotFoundError();
-  const artifact = await recalculateSharedArtifact(
-    authorized.analysis.original as unknown as CopilotArtifact,
-    tenantId,
-    userId,
-    share.conversationId,
-    owner,
-    recipient
-  );
+  if (!recipient.tools.length) throw new ForbiddenError();
+  const recalculate = (artifact: CopilotArtifact) =>
+    recalculateSharedArtifact(artifact, tenantId, userId, share.conversationId, owner, recipient);
+  let data:
+    | { artifact: CopilotArtifact }
+    | {
+        conversation: {
+          turns: Array<{
+            id: string;
+            startedAt: Date;
+            artifacts: CopilotArtifact[];
+          }>;
+        };
+      };
+  if (authorized.analysis) {
+    if (requestedArtifactId && requestedArtifactId !== authorized.artifactId) throw new NotFoundError();
+    data = { artifact: await recalculate(authorized.analysis.original as unknown as CopilotArtifact) };
+  } else {
+    const turns = await getConversationArtifactTurns(
+      { tenantId, ownerId: share.ownerId },
+      share.conversationId,
+      sourceScope
+    );
+    if (requestedArtifactId) {
+      const artifact = turns.flatMap(turn => turn.artifacts).find(item => item.id === requestedArtifactId);
+      if (!artifact) throw new NotFoundError();
+      data = { artifact: await recalculate(artifact) };
+    } else {
+      const visible = [];
+      for (const turn of turns) {
+        const artifacts = [];
+        for (const artifact of turn.artifacts) {
+          try {
+            artifacts.push(await recalculate(artifact));
+          } catch (error) {
+            if (!(error instanceof AppError) || ![400, 403, 404, 422].includes(error.statusCode)) throw error;
+          }
+        }
+        if (artifacts.length) visible.push({ ...turn, artifacts });
+      }
+      data = { conversation: { turns: visible } };
+    }
+  }
   if (!(await readAnalysisShare(tenantId, userId, id, sourceScope))) throw new NotFoundError();
-  return artifact;
+  return data;
 }
 
 export const getSharedAnalysisHandler = asyncHandler(async (req, res) => {
   const { tenantId, userId } = requireContext(req);
   const { id } = conversationParams.parse(req.params);
-  const artifact = await getSharedAnalysis(tenantId, userId, id);
-  res.set('Cache-Control', 'private, no-store').json({ success: true, data: { artifact } });
+  const data = await getSharedAnalysis(tenantId, userId, id);
+  res.set('Cache-Control', 'private, no-store').json({ success: true, data });
 });
 
 export const revokeAnalysisShareHandler = asyncHandler(async (req, res) => {
@@ -444,7 +500,10 @@ export const downloadSharedAnalysisHandler = asyncHandler(async (req, res) => {
   const { tenantId, userId } = requireContext(req);
   const { id } = conversationParams.parse(req.params);
   const format = artifactExportFormat.parse(req.params.format);
-  await sendArtifactExport(res, await getSharedAnalysis(tenantId, userId, id), format);
+  const { artifactId } = z.object({ artifactId: z.string().uuid().optional() }).strict().parse(req.query);
+  const data = await getSharedAnalysis(tenantId, userId, id, artifactId);
+  if (!('artifact' in data)) throw new NotFoundError();
+  await sendArtifactExport(res, data.artifact, format);
 });
 
 export const listAnalysisSharePinsHandler = asyncHandler(async (req, res) => {
@@ -457,7 +516,10 @@ export const setAnalysisSharePinHandler = asyncHandler(async (req, res) => {
   const { tenantId, userId } = requireContext(req);
   const { id } = conversationParams.parse(req.params);
   const { pinned } = z.object({ pinned: z.boolean() }).strict().parse(req.body);
-  if (pinned) await getSharedAnalysis(tenantId, userId, id);
+  if (pinned) {
+    const data = await getSharedAnalysis(tenantId, userId, id);
+    if (!('artifact' in data)) throw new NotFoundError();
+  }
   await setAnalysisSharePin(tenantId, userId, id, pinned);
   res.sendStatus(204);
 });
