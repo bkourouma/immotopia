@@ -17,6 +17,43 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 
 Modèle de section : voir le bloc « Modèle de section » plus bas.
 
+## orch/2026-11-14-aide-interne — 2026-11-14
+
+**État** — Branche d'intégration `orch/2026-11-14-aide-interne` depuis `origin/main` `af33a6da`, poussée ; PR vers `main` (fusion par l'utilisateur). Rien déployé ; migration `20261114100000_help_feedback` (additive : une table) appliquée sur aucune base. Orchestration chef-orchestre : lots A, 0/0b, C1 à C7, Z1 à Z3 ; suivi local dans `.orchestration/2026-11-14-aide-interne/suivi.md`.
+
+**Fait** — Aide interne contextuelle : un « ? » sur chaque page, tableau, carte, section et onglet. Il ouvre un panneau qui présente l'objectif, la lecture (colonnes, statuts), la procédure, les conséquences, une FAQ, les droits et des liens « voir aussi ». S'y ajoutent :
+
+- le centre d'aide `/aide` et la touche F1 ;
+- des visites guidées proposées une fois par écran clé ;
+- « Demander à ImmoCopilot », qui envoie la fiche courante à l'assistant ;
+- un avis « utile ? » avec question libre. Il remonte au super-admin (`/admin/help-feedback`) et à l'admin d'agence (`/tenant/:tenantId/admin/help-feedback`, `TENANT_AUDIT_VIEW`).
+
+Le contenu est en fr, en et ar, hors catalogues i18n (ADR-009) : 1018 fiches par langue dans `apps/web/src/help/content/<module>/`, chargées à la demande. Le guide de rédaction est dans `docs/aide/GUIDE_REDACTION.md`, le glossaire arabe dans `docs/aide/GLOSSAIRE_AR.md`. `npm run help:check -w apps/web` (en CI) vérifie la parité des langues, les helpId et la couverture des routes (192/192).
+
+**Vérifié** — Vérification finale sur l'intégration :
+
+- typecheck web et API : 0 erreur, après `prisma generate` dans le worktree ;
+- lint : 0 erreur ; architecture : 0 violation ;
+- help:check --strict, i18n:check et wiki:check : verts ;
+- jest : 844 suites, sans échec une fois le client Prisma régénéré ;
+- vitest, dossier par dossier : aucun échec réel. Les timeouts sont repassés seuls.
+
+**Reste** :
+
+- Contrôle visuel en navigateur, non fait : placement des « ? » dans les modales et les tiroirs, panneau au-dessus des modales, visites, RTL arabe.
+- Relecture de l'arabe par un arabophone.
+- Test d'isolation HelpFeedback contre une vraie base (`test:isolation`).
+- Option : `help:check --strict` en CI.
+- Écarts de code et de catalogue relevés pendant la rédaction (liste dans la PR) : Vendors.tsx sans modale, « Modules activés » toujours à 4, catalogue ar « Bon » = جيد, « Révoquer » traduit deux fois en ar…
+
+**Pièges** :
+
+- Tout nouvel écran ou bloc doit recevoir sa fiche, sinon help:check signale la route non couverte.
+- Ne jamais poser un « ? » dans un libellé d'onglet ou dans un en-tête de Collapse cliquable : le mettre en tête du contenu.
+- Un seul « ? » par rangée de StatCard.
+- Une visite autoStart ne cible que des ancres visibles à l'ouverture.
+- Les worktrees `.claude/worktrees/aide-*` ont leur propre `npm ci` (pas de jonction). Un client Prisma périmé y donne `helpFeedback does not exist` : lancer `npx prisma generate`.
+
 ## chore/deps-patch-minor — 2026-11-11
 
 **État** — PR 218 vers `main` (fusion par l'utilisateur), reprend la PR Dependabot 212 (28 mises à jour mineures : antd 6.7, Radix, TanStack Query, aws-sdk, docxtemplater, pizzip…). PR Dependabot 214 (`@vitejs/plugin-react` 6) et 215 (`vitest` 5) fermées le 2026-11-11 : sauts de versions majeures (module introuvable, matchers non typés), à traiter en migration dédiée ; envisager une règle `ignore` des versions majeures dans `.github/dependabot.yml`.
