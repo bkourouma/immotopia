@@ -169,7 +169,7 @@ const entries: HelpEntry[] = [
     consequences: [
       'Les changements du formulaire (statut, priorité, prestataire, notes) ne sont enregistrés que lorsque vous cliquez sur « Enregistrer les modifications ».',
       '« Résolu » et « Annulé » sont définitifs : le statut ne peut plus être modifié ensuite.',
-      "Quand le statut change, le locataire est prévenu par e-mail et le propriétaire du bien par e-mail, si ces notifications sont activées pour votre agence ; le locataire peut aussi l'être par WhatsApp si votre agence l'a activé. Changer seulement la priorité, le prestataire ou les notes n'envoie pas de message.",
+      "Quand le statut change, le locataire est prévenu par e-mail et le propriétaire du bien par e-mail, si ces notifications sont activées pour votre agence ; le locataire peut aussi l'être par WhatsApp si l'envoi WhatsApp est activé. Changer seulement la priorité, le prestataire ou les notes n'envoie pas de message.",
       "L'application n'envoie pas de message au prestataire : prévenez-le vous-même."
     ],
     faq: [

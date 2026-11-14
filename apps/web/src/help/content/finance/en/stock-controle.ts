@@ -1350,7 +1350,7 @@ const entries: HelpEntry[] = [
     consequences: [
       'At the end of the count (FIN message, site change or 30 minutes without reply), the site stocktake is closed and sent to the office, which checks and approves it.',
       'A WhatsApp count approves nothing and adjusts no stock.',
-      'Everything depends on WhatsApp being put into service: if your agency has activated it, the "Gateway" card says so.'
+      'Everything depends on WhatsApp being put into service: if WhatsApp sending is enabled, the "Gateway" card says so.'
     ],
     faq: [
       {

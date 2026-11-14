@@ -41,7 +41,7 @@ const entries: HelpEntry[] = [
     ],
     consequences: [
       "« Nouveau paiement » enregistre le paiement directement au statut « Réussi » mais ne solde aucune échéance : c'est l'affectation qui le fait. Aucun message n'est envoyé au locataire à l'enregistrement.",
-      "L'affectation met à jour les échéances (« Partiel » ou « Payé ») et prévient le locataire par e-mail et le propriétaire par e-mail, si ces notifications sont activées pour votre agence. Le locataire reçoit aussi un message WhatsApp si votre agence l'a configuré.",
+      "L'affectation met à jour les échéances (« Partiel » ou « Payé ») et prévient le locataire par e-mail et le propriétaire par e-mail, si ces notifications sont activées pour votre agence. Le locataire reçoit aussi un message WhatsApp si l'envoi WhatsApp est activé.",
       "Aucune quittance n'est créée automatiquement par un paiement : elle se génère à part, depuis les documents du bail."
     ],
     faq: [
@@ -298,7 +298,7 @@ const entries: HelpEntry[] = [
     consequences: [
       'Sans montant saisi, les échéances sont servies de la plus ancienne à la plus récente, à hauteur de leur reste dû et du montant disponible.',
       "Une échéance entièrement couverte passe à « Payé », sinon à « Partiel ». Le montant payé de l'échéance est mis à jour.",
-      "Le locataire est prévenu par e-mail et le propriétaire aussi, si ces notifications sont activées pour votre agence ; le locataire reçoit en plus un message WhatsApp si votre agence l'a configuré.",
+      "Le locataire est prévenu par e-mail et le propriétaire aussi, si ces notifications sont activées pour votre agence ; le locataire reçoit en plus un message WhatsApp si l'envoi WhatsApp est activé.",
       "Un paiement ne peut être affecté qu'une fois à une même échéance : le reliquat se verse à une autre échéance.",
       'Seul un paiement « Réussi » rattaché à un bail peut être affecté.'
     ],
@@ -482,7 +482,7 @@ const entries: HelpEntry[] = [
     consequences: [
       'Un paiement « Réussi » est créé, daté du jour du paiement déclaré, au nom du locataire.',
       "Si la déclaration vise une échéance, le paiement y est affecté jusqu'à son reste dû : l'échéance passe à « Partiel » ou « Payé ». Ce qui dépasse est compté comme reçu en avance sur le compte du locataire.",
-      "Le locataire et le propriétaire sont prévenus par e-mail si ces notifications sont activées pour votre agence ; le locataire reçoit aussi un message WhatsApp si votre agence l'a configuré.",
+      "Le locataire et le propriétaire sont prévenus par e-mail si ces notifications sont activées pour votre agence ; le locataire reçoit aussi un message WhatsApp si l'envoi WhatsApp est activé.",
       'La décision est définitive : une déclaration validée ne se rouvre pas. Pour défaire le paiement créé, annulez-le depuis sa fiche.',
       "Si la déclaration vient d'être traitée par quelqu'un d'autre, l'écran vous le dit et se recharge."
     ],
@@ -525,7 +525,7 @@ const entries: HelpEntry[] = [
     ],
     consequences: [
       "Aucun paiement n'est créé et aucune échéance n'est modifiée.",
-      "Le locataire et le propriétaire sont prévenus par e-mail si ces notifications sont activées pour votre agence ; le locataire reçoit aussi un message WhatsApp si votre agence l'a configuré. Le texte saisi (ou, à défaut, le libellé du motif) leur est communiqué.",
+      "Le locataire et le propriétaire sont prévenus par e-mail si ces notifications sont activées pour votre agence ; le locataire reçoit aussi un message WhatsApp si l'envoi WhatsApp est activé. Le texte saisi (ou, à défaut, le libellé du motif) leur est communiqué.",
       'La décision est définitive : une déclaration rejetée ne se rouvre pas.'
     ],
     faq: [

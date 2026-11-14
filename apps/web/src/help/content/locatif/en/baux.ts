@@ -43,7 +43,7 @@ const entries: HelpEntry[] = [
     ],
     consequences: [
       'A new lease is created directly as "Active", without going through "Draft". The property becomes "Let" (or "Sold" if it is only offered for sale); if its status does not allow it, the lease is created and the property is left unchanged.',
-      'When a lease is created, the tenant and the owner are notified by e-mail (if this notification is enabled for your agency) and by WhatsApp (if your agency has set it up). Without an account, one is created and the message contains the link to choose a password.',
+      'When a lease is created, the tenant and the owner are notified by e-mail (if this notification is enabled for your agency) and by WhatsApp (if WhatsApp sending is enabled). Without an account, one is created and the message contains the link to choose a password.',
       'Creation does not generate instalments or documents: instalments are generated afterwards from the lease page.',
       'If you change the rent, upcoming instalments are recalculated; those already paid, started or overdue do not change.',
       'Deletion cannot be undone: the lease and its instalments are erased. It is refused if a payment is linked to an instalment. To keep a record, prefer ending or canceling the lease.'
@@ -245,7 +245,7 @@ const entries: HelpEntry[] = [
       'The lease is created as "Active" right away, with an automatic number of the form BAIL-year-number. You then return to the list of leases.',
       'The property becomes "Let" (or "Sold" if it is offered for sale only). If its current state does not allow it, the lease is still created and the property is left unchanged.',
       'A property can have only one current lease over a given period: if the dates overlap another lease, creation is refused.',
-      'The tenant and the owner are notified by e-mail (if this notification is enabled for your agency) and by WhatsApp (if your agency has set it up). A person without an account gets one, with the link to choose a password.',
+      'The tenant and the owner are notified by e-mail (if this notification is enabled for your agency) and by WhatsApp (if WhatsApp sending is enabled). A person without an account gets one, with the link to choose a password.',
       'Creating the lease generates neither installments nor documents: installments are generated afterwards from the "Instalments" tab of the lease page.'
     ],
     faq: [

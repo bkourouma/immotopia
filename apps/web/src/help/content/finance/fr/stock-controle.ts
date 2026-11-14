@@ -1310,7 +1310,7 @@ const entries: HelpEntry[] = [
     consequences: [
       'À la fin du comptage (message FIN, changement de chantier ou 30 minutes sans réponse), l’inventaire du chantier est clos et transmis au bureau, qui le vérifie et le valide.',
       'Un comptage WhatsApp ne valide rien et n’ajuste aucun stock.',
-      'Tout message de prise en charge dépend de la mise en service de WhatsApp : si votre agence l’a activé, la carte « Passerelle » le dit.'
+      'Tout message de prise en charge dépend de la mise en service de WhatsApp : si l’envoi WhatsApp est activé, la carte « Passerelle » le dit.'
     ],
     faq: [
       {

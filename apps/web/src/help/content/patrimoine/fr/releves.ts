@@ -36,7 +36,7 @@ const entries: HelpEntry[] = [
     consequences: [
       "Un relevé généré est un « Brouillon ». Il n'est pas encore envoyé au propriétaire.",
       "Il n'existe qu'un relevé par propriétaire et par mois. Générer à nouveau le même mois remplace les lignes du brouillon et le recalcule ; c'est refusé si le relevé est déjà « Envoyé » (calcul à jour) ou « Payé ».",
-      '« Envoyer » transmet le relevé par e-mail au propriétaire et, si WhatsApp est configuré pour votre agence, par WhatsApp aussi. Le relevé passe alors à « Envoyé » (un relevé « Payé » garde son statut).',
+      "« Envoyer » transmet le relevé par e-mail au propriétaire et, si l'envoi WhatsApp est activé, par WhatsApp aussi. Le relevé passe alors à « Envoyé » (un relevé « Payé » garde son statut).",
       "L'envoi est refusé ou ne part pas si le propriétaire n'a pas d'e-mail valide, s'il n'a pas consenti à recevoir des e-mails, ou si cet envoi est désactivé dans la configuration de l'agence.",
       'Un relevé passe à « Payé » uniquement lorsque le reversement au propriétaire est enregistré, pas par une modification à la main.'
     ],
@@ -196,7 +196,7 @@ const entries: HelpEntry[] = [
         {
           value: 'SENT',
           label: 'Envoyé',
-          description: 'Transmis au propriétaire par e-mail (et WhatsApp si configuré).'
+          description: "Transmis au propriétaire par e-mail (et WhatsApp si l'envoi est activé)."
         },
         {
           value: 'PAID',

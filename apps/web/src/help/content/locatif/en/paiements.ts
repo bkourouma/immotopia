@@ -38,7 +38,7 @@ const entries: HelpEntry[] = [
     ],
     consequences: [
       '"New payment" records the payment directly with the status "Successful" but does not settle any instalment: allocation does that. No message is sent to the tenant when you record it.',
-      'Allocation updates the instalments ("Partial" or "Paid") and notifies the tenant by e-mail and the owner by e-mail, if these notifications are enabled for your agency. The tenant also receives a WhatsApp message if your agency has set it up.',
+      'Allocation updates the instalments ("Partial" or "Paid") and notifies the tenant by e-mail and the owner by e-mail, if these notifications are enabled for your agency. The tenant also receives a WhatsApp message if WhatsApp sending is enabled.',
       'No receipt is created automatically by a payment: it is generated separately, from the lease documents.'
     ],
     faq: [
@@ -268,7 +268,7 @@ const entries: HelpEntry[] = [
     consequences: [
       'Without an entered amount, instalments are served from the oldest to the most recent, up to their amount due and the available amount.',
       'A fully covered instalment becomes "Paid", otherwise "Partial". The amount paid of the instalment is updated.',
-      'The tenant is notified by e-mail and so is the owner, if these notifications are enabled for your agency; the tenant also receives a WhatsApp message if your agency has set it up.',
+      'The tenant is notified by e-mail and so is the owner, if these notifications are enabled for your agency; the tenant also receives a WhatsApp message if WhatsApp sending is enabled.',
       'A payment can be allocated only once to the same instalment: the remainder goes to another instalment.',
       'Only a "Successful" payment linked to a lease can be allocated.'
     ],
@@ -453,7 +453,7 @@ const entries: HelpEntry[] = [
     consequences: [
       'A "Successful" payment is created, dated with the declared payment day, in the tenant name.',
       'If the declaration targets an instalment, the payment is allocated to it up to its amount due: the instalment becomes "Partial" or "Paid". Any excess is counted as received in advance on the tenant account.',
-      'The tenant and the owner are notified by e-mail if these notifications are enabled for your agency; the tenant also receives a WhatsApp message if your agency has set it up.',
+      'The tenant and the owner are notified by e-mail if these notifications are enabled for your agency; the tenant also receives a WhatsApp message if WhatsApp sending is enabled.',
       'The decision is final: an approved declaration cannot be reopened. To undo the payment created, cancel it from its page.',
       'If the declaration has just been processed by someone else, the screen tells you so and reloads.'
     ],
@@ -495,7 +495,7 @@ const entries: HelpEntry[] = [
     ],
     consequences: [
       'No payment is created and no instalment is modified.',
-      'The tenant and the owner are notified by e-mail if these notifications are enabled for your agency; the tenant also receives a WhatsApp message if your agency has set it up. The text you entered (or, failing that, the label of the reason) is sent to them.',
+      'The tenant and the owner are notified by e-mail if these notifications are enabled for your agency; the tenant also receives a WhatsApp message if WhatsApp sending is enabled. The text you entered (or, failing that, the label of the reason) is sent to them.',
       'The decision is final: a rejected declaration cannot be reopened.'
     ],
     faq: [
