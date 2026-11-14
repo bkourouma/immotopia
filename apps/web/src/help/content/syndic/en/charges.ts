@@ -346,7 +346,7 @@ const entries: HelpEntry[] = [
     ],
     permissions: { feature: 'SYNDIC', note: 'Viewing requires the condominium viewing right.' },
     related: [{ label: 'Budgets', helpId: 'syndic.budgets.liste.tableau' }],
-    keywords: ['split', 'share', 'allocation', 'shares', 'lots']
+    keywords: ['split', 'share', 'allocation', 'shares', 'units']
   },
   {
     id: 'syndic.budgets.liste.campagnes',
@@ -360,7 +360,7 @@ const entries: HelpEntry[] = [
         { key: 'period', label: 'Period', description: 'The period covered.' },
         { key: 'batchType', label: 'Type', description: '"Regular" (current charges) or "Exceptional".' },
         { key: 'dueDate', label: 'Due date', description: "The payment deadline of the campaign's calls." },
-        { key: 'totalAmount', label: 'Amount', description: 'The total called across all lots.' },
+        { key: 'totalAmount', label: 'Amount', description: 'The total called across all units.' },
         { key: 'charges', label: 'Charges', description: 'Number of charge calls attached to the campaign.' },
         { key: 'status', label: 'Status', description: '"Draft", "Sent" or "Closed".' }
       ],
@@ -512,7 +512,7 @@ const entries: HelpEntry[] = [
       columns: [
         { key: 'period', label: 'Period', description: 'The period called (for example "2026-T1").' },
         { key: 'lotNumber', label: 'Unit', description: 'The unit concerned.' },
-        { key: 'amount', label: 'Amount', description: 'The amount called to this lot.' },
+        { key: 'amount', label: 'Amount', description: 'The amount called to this unit.' },
         {
           key: 'dueDate',
           label: 'Due date',
@@ -556,11 +556,11 @@ const entries: HelpEntry[] = [
       ]
     },
     steps: [
-      { title: 'Search', detail: 'The bar above the table filters by text, status or lot.' },
+      { title: 'Search', detail: 'The bar above the table filters by text, status or unit.' },
       { title: 'Download a notice', detail: '"Call notice (PDF)" or "Call notice (Word)" on the row.' },
       {
         title: 'Collect',
-        detail: '"Record a payment" (greyed out if the call is already paid) opens the entry for this lot.'
+        detail: '"Record a payment" (greyed out if the call is already paid) opens the entry for this unit.'
       },
       {
         title: 'Link to a fund',
@@ -604,7 +604,7 @@ const entries: HelpEntry[] = [
     kind: 'section',
     title: 'Create a charge call',
     summary:
-      'This form issues a charge call for one unit, several units or all lots. For several units, you give a total and choose how to split it.',
+      'This form issues a charge call for one unit, several units or all units. For several units, you give a total and choose how to split it.',
     howToRead: {
       notes: [
         '"Target": "One unit", "Several units" or "All units" (units with no shares are left out).',
@@ -616,9 +616,9 @@ const entries: HelpEntry[] = [
       ]
     },
     steps: [
-      { title: 'Choose the target', detail: 'One unit, several units or all lots.' },
+      { title: 'Choose the target', detail: 'One unit, several units or all units.' },
       { title: 'Give the period', detail: 'A label (for example 2026-Q1) or both dates.' },
-      { title: 'Enter the amount', detail: 'For several units, also choose the split and check the preview per lot.' },
+      { title: 'Enter the amount', detail: 'For several units, also choose the split and check the preview per unit.' },
       { title: 'Set the due date', detail: 'The payment deadline.' },
       { title: 'Options', detail: 'The fund fed and the recurring charge, if needed.' },
       { title: 'Create', detail: 'Click "Create": the window closes and the list updates.' }
@@ -728,7 +728,7 @@ const entries: HelpEntry[] = [
       },
       {
         title: 'Check the preview',
-        detail: 'Open the schedule then the "Preview" tab to see the coming periods and the amounts per lot.'
+        detail: 'Open the schedule then the "Preview" tab to see the coming periods and the amounts per unit.'
       },
       {
         title: 'Let it run',
@@ -1019,7 +1019,7 @@ const entries: HelpEntry[] = [
       },
       {
         q: 'The cell is empty with a dash.',
-        a: 'No call covers this month for this lot.'
+        a: 'No call covers this month for this unit.'
       }
     ],
     permissions: { feature: 'SYNDIC', note: 'Viewing requires the condominium viewing right.' },
@@ -1224,7 +1224,7 @@ const entries: HelpEntry[] = [
     },
     steps: [
       { title: 'Choose the period', detail: 'The two dates, or a shortcut.' },
-      { title: 'Choose the type and scope', detail: 'All co-owners, or one lot.' },
+      { title: 'Choose the type and scope', detail: 'All co-owners, or one unit.' },
       { title: 'Set the layout', detail: 'Columns and rows per sheet.' },
       { title: 'Preview', detail: 'Shows the PDF in the window.' },
       { title: 'Download', detail: 'Saves the bulk PDF.' }

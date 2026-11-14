@@ -238,7 +238,7 @@ const entries: HelpEntry[] = [
       {
         title: 'Ouvrir un bon',
         detail:
-          "Cliquez sur le numéro dans la colonne « Bon » : le bon s'ouvre à droite, avec ses lignes et ses pièces jointes."
+          "Cliquez sur le numéro dans la colonne « Bon » : le bon s'ouvre à droite, avec ses lignes et, pour une réception ou une sortie, ses pièces jointes."
       },
       {
         title: 'Voir la facture',
@@ -642,7 +642,7 @@ const entries: HelpEntry[] = [
     kind: 'section',
     title: 'Bon de stock',
     summary:
-      "Le bon regroupe les lignes d'une réception, d'une sortie ou d'un inventaire, avec son numéro, ses dates, son PDF et ses pièces jointes.",
+      "Le bon regroupe les lignes d'une réception, d'une sortie ou d'un inventaire, avec son numéro, ses dates et son PDF. Une réception ou une sortie porte aussi ses pièces jointes.",
     purpose:
       "Le bon est la pièce que l'on signe et que l'on archive : « Bon de réception », « Bon de sortie » ou « Procès-verbal d'inventaire ». Il rappelle le lieu, le chantier, le preneur ou la facture concernés.",
     steps: [
@@ -654,13 +654,18 @@ const entries: HelpEntry[] = [
       { title: 'Télécharger le PDF', detail: "Pour le faire signer ou l'archiver." },
       {
         title: 'Joindre une pièce',
-        detail: 'Photo du bon signé, du bon de livraison ou de la marchandise, si vos droits le permettent.'
+        detail:
+          "Réception ou sortie : photo du bon signé, du bon de livraison ou de la marchandise, si vos droits le permettent. Pour un procès-verbal d'inventaire, « Ouvrir le détail de l'inventaire » vous mène à la section « Procès-verbal signé »."
       },
-      { title: 'Voir les mouvements', detail: '« Voir les mouvements de ce bon » ouvre le journal filtré sur ce bon.' }
+      {
+        title: 'Voir les mouvements',
+        detail:
+          "« Voir les mouvements de ce bon » ouvre le journal filtré sur ce bon. Ce bouton n'existe que pour une réception ou une sortie, pas pour un bon d'inventaire."
+      }
     ],
     consequences: [
       'Consulter un bon ne modifie rien.',
-      'Ajouter une pièce jointe est possible selon le type de bon : « Recevoir » pour une réception, « Sortir » pour une sortie, « Valider les inventaires » pour un procès-verbal.',
+      "Ajouter une pièce jointe au bon est possible pour une réception (droit « Recevoir ») ou une sortie (droit « Sortir »). Le bon d'inventaire n'affiche pas ses pièces ici : le procès-verbal signé s'ajoute depuis le détail de l'inventaire, avec « Valider les inventaires ».",
       "La date « Enregistré » est l'heure du serveur, non modifiable."
     ],
     faq: [
@@ -668,7 +673,10 @@ const entries: HelpEntry[] = [
         q: "Pourquoi un transfert ou un rebut n'a-t-il pas de bon ?",
         a: "Seuls la réception, la sortie et l'inventaire produisent un bon numéroté."
       },
-      { q: 'Où retrouver le bon signé ?', a: "Dans les pièces jointes du bon, si quelqu'un l'a photographié." },
+      {
+        q: 'Où retrouver le bon signé ?',
+        a: "Dans les pièces jointes du bon, si quelqu'un l'a photographié. Pour un inventaire, dans la section « Procès-verbal signé » du détail de l'inventaire."
+      },
       {
         q: "Pourquoi la valeur totale n'apparaît-elle pas sur le bon ?",
         a: "Elle ne s'affiche que si vos droits vous permettent de voir les valeurs."

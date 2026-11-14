@@ -179,7 +179,7 @@ const entries: HelpEntry[] = [
       { title: 'Enter the agenda', detail: '"Agenda" card, "Add an item" button.' },
       { title: 'Add the resolutions', detail: '"Add a resolution" button: title, description and majority rule.' },
       { title: 'Record the proxies', detail: '"Proxies" card, "Add a proxy".' },
-      { title: 'Send the notice', detail: '"Send convocations", or "Notice of meeting (Word)" for one lot.' },
+      { title: 'Send the notice', detail: '"Send convocations", or "Notice of meeting (Word)" for one unit.' },
       { title: 'Open the session', detail: '"Open the session" then attendance and votes.' },
       { title: 'Close', detail: '"Close the session", then "Generate Word minutes".' }
     ],
@@ -495,7 +495,7 @@ const entries: HelpEntry[] = [
       },
       {
         q: 'What does "represented by" mean?',
-        a: 'A proxy is recorded for this voter. The vote is still entered unit by lot.'
+        a: 'A proxy is recorded for this voter. The vote is still entered unit by unit.'
       },
       {
         q: 'Why can I no longer vote?',
@@ -519,7 +519,7 @@ const entries: HelpEntry[] = [
     howToRead: {
       columns: [
         { key: 'grantor', label: 'Principal', description: 'The co-owner being represented.' },
-        { key: 'lots', label: 'Units', description: "This co-owner's lots." },
+        { key: 'lots', label: 'Units', description: "This co-owner's units." },
         { key: 'representative', label: 'Proxy holder', description: 'The person representing them.' },
         { key: 'actions', label: 'Actions', description: '"Remove" the proxy.' }
       ]
@@ -561,7 +561,7 @@ const entries: HelpEntry[] = [
     kind: 'section',
     title: 'Notice to co-owners',
     summary:
-      'The notice informs co-owners of the date, time and place of the meeting. It is sent from the record, or downloaded in Word for one lot.',
+      'The notice informs co-owners of the date, time and place of the meeting. It is sent from the record, or downloaded in Word for one unit.',
     purpose:
       'There are two distinct actions: sending a message to all co-owners, and the Word document for one unit, to print or send yourself.',
     steps: [
@@ -667,7 +667,7 @@ const entries: HelpEntry[] = [
     howToRead: {
       columns: [
         { key: 'lot', label: 'Unit', description: 'Unit number (sortable).' },
-        { key: 'shares', label: 'Shares', description: 'Weight of the lot.' },
+        { key: 'shares', label: 'Shares', description: 'Weight of the unit.' },
         { key: 'voters', label: 'Voter(s)', description: 'Owner(s) of the unit at the date of the meeting.' },
         {
           key: 'online',
@@ -708,7 +708,7 @@ const entries: HelpEntry[] = [
     faq: [
       {
         q: 'Why is "Represented" greyed out?',
-        a: 'No proxy is registered for this lot. Use "Represented by…" or add a proxy.'
+        a: 'No proxy is registered for this unit. Use "Represented by…" or add a proxy.'
       },
       {
         q: 'The table moves while I choose?',
@@ -724,7 +724,7 @@ const entries: HelpEntry[] = [
       note: '"Live AG and video" option. Signing attendance requires "Edit the Syndic module".'
     },
     related: [{ label: 'Quorum', helpId: 'syndic.assemblees.detail.quorum' }],
-    keywords: ['attendance', 'presence', 'attendance sheet', 'absent', 'represented', 'lots']
+    keywords: ['attendance', 'presence', 'attendance sheet', 'absent', 'represented', 'units']
   },
   {
     id: 'syndic.assemblees.detail.direct-votes',
@@ -790,7 +790,7 @@ const entries: HelpEntry[] = [
     howToRead: {
       columns: [
         { key: 'name', label: 'Participant', description: 'Name, and e-mail if any.' },
-        { key: 'lots', label: 'Units', description: 'Numbers of their lots.' },
+        { key: 'lots', label: 'Units', description: 'Numbers of their units.' },
         { key: 'joined', label: 'Joined', description: 'Date of their first arrival, or "Not yet" (not yet).' },
         {
           key: 'online',

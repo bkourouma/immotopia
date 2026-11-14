@@ -179,6 +179,7 @@ export const SyndicOnlinePayments: React.FC = () => {
                   scope={{ kind: 'syndicate', tenantId, syndicId }}
                   canEdit={canEdit}
                   title={t('Comptes de réception de la copropriété')}
+                  helpId="syndic.paiements.comptes-reception"
                 />
                 <DeclaredSettingsCard
                   tenantId={tenantId}

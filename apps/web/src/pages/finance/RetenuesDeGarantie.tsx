@@ -544,7 +544,6 @@ export const RetenuesDeGarantie: React.FC = () => {
           </Col>
           <Col xs={24} md={8}>
             <StatCard
-              helpId="finance.retenues.indicateurs"
               label={t('Déjà libéré')}
               value={<MoneyValue value={resume.totalReleased} />}
               hint={t('Redevenu exigible. Le versement se fait ailleurs, depuis la fiche du tiers.')}
@@ -555,7 +554,6 @@ export const RetenuesDeGarantie: React.FC = () => {
                 est cliquable et pose les DEUX filtres correspondants, visibles
                 dans la barre : « détenue » et « échéance dépassée ». */}
             <StatCard
-              helpId="finance.retenues.indicateurs"
               label={t('En retard')}
               tone={resume.overdueCount > 0 ? 'danger' : 'neutral'}
               value={<MoneyValue value={resume.overdueHeld} />}

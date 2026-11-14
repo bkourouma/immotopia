@@ -702,7 +702,7 @@ const entries: HelpEntry[] = [
       'The tenant profile is a tracking record: who occupies the unit, since when, and whether charges are billed to them.',
     howToRead: {
       columns: [
-        { key: 'lot', label: 'Unit', description: 'The occupied lot.' },
+        { key: 'lot', label: 'Unit', description: 'The occupied unit.' },
         { key: 'contact', label: 'Contact', description: "The tenant (the agency's contact record)." },
         { key: 'tenantSince', label: 'Since', description: 'Entry date.' },
         {
@@ -776,7 +776,7 @@ const entries: HelpEntry[] = [
         { value: 'CLOSED', label: 'Closed', description: 'File closed.' }
       ],
       notes: [
-        'Filters: status, urgency, provider, type, unit, reporting date, with or without allocation. Search also covers the description and the lot.'
+        'Filters: status, urgency, provider, type, unit, reporting date, with or without allocation. Search also covers the description and the unit.'
       ]
     },
     steps: [

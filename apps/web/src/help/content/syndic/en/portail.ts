@@ -10,26 +10,26 @@ const entries: HelpEntry[] = [
     summary:
       'This screen is the home of your co-owner space: your units in the condominium, with the account balance of each one. Click a unit to see its account.',
     purpose:
-      'At a glance, you see what you owe, or the advance you hold, on each lot. Units are grouped by condominium.',
+      'At a glance, you see what you owe, or the advance you hold, on each unit. Units are grouped by condominium.',
     howToRead: {
       statuses: [
         { value: 'DEBITEUR', label: 'Debtor', description: 'You owe this amount to the condominium.' },
-        { value: 'CREDITEUR', label: 'In credit', description: 'You have an advance on this lot.' },
+        { value: 'CREDITEUR', label: 'In credit', description: 'You have an advance on this unit.' },
         { value: 'A_JOUR', label: 'Settled', description: 'The account is up to date.' }
       ],
       notes: [
         'The amount is always shown without a sign: the direction is read from the “Debtor” or “In credit” tag.',
         '“No account opened” means the account of this unit has not yet been opened by the management.',
-        'The search bar only appears if you have more than 6 lots.'
+        'The search bar only appears if you have more than 6 units.'
       ]
     },
     steps: [
       { title: 'Find your unit', detail: 'Look for the “Unit” card of the right condominium.' },
       {
         title: 'Open the account',
-        detail: 'Click the card to see the balance, the movements and the charge calls of the lot.'
+        detail: 'Click the card to see the balance, the movements and the charge calls of the unit.'
       },
-      { title: 'Refresh', detail: '“Refresh” button to reload your lots.' }
+      { title: 'Refresh', detail: '“Refresh” button to reload your units.' }
     ],
     faq: [
       {
@@ -47,7 +47,7 @@ const entries: HelpEntry[] = [
     ],
     permissions: {
       roles: ['Co-owner'],
-      note: 'Your access is opened by the “Invite to portal” invitation sent from the unit owner record. You only see your own lots.'
+      note: 'Your access is opened by the “Invite to portal” invitation sent from the unit owner record. You only see your own units.'
     },
     related: [
       { label: 'Account of a unit', helpId: 'syndic.portail.compte' },
@@ -82,7 +82,7 @@ const entries: HelpEntry[] = [
     ],
     permissions: { roles: ['Co-owner'] },
     related: [{ label: 'Account of a unit', helpId: 'syndic.portail.compte' }],
-    keywords: ['lot', 'card', 'ownership shares', 'share held']
+    keywords: ['unit', 'card', 'ownership shares', 'share held']
   },
 
   // ------------------------------------------------------------------ Account of a unit
@@ -92,7 +92,7 @@ const entries: HelpEntry[] = [
     title: 'Account of a unit',
     summary:
       'This screen details one of your units: its balance, a statement to download, the account movements and the charge calls. It is read-only.',
-    purpose: 'Here you check what has been called, what you have paid and what remains due on the lot.',
+    purpose: 'Here you check what has been called, what you have paid and what remains due on the unit.',
     howToRead: {
       notes: [
         'The header gives the condominium, the unit type, its general ownership shares and your share held.',
@@ -141,7 +141,7 @@ const entries: HelpEntry[] = [
     howToRead: {
       statuses: [
         { value: 'DEBITEUR', label: 'Debtor', description: 'You owe this amount to the condominium.' },
-        { value: 'CREDITEUR', label: 'In credit', description: 'You have an advance on this lot.' },
+        { value: 'CREDITEUR', label: 'In credit', description: 'You have an advance on this unit.' },
         { value: 'A_JOUR', label: 'Settled', description: 'Account up to date.' }
       ]
     },
@@ -269,7 +269,7 @@ const entries: HelpEntry[] = [
       },
       {
         q: 'Where can I see penalties?',
-        a: 'They are not in this table: when applied, they appear in the account movements of the lot.'
+        a: 'They are not in this table: when applied, they appear in the account movements of the unit.'
       },
       {
         q: 'What does “Overdue” mean?',
@@ -362,7 +362,7 @@ const entries: HelpEntry[] = [
     faq: [
       {
         q: 'Why is the box of a call greyed out?',
-        a: 'An online payment is in progress, a declaration is under verification, or you have already ticked a call of another lot.'
+        a: 'An online payment is in progress, a declaration is under verification, or you have already ticked a call of another unit.'
       },
       { q: 'Why is there no “Pay” column?', a: 'Online payment is not open for your condominium.' },
       { q: 'Can the table be exported?', a: 'Yes, the table offers export of the calls matching your filters.' }
@@ -399,7 +399,7 @@ const entries: HelpEntry[] = [
       'If a payment is already in progress on these calls, “Resume the payment” takes you back to its page.'
     ],
     faq: [
-      { q: 'Can I pay two units at once?', a: 'No, a payment covers the calls of a single lot.' },
+      { q: 'Can I pay two units at once?', a: 'No, a payment covers the calls of a single unit.' },
       {
         q: 'I closed the payment page before the end, what should I do?',
         a: 'Use “Resume the payment” next to the call, or wait: the payment appears as soon as it is confirmed.'
@@ -444,7 +444,10 @@ const entries: HelpEntry[] = [
       }
     ],
     permissions: { roles: ['Co-owner'] },
-    related: [{ label: 'I paid by mobile money', helpId: 'syndic.portail.appels.declaration' }],
+    related: [
+      { label: 'I paid by mobile money', helpId: 'syndic.portail.appels.declaration' },
+      { label: 'Pay the agency', helpId: 'syndic.portail.appels.payer-agence' }
+    ],
     keywords: ['mobile money', 'receiving number', 'instruction', 'wave', 'orange', 'mtn', 'moov']
   },
   {
@@ -509,6 +512,73 @@ const entries: HelpEntry[] = [
     ],
     keywords: ['declare a payment', 'proof', 'screenshot', 'transaction reference', 'mobile money', 'proof of payment']
   },
+  {
+    id: 'syndic.portail.appels.payer-agence',
+    kind: 'section',
+    title: 'Pay the agency',
+    summary:
+      'This card gives the payment details of your condominium: accounts, QR or alias to enter, expected beneficiary name. You pay in your payment or banking app, then you declare your payment.',
+    howToRead: {
+      notes: [
+        'Each condominium has its own card. If accounts exist for several of your condominiums, the condominium name is added to the title: check that you are paying the right one.',
+        'Each account shows the institution, “Scan with” (if filled in), the QR image (if there is one), “Alias to enter” with the “Copy the alias” button, “Expected beneficiary name” and the agency instructions.',
+        '“Suggested payment reference to copy” appears when your condominium has an unpaid charge call: it is the oldest one by due date, with its period and, if there is one, your unit. “Copy the reference” copies it.',
+        'The “I have paid: declare my payment” button only appears if payment declaration is open for this condominium. It takes you to the declaration form, further down.'
+      ]
+    },
+    steps: [
+      { title: 'Open your app', detail: 'Open your payment or banking app.' },
+      { title: 'Scan or enter', detail: 'Choose to scan the QR or to enter the alias.' },
+      { title: 'Enter the amount', detail: 'Enter the amount to pay yourself.' },
+      { title: 'Check the name', detail: 'Check that the displayed name matches the expected beneficiary name.' },
+      { title: 'Confirm', detail: 'Confirm the payment.' }
+    ],
+    consequences: [
+      'An instant payment is irrevocable: it cannot be cancelled. If the displayed name differs from the expected name, do not pay.',
+      'ImmoTopia generates no QR and pre-fills no amount: you enter the amount yourself.',
+      'After you pay, let the agency know by declaring your payment.',
+      'Your payment is neither detected nor credited automatically: nothing is posted to your account until the agency has approved your declaration.'
+    ],
+    faq: [
+      {
+        q: 'I do not see this card, why?',
+        a: 'It only appears if the agency has added at least one active account for your condominium. Refresh the page, then contact your agency.'
+      },
+      {
+        q: 'Is the amount pre-filled?',
+        a: 'No. You enter the amount yourself in your payment or banking app.'
+      },
+      {
+        q: 'The displayed name is not the expected one, what should I do?',
+        a: 'Do not pay. The expected beneficiary name is shown on the card, under the account.'
+      },
+      {
+        q: 'I do not see the “I have paid: declare my payment” button.',
+        a: 'Payment declaration is not open for your condominium. Contact your agency.'
+      },
+      {
+        q: 'With several condominiums, how do I avoid mistakes?',
+        a: 'Each card carries the name of its condominium. Use the accounts, the reference and the declaration button of the same card.'
+      }
+    ],
+    permissions: { roles: ['Co-owner'] },
+    related: [
+      { label: 'I paid by mobile money', helpId: 'syndic.portail.appels.declaration' },
+      { label: 'Numbers to pay by mobile money', helpId: 'syndic.portail.appels.mobile-money' },
+      { label: 'Online payment', helpId: 'syndic.portail.appels.paiement-en-ligne' }
+    ],
+    keywords: [
+      'pay the agency',
+      'alias',
+      'QR',
+      'copy the alias',
+      'payment reference',
+      'wave',
+      'orange money',
+      'bank',
+      'transfer'
+    ]
+  },
 
   // ------------------------------------------------------------------ Documents
   {
@@ -518,7 +588,7 @@ const entries: HelpEntry[] = [
     summary:
       'This screen gathers the documents the management shares with you: the condominium rules and the minutes of general meetings.',
     purpose:
-      'You find and download these documents for the condominiums where you own a lot. The other management documents (diagnostics, insurance, budgets...) are not shared here.',
+      'You find and download these documents for the condominiums where you own a unit. The other management documents (diagnostics, insurance, budgets...) are not shared here.',
     steps: [
       { title: 'Search', detail: 'Type a title or a condominium name, or filter by “Type”.' },
       { title: 'Open the document', detail: '“Download” or “Open” button on the line.' }
@@ -536,7 +606,7 @@ const entries: HelpEntry[] = [
     ],
     permissions: {
       roles: ['Co-owner'],
-      note: 'Read-only: you see the documents of the condominiums where you own a lot.'
+      note: 'Read-only: you see the documents of the condominiums where you own a unit.'
     },
     related: [{ label: 'Documents', helpId: 'syndic.portail.documents.tableau' }],
     keywords: ['documents', 'rules', 'minutes', 'download']
@@ -606,7 +676,10 @@ const entries: HelpEntry[] = [
         q: 'Why does the “Join the live meeting” button not appear?',
         a: 'It only appears from the day before the meeting until it is closed, and only if your agency has the live option.'
       },
-      { q: 'Can I see how the others voted?', a: 'No, you see the totals and your own vote, not those of other lots.' },
+      {
+        q: 'Can I see how the others voted?',
+        a: 'No, you see the totals and your own vote, not those of other units.'
+      },
       { q: 'Where are the minutes?', a: 'In “Documents”, once published by the management.' }
     ],
     permissions: {
@@ -735,7 +808,7 @@ const entries: HelpEntry[] = [
       },
       {
         q: 'What does “Remaining advance” mean?',
-        a: 'The part of the payment that settled no call and remains available on the lot.'
+        a: 'The part of the payment that settled no call and remains available on the unit.'
       },
       { q: 'Where is my receipt?', a: 'In the payment detail, and in “My receipts”.' }
     ],
@@ -755,7 +828,7 @@ const entries: HelpEntry[] = [
     id: 'syndic.portail.paiements.tableau',
     kind: 'table',
     title: 'Payments',
-    summary: 'This table lists each payment recorded on your lots. The “Detail” button shows what it was used for.',
+    summary: 'This table lists each payment recorded on your units. The “Detail” button shows what it was used for.',
     howToRead: {
       columns: [
         { key: 'paidAt', label: 'Date', description: 'Date of the payment.' },
@@ -775,7 +848,7 @@ const entries: HelpEntry[] = [
     faq: [
       { q: 'Why is “Remaining advance” at 0?', a: 'The whole payment was used to settle calls.' },
       { q: 'How do I filter by year?', a: 'Use the “Financial year” criterion.' },
-      { q: 'The table is empty.', a: 'No payment has been recorded yet for your lots.' }
+      { q: 'The table is empty.', a: 'No payment has been recorded yet for your units.' }
     ],
     permissions: { roles: ['Co-owner'] },
     related: [{ label: 'Payment detail', helpId: 'syndic.portail.paiements.detail' }],
@@ -799,7 +872,7 @@ const entries: HelpEntry[] = [
         }
       ],
       notes: [
-        'With no allocation, the whole payment remains as an advance on the lot.',
+        'With no allocation, the whole payment remains as an advance on the unit.',
         '“Documents” lists the receipts and settlement receipts to download, with “Arabic translation”.'
       ]
     },
@@ -888,7 +961,7 @@ const entries: HelpEntry[] = [
     kind: 'page',
     title: 'My receipts',
     summary:
-      'This screen gathers the payment receipts and charge settlement receipts issued for your lots. You download them as PDF.',
+      'This screen gathers the payment receipts and charge settlement receipts issued for your units. You download them as PDF.',
     purpose:
       'You keep proof of your payments. A “Receipt” corresponds to a payment; a “Settlement receipt” corresponds to a settled period.',
     steps: [
@@ -936,7 +1009,7 @@ const entries: HelpEntry[] = [
         a: 'The document is not tied to a period, for example a payment receipt.'
       },
       { q: 'The download fails.', a: 'A message appears: try again, then contact your agency.' },
-      { q: 'The table is empty.', a: 'No document has been issued yet for your lots.' }
+      { q: 'The table is empty.', a: 'No document has been issued yet for your units.' }
     ],
     permissions: { roles: ['Co-owner'] },
     related: [{ label: 'My payments', helpId: 'syndic.portail.paiements' }],
@@ -1008,7 +1081,7 @@ const entries: HelpEntry[] = [
       { q: 'How do I read the amounts?', a: 'Hover the month: the tooltip shows “due” and “paid”.' },
       {
         q: 'What does the advance available represent?',
-        a: 'The sums paid in addition to the calls, remaining available on the lot.'
+        a: 'The sums paid in addition to the calls, remaining available on the unit.'
       }
     ],
     permissions: { roles: ['Co-owner'] },
@@ -1027,7 +1100,7 @@ const entries: HelpEntry[] = [
       'You know whom to contact and you find the references of your building. If you have units in several condominiums, choose the one to display.',
     steps: [
       { title: 'Choose the condominium', detail: '“Co-ownership” list, shown only if you have several.' },
-      { title: 'Read the identity', detail: 'Address, registration number, cadastral reference and number of lots.' },
+      { title: 'Read the identity', detail: 'Address, registration number, cadastral reference and number of units.' },
       { title: 'Find your contact', detail: '“Document issuer” and “Co-ownership manager” cards.' }
     ],
     faq: [

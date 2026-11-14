@@ -879,13 +879,11 @@ export const Tresorerie: React.FC = () => {
               value={<MoneyValue value={retenue?.collected ?? 0} />}
             />
             <StatCard
-              helpId="finance.tresorerie.retenue"
               label={t('Reversé à la DGI')}
               value={<MoneyValue value={retenue?.remitted ?? 0} />}
               tone="positive"
             />
             <StatCard
-              helpId="finance.tresorerie.retenue"
               label={t('Dû')}
               value={<MoneyValue value={retenue?.due ?? 0} />}
               tone={retenue?.due ? 'danger' : 'neutral'}

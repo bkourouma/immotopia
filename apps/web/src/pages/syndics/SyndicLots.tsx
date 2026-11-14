@@ -670,27 +670,21 @@ export const SyndicLots: React.FC = () => {
                 <StatCard helpId="syndic.lots.indicateurs" label={t('Nombre de lots')} value={lots.length} />
               </Col>
               <Col xs={24} md={8}>
-                <StatCard helpId="syndic.lots.indicateurs" label={t('Tantièmes généraux cumulés')} value={sharesSum} />
+                <StatCard label={t('Tantièmes généraux cumulés')} value={sharesSum} />
               </Col>
               {referenceShares !== null ? (
                 <Col xs={24} md={8}>
-                  <StatCard
-                    helpId="syndic.lots.indicateurs"
-                    label={t('Total de référence des tantièmes')}
-                    value={referenceShares}
-                  />
+                  <StatCard label={t('Total de référence des tantièmes')} value={referenceShares} />
                 </Col>
               ) : null}
               <Col xs={24} md={8}>
                 <StatCard
-                  helpId="syndic.lots.indicateurs"
                   label={t('Lots avec propriétaire')}
                   value={lots.filter(lot => Boolean(lot.ownerContactId || lot.ownersLabel)).length}
                 />
               </Col>
               <Col xs={24} md={8}>
                 <StatCard
-                  helpId="syndic.lots.indicateurs"
                   label={t('Lots avec accès au portail')}
                   value={
                     lots.filter(lot => lot.portalAccess?.status === 'ACTIVE' || lot.portalAccess?.status === 'PARTIAL')
@@ -700,7 +694,6 @@ export const SyndicLots: React.FC = () => {
               </Col>
               <Col xs={24} md={8}>
                 <StatCard
-                  helpId="syndic.lots.indicateurs"
                   label={t('Lots avec locataire actif')}
                   value={
                     lots.filter(lot => (lot.tenantAssignments || []).some(assignment => assignment.isActive)).length

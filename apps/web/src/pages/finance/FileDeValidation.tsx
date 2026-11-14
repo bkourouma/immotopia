@@ -491,12 +491,10 @@ export const FileDeValidation: React.FC = () => {
             value={String(compteurs.filter(d => d.documentType === 'SUPPLIER_INVOICE').length)}
           />
           <StatCard
-            helpId="finance.validation.indicateurs"
             label={DOCUMENT_TYPE_LABELS.SUPPLIER_PAYMENT}
             value={String(compteurs.filter(d => d.documentType === 'SUPPLIER_PAYMENT').length)}
           />
           <StatCard
-            helpId="finance.validation.indicateurs"
             label={DOCUMENT_TYPE_LABELS.CASH_VOUCHER}
             value={String(compteurs.filter(d => d.documentType === 'CASH_VOUCHER').length)}
           />

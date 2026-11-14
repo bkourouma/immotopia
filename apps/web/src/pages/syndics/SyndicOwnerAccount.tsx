@@ -370,18 +370,13 @@ export const SyndicOwnerAccount: React.FC = () => {
                 />
               </Col>
               <Col xs={24} md={8}>
-                <StatCard
-                  helpId="syndic.lots.compte.indicateurs"
-                  label={t('Transactions')}
-                  value={transactionsTotal ?? '—'}
-                />
+                <StatCard label={t('Transactions')} value={transactionsTotal ?? '—'} />
               </Col>
               <Col xs={24} md={8}>
-                <StatCard helpId="syndic.lots.compte.indicateurs" label={t('Propriétaire')} value={ownerName} />
+                <StatCard label={t('Propriétaire')} value={ownerName} />
               </Col>
               <Col xs={24} md={8}>
                 <StatCard
-                  helpId="syndic.lots.compte.indicateurs"
                   label={t('Avance disponible')}
                   value={<MoneyValue value={advance ?? 0} />}
                   hint={t('Imputée automatiquement sur les prochains appels de charges')}
