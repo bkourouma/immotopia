@@ -72,6 +72,7 @@ export function copilotToolLabel(tool: CopilotToolName): string {
     rental_arrears: t('Analyse des impayés locatifs'),
     property_portfolio: t('Analyse du parc immobilier'),
     lease_portfolio: t('Analyse des baux et de leurs échéances'),
+    syndicate_charges: t('Analyse des charges de copropriété'),
     syndicate_maintenance: t('Maintenance par copropriété'),
     maintenance_overview: t('Analyse des tickets de maintenance'),
     rental_receipts: t('Analyse des encaissements locatifs'),

@@ -129,6 +129,7 @@ describe('registre', () => {
         'property_portfolio',
         'lease_portfolio',
         'maintenance_overview',
+        'syndicate_charges',
         'syndicate_maintenance'
       ].sort()
     );
@@ -150,6 +151,7 @@ describe('registre', () => {
     ['property_portfolio', 'PROPERTIES_VIEW'],
     ['lease_portfolio', 'RENTAL_LEASES_VIEW'],
     ['maintenance_overview', 'MAINTENANCE_ADMIN'],
+    ['syndicate_charges', 'SYNDIC_VIEW'],
     ['syndicate_maintenance', 'MAINTENANCE_ADMIN'],
     ['list_capabilities', 'PROPERTIES_VIEW'],
     ['call_read', 'PROPERTIES_VIEW'],

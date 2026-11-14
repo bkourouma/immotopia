@@ -285,7 +285,7 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         permissions,
         toolsForUser(permissions)
           .map(tool => tool.name)
-          .filter(name => name !== 'syndicate_maintenance')
+          .filter(name => name !== 'syndicate_maintenance' && name !== 'syndicate_charges')
       );
       const older = await prisma.assistantConversation.create({
         data: { ...owner, title: 'Historique avant le filtre Syndic', scopeKey: legacyScope }
@@ -364,6 +364,107 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
             expect.objectContaining({ status: 'RESOLVED', count: 1, open: 0, averageResolution: 3 })
           ])
         );
+      } finally {
+        mockFakeScript = undefined;
+      }
+    });
+
+    it('analyse les charges par lot et devise, et recalcule les affectations partielles', async () => {
+      const syndicate = await prisma.syndicate.create({
+        data: { tenantId: tenantA.id, name: 'Résidence des charges', address: 'Cocody' }
+      });
+      createdSyndicateIds.push(syndicate.id);
+      const lot = await prisma.syndicateLot.create({
+        data: { syndicateId: syndicate.id, lotNumber: 'A01', lotType: 'APARTMENT', generalShares: 100 }
+      });
+      createdSyndicateLotIds.push(lot.id);
+      const dueDate = new Date('2025-03-15');
+      const call = await prisma.chargeCall.create({
+        data: {
+          syndicateId: syndicate.id,
+          lotId: lot.id,
+          period: '2025-03',
+          dueDate,
+          currency: 'XOF',
+          amount: 200,
+          status: 'PARTIAL'
+        }
+      });
+      await prisma.chargeCall.create({
+        data: { syndicateId: syndicate.id, lotId: lot.id, period: '2025-03', dueDate, currency: 'EUR', amount: 50 }
+      });
+      await prisma.chargeCall.create({
+        data: {
+          syndicateId: syndicate.id,
+          lotId: lot.id,
+          period: '2025-04',
+          dueDate: new Date('2025-04-15'),
+          amount: 999
+        }
+      });
+      const payment = await prisma.chargePayment.create({
+        data: { lotId: lot.id, chargeCallId: call.id, amount: 100, unallocatedAmount: 40, paidAt: dueDate }
+      });
+      const allocation = await prisma.chargePaymentAllocation.create({
+        data: { paymentId: payment.id, chargeCallId: call.id, amount: 60 }
+      });
+      const base = `/api/tenants/${tenantA.id}`;
+      mockFakeScript = [
+        {
+          toolCalls: [
+            {
+              name: 'syndicate_charges',
+              input: { syndicateId: syndicate.id, lotId: lot.id, year: 2025, month: '2025-03' }
+            }
+          ]
+        },
+        { text: 'Voici les charges.' }
+      ];
+      try {
+        const result = await request(app)
+          .post(base + '/ai/chat')
+          .set(authed(adminA))
+          .send({
+            turnId: randomUUID(),
+            messages: [{ role: 'user', content: 'Analyse les charges par lot.' }]
+          });
+        expect(result.status).toBe(200);
+        const events = result.text
+          .split('\n')
+          .filter(line => line.startsWith('data: {'))
+          .map(line => JSON.parse(line.slice(6)));
+        const artifact = events.find(event => event.type === 'artifact').artifact;
+        expect(artifact.rows).toEqual([
+          { lot: 'A01', currency: 'EUR', count: 1, called: 50, paid: 0, outstanding: 50, overdue: 50 },
+          { lot: 'A01', currency: 'XOF', count: 1, called: 200, paid: 60, outstanding: 140, overdue: 140 }
+        ]);
+        const charges = await request(app)
+          .get(base + '/syndics/' + syndicate.id + '/charges')
+          .set(authed(adminA));
+        expect(charges.status).toBe(200);
+        const screenCall = charges.body.data.find((item: { id: string }) => item.id === call.id);
+        expect(screenCall).toMatchObject({
+          paidAmount: artifact.rows[1].paid,
+          outstandingAmount: artifact.rows[1].outstanding,
+          status: 'OVERDUE'
+        });
+        await prisma.chargePaymentAllocation.update({ where: { id: allocation.id }, data: { amount: 100 } });
+        const { conversationId } = events.find(event => event.type === 'meta');
+        const replay = await request(app)
+          .post(base + '/ai/conversations/' + conversationId + '/artifacts/' + artifact.id)
+          .set(authed(adminA))
+          .send({ expectedVersion: 1 });
+        expect(replay.status).toBe(201);
+        expect(replay.body.data.artifact.rows[1]).toMatchObject({ paid: 100, outstanding: 100, overdue: 100 });
+        const foreign = await request(app)
+          .post(`/api/tenants/${tenantB.id}/ai/chat`)
+          .set(authed(adminB))
+          .send({
+            turnId: randomUUID(),
+            messages: [{ role: 'user', content: 'Analyse les charges par lot.' }]
+          });
+        expect(foreign.status).toBe(200);
+        expect(foreign.text).not.toContain('"type":"artifact"');
       } finally {
         mockFakeScript = undefined;
       }

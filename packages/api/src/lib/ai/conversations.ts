@@ -95,18 +95,19 @@ export async function resolveSavedAssistantScope(
   toolNames: string[]
 ): Promise<string> {
   const scopeKey = assistantScope(permissions, toolNames);
-  if (!toolNames.includes('syndicate_maintenance')) return scopeKey;
+  const previousTools = toolNames.filter(name => name !== 'syndicate_charges');
+  const originalTools = previousTools.filter(name => name !== 'syndicate_maintenance');
+  if (originalTools.length === toolNames.length) return scopeKey;
 
   // Migrate earlier threads without moving them to the top of the history.
   // Threads written with Syndic access cannot be read under the old scope.
-  const legacyScope = assistantScope(
-    permissions,
-    toolNames.filter(name => name !== 'syndicate_maintenance')
-  );
+  const previousScope = assistantScope(permissions, previousTools);
+  const originalScope = assistantScope(permissions, originalTools);
   await prisma.$executeRaw`
     UPDATE assistant_conversations
     SET scope_key = ${scopeKey}
-    WHERE tenant_id = ${owner.tenantId} AND owner_id = ${owner.ownerId} AND scope_key = ${legacyScope}
+    WHERE tenant_id = ${owner.tenantId} AND owner_id = ${owner.ownerId}
+      AND scope_key <> ${scopeKey} AND scope_key IN (${previousScope}, ${originalScope})
   `;
   return scopeKey;
 }

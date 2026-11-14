@@ -1,4 +1,5 @@
 import type { CopilotToolDefinition, CopilotToolName, LlmToolSpec } from '../contracts';
+import { syndicateChargesTool } from './syndicate-charges';
 import { maintenanceOverviewTool, syndicateMaintenanceTool } from './maintenance-overview';
 import { callReadTool } from './call-read';
 import { listCapabilitiesTool } from './list-capabilities';
@@ -28,6 +29,7 @@ export const ALL_TOOLS: readonly CopilotToolDefinition[] = [
   rentalReceiptsTool,
   maintenanceOverviewTool,
   syndicateMaintenanceTool,
+  syndicateChargesTool,
   propertyPortfolioTool,
   leasePortfolioTool,
   chartAnalysisTool,
