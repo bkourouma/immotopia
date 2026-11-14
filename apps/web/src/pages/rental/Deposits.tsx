@@ -18,6 +18,7 @@ import { Table } from '../../components/primitives';
 import { t } from '../../i18n/t';
 import { formatMontantLocatif } from '../../lib/rental-labels';
 import { useMyMenuAccess } from '../../hooks/useMenuAccess';
+import { HelpButton, HelpSectionTitle } from '../../help';
 
 import { activeLocale } from '../../i18n/format';
 const { Text, Title } = Typography;
@@ -165,16 +166,19 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
         <Row gutter={[16, 16]} justify="space-between" align="middle">
           <Col xs={24} sm={24} md={12} lg={14}>
             <Title level={2} style={{ margin: 0 }}>
-              {t('Dépôt de garantie')}
+              <HelpSectionTitle title={t('Dépôt de garantie')} helpId="locatif.depots.onglet" />
             </Title>
             <Text type="secondary">{t('Gérez le dépôt de garantie du bail')}</Text>
           </Col>
           <Col xs={24} sm={24} md={12} lg={10}>
             <div style={{ width: '100%', display: 'flex', justifyContent: 'flex-end' }}>
               {deposit && peutModifierDepot && (
-                <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowMovementForm(true)}>
-                  {t('Nouveau mouvement')}
-                </Button>
+                <Space>
+                  <HelpButton helpId="locatif.depots.mouvement" />
+                  <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowMovementForm(true)}>
+                    {t('Nouveau mouvement')}
+                  </Button>
+                </Space>
               )}
             </div>
           </Col>
@@ -206,6 +210,7 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
                 <Col xs={24} md={8}>
                   <div>
                     <Text type="secondary">{t('Solde actuel')}</Text>
+                    <HelpButton size="small" helpId="locatif.depots.solde" />
                     <Title level={3} style={{ margin: '8px 0 0 0' }}>
                       {formatCurrency(deposit.current_balance, deposit.currency)}
                     </Title>
@@ -238,6 +243,7 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
 
             <Card title={t('Historique des mouvements')}>
               <Table
+                helpId="locatif.depots.historique"
                 exportFilename={t('Historique des mouvements')}
                 dataSource={movements}
                 loading={loading}

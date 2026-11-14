@@ -5,6 +5,7 @@ import { createSignatureRequest, fetchSignatureContext } from '../../services/si
 import type { SignatureKind, SignatureRequestDto, SignerChannel, SignerInput } from '../../types/signature-types';
 import { channelLabel, roleLabel, SIGNER_ROLES } from './signature-labels';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 const { Text } = Typography;
 
@@ -20,6 +21,8 @@ interface SendForSignatureModalProps {
   smsAvailable?: boolean;
   /** Canaux admis pour ce type de document (ex. jamais « sur place » pour un mandat de prélèvement). */
   allowedChannels?: SignerChannel[];
+  /** Fiche d'aide de la modale ; sans elle, le titre reste un simple texte (modale partagee avec ventes, mandats, etats des lieux). */
+  helpId?: string;
   onClose: () => void;
   onCreated: (request: SignatureRequestDto) => void;
 }
@@ -41,6 +44,7 @@ export const SendForSignatureModal: React.FC<SendForSignatureModalProps> = ({
   defaultSigners,
   smsAvailable: smsAvailableProp,
   allowedChannels,
+  helpId,
   onClose,
   onCreated
 }) => {
@@ -119,7 +123,9 @@ export const SendForSignatureModal: React.FC<SendForSignatureModalProps> = ({
   return (
     <Modal
       open={open}
-      title={t('Envoyer pour signature')}
+      title={
+        helpId ? <HelpSectionTitle title={t('Envoyer pour signature')} helpId={helpId} /> : t('Envoyer pour signature')
+      }
       onCancel={onClose}
       width={720}
       destroyOnHidden

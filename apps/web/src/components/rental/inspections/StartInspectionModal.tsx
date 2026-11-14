@@ -3,6 +3,7 @@ import { DatePicker, Modal, Radio, Space, Typography } from 'antd';
 import dayjs, { Dayjs } from 'dayjs';
 import { InspectionTemplate, InspectionType } from '../../../services/lease-inspections-service';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 
 const { Text } = Typography;
 
@@ -48,7 +49,14 @@ export const StartInspectionModal: React.FC<StartInspectionModalProps> = ({
 
   return (
     <Modal
-      title={type === 'ENTRY' ? t("Commencer l'état des lieux d'entrée") : t('Commencer l’état des lieux de sortie')}
+      title={
+        <HelpSectionTitle
+          title={
+            type === 'ENTRY' ? t("Commencer l'état des lieux d'entrée") : t('Commencer l’état des lieux de sortie')
+          }
+          helpId="locatif.edl.demarrer"
+        />
+      }
       open={open}
       onCancel={onCancel}
       onOk={() => date && onConfirm(date.format('YYYY-MM-DD'), template)}

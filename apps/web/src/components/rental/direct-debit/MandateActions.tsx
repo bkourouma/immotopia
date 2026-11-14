@@ -16,6 +16,7 @@ import {
 } from '../../../services/direct-debit-service';
 import { saveBlob } from '../../../utils/save-blob';
 import { apiErrorMessage } from './direct-debit-shared';
+import { HelpButton } from '../../../help';
 import { t } from '../../../i18n/t';
 
 interface MandateActionsProps {
@@ -248,6 +249,7 @@ export const MandateActions: React.FC<MandateActionsProps> = ({ tenantId, mandat
             </Button>
           </>
         )}
+        <HelpButton size="small" helpId="locatif.prelevements.bail.actions" />
       </Space>
 
       <input

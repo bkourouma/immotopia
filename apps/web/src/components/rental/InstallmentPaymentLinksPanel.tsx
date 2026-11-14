@@ -13,6 +13,7 @@ import { InstallmentPaymentLinkButton } from './InstallmentPaymentLinkButton';
 import { MoneyValue, Table } from '../primitives';
 import { activeLocale } from '../../i18n/format';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 function formatDateTime(value: string | null): string {
   return value ? new Date(value).toLocaleString(activeLocale()) : '-';
@@ -109,7 +110,9 @@ export const InstallmentPaymentLinksPanel: React.FC<InstallmentPaymentLinksPanel
   };
 
   return (
-    <Card title={t('Lien de paiement Mobile Money')}>
+    <Card
+      title={<HelpSectionTitle title={t('Lien de paiement Mobile Money')} helpId="locatif.echeances.fiche.liens" />}
+    >
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         <div>
           <InstallmentPaymentLinkButton
@@ -136,6 +139,7 @@ export const InstallmentPaymentLinksPanel: React.FC<InstallmentPaymentLinksPanel
           />
         ) : null}
         <Table
+          helpId="locatif.echeances.fiche.liens.tableau"
           exportFilename={t('Lien de paiement Mobile Money')}
           scroll={{ x: 'max-content' }}
           rowKey="id"

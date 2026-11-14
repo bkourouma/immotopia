@@ -4,6 +4,7 @@ import dayjs, { Dayjs } from 'dayjs';
 import { LeaseEventInitiator, TerminateLeaseRequest } from '../../../services/lease-lifecycle-service';
 import { useConfirmAction } from '../../primitives';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 
 interface TerminationModalProps {
   open: boolean;
@@ -76,7 +77,7 @@ export const TerminationModal: React.FC<TerminationModalProps> = ({ open, onCanc
 
   return (
     <Modal
-      title={t('Résilier le bail')}
+      title={<HelpSectionTitle title={t('Résilier le bail')} helpId="locatif.baux.fiche.vie.resiliation" />}
       open={open}
       onCancel={onCancel}
       onOk={() => form.submit()}

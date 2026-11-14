@@ -4,6 +4,7 @@ import { QuestionCircleOutlined } from '@ant-design/icons';
 import { LeaseInspection } from '../../../services/lease-inspections-service';
 import { activeLocale } from '../../../i18n/format';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 
 const { Text } = Typography;
 
@@ -15,6 +16,8 @@ interface InspectionOverviewCardProps {
   onView: () => void;
   /** Aide affichée près du bouton « Commencer » — utilisée pour la sortie. */
   startHelp?: string;
+  /** Fiche d'aide affichée à côté du titre. */
+  helpId?: string;
 }
 
 function formatDate(iso: string): string {
@@ -28,7 +31,8 @@ export const InspectionOverviewCard: React.FC<InspectionOverviewCardProps> = ({
   onStart,
   onContinue,
   onView,
-  startHelp
+  startHelp,
+  helpId
 }) => {
   let statusNode: React.ReactNode;
   let action: React.ReactNode;
@@ -72,7 +76,7 @@ export const InspectionOverviewCard: React.FC<InspectionOverviewCardProps> = ({
   }
 
   return (
-    <Card title={title}>
+    <Card title={helpId ? <HelpSectionTitle title={title} helpId={helpId} /> : title}>
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         {statusNode}
         {action}

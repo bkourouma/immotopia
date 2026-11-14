@@ -25,6 +25,7 @@ import { AmendmentModal } from './lifecycle/AmendmentModal';
 import { TerminationModal } from './lifecycle/TerminationModal';
 import { FinalSettlementCard } from './lifecycle/FinalSettlementCard';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 const { Text } = Typography;
 
@@ -186,7 +187,7 @@ export const LeaseLifecyclePanel: React.FC<LeaseLifecyclePanelProps> = ({
 
   return (
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-      <Card title={t('Vie du bail')}>
+      <Card title={<HelpSectionTitle title={t('Vie du bail')} helpId="locatif.baux.fiche.vie" />}>
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           {lease.terminated && (
             <Alert
@@ -241,7 +242,10 @@ export const LeaseLifecyclePanel: React.FC<LeaseLifecyclePanelProps> = ({
           <Divider style={{ margin: 0 }} />
 
           <div>
-            <Text strong>{t('Historique')}</Text>
+            <HelpSectionTitle
+              title={<Text strong>{t('Historique')}</Text>}
+              helpId="locatif.baux.fiche.vie.historique"
+            />
             <div style={{ marginTop: 12 }}>
               <LeaseEventTimeline events={events} />
             </div>

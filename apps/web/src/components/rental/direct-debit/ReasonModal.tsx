@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, Checkbox, Input, Modal } from 'antd';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 
 interface ReasonModalProps {
   open: boolean;
@@ -15,6 +16,8 @@ interface ReasonModalProps {
   acknowledgement?: string;
   /** Message d'erreur de l'API, affiché dans la fenêtre. */
   error?: string | null;
+  /** Fiche d'aide à afficher à côté du titre (absente : pas de « ? »). */
+  helpId?: string;
   onCancel: () => void;
   onSubmit: (reason: string) => void;
 }
@@ -31,6 +34,7 @@ export const ReasonModal: React.FC<ReasonModalProps> = ({
   loading,
   acknowledgement,
   error,
+  helpId,
   onCancel,
   onSubmit
 }) => {
@@ -49,7 +53,7 @@ export const ReasonModal: React.FC<ReasonModalProps> = ({
   return (
     <Modal
       open={open}
-      title={title}
+      title={helpId ? <HelpSectionTitle title={title} helpId={helpId} /> : title}
       okText={okText}
       cancelText={t('Fermer')}
       okButtonProps={{

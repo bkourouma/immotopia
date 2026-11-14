@@ -447,6 +447,7 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
 
   const enTete = (
     <PageHeader
+      helpId="locatif.echeances.liste"
       title={t('Échéances')}
       subtitle={total > 0 ? t('{{total}} échéance{{value}}', { total: total, value: total > 1 ? 's' : '' }) : undefined}
       primaryAction={
@@ -497,6 +498,7 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
       {enTete}
 
       <DataView<RentalInstallment>
+        helpId="locatif.echeances.liste.tableau"
         // Export de TOUTES les échéances, avec les mêmes filtres que la liste affichée.
         export={{
           filename: t('Échéances'),

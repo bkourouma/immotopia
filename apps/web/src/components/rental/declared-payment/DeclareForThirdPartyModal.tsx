@@ -31,6 +31,7 @@ import {
 } from '../../../types/rental-declared-payment';
 import { LeaseSelectField } from '../LeaseSelectField';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 import { NOTE_MAX_LENGTH, apiErrorMessage, formatAmount, formatPhone, operatorLabel, operatorOptions } from './helpers';
 
 const { Text } = Typography;
@@ -186,7 +187,12 @@ export const DeclareForThirdPartyModal: React.FC<DeclareForThirdPartyModalProps>
   return (
     <Modal
       open={open}
-      title={t('Déclarer un paiement pour un locataire')}
+      title={
+        <HelpSectionTitle
+          title={t('Déclarer un paiement pour un locataire')}
+          helpId="locatif.paiements.declarations.tiers"
+        />
+      }
       onCancel={onClose}
       onOk={() => form.submit()}
       okText={t('Créer la déclaration')}

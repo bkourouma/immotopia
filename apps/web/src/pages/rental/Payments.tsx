@@ -37,6 +37,7 @@ import {
 import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { t } from '../../i18n/t';
 import { localizedRecord } from '../../i18n/localized';
+import { HelpSectionTitle, helpAnchor } from '../../help';
 
 import { activeLocale } from '../../i18n/format';
 /**
@@ -298,8 +299,9 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
   ];
 
   const listeDesPaiements = (
-    <>
+    <div {...helpAnchor('paiements-tableau')}>
       <DataView<RentalPayment>
+        helpId="locatif.paiements.liste.tableau"
         // Export de TOUS les paiements, avec les mêmes filtres que la liste affichée.
         export={{
           filename: t('Paiements'),
@@ -380,11 +382,11 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
           );
         }}
       />
-    </>
+    </div>
   );
 
   /** Modale au-dessus de 992 px, feuille pleine hauteur en dessous (§10.1). */
-  const boite = (ouvert: boolean, titre: string, fermer: () => void, contenu: React.ReactNode) =>
+  const boite = (ouvert: boolean, titre: React.ReactNode, fermer: () => void, contenu: React.ReactNode) =>
     isDesktop ? (
       <Modal open={ouvert} title={titre} onCancel={fermer} footer={null} width={720} destroyOnHidden>
         {contenu}
@@ -398,6 +400,7 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
   return (
     <>
       <PageHeader
+        helpId="locatif.paiements.liste"
         title={t('Paiements')}
         subtitle={
           total > 0 ? (total > 1 ? t('{{n}} paiements', { n: total }) : t('{{n}} paiement', { n: total })) : undefined
@@ -406,6 +409,7 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
           peutEncaisser
             ? {
                 label: t('Nouveau paiement'),
+                helpAnchor: 'paiements-nouveau',
                 icon: <PlusOutlined />,
                 onClick: () => setSaisieOuverte(true)
               }
@@ -413,72 +417,74 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
         }
       />
 
-      <Tabs
-        activeKey={onglet}
-        // L'onglet actif vit dans l'URL : revenir depuis le détail d'un
-        // paiement retrouve l'onglet d'où l'on venait, et un lien vers les
-        // déclarations en attente est partageable.
-        onChange={cle =>
-          setSearchParams(
-            previous => {
-              const next = new URLSearchParams(previous);
-              if (ancienSousOnglet === 'declarations' || ancienSousOnglet === 'paiements') next.delete('onglet');
-              if (cle === 'paiements') next.delete(ongletKey);
-              else next.set(ongletKey, cle);
-              return next;
-            },
-            { replace: true }
-          )
-        }
-        // La liste des déclarations ne se charge que quand son onglet est affiché.
-        destroyOnHidden
-        items={[
-          { key: 'paiements', label: t('Paiements'), children: listeDesPaiements },
-          {
-            key: 'declarations',
-            label: (
-              <Space size={6}>
-                <span>{t('Déclarations en attente')}</span>
-                {enAttente && enAttente.pending > 0 ? (
-                  <Badge
-                    count={enAttente.pending}
-                    overflowCount={99}
-                    // Le badge Ant Design est rouge par défaut : sans retard, une
-                    // couleur explicite neutre, le rouge reste réservé au retard.
-                    color={enAttente.overdue > 0 ? 'red' : 'blue'}
-                    title={
-                      enAttente.overdue > 0
-                        ? t('{{n}} en attente, dont {{retard}} en retard', {
-                            n: enAttente.pending,
-                            retard: enAttente.overdue
-                          })
-                        : t('{{n}} en attente', { n: enAttente.pending })
-                    }
-                  />
-                ) : null}
-              </Space>
-            ),
-            children: (
-              <PaymentDeclarationsList
-                tenantId={tenantId}
-                leaseId={leaseId}
-                canReview={ready && peutAffecter}
-                canCreate={ready && peutEncaisser}
-                onApproveSuccess={() => {
-                  void rafraichir();
-                  void rafraichirCompteur();
-                }}
-                onRejectSuccess={() => void rafraichirCompteur()}
-                onCreated={() => void rafraichirCompteur()}
-              />
+      <div {...helpAnchor('paiements-onglets')}>
+        <Tabs
+          activeKey={onglet}
+          // L'onglet actif vit dans l'URL : revenir depuis le détail d'un
+          // paiement retrouve l'onglet d'où l'on venait, et un lien vers les
+          // déclarations en attente est partageable.
+          onChange={cle =>
+            setSearchParams(
+              previous => {
+                const next = new URLSearchParams(previous);
+                if (ancienSousOnglet === 'declarations' || ancienSousOnglet === 'paiements') next.delete('onglet');
+                if (cle === 'paiements') next.delete(ongletKey);
+                else next.set(ongletKey, cle);
+                return next;
+              },
+              { replace: true }
             )
           }
-        ]}
-      />
+          // La liste des déclarations ne se charge que quand son onglet est affiché.
+          destroyOnHidden
+          items={[
+            { key: 'paiements', label: t('Paiements'), children: listeDesPaiements },
+            {
+              key: 'declarations',
+              label: (
+                <Space size={6}>
+                  <span>{t('Déclarations en attente')}</span>
+                  {enAttente && enAttente.pending > 0 ? (
+                    <Badge
+                      count={enAttente.pending}
+                      overflowCount={99}
+                      // Le badge Ant Design est rouge par défaut : sans retard, une
+                      // couleur explicite neutre, le rouge reste réservé au retard.
+                      color={enAttente.overdue > 0 ? 'red' : 'blue'}
+                      title={
+                        enAttente.overdue > 0
+                          ? t('{{n}} en attente, dont {{retard}} en retard', {
+                              n: enAttente.pending,
+                              retard: enAttente.overdue
+                            })
+                          : t('{{n}} en attente', { n: enAttente.pending })
+                      }
+                    />
+                  ) : null}
+                </Space>
+              ),
+              children: (
+                <PaymentDeclarationsList
+                  tenantId={tenantId}
+                  leaseId={leaseId}
+                  canReview={ready && peutAffecter}
+                  canCreate={ready && peutEncaisser}
+                  onApproveSuccess={() => {
+                    void rafraichir();
+                    void rafraichirCompteur();
+                  }}
+                  onRejectSuccess={() => void rafraichirCompteur()}
+                  onCreated={() => void rafraichirCompteur()}
+                />
+              )
+            }
+          ]}
+        />
+      </div>
 
       {boite(
         saisieOuverte,
-        t('Nouveau paiement'),
+        <HelpSectionTitle title={t('Nouveau paiement')} helpId="locatif.paiements.nouveau" />,
         () => setSaisieOuverte(false),
         <PaymentForm
           tenantId={tenantId}

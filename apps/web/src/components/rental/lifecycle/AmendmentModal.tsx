@@ -3,6 +3,7 @@ import { Alert, Form, Input, Modal, DatePicker } from 'antd';
 import dayjs, { Dayjs } from 'dayjs';
 import { AddAmendmentRequest } from '../../../services/lease-lifecycle-service';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 
 interface AmendmentModalProps {
   open: boolean;
@@ -46,7 +47,7 @@ export const AmendmentModal: React.FC<AmendmentModalProps> = ({ open, onCancel, 
 
   return (
     <Modal
-      title={t('Enregistrer un avenant')}
+      title={<HelpSectionTitle title={t('Enregistrer un avenant')} helpId="locatif.baux.fiche.vie.avenant" />}
       open={open}
       onCancel={onCancel}
       onOk={() => form.submit()}

@@ -4,6 +4,7 @@ import { listInstallmentReminders } from '../../../services/rental-payment-remin
 import type { RentalPaymentReminderDto } from '../../../types/rental-payment-reminder';
 import { activeLocale } from '../../../i18n/format';
 import { t } from '../../../i18n/t';
+import { HelpButton, HelpSectionTitle } from '../../../help';
 import { reminderChannelLabel, reminderFailureText, reminderLevelLabel, reminderStatusLabel } from './reminder-labels';
 
 const { Text } = Typography;
@@ -53,7 +54,10 @@ export const InstallmentRemindersHistoryPanel: React.FC<InstallmentRemindersHist
   if (!canView) return null;
 
   return (
-    <Card title={t('Historique des relances')}>
+    <Card
+      title={<HelpSectionTitle title={t('Historique des relances')} helpId="locatif.echeances.fiche.relances" />}
+      extra={<HelpButton helpId="locatif.echeances.fiche.relances.tableau" />}
+    >
       {error ? (
         <Alert type="warning" showIcon message={t("Impossible de charger l'historique des relances.")} />
       ) : (

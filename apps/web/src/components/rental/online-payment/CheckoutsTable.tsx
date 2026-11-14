@@ -8,6 +8,7 @@ import { formatMoney } from '../../primitives';
 import type { RentalOnlineCheckoutStatus, RentalOnlinePaymentRowDto } from '../../../types/rental-online-payment';
 import { listRentalOnlinePayments, verifyRentalOnlinePayment } from '../../../services/rental-online-payment-service';
 import { t } from '../../../i18n/t';
+import { HelpButton } from '../../../help';
 import {
   STATUS_COLOR,
   STATUS_ORDER,
@@ -279,6 +280,7 @@ export const RentalOnlineCheckoutsTable: React.FC<RentalOnlineCheckoutsTableProp
             setPage(1);
           }}
         />
+        <HelpButton helpId="locatif.enligne.liste.tableau" size="small" />
       </Space>
 
       {error ? (

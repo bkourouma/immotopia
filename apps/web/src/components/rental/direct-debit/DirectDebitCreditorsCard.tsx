@@ -29,6 +29,7 @@ import { listTreasuryAccounts } from '../../../services/treasury-service';
 import { formatMoney } from '../../primitives';
 import { queryKey, STALE_TIME } from '../../../lib/query-keys';
 import { apiErrorMessage } from './direct-debit-shared';
+import { HelpSectionTitle } from '../../../help';
 import { t } from '../../../i18n/t';
 
 interface CreditorFormValues {
@@ -231,7 +232,7 @@ export const DirectDebitCreditorsCard: React.FC<DirectDebitCreditorsCardProps> =
 
   return (
     <Card
-      title={t('Prélèvement bancaire')}
+      title={<HelpSectionTitle title={t('Prélèvement bancaire')} helpId="locatif.prelevements.mandats.creanciers" />}
       extra={
         <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
           {t('Nouveau créancier')}

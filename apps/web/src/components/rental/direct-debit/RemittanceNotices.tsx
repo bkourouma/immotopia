@@ -9,6 +9,7 @@ import type {
 import { formatMoney } from '../../primitives';
 import { returnStateLabel, skipReasonLabel } from './direct-debit-shared';
 import { t } from '../../../i18n/t';
+import { HelpButton } from '../../../help';
 
 const { Text } = Typography;
 
@@ -21,12 +22,15 @@ export const PrenotificationSummaryAlert: React.FC<{
   summary: PrenotificationSummaryDto;
   lineCount: number;
   scope?: 'RENTAL_LEASE' | 'SYNDIC_LOT';
-}> = ({ summary, lineCount, scope }) => {
+  /** Fiche d'aide du bloc (absente : pas de « ? »). */
+  helpId?: string;
+}> = ({ summary, lineCount, scope, helpId }) => {
   const allSent = summary.sent >= lineCount;
   return (
     <Alert
       type={allSent ? 'success' : 'warning'}
       showIcon
+      action={helpId ? <HelpButton helpId={helpId} size="small" /> : undefined}
       message={summary.pending > 0 ? t('Envoi des avis en cours…') : t('Avis de prélèvement')}
       description={
         <div>
@@ -73,8 +77,14 @@ export const PrenotificationSummaryAlert: React.FC<{
  * Avancement du retour de la banque (spec 042, P3, §8.7) : état, lignes en
  * attente, réglées, rejetées et leurs montants.
  */
-export const ReturnSummaryAlert: React.FC<{ summary: ReturnSummaryDto; state: ReturnState }> = ({ summary, state }) => (
+export const ReturnSummaryAlert: React.FC<{
+  summary: ReturnSummaryDto;
+  state: ReturnState;
+  /** Fiche d'aide du bloc (absente : pas de « ? »). */
+  helpId?: string;
+}> = ({ summary, state, helpId }) => (
   <Alert
+    action={helpId ? <HelpButton helpId={helpId} size="small" /> : undefined}
     type={state === 'COMPLETE' ? 'success' : state === 'PARTIAL' ? 'warning' : 'info'}
     showIcon
     message={t('Retour de la banque : {{state}}', { state: returnStateLabel(state) })}

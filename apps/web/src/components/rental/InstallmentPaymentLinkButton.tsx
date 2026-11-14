@@ -14,6 +14,7 @@ import type {
 import { formatMoney } from '../primitives';
 import { activeLocale } from '../../i18n/format';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 const { Paragraph } = Typography;
 
@@ -156,7 +157,14 @@ export const InstallmentPaymentLinkModal: React.FC<InstallmentPaymentLinkModalPr
       open={open}
       onCancel={onClose}
       destroyOnHidden
-      title={periodLabel ? t('Lien de paiement · échéance {{value}}', { value: periodLabel }) : t('Lien de paiement')}
+      title={
+        <HelpSectionTitle
+          title={
+            periodLabel ? t('Lien de paiement · échéance {{value}}', { value: periodLabel }) : t('Lien de paiement')
+          }
+          helpId="locatif.echeances.fiche.lien-envoi"
+        />
+      }
       footer={
         created ? (
           <Button type="primary" onClick={onClose}>
