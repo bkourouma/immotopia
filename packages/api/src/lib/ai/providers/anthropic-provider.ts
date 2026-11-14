@@ -11,6 +11,7 @@ import type {
   LlmProvider,
   LlmToolSpec,
   LlmTurnResult,
+  LlmUsage,
   ProviderRuntimeConfig
 } from '../contracts';
 
@@ -38,12 +39,19 @@ export class LlmProviderError extends AppError {
   readonly copilotCode: CopilotErrorCode;
   readonly retryable: boolean;
   readonly upstreamStatus?: number;
+  readonly model?: string;
+  readonly usage?: LlmUsage;
 
-  constructor(message: string, options: { retryable: boolean; upstreamStatus?: number }) {
+  constructor(
+    message: string,
+    options: { retryable: boolean; upstreamStatus?: number; model?: string; usage?: LlmUsage }
+  ) {
     super(message, 503, 'PROVIDER_UNAVAILABLE');
     this.copilotCode = 'PROVIDER_UNAVAILABLE';
     this.retryable = options.retryable;
     this.upstreamStatus = options.upstreamStatus;
+    this.model = options.model;
+    this.usage = options.usage;
   }
 }
 
@@ -212,8 +220,19 @@ export class AnthropicProvider implements LlmProvider {
       }
 
       const assistantContent = fromAnthropicContent(message.content);
+      const usage = message.usage;
       return {
         stopReason: translateStopReason(message.stop_reason),
+        model: message.model || config.model,
+        ...(usage && {
+          usage: {
+            inputTokens:
+              usage.input_tokens + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0),
+            outputTokens: usage.output_tokens,
+            cacheReadTokens: usage.cache_read_input_tokens ?? undefined,
+            cacheWriteTokens: usage.cache_creation_input_tokens ?? undefined
+          }
+        }),
         assistantContent,
         toolCalls: assistantContent
           .filter((block): block is Extract<LlmBlock, { type: 'tool_use' }> => block.type === 'tool_use')
@@ -222,7 +241,10 @@ export class AnthropicProvider implements LlmProvider {
     } catch (error) {
       if (timedOut) {
         logger.warn('ImmoCopilot : délai dépassé côté fournisseur', { timeoutMs: env.AI_REQUEST_TIMEOUT_MS });
-        throw new LlmProviderError(t("L'assistant a mis trop de temps à répondre. Réessayez."), { retryable: true });
+        throw new LlmProviderError(t("L'assistant a mis trop de temps à répondre. Réessayez."), {
+          retryable: true,
+          model: config.model
+        });
       }
       if (signal.aborted || isAbortError(error)) throw createAbortError();
 
@@ -235,7 +257,8 @@ export class AnthropicProvider implements LlmProvider {
       });
       throw new LlmProviderError(t("L'assistant est momentanément indisponible. Réessayez dans un instant."), {
         retryable: status === undefined || status === 429 || status >= 500,
-        upstreamStatus: status
+        upstreamStatus: status,
+        model: config.model
       });
     } finally {
       clearTimeout(timer);

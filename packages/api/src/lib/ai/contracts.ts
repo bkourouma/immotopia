@@ -566,6 +566,17 @@ export interface LlmTurnResult {
   stopReason: 'end_turn' | 'tool_use' | 'max_tokens' | 'refusal' | 'other';
   assistantContent: LlmBlock[];
   toolCalls: Array<{ id: string; name: string; input: unknown }>;
+  model?: string;
+  usage?: LlmUsage;
+}
+
+export interface LlmUsage {
+  /** Nombre total de jetons d’entrée, cache compris. */
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  costUsd?: number;
 }
 
 /** Réglages relus à chaque tour depuis la configuration effective (voir `services/ai-settings-service.ts`). */

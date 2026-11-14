@@ -699,5 +699,20 @@
   "Voir les détails": "View details",
   "Voir toute la requête": "See the whole request",
   "Vue d'ensemble": "Overview",
-  "Vue d'ensemble de la plateforme": "Platform overview"
+  "Vue d'ensemble de la plateforme": "Platform overview",
+  "Agence / compte": "Agency / account",
+  "Appels sans coût communiqué : {{count}}": "Calls with no reported cost: {{count}}",
+  "Approfondi": "In-depth",
+  "Cache lu / écrit": "Cache read / written",
+  "Coût communiqué (USD)": "Reported cost (USD)",
+  "Durée moyenne (ms)": "Average duration (ms)",
+  "Filtre de compte ou d’agence actif": "Account or agency filter active",
+  "Fournisseur / modèle": "Provider / model",
+  "Interrompu": "Interrupted",
+  "Jetons en entrée / sortie": "Input / output tokens",
+  "Mode / résultat": "Mode / outcome",
+  "Période (UTC)": "Period (UTC)",
+  "Réécriture": "Rewrite",
+  "Tronqué": "Truncated",
+  "Usages de l’assistant": "Assistant usage"
 }

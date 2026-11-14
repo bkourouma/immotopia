@@ -456,6 +456,7 @@ enum PropertyVisitStatus {
 // User entity
 model User {
   assistantConversations AssistantConversation[]
+  assistantProviderUsage AssistantProviderUsage[]
   assistantAnalysisShares AssistantAnalysisShare[] @relation("AssistantAnalysisRecipient")
   createdAssistantTasks AssistantTask[] @relation("AssistantTaskCreator")
   assignedAssistantTasks AssistantTask[] @relation("AssistantTaskAssignee")
@@ -600,6 +601,7 @@ model User {
 // Tenant entity (Agency/Operator)
 model Tenant {
   assistantConversations AssistantConversation[]
+  assistantProviderUsage AssistantProviderUsage[]
   assistantTasks AssistantTask[]
   assistantNotificationRequests AssistantNotificationRequest[]
   assistantRentalAlerts AssistantRentalAlert[]
@@ -11586,6 +11588,33 @@ model AssistantResponseFeedback {
 
   @@id([tenantId, ownerId, turnId, revision])
   @@map("assistant_response_feedback")
+}
+
+/// Métadonnées d'un appel effectivement envoyé au fournisseur, hors contenu.
+model AssistantProviderUsage {
+  id               String   @id @default(uuid()) @db.Uuid
+  tenantId         String   @map("tenant_id")
+  userId           String?  @map("user_id")
+  provider         String   @db.VarChar(20)
+  model            String?  @db.VarChar(200)
+  mode             String   @db.VarChar(20)
+  status           String   @db.VarChar(20)
+  upstreamStatus   Int?     @map("upstream_status")
+  durationMs       Int      @map("duration_ms")
+  inputTokens      Int?     @map("input_tokens")
+  outputTokens     Int?     @map("output_tokens")
+  cacheReadTokens  Int?     @map("cache_read_tokens")
+  cacheWriteTokens Int?     @map("cache_write_tokens")
+  costUsd          Decimal? @map("cost_usd") @db.Decimal(20, 12)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([tenantId, createdAt])
+  @@index([userId])
+  @@map("assistant_provider_usage")
 }
 
 model AssistantAttachment {

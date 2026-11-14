@@ -78,7 +78,9 @@ describe("contrôle d'accès", () => {
     ['get', '/api/platform/ai-settings'],
     ['put', '/api/platform/ai-settings'],
     ['get', '/api/platform/ai-settings/models'],
-    ['get', '/api/platform/ai-settings/feedback']
+    ['get', '/api/platform/ai-settings/feedback'],
+    ['get', '/api/platform/ai-settings/usage'],
+    ['get', '/api/platform/ai-settings/usage/export']
   ])('%s %s : 403 pour un non super-admin ou un compte inactif, 401 sans session', async (method, path) => {
     const call = (extra?: Record<string, string>) => {
       let req = (request(app) as any)[method](path);

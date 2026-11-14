@@ -1,7 +1,9 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
+import { assistantUsageCsv, assistantUsageReport, usageReportQuery } from '../lib/ai/provider-usage-report';
+import { t } from '../i18n';
 import { prisma } from '../utils/database';
-import { asyncHandler, UnauthorizedError } from '../middleware/error-middleware';
+import { AppError, asyncHandler, UnauthorizedError } from '../middleware/error-middleware';
 import {
   aiSettingsInputSchema,
   getAiSettingsView,
@@ -28,6 +30,25 @@ export const updateAiSettingsHandler = asyncHandler(async (req: Request, res: Re
 
 export const listAiModelsHandler = asyncHandler(async (_req: Request, res: Response) => {
   res.json({ success: true, data: await listOpenRouterModels() });
+});
+
+export const listAiUsageHandler = asyncHandler(async (req, res) => {
+  const query = usageReportQuery.parse(req.query);
+  const data = await assistantUsageReport(query, 25, query.offset);
+  data.hasNext &&= query.offset + 25 <= 100_000;
+  res.set('Cache-Control', 'private, no-store').json({ success: true, data });
+});
+
+export const exportAiUsageHandler = asyncHandler(async (req, res) => {
+  const query = usageReportQuery.parse(req.query);
+  const data = await assistantUsageReport(query, 10_000, 0);
+  if (data.hasNext) throw new AppError(t('Réduisez la période ou filtrez les usages avant de les exporter.'), 413);
+  res
+    .set('Cache-Control', 'private, no-store')
+    .set('X-Content-Type-Options', 'nosniff')
+    .attachment(`immotopia-usage-ia-${data.from}-${data.to}.csv`)
+    .type('text/csv; charset=utf-8')
+    .send(assistantUsageCsv(data));
 });
 
 export const listAssistantFeedbackHandler = asyncHandler(async (req, res) => {

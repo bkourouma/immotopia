@@ -699,5 +699,20 @@
   "Voir les détails": "عرض التفاصيل",
   "Voir toute la requête": "عرض الطلب كاملاً",
   "Vue d'ensemble": "نظرة عامة",
-  "Vue d'ensemble de la plateforme": "نظرة عامة على المنصة"
+  "Vue d'ensemble de la plateforme": "نظرة عامة على المنصة",
+  "Agence / compte": "الوكالة / الحساب",
+  "Appels sans coût communiqué : {{count}}": "طلبات بلا تكلفة معلنة: {{count}}",
+  "Approfondi": "معمّق",
+  "Cache lu / écrit": "قراءة الذاكرة المؤقتة / الكتابة فيها",
+  "Coût communiqué (USD)": "التكلفة المعلنة بالدولار الأمريكي",
+  "Durée moyenne (ms)": "متوسط المدة (مللي ثانية)",
+  "Filtre de compte ou d’agence actif": "التصفية حسب الحساب أو الوكالة مفعّلة",
+  "Fournisseur / modèle": "المزوّد / النموذج",
+  "Interrompu": "متوقف",
+  "Jetons en entrée / sortie": "رموز الإدخال / الإخراج",
+  "Mode / résultat": "الوضع / النتيجة",
+  "Période (UTC)": "الفترة (UTC)",
+  "Réécriture": "إعادة الصياغة",
+  "Tronqué": "مقتطع",
+  "Usages de l’assistant": "استخدام المساعد"
 }

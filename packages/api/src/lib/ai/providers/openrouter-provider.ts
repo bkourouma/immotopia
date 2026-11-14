@@ -8,6 +8,7 @@ import type {
   LlmProvider,
   LlmToolSpec,
   LlmTurnResult,
+  LlmUsage,
   ProviderRuntimeConfig
 } from '../contracts';
 import { LlmProviderError, createAbortError, isAbortError } from './anthropic-provider';
@@ -112,6 +113,13 @@ interface ToolCallAccumulator {
 }
 
 interface StreamChunk {
+  model?: string;
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    cost?: number;
+    prompt_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number };
+  };
   error?: { code?: unknown; message?: unknown };
   choices?: Array<{
     delta?: {
@@ -128,10 +136,24 @@ interface StreamChunk {
 
 /** Erreur de flux OpenRouter (statut HTTP amont ou code d'erreur en cours de flux). */
 class UpstreamStatusError extends Error {
-  constructor(readonly status: number | undefined) {
+  constructor(
+    readonly status: number | undefined,
+    readonly model?: string,
+    readonly usage?: LlmUsage
+  ) {
     super('upstream error');
     this.name = 'UpstreamStatusError';
   }
+}
+
+function readUsage(usage: NonNullable<StreamChunk['usage']>): LlmUsage {
+  return {
+    inputTokens: usage.prompt_tokens,
+    outputTokens: usage.completion_tokens,
+    cacheReadTokens: usage.prompt_tokens_details?.cached_tokens,
+    cacheWriteTokens: usage.prompt_tokens_details?.cache_write_tokens,
+    costUsd: usage.cost
+  };
 }
 
 function parseToolInput(raw: string): unknown {
@@ -153,6 +175,8 @@ async function consumeStream(
   const calls = new Map<number, ToolCallAccumulator>();
   let text = '';
   let finishReason: string | null | undefined;
+  let model: string | undefined;
+  let usage: LlmUsage | undefined;
   let buffer = '';
   let done = false;
 
@@ -167,9 +191,11 @@ async function consumeStream(
     } catch {
       return; // ligne SSE illisible : ignorée
     }
+    if (chunk.model) model = chunk.model;
+    if (chunk.usage) usage = readUsage(chunk.usage);
     if (chunk.error) {
       const code = Number(chunk.error.code);
-      throw new UpstreamStatusError(Number.isFinite(code) ? code : undefined);
+      throw new UpstreamStatusError(Number.isFinite(code) ? code : undefined, model, usage);
     }
     const choice = chunk.choices?.[0];
     if (!choice) return;
@@ -229,7 +255,13 @@ async function consumeStream(
   // Certains modèles terminent par `stop` tout en ayant émis des appels d'outils.
   if (toolCalls.length > 0 && stopReason === 'end_turn') stopReason = 'tool_use';
 
-  return { stopReason, assistantContent, toolCalls };
+  return {
+    stopReason,
+    assistantContent,
+    toolCalls,
+    model,
+    ...(usage && { usage })
+  };
 }
 
 // --- Fournisseur ------------------------------------------------------------
@@ -269,6 +301,7 @@ export class OpenRouterProvider implements LlmProvider {
       model,
       max_tokens: req.maxOutputTokens,
       stream: true,
+      usage: { include: true },
       messages: toOpenAiMessages(req.system, req.messages),
       ...(req.tools.length > 0
         ? {
@@ -333,16 +366,21 @@ export class OpenRouterProvider implements LlmProvider {
         return consumeStream(response.body, onTextDelta);
       })();
       work.catch(() => undefined);
-      return await Promise.race([work, aborted]);
+      const result = await Promise.race([work, aborted]);
+      return { ...result, model: result.model || config.model };
     } catch (error) {
       if (timedOut) {
         logger.warn('ImmoCopilot : délai dépassé côté fournisseur', { timeoutMs: env.AI_REQUEST_TIMEOUT_MS });
-        throw new LlmProviderError(t("L'assistant a mis trop de temps à répondre. Réessayez."), { retryable: true });
+        throw new LlmProviderError(t("L'assistant a mis trop de temps à répondre. Réessayez."), {
+          retryable: true,
+          model: config.model
+        });
       }
       if (signal.aborted || isAbortError(error)) throw createAbortError();
       if (error instanceof LlmProviderError) throw error;
 
-      const status = error instanceof UpstreamStatusError ? error.status : undefined;
+      const upstream = error instanceof UpstreamStatusError ? error : undefined;
+      const status = upstream?.status;
       // Jamais le message amont à l'utilisateur ; on journalise seulement le type et le statut.
       logger.warn('ImmoCopilot : erreur du fournisseur', {
         provider: 'openrouter',
@@ -351,7 +389,9 @@ export class OpenRouterProvider implements LlmProvider {
       });
       throw new LlmProviderError(t("L'assistant est momentanément indisponible. Réessayez dans un instant."), {
         retryable: status === undefined || status === 429 || status >= 500,
-        upstreamStatus: status
+        upstreamStatus: status,
+        model: upstream?.model || config.model,
+        usage: upstream?.usage
       });
     } finally {
       clearTimeout(timer);

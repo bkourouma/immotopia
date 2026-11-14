@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import {
+  exportAiUsageHandler,
   getAiSettingsHandler,
   listAiModelsHandler,
+  listAiUsageHandler,
   listAssistantFeedbackHandler,
   updateAiSettingsHandler
 } from '../controllers/platform-ai-settings-controller';
@@ -28,5 +30,7 @@ router.get('/', view, requireSuperAdmin, getAiSettingsHandler);
 router.put('/', edit, requireSuperAdmin, updateAiSettingsHandler);
 router.get('/models', view, requireSuperAdmin, listAiModelsHandler);
 router.get('/feedback', view, requireSuperAdmin, listAssistantFeedbackHandler);
+router.get('/usage', view, requireSuperAdmin, listAiUsageHandler);
+router.get('/usage/export', view, requireSuperAdmin, exportAiUsageHandler);
 
 export default router;

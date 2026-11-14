@@ -83,6 +83,7 @@ describe('OpenRouterProvider', () => {
       model: 'anthropic/claude-sonnet-4.5',
       max_tokens: 16000,
       stream: true,
+      usage: { include: true },
       messages: [
         { role: 'system', content: 'SYS' },
         { role: 'user', content: 'Bonjour' }
@@ -102,8 +103,33 @@ describe('OpenRouterProvider', () => {
     expect(deltas).toEqual(['Bon', 'jour']);
     expect(result).toEqual({
       stopReason: 'end_turn',
+      model: 'anthropic/claude-sonnet-4.5',
       assistantContent: [{ type: 'text', text: 'Bonjour' }],
       toolCalls: []
+    });
+  });
+
+  it('lit les mesures dans le dernier message SSE, sans choix de réponse', async () => {
+    const fetchMock = jest.fn().mockResolvedValue(
+      sseResponse([
+        choice({ content: 'OK' }),
+        choice({}, 'stop'),
+        data({
+          model: 'provider/model-served',
+          choices: [],
+          usage: {
+            prompt_tokens: 30,
+            completion_tokens: 4,
+            cost: 0,
+            prompt_tokens_details: { cached_tokens: 14, cache_write_tokens: 2 }
+          }
+        }),
+        'data: [DONE]\n\n'
+      ])
+    );
+    expect(await run(fetchMock)).toMatchObject({
+      model: 'provider/model-served',
+      usage: { inputTokens: 30, outputTokens: 4, cacheReadTokens: 14, cacheWriteTokens: 2, costUsd: 0 }
     });
   });
 
@@ -259,10 +285,15 @@ describe('OpenRouterProvider', () => {
   });
 
   it('traduit une erreur survenue en cours de flux', async () => {
-    const response = sseResponse([choice({ content: 'x' }), data({ error: { code: 429, message: 'secret' } })]);
+    const response = sseResponse([
+      choice({ content: 'x' }),
+      data({ model: 'provider/model-served', usage: { cost: 0.001 }, error: { code: 429, message: 'secret' } })
+    ]);
     const error = await run(jest.fn().mockResolvedValue(response)).catch(e => e);
     expect(error).toBeInstanceOf(LlmProviderError);
     expect(error.retryable).toBe(true);
+    expect(error.model).toBe('provider/model-served');
+    expect(error.usage?.costUsd).toBe(0.001);
     expect(error.message).not.toContain('secret');
   });
 

@@ -1,4 +1,5 @@
 import apiClient from '../utils/api-client';
+import { filenameFromDisposition, saveBlob } from '../utils/save-blob';
 import type { AiModelsResponse, AiSettings, AiSettingsUpdate } from '../types/ai-settings';
 
 /** Les réponses de l'API sont `{ success, data }` ; on tolère aussi le corps nu. */
@@ -39,4 +40,57 @@ export async function listAssistantFeedback(
 ) {
   const response = await apiClient.get('/platform/ai-settings/feedback', { params: { offset, rating }, signal });
   return unwrap<{ items: AssistantFeedbackEntry[]; hasNext: boolean }>(response.data);
+}
+
+export type AssistantUsageMode = 'standard' | 'deep' | 'rewrite';
+export type AssistantUsageProvider = 'anthropic' | 'openrouter' | 'fake';
+export type AssistantUsageStatus = 'ok' | 'error' | 'aborted' | 'refused' | 'truncated';
+export interface AssistantUsageFilters {
+  from?: string;
+  to?: string;
+  tenantId?: string;
+  userId?: string;
+  provider?: AssistantUsageProvider;
+  model?: string;
+  mode?: AssistantUsageMode;
+  status?: AssistantUsageStatus;
+}
+
+export interface AssistantUsageItem {
+  tenantId: string;
+  userId: string | null;
+  agency: string | null;
+  account: string | null;
+  provider: AssistantUsageProvider;
+  model: string | null;
+  mode: AssistantUsageMode;
+  status: AssistantUsageStatus;
+  calls: number;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  cacheReadTokens: number | null;
+  cacheWriteTokens: number | null;
+  averageDurationMs: number | null;
+  costUsd: string | null;
+  unknownCosts: number;
+}
+
+export interface AssistantUsageReport {
+  from: string;
+  to: string;
+  items: AssistantUsageItem[];
+  hasNext: boolean;
+}
+
+export async function listAiUsage(filters: AssistantUsageFilters, offset: number, signal: AbortSignal) {
+  const response = await apiClient.get('/platform/ai-settings/usage', { params: { ...filters, offset }, signal });
+  return unwrap<AssistantUsageReport>(response.data);
+}
+
+export async function downloadAiUsage(filters: AssistantUsageFilters) {
+  const response = await apiClient.get<Blob>('/platform/ai-settings/usage/export', {
+    params: filters,
+    responseType: 'blob'
+  });
+  saveBlob(response.data, filenameFromDisposition(response.headers['content-disposition'], 'immotopia-usage-ia.csv'));
 }

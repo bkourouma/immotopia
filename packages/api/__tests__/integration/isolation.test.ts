@@ -97,6 +97,8 @@ import {
 // permet de lui faire emettre des appels d'outils precis.
 const mockProviderRequests: Array<{ messages: unknown }> = [];
 let mockFakeScript: Array<{ text?: string; toolCalls?: Array<{ name: string; input: unknown }> }> | undefined;
+let mockReportedUsage: import('../../src/lib/ai/contracts').LlmUsage | undefined;
+let mockUsageFailure = false;
 jest.mock('../../src/lib/ai/providers', () => {
   const actual = jest.requireActual('../../src/lib/ai/providers');
   return {
@@ -105,9 +107,17 @@ jest.mock('../../src/lib/ai/providers', () => {
       const fake = new actual.FakeProvider(mockFakeScript);
       return {
         id: fake.id,
-        runTurn: (req: { messages: unknown }, ...rest: unknown[]) => {
+        runTurn: async (req: { messages: unknown }, ...rest: unknown[]) => {
           mockProviderRequests.push(req);
-          return fake.runTurn(req, ...rest);
+          if (mockUsageFailure) {
+            throw new actual.LlmProviderError('Fournisseur indisponible', {
+              retryable: true,
+              upstreamStatus: 429,
+              model: 'fixture/measured-model'
+            });
+          }
+          const turn = await fake.runTurn(req, ...rest);
+          return mockReportedUsage ? { ...turn, model: 'fixture/measured-model', usage: mockReportedUsage } : turn;
         }
       };
     }
@@ -253,6 +263,106 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
   });
 
   describe('Assistant — historique privé', () => {
+    it('ventile les appels réels au fournisseur avec coût partiel et export réservé au super-admin', async () => {
+      const actor = await createTenantMemberUser(tenantA, 'usage-assistant', 'TEST_USAGE_ASSISTANT', [
+        'PROPERTIES_VIEW'
+      ]);
+      await prisma.permission.upsert({
+        where: { key: 'PLATFORM_TENANTS_VIEW' },
+        create: { key: 'PLATFORM_TENANTS_VIEW', description: 'Lecture plateforme pour la recette des usages' },
+        update: {}
+      });
+      const platform = await createSuperAdminUser('assistant-usage-platform');
+      const base = `/api/tenants/${tenantA.id}/ai`;
+      const path = '/api/platform/ai-settings/usage';
+      const prompt = 'Consigne non conservée dans les mesures.';
+      mockFakeScript = [{ text: 'Mesure de recette.' }];
+      try {
+        for (const [index, costUsd] of [0, undefined, 0.004125].entries()) {
+          mockReportedUsage = { inputTokens: 12, outputTokens: 4, cacheReadTokens: 0, costUsd };
+          const turn = await request(app)
+            .post(base + '/chat')
+            .set(authed(actor))
+            .send({
+              turnId: randomUUID(),
+              deep: index === 2,
+              messages: [{ role: 'user', content: prompt }]
+            });
+          expect(turn.status).toBe(200);
+          expect(turn.text).toContain('Mesure de recette.');
+        }
+        const stored = await prisma.assistantProviderUsage.findMany({
+          where: { tenantId: tenantA.id, userId: actor.id }
+        });
+        expect(stored).toHaveLength(3);
+        expect(stored.filter(row => row.costUsd === null)).toHaveLength(1);
+        expect(stored.every(row => row.durationMs >= 0)).toBe(true);
+        expect(JSON.stringify(stored)).not.toContain(prompt);
+        const filters = { tenantId: tenantA.id, userId: actor.id, mode: 'standard' };
+        expect((await request(app).get(path).query(filters).set(authed(actor))).status).toBe(403);
+        const report = await request(app).get(path).query(filters).set(authed(platform));
+        expect(report.status).toBe(200);
+        expect(report.headers['cache-control']).toBe('private, no-store');
+        expect(report.body.data.items).toEqual([
+          expect.objectContaining({
+            provider: 'fake',
+            model: 'fixture/measured-model',
+            mode: 'standard',
+            status: 'ok',
+            calls: 2,
+            inputTokens: 24,
+            outputTokens: 8,
+            cacheReadTokens: 0,
+            cacheWriteTokens: null,
+            costUsd: '0',
+            unknownCosts: 1
+          })
+        ]);
+        expect(JSON.stringify(report.body)).not.toContain(prompt);
+        const exported = await request(app)
+          .get(path + '/export')
+          .query({ ...filters, mode: 'deep' })
+          .set(authed(platform));
+        expect(exported.status).toBe(200);
+        expect(exported.headers['content-type']).toContain('text/csv');
+        expect(exported.text).toContain('"0.004125"');
+        expect(exported.text).toContain('"deep"');
+        expect(exported.text).not.toContain('"standard"');
+        mockUsageFailure = true;
+        const failed = await request(app)
+          .post(base + '/chat')
+          .set(authed(actor))
+          .send({
+            turnId: randomUUID(),
+            messages: [{ role: 'user', content: prompt }]
+          });
+        expect(failed.text).toContain('"reason":"error"');
+        const errors = await request(app)
+          .get(path)
+          .query({ ...filters, status: 'error' })
+          .set(authed(platform));
+        expect(errors.body.data.items).toEqual([
+          expect.objectContaining({
+            status: 'error',
+            calls: 1,
+            inputTokens: null,
+            costUsd: null,
+            unknownCosts: 1
+          })
+        ]);
+        expect(
+          await prisma.assistantProviderUsage.count({
+            where: { tenantId: tenantA.id, userId: actor.id, upstreamStatus: 429 }
+          })
+        ).toBe(1);
+      } finally {
+        mockUsageFailure = false;
+        mockReportedUsage = undefined;
+        mockFakeScript = undefined;
+        await prisma.user.delete({ where: { id: platform.id } });
+      }
+    });
+
     it('publie et recalcule le bilan locatif du mois avec ses sources comparables', async () => {
       const agency = await createTestTenant('Bilan-locatif-assistant');
       createdTenantIds.push(agency.id);

@@ -10,9 +10,13 @@ const getAiSettings = vi.fn();
 const updateAiSettings = vi.fn();
 const listAiModels = vi.fn();
 const listAssistantFeedback = vi.fn();
+const listAiUsage = vi.fn();
+const downloadAiUsage = vi.fn();
 
 vi.mock('../../services/ai-settings-service', () => ({
   listAssistantFeedback: (...a: unknown[]) => listAssistantFeedback(...a),
+  listAiUsage: (...a: unknown[]) => listAiUsage(...a),
+  downloadAiUsage: (...a: unknown[]) => downloadAiUsage(...a),
   getAiSettings: (...a: unknown[]) => getAiSettings(...a),
   updateAiSettings: (...a: unknown[]) => updateAiSettings(...a),
   listAiModels: (...a: unknown[]) => listAiModels(...a)
@@ -97,6 +101,47 @@ describe('AiSettingsPage', () => {
     expect(screen.getByText(/Awa Koné/)).toBeInTheDocument();
     expect(screen.getByText('Base de données')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Enregistrer/ })).toBeDisabled();
+  });
+
+  it('affiche le coût inconnu et exporte la sélection de compte', async () => {
+    listAiUsage.mockResolvedValue({
+      from: '2026-09-01',
+      to: '2026-09-28',
+      hasNext: false,
+      items: [
+        {
+          tenantId: 'agency-id',
+          userId: 'member-id',
+          agency: 'Agence A',
+          account: 'Membre A',
+          model: 'claude',
+          provider: 'anthropic',
+          mode: 'deep',
+          status: 'ok',
+          calls: 1,
+          inputTokens: 5,
+          outputTokens: 3,
+          cacheReadTokens: 0,
+          cacheWriteTokens: null,
+          averageDurationMs: 212,
+          costUsd: null,
+          unknownCosts: 1
+        }
+      ]
+    });
+    downloadAiUsage.mockResolvedValue(undefined);
+    mount();
+    expect(listAiUsage).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByText('Usages de l’assistant'));
+    expect(await screen.findByText('Inconnu')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Membre A' }));
+    await waitFor(() =>
+      expect(listAiUsage).toHaveBeenLastCalledWith({ userId: 'member-id' }, 0, expect.any(AbortSignal))
+    );
+    const exportButton = screen.getByRole('button', { name: 'Exporter en CSV' });
+    await waitFor(() => expect(exportButton).toBeEnabled());
+    fireEvent.click(exportButton);
+    expect(downloadAiUsage).toHaveBeenCalledWith({ userId: 'member-id', from: '2026-09-01', to: '2026-09-28' });
   });
 
   it('désactive un fournisseur indisponible et affiche sa raison', async () => {

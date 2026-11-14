@@ -15,6 +15,7 @@ import {
   Typography
 } from 'antd';
 import { AssistantFeedbackList } from './AssistantFeedbackList';
+import { AssistantUsageList } from './AssistantUsageList';
 import { SaveOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { getAiSettings, listAiModels, updateAiSettings } from '../../services/ai-settings-service';
@@ -326,7 +327,8 @@ export const AiSettingsPage: React.FC = () => {
 
       <Collapse
         items={[
-          { key: 'feedback', label: t('Avis sur les réponses de l’assistant'), children: <AssistantFeedbackList /> }
+          { key: 'feedback', label: t('Avis sur les réponses de l’assistant'), children: <AssistantFeedbackList /> },
+          { key: 'usage', label: t('Usages de l’assistant'), children: <AssistantUsageList /> }
         ]}
       />
 

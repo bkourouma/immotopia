@@ -3147,5 +3147,19 @@
   "Vérifiez les échéances non soldées avant toute relance. Pour les baux arrivant à terme, contrôlez les préavis et préparez une alerte si nécessaire.": "Check outstanding instalments before sending reminders. For leases nearing their end, check notice periods and set up an alert if needed.",
   "Échéances du mois et de l’année précédente": "Instalments for the month and the same month last year",
   "Aucune valeur numérique à tracer.": "No numeric values to plot.",
-  "Les données sont présentées en barres pour faciliter leur lecture.": "The data is shown as a bar chart for readability."
+  "Les données sont présentées en barres pour faciliter leur lecture.": "The data is shown as a bar chart for readability.",
+  "Appels": "Calls",
+  "Appels sans coût communiqué": "Calls with no reported cost",
+  "Coût communiqué (USD)": "Reported cost (USD)",
+  "Durée moyenne (ms)": "Average duration (ms)",
+  "Début UTC": "Start (UTC)",
+  "Fin UTC": "End (UTC)",
+  "Fournisseur": "Provider",
+  "Jetons en entrée": "Input tokens",
+  "Jetons en sortie": "Output tokens",
+  "Jetons lus du cache": "Tokens read from cache",
+  "Jetons écrits dans le cache": "Tokens written to cache",
+  "Mode": "Mode",
+  "Modèle": "Model",
+  "Réduisez la période ou filtrez les usages avant de les exporter.": "Shorten the period or filter usage before exporting."
 }

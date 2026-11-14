@@ -456,12 +456,14 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
     expect(routes.filter(r => r.path.startsWith('/api/tenants/:tenantId/ai/'))).toHaveLength(expected.length);
   });
 
-  it('declare les 3 routes du reglage IA de la plateforme avec permission PLATFORM et super-admin', () => {
+  it('déclare les routes IA de la plateforme avec permission PLATFORM et garde super-admin', () => {
     const expected: Array<[string, string, string]> = [
       ['GET', '/api/platform/ai-settings', 'PLATFORM_TENANTS_VIEW'],
       ['PUT', '/api/platform/ai-settings', 'PLATFORM_TENANTS_EDIT'],
       ['GET', '/api/platform/ai-settings/models', 'PLATFORM_TENANTS_VIEW'],
-      ['GET', '/api/platform/ai-settings/feedback', 'PLATFORM_TENANTS_VIEW']
+      ['GET', '/api/platform/ai-settings/feedback', 'PLATFORM_TENANTS_VIEW'],
+      ['GET', '/api/platform/ai-settings/usage', 'PLATFORM_TENANTS_VIEW'],
+      ['GET', '/api/platform/ai-settings/usage/export', 'PLATFORM_TENANTS_VIEW']
     ];
     for (const [method, path, permission] of expected) {
       const route = routes.find(r => r.method === method && r.path === path);
@@ -469,7 +471,7 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
       expect(hasPlatformPermission(route!)).toBe(permission);
       expect(route!.middlewares).toContain(requireSuperAdmin);
     }
-    expect(routes.filter(r => r.path.startsWith('/api/platform/ai-settings'))).toHaveLength(4);
+    expect(routes.filter(r => r.path.startsWith('/api/platform/ai-settings'))).toHaveLength(expected.length);
   });
 
   it('protège la lecture et la modification du seuil budgétaire par le droit de gestion des chantiers', () => {

@@ -105,9 +105,26 @@ describe('AnthropicProvider', () => {
     expect(deltas).toEqual(['Bon', 'jour']);
     expect(result).toEqual({
       stopReason: 'end_turn',
+      model: 'claude-opus-5-5',
       assistantContent: [{ type: 'text', text: 'Bonjour' }],
       toolCalls: []
     });
+  });
+
+  it('inclut les jetons de cache dans l’entrée, avec un coût inconnu', async () => {
+    mockStream.mockReturnValue(
+      fakeStream({
+        message: {
+          model: 'claude-served',
+          stop_reason: 'end_turn',
+          content: [],
+          usage: { input_tokens: 10, output_tokens: 8, cache_creation_input_tokens: 5, cache_read_input_tokens: 50 }
+        }
+      })
+    );
+    const result = await new AnthropicProvider({ getConfig }).runTurn(req, () => {}, new AbortController().signal);
+    expect(result.usage).toEqual({ inputTokens: 65, outputTokens: 8, cacheReadTokens: 50, cacheWriteTokens: 5 });
+    expect(result.model).toBe('claude-served');
   });
 
   it('coupe le repli serveur avec AI_REFUSAL_FALLBACK=off', async () => {
