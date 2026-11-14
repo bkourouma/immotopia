@@ -196,7 +196,7 @@ export async function saveResponseFeedback(
     const key = { ...owner, turnId, revision: input.revision };
     const data = { helpful: input.helpful, comment: input.comment, excerpt: current.response.slice(0, 300) };
     await tx.assistantResponseFeedback.upsert({
-      where: { tenantId_ownerId_turnId_revision: key },
+      where: { tenantId: owner.tenantId, tenantId_ownerId_turnId_revision: key },
       create: { ...key, ...data },
       update: data
     });

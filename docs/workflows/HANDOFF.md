@@ -55,6 +55,8 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 **À poursuivre** — Étendre le catalogue aux lots, au syndic, au patrimoine, à la maintenance, au CRM et à la promotion. Enrichir les exports avec des graphiques natifs. Poursuivre le partage, les épingles, les actions de suivi, les envois, l’administration et les six langues. Recetter avec un fournisseur réel et un navigateur.
 
+**Recette ciblée (`2be7ee97`)** — 97 tests unitaires et 7 tests PostgreSQL du bloc historique privé réussis. Les parcours de maintenance et d’avis repassent avec la garde Prisma en mode enforce après ajout du filtre explicite d’agence à l’écriture de l’avis. Le contrôle d’architecture et le wiki passent.
+
 ## chore/deps-patch-minor — 2026-11-11
 
 **État** — PR 218 vers `main` (fusion par l'utilisateur), reprend la PR Dependabot 212 (28 mises à jour mineures : antd 6.7, Radix, TanStack Query, aws-sdk, docxtemplater, pizzip…). PR Dependabot 214 (`@vitejs/plugin-react` 6) et 215 (`vitest` 5) fermées le 2026-11-11 : sauts de versions majeures (module introuvable, matchers non typés), à traiter en migration dédiée ; envisager une règle `ignore` des versions majeures dans `.github/dependabot.yml`.
