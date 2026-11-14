@@ -25,6 +25,7 @@ import '../helpers/app-shims';
 import { randomUUID } from 'crypto';
 import * as fs from 'fs/promises';
 import PizZip from 'pizzip';
+import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { Workbook } from 'exceljs';
 import request from 'supertest';
 import { DocumentType } from '@prisma/client';
@@ -246,6 +247,39 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
   });
 
   describe('Assistant — historique privé', () => {
+    it('extrait le texte du PDF et refuse un PDF sans couche texte', async () => {
+      const url = `/api/tenants/${tenantA.id}/ai`;
+      const payload = () =>
+        JSON.stringify({
+          turnId: randomUUID(),
+          messages: [{ role: 'user', content: 'Lis le PDF' }]
+        });
+      const pdf = await PDFDocument.create();
+      const page = pdf.addPage();
+      page.drawText('Mandat de gestion confidentiel', { font: await pdf.embedFont(StandardFonts.Helvetica) });
+      mockFakeScript = [{ text: 'Le PDF contient un mandat.' }];
+      try {
+        const textPdf = await request(app)
+          .post(url + '/chat')
+          .set(authed(adminA))
+          .field('payload', payload())
+          .attach('files', Buffer.from(await pdf.save()), 'mandat.pdf');
+        expect(textPdf.status).toBe(200);
+        expect(JSON.stringify(mockProviderRequests.at(-1)?.messages)).toContain('Mandat de gestion confidentiel');
+        const blank = await PDFDocument.create();
+        blank.addPage().drawRectangle({ width: 50, height: 30 });
+        const scanned = await request(app)
+          .post(url + '/chat')
+          .set(authed(adminA))
+          .field('payload', payload())
+          .attach('files', Buffer.from(await blank.save()), 'scan.pdf');
+        expect(scanned.status).toBe(400);
+        expect(scanned.body.message).toContain('Aucun texte lisible');
+      } finally {
+        mockFakeScript = undefined;
+      }
+    });
+
     it('joint un CSV, un TXT et un XLSX au message privé, puis restaure le jeu et les noms', async () => {
       const url = `/api/tenants/${tenantA.id}/ai`;
       const requestBody = { turnId: randomUUID(), messages: [{ role: 'user', content: 'Analyse ces fichiers' }] };

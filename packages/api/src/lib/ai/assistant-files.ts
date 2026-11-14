@@ -3,6 +3,7 @@ import { parseString } from 'fast-csv';
 import { t } from '../../i18n';
 import { BadRequestError } from '../../middleware/error-middleware';
 import type { AnalysisTable, ArtifactCell } from './contracts';
+import { readAssistantPdf } from './assistant-pdf';
 import { readAssistantWorkbook } from './assistant-workbook';
 
 export const MAX_ASSISTANT_FILES = 5;
@@ -61,9 +62,10 @@ async function readCsv(text: string): Promise<string[][]> {
 export async function extractAssistantFile(file: Express.Multer.File, tenantId: string): Promise<AssistantFileExtract> {
   const name = file.originalname.replace(/[\x00-\x1F\x7F/\\]/g, '').slice(0, 180);
   const extension = name.split('.').at(-1)?.toLowerCase();
+  if (extension === 'pdf') return { name, excerpt: await readAssistantPdf(file.buffer, MAX_EXCERPT) };
   if (extension === 'txt') return { name, excerpt: readText(file.buffer).slice(0, MAX_EXCERPT) };
   if (extension !== 'csv' && extension !== 'xlsx') {
-    throw new BadRequestError(t('Formats acceptés pour les pièces jointes : CSV, TXT et XLSX.'));
+    throw new BadRequestError(t('Formats acceptés pour les pièces jointes : CSV, TXT, XLSX et PDF.'));
   }
   const workbook =
     extension === 'xlsx'
