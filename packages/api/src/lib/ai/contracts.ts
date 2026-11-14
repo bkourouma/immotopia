@@ -38,6 +38,8 @@ export type CopilotToolName =
   | 'search_leases'
   | 'rental_arrears'
   | 'rental_receipts'
+  | 'rental_due_comparison'
+  | 'rental_monthly_review'
   | 'maintenance_overview'
   | 'syndicate_maintenance'
   | 'syndicate_charges'
@@ -371,11 +373,11 @@ export type AnalysisQuery =
       month?: string;
       batchType?: BatchType;
     }
-  | { tool: 'rental_arrears' | 'rental_receipts'; month: string }
+  | { tool: 'rental_arrears' | 'rental_receipts' | 'rental_due_comparison'; month: string }
   | (MaintenanceQueryFilters &
       ({ tool: 'maintenance_overview' } | { tool: 'syndicate_maintenance'; syndicateId: string }))
   | { tool: 'property_portfolio'; groupBy: 'propertyType' | 'zone'; propertyType?: PropertyType; zone?: string }
-  | { tool: 'lease_portfolio'; start: string; end: string; propertyId?: string }
+  | { tool: 'lease_portfolio'; start: string; end: string; propertyId?: string; onlyEnding?: boolean }
   | { tool: 'crm_pipeline'; assignedToUserId?: string; stages?: Exclude<CrmDealStage, 'WON' | 'LOST'>[] }
   | { tool: 'sale_mandates'; start: string; end: string; propertyId?: string; agentUserId?: string }
   | { tool: 'construction_budget'; siteId?: string; status?: ConstructionSiteStatus; onlyOverBudget?: boolean }

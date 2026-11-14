@@ -80,6 +80,20 @@ const CORE_TOOLS = [
 ];
 
 describe('ImmoCopilot — outils et prompt par pack', () => {
+  it('exige les droits des trois jeux de données pour le bilan locatif complet', () => {
+    const permissions = ['RENTAL_INSTALLMENTS_VIEW', 'RENTAL_PAYMENTS_VIEW', 'RENTAL_LEASES_VIEW', 'PROPERTIES_VIEW'];
+    expect(toolsForUser(permissions, ['RENTAL']).map(tool => tool.name)).toContain('rental_monthly_review');
+    for (const missing of permissions) {
+      const names = toolsForUser(
+        permissions.filter(permission => permission !== missing),
+        ['RENTAL']
+      ).map(tool => tool.name);
+      expect(names).not.toContain('rental_monthly_review');
+    }
+    expect(toolsForUser(['RENTAL_INSTALLMENTS_VIEW'], ['RENTAL']).map(tool => tool.name)).toContain(
+      'rental_due_comparison'
+    );
+  });
   it('garde les relevés et les reversements séparés selon les permissions locatives', () => {
     expect(toolsForUser(['OWNER_STATEMENTS_VIEW'], ['RENTAL']).map(tool => tool.name)).toEqual(['owner_statements']);
     expect(toolsForUser(['FINANCE_ACCOUNTS_READ'], ['RENTAL']).map(tool => tool.name)).toEqual(['owner_payouts']);

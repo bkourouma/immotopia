@@ -2930,5 +2930,8 @@
   "Suivi budgétaire des chantiers": "Construction budget tracking",
   "Échéances des mandats de vente": "Sales mandate expirations",
   "Montants des relevés de gérance": "Management statement amounts",
-  "Reversements propriétaires exécutés": "Completed owner payouts"
+  "Reversements propriétaires exécutés": "Completed owner payouts",
+  "Bilan locatif du mois clos": "Closed-month rental review",
+  "Comparaison des échéances locatives": "Rental instalment comparison",
+  "Prépare le bilan locatif du dernier mois clos": "Prepare the rental review for the last closed month"
 }

@@ -3135,5 +3135,15 @@
   "Reversements propriétaires exécutés": "التحويلات المنفذة للمالكين",
   "Seuls les reversements validés en XOF sont inclus selon leur date de paiement.": "تُدرج التحويلات المعتمدة بفرنك غرب أفريقيا فقط، حسب تاريخ الدفع.",
   "TVA sur les honoraires": "ضريبة القيمة المضافة على رسوم الإدارة",
-  "Version du calcul": "إصدار طريقة الحساب"
+  "Version du calcul": "إصدار طريقة الحساب",
+  "Bilan locatif du mois {{month}}": "مراجعة الإيجارات لشهر {{month}}",
+  "Le montant attendu comprend les loyers, charges, autres frais et pénalités des échéances non annulées, selon leur date d’échéance.": "يشمل المبلغ المتوقع الإيجار ورسوم الخدمات والرسوم الأخرى والغرامات للأقساط غير الملغاة حسب تاريخ استحقاقها.",
+  "Le retard inclut les soldes positifs des échéances non soldées. Un mois sans échéance pour une devise n’a pas de ligne.": "تشمل المتأخرات الأرصدة الموجبة للأقساط غير المسددة. لا يظهر صف للشهر إذا لم تكن فيه أقساط بهذه العملة.",
+  "Le tableau comprend uniquement les biens avec une fin de bail pendant la période.": "يشمل الجدول فقط العقارات التي ينتهي فيها عقد إيجار خلال الفترة.",
+  "Les paiements affectés et les soldes reflètent la situation à la date du calcul, y compris pour le mois de l’année précédente.": "تعكس المدفوعات المخصصة والأرصدة الوضع في تاريخ الحساب، بما في ذلك شهر السنة السابقة.",
+  "Montant attendu": "المبلغ المتوقع",
+  "Nombre d’échéances en retard": "عدد الأقساط المتأخرة",
+  "Paiements affectés": "المدفوعات المخصصة",
+  "Vérifiez les échéances non soldées avant toute relance. Pour les baux arrivant à terme, contrôlez les préavis et préparez une alerte si nécessaire.": "تحقق من الأقساط غير المسددة قبل إرسال أي تذكير. راجع مهل الإشعار للعقود التي يقترب انتهاؤها وأعدّ تنبيهًا عند الحاجة.",
+  "Échéances du mois et de l’année précédente": "أقساط الشهر والشهر نفسه من السنة السابقة"
 }

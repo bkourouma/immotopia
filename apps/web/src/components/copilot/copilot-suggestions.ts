@@ -30,11 +30,21 @@ export function getCopilotSuggestions(pathname: string, tools: readonly CopilotT
     ];
   } else if (RENTAL_PATH.test(pathname)) {
     candidates = [
+      {
+        id: 'rental-monthly-review',
+        text: t('Prépare le bilan locatif du dernier mois clos'),
+        requires: 'rental_monthly_review'
+      },
       { id: 'rental-search', text: t('Montre-moi les baux en cours'), requires: 'search_leases' },
       { id: 'rental-receipt', text: t('Génère une quittance de loyer'), requires: 'propose_rental_document' }
     ];
   } else {
     candidates = [
+      {
+        id: 'default-monthly-review',
+        text: t('Prépare le bilan locatif du dernier mois clos'),
+        requires: 'rental_monthly_review'
+      },
       { id: 'default-properties', text: t('Montre-moi les biens disponibles'), requires: 'search_properties' },
       {
         id: 'default-arrears',

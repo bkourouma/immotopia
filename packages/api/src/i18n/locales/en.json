@@ -3135,5 +3135,15 @@
   "Reversements propriétaires exécutés": "Completed owner payouts",
   "Seuls les reversements validés en XOF sont inclus selon leur date de paiement.": "Only validated XOF payouts are included, based on their payment date.",
   "TVA sur les honoraires": "VAT on management fees",
-  "Version du calcul": "Calculation version"
+  "Version du calcul": "Calculation version",
+  "Bilan locatif du mois {{month}}": "Rental review for {{month}}",
+  "Le montant attendu comprend les loyers, charges, autres frais et pénalités des échéances non annulées, selon leur date d’échéance.": "The expected amount includes rent, service charges, other fees and penalties for non-cancelled instalments, based on the due date.",
+  "Le retard inclut les soldes positifs des échéances non soldées. Un mois sans échéance pour une devise n’a pas de ligne.": "Overdue amounts include positive balances on outstanding instalments. A month with no instalments in a currency has no row.",
+  "Le tableau comprend uniquement les biens avec une fin de bail pendant la période.": "The table includes only properties with a lease ending during the period.",
+  "Les paiements affectés et les soldes reflètent la situation à la date du calcul, y compris pour le mois de l’année précédente.": "Allocated payments and balances reflect the situation on the calculation date, including for the prior-year month.",
+  "Montant attendu": "Expected amount",
+  "Nombre d’échéances en retard": "Number of overdue instalments",
+  "Paiements affectés": "Allocated payments",
+  "Vérifiez les échéances non soldées avant toute relance. Pour les baux arrivant à terme, contrôlez les préavis et préparez une alerte si nécessaire.": "Check outstanding instalments before sending reminders. For leases nearing their end, check notice periods and set up an alert if needed.",
+  "Échéances du mois et de l’année précédente": "Instalments for the month and the same month last year"
 }

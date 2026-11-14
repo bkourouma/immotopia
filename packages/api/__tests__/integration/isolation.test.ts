@@ -253,6 +253,142 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
   });
 
   describe('Assistant — historique privé', () => {
+    it('publie et recalcule le bilan locatif du mois avec ses sources comparables', async () => {
+      const agency = await createTestTenant('Bilan-locatif-assistant');
+      createdTenantIds.push(agency.id);
+      const admin = await createTenantMemberUser(agency, 'bilan-locatif-assistant', 'TEST_RENTAL_MONTHLY_REVIEW', [
+        'RENTAL_INSTALLMENTS_VIEW',
+        'RENTAL_PAYMENTS_VIEW',
+        'RENTAL_LEASES_VIEW',
+        'PROPERTIES_VIEW'
+      ]);
+      const [current, prior, canceled, foreign] = await Promise.all([
+        createRentalFixtureDirect(agency.id, admin.id, 'review-current'),
+        createRentalFixtureDirect(agency.id, admin.id, 'review-prior'),
+        createRentalFixtureDirect(agency.id, admin.id, 'review-canceled'),
+        createRentalFixtureDirect(tenantB.id, adminB.id, 'review-foreign')
+      ]);
+      const period = '2025-10';
+      const currentDue = new Date('2025-10-04');
+      const priorDue = new Date('2024-10-04');
+      const now = new Date();
+      now.setUTCDate(now.getUTCDate() + 7);
+      const updateDue = (
+        tenantId: string,
+        id: string,
+        data: Parameters<typeof prisma.rentalInstallment.updateMany>[0]['data']
+      ) => prisma.rentalInstallment.updateMany({ where: { tenant_id: tenantId, id }, data });
+      const updatePayment = (
+        tenantId: string,
+        id: string,
+        data: Parameters<typeof prisma.rentalPayment.updateMany>[0]['data']
+      ) => prisma.rentalPayment.updateMany({ where: { tenant_id: tenantId, id }, data });
+      await Promise.all([
+        updateDue(agency.id, current.installmentId, {
+          due_date: currentDue,
+          status: 'PARTIAL',
+          currency: 'FCFA',
+          amount_rent: 100,
+          amount_service: 10,
+          amount_other_fees: 5,
+          penalty_amount: 2,
+          amount_paid: 40
+        }),
+        updateDue(agency.id, prior.installmentId, { due_date: priorDue, amount_rent: 80, amount_paid: 80 }),
+        updateDue(agency.id, canceled.installmentId, { due_date: currentDue, status: 'CANCELED' }),
+        updateDue(tenantB.id, foreign.installmentId, { due_date: currentDue, status: 'OVERDUE', amount_paid: 0 }),
+        updatePayment(agency.id, current.paymentId, {
+          succeeded_at: new Date('2025-10-31T18:00:00Z'),
+          amount: 85,
+          currency: 'EUR'
+        }),
+        updatePayment(agency.id, prior.paymentId, { succeeded_at: new Date('2024-10-03'), amount: 80 }),
+        updatePayment(agency.id, canceled.paymentId, { succeeded_at: new Date('2025-11-01'), amount: 250 }),
+        updatePayment(tenantB.id, foreign.paymentId, { succeeded_at: currentDue }),
+        prisma.rentalLease.updateMany({ where: { tenant_id: agency.id, id: current.leaseId }, data: { end_date: now } })
+      ]);
+      const base = `/api/tenants/${agency.id}/ai`;
+      const parseEvents = (body: string) =>
+        body
+          .split('\n')
+          .filter(line => line.startsWith('data: {'))
+          .map(line => JSON.parse(line.slice(6)));
+      mockFakeScript = [
+        { toolCalls: [{ name: 'rental_monthly_review', input: { month: period } }] },
+        { text: 'Bilan prêt.' }
+      ];
+      const response = await request(app)
+        .post(base + '/chat')
+        .set(authed(admin))
+        .send({
+          turnId: randomUUID(),
+          messages: [{ role: 'user', content: 'Prépare le bilan du mois.' }]
+        });
+      expect(response.status).toBe(200);
+      const events = parseEvents(response.text);
+      const conversationId = events.find(event => event.type === 'meta').conversationId;
+      expect(events).toContainEqual({ type: 'tool_status', tool: 'rental_monthly_review', status: 'succeeded' });
+      const report = events.find(event => event.type === 'artifact').artifact;
+      expect(report.kind).toBe('document');
+      const [dues, receipts, leases] = report.blocks.map((block: { table: unknown }) => block.table);
+      expect(dues.rows).toEqual([
+        { period, currency: 'XOF', expected: 117, allocated: 40, overdue: 77, overdueCount: 1 },
+        { period: '2024-10', currency: 'XOF', expected: 80, allocated: 80, overdue: 0, overdueCount: 0 }
+      ]);
+      expect(receipts.rows).toEqual([
+        { period, currency: 'EUR', amount: 85, count: 1 },
+        { period: '2024-10', currency: 'XOF', amount: 80, count: 1 }
+      ]);
+      expect(leases.rows).toEqual([
+        expect.objectContaining({ property: expect.stringContaining(current.propertyReference), ending: 1 })
+      ]);
+      mockFakeScript = [
+        {
+          toolCalls: [
+            {
+              name: 'chart_analysis',
+              input: {
+                sourceId: dues.id,
+                title: 'Attendu par mois',
+                dimension: 'period',
+                measure: 'expected',
+                chartType: 'bar'
+              }
+            }
+          ]
+        },
+        { text: 'Graphique prêt.' }
+      ];
+      const chart = await request(app)
+        .post(base + '/chat')
+        .set(authed(admin))
+        .send({
+          conversationId,
+          turnId: randomUUID(),
+          messages: [{ role: 'user', content: 'Trace les échéances attendues.' }]
+        });
+      expect(chart.status).toBe(200);
+      expect(parseEvents(chart.text).find(event => event.type === 'artifact').artifact.data).toEqual([
+        { category: '2024-10', value0: 80 },
+        { category: period, value0: 117 }
+      ]);
+      await updateDue(agency.id, current.installmentId, { amount_paid: 70 });
+      const path = `${base}/conversations/${conversationId}/artifacts/${report.id}`;
+      const replay = await request(app).post(path).set(authed(admin)).send({ expectedVersion: 1 });
+      expect(replay.status).toBe(201);
+      expect(replay.body.data.artifact.blocks[0].table.rows[0]).toMatchObject({
+        expected: 117,
+        allocated: 70,
+        overdue: 47
+      });
+      expect(replay.body.data.artifact.blocks[2].table.query).toEqual(leases.query);
+      const pdf = await request(app)
+        .get(path + '/pdf')
+        .set(authed(admin));
+      expect(pdf.status).toBe(200);
+      expect(pdf.headers['content-type']).toMatch(/^application\/pdf/);
+    });
+
     it('affiche les relevés de gérance et les reversements validés de la période sans synchroniser les comptes', async () => {
       const actor = await createTenantMemberUser(tenantA, 'owner-analysis', 'TEST_OWNER_ANALYSIS', [
         'OWNER_STATEMENTS_VIEW',
@@ -809,7 +945,9 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
                 'prepare_declaration_alert',
                 'prepare_rent_arrears_alert',
                 'owner_statements',
-                'owner_payouts'
+                'owner_payouts',
+                'rental_due_comparison',
+                'rental_monthly_review'
               ].includes(name)
           )
       );

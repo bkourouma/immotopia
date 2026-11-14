@@ -34,6 +34,12 @@ describe('getCopilotPageContext', () => {
 });
 
 describe('getCopilotSuggestions', () => {
+  it('propose le bilan locatif seulement avec l’outil autorisé', () => {
+    expect(getCopilotSuggestions('/tenant/t1/assistant', ['rental_monthly_review'])).toEqual([
+      expect.objectContaining({ id: 'default-monthly-review', requires: 'rental_monthly_review' })
+    ]);
+    expect(getCopilotSuggestions('/tenant/t1/rental', ['rental_due_comparison'])).toEqual([]);
+  });
   it('propose des actions de bail sur la fiche bail', () => {
     const ids = getCopilotSuggestions('/tenant/t1/rental/leases/l1', ALL).map(s => s.id);
     expect(ids).toEqual(['lease-receipt', 'lease-statement', 'lease-documents']);

@@ -5,7 +5,7 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Domaine | Sous-fonctionnalités |
 | --- | --- |
 | Parc immobilier | 197 |
-| Gestion locative | 182 |
+| Gestion locative | 184 |
 | Finance | 198 |
 | CRM et Ventes | 72 |
 | Maintenance | 34 |
@@ -13,7 +13,7 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Syndic copropriete | 247 |
 | Administration plateforme | 142 |
 | Portails externes | 84 |
-| **Total** | **1269** |
+| **Total** | **1271** |
 
 ## Sous-fonctionnalités
 
@@ -402,9 +402,11 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Agence, Opérateur intégré, Patrimoine Essentiel, Patrimoine Pro | RENTAL | Assistant IA ImmoCopilot | Analyser les échéances locatives non soldées | Classer les biens selon le solde actuel des échéances d’un mois clos, par devise, avec provenance et lien vers le bien. | Mois clos facultatif | Tableau et exports Excel et CSV | Données locatives | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | RENTAL_INSTALLMENTS_VIEW et accès assistant | Disponible | Assistant > Résultats et documents |
 | Agence, Opérateur intégré, Patrimoine Essentiel, Patrimoine Pro | RENTAL | Assistant IA ImmoCopilot | Comparer les encaissements locatifs | Comparer les paiements réussis du mois clos, du mois précédent et du même mois de l’année précédente selon leur date d’encaissement et par devise. | Mois clos facultatif | Tableau et provenance | Données locatives | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | RENTAL_PAYMENTS_VIEW et accès assistant | Disponible | Assistant > Résultats et documents |
 | Agence, Opérateur intégré, Patrimoine Essentiel, Patrimoine Pro | RENTAL | Assistant IA ImmoCopilot | Tracer une analyse locative | Créer un graphique à partir des valeurs calculées d’un tableau de la conversation, avec provenance et séries par devise. | Tableau source, mesure, dimension et type | Graphique avec vue des données | Analyse locative accessible | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | PROPERTIES_VIEW et permissions de l’analyse source | Disponible | Assistant > Résultats et documents |
-| Agence, Opérateur intégré, Patrimoine Essentiel, Patrimoine Pro | RENTAL | Assistant IA ImmoCopilot | Analyser les baux actifs et leurs fins | Compter les baux actifs et les fins contractuelles dans la période, par bien, avec le détail de la première échéance de fin. | Période de fin et bien | Tableau recalculable avec provenance et export | Droits de lecture du module | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | RENTAL_LEASES_VIEW et PROPERTIES_VIEW | Disponible | Assistant > Résultats et documents |
+| Agence, Opérateur intégré, Patrimoine Essentiel, Patrimoine Pro | RENTAL | Assistant IA ImmoCopilot | Analyser les baux actifs et leurs fins | Compter les baux actifs et les fins contractuelles dans la période, par bien, avec le détail de la première échéance de fin. | Période de fin, bien et filtre sur les biens avec fin de bail | Tableau recalculable avec provenance et export | Droits de lecture du module | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | RENTAL_LEASES_VIEW et PROPERTIES_VIEW | Disponible | Assistant > Résultats et documents |
 | Agence, Opérateur intégré | RENTAL | Assistant IA ImmoCopilot | Analyser les montants des relevés de gérance | Consulter les recettes, les dépenses, les honoraires, la TVA et le net des relevés enregistrés. | Période, bien, contact propriétaire et statut facultatifs | Tableau recalculable par relevé et devise avec statut, version du calcul et provenance | Module locatif et gestion pour compte de tiers autorisée | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | OWNER_STATEMENTS_VIEW | Disponible | Assistant > Résultats et documents |
 | Agence, Opérateur intégré | RENTAL | Assistant IA ImmoCopilot | Analyser les reversements exécutés | Consulter les reversements validés selon leur date de paiement. | Période et compte client propriétaire facultatifs | Tableau recalculable des reversements en XOF avec lien au compte propriétaire | Module locatif, gestion pour compte de tiers autorisée et reversement validé | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | FINANCE_ACCOUNTS_READ | Disponible | Assistant > Résultats et documents |
+| Agence, Opérateur intégré, Patrimoine Essentiel, Patrimoine Pro | RENTAL | Assistant IA ImmoCopilot | Comparer les échéances locatives sur un an | Comparer l’attendu, les paiements affectés et les soldes en retard selon la date d’échéance. | Mois clos facultatif | Tableau recalculable par devise pour le mois et le même mois de l’année précédente | Droits de lecture du module | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | RENTAL_INSTALLMENTS_VIEW | Disponible | Assistant > Résultats et documents |
+| Agence, Opérateur intégré, Patrimoine Essentiel, Patrimoine Pro | RENTAL | Assistant IA ImmoCopilot | Préparer le bilan locatif du mois clos | Assembler les échéances, les encaissements, les fins de bail à surveiller et les suivis proposés depuis le chat. | Mois clos facultatif | Rapport dont les trois tableaux peuvent être recalculés et réutilisés comme sources | Droits de lecture du module | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | RENTAL_INSTALLMENTS_VIEW, RENTAL_PAYMENTS_VIEW, RENTAL_LEASES_VIEW et PROPERTIES_VIEW | Disponible | Assistant > Résultats et documents |
 
 ### Finance
 

@@ -87,6 +87,8 @@ export function copilotToolLabel(tool: CopilotToolName): string {
     syndicate_maintenance: t('Maintenance par copropriété'),
     maintenance_overview: t('Analyse des tickets de maintenance'),
     rental_receipts: t('Analyse des encaissements locatifs'),
+    rental_due_comparison: t('Comparaison des échéances locatives'),
+    rental_monthly_review: t('Bilan locatif du mois clos'),
     chart_analysis: t('Création du graphique'),
     show_indicators: t('Calcul des indicateurs'),
     compose_report: t('Préparation du rapport'),

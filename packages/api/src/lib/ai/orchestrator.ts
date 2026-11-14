@@ -4,6 +4,7 @@ import { AppError, ForbiddenError } from '../../middleware/error-middleware';
 import { logAuditEvent } from '../../services/audit-service';
 import { AuditActionKey } from '../../types/audit-types';
 import { logger } from '../../utils/logger';
+import { analysisSources } from './artifact-sources';
 import type {
   ChatRequest,
   CopilotErrorCode,
@@ -147,12 +148,7 @@ export async function runChat(input: RunChatInput): Promise<ChatDoneReason> {
     [...(input.analysisTables ?? []), ...(input.importedTables ?? [])].map(table => [table.id, table])
   );
   const focus = input.focusedArtifact;
-  if (focus?.kind === 'table' && focus.provenance) analysisTables.set(focus.id, focus);
-  if (focus?.kind === 'document') {
-    for (const block of focus.blocks) {
-      if (block.kind === 'table' && block.table.provenance) analysisTables.set(block.table.id, block.table);
-    }
-  }
+  if (focus) for (const table of analysisSources(focus)) analysisTables.set(table.id, table);
   const sourceRefs = [...analysisTables.values()].map(table => ({
     id: table.id,
     period: table.provenance?.period,
@@ -367,13 +363,8 @@ async function runToolCall(
 
   try {
     const result = await tool.execute(parsed.data, ctx);
-    if (
-      result.uiEvent?.type === 'artifact' &&
-      result.uiEvent.artifact.kind === 'table' &&
-      result.uiEvent.artifact.provenance
-    ) {
-      ctx.analysisTables?.set(result.uiEvent.artifact.id, result.uiEvent.artifact);
-    }
+    if (result.uiEvent?.type === 'artifact')
+      for (const table of analysisSources(result.uiEvent.artifact)) ctx.analysisTables?.set(table.id, table);
     if (result.uiEvent) emit(result.uiEvent);
     emit({ type: 'tool_status', tool: tool.name, status: 'succeeded' });
     audit(AuditActionKey.AI_TOOL_CALLED, { status: 'ok', durationMs: Date.now() - startedAt });

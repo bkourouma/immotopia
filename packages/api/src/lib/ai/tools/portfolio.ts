@@ -24,7 +24,8 @@ const leasesSchema = z
   .object({
     propertyId: propertyIdSchema.optional(),
     start: endDateSchema.optional(),
-    end: endDateSchema.optional()
+    end: endDateSchema.optional(),
+    onlyEnding: z.boolean().optional()
   })
   .strict();
 
@@ -142,7 +143,7 @@ const addDays = (day: string, n: number) => {
 export const leasePortfolioTool: CopilotToolDefinition<typeof leasesSchema> = {
   name: 'lease_portfolio',
   description:
-    'Compte les baux au statut actif aujourd’hui et ceux qui se terminent dans une période inclusive, par bien. Les dates sont au format AAAA-MM-JJ. Par défaut, couvre les 30 prochains jours à compter d’aujourd’hui. Le filtre par bien attend un identifiant trouvé dans ImmoTopia.',
+    'Compte les baux au statut actif aujourd’hui et ceux qui se terminent dans une période inclusive, par bien. Les dates sont au format AAAA-MM-JJ. Par défaut, couvre les 30 prochains jours à compter d’aujourd’hui. Le filtre par bien attend un identifiant trouvé dans ImmoTopia. onlyEnding limite le tableau aux biens ayant au moins une fin de bail sur la période.',
   inputSchema: leasesSchema,
   jsonSchema: {
     type: 'object',
@@ -150,7 +151,8 @@ export const leasePortfolioTool: CopilotToolDefinition<typeof leasesSchema> = {
     properties: {
       propertyId: { type: 'string', format: 'uuid' },
       start: { type: 'string', format: 'date' },
-      end: { type: 'string', format: 'date' }
+      end: { type: 'string', format: 'date' },
+      onlyEnding: { type: 'boolean' }
     }
   },
   requiredPermission: leasePermission,
@@ -201,14 +203,14 @@ export const leasePortfolioTool: CopilotToolDefinition<typeof leasesSchema> = {
       }
       rowsByProperty.set(property.id, row);
     }
-    const rows = [...rowsByProperty.values()].sort(
-      (a, b) => b.ending - a.ending || a.property.localeCompare(b.property)
-    );
+    const rows = [...rowsByProperty.values()]
+      .filter(row => !input.onlyEnding || row.ending > 0)
+      .sort((a, b) => b.ending - a.ending || a.property.localeCompare(b.property));
     const artifact: AnalysisTable = {
       kind: 'table',
       id: randomUUID(),
       title: t('Baux actifs et fins de bail'),
-      query: { ...(input.propertyId ? { propertyId: input.propertyId } : {}), tool: 'lease_portfolio', start, end },
+      query: { ...input, tool: 'lease_portfolio', start, end },
       columns: [
         { key: 'property', label: t('Bien'), linkKey: 'href' },
         { key: 'active', label: t('Baux actifs'), type: 'number' },
@@ -227,7 +229,10 @@ export const leasePortfolioTool: CopilotToolDefinition<typeof leasesSchema> = {
           t(
             'Les dates de fin contractuelles sont comparées à la période affichée, bornes incluses. Les baux sans date de fin comptent dans les baux actifs.'
           ),
-          ...(input.propertyId ? [t('Cette analyse est filtrée sur un seul bien.')] : [])
+          ...(input.propertyId ? [t('Cette analyse est filtrée sur un seul bien.')] : []),
+          ...(input.onlyEnding
+            ? [t('Le tableau comprend uniquement les biens avec une fin de bail pendant la période.')]
+            : [])
         ]
       }
     };

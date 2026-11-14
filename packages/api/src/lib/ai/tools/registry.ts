@@ -22,6 +22,7 @@ import { composeReportTool } from './compose-report';
 import { leasePortfolioTool, propertyPortfolioTool } from './portfolio';
 import { constructionBudgetTool, crmPipelineTool, saleMandatesTool } from './commercial-analysis';
 import { ownerPayoutsTool, ownerStatementsTool } from './owner-financial-analysis';
+import { rentalDueComparisonTool, rentalMonthlyReviewTool } from './rental-monthly-review';
 
 /**
  * Registre des outils exposés au LLM. L'exécution d'un document
@@ -33,6 +34,8 @@ export const ALL_TOOLS: readonly CopilotToolDefinition[] = [
   searchLeasesTool,
   rentalArrearsTool,
   rentalReceiptsTool,
+  rentalDueComparisonTool,
+  rentalMonthlyReviewTool,
   maintenanceOverviewTool,
   syndicateMaintenanceTool,
   syndicateChargesTool,

@@ -19,10 +19,12 @@ import { showIndicatorsTool } from './tools/show-indicators';
 import { leasePortfolioTool, propertyPortfolioTool } from './tools/portfolio';
 import { constructionBudgetTool, crmPipelineTool, saleMandatesTool } from './tools/commercial-analysis';
 import { ownerPayoutsTool, ownerStatementsTool } from './tools/owner-financial-analysis';
+import { rentalDueComparisonTool } from './tools/rental-monthly-review';
 
 const querySchema = z.discriminatedUnion('tool', [
   z.object({ tool: z.literal('rental_arrears'), month: z.string().regex(monthPattern) }).strict(),
   z.object({ tool: z.literal('rental_receipts'), month: z.string().regex(monthPattern) }).strict(),
+  rentalDueComparisonTool.inputSchema.required({ month: true }).extend({ tool: z.literal('rental_due_comparison') }),
   maintenanceOverviewTool.inputSchema.extend({ tool: z.literal('maintenance_overview') }),
   syndicateBudgetTool.inputSchema.extend({ tool: z.literal('syndicate_budget') }),
   syndicateChargesTool.inputSchema.extend({ tool: z.literal('syndicate_charges') }),
@@ -43,6 +45,7 @@ const querySchema = z.discriminatedUnion('tool', [
 const analysisTools: Record<AnalysisQuery['tool'], CopilotToolDefinition> = {
   rental_arrears: rentalArrearsTool,
   rental_receipts: rentalReceiptsTool,
+  rental_due_comparison: rentalDueComparisonTool,
   maintenance_overview: maintenanceOverviewTool,
   syndicate_maintenance: syndicateMaintenanceTool,
   syndicate_charges: syndicateChargesTool,

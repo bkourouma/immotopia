@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { t } from '../../i18n';
 import { ConflictError, NotFoundError } from '../../middleware/error-middleware';
 import { prisma } from '../../utils/database';
+import { analysisSources } from './artifact-sources';
 import {
   COPILOT_MAX_MESSAGE_CHARS,
   COPILOT_MAX_MESSAGES,
@@ -60,17 +61,18 @@ export async function getConversationAttachment(
 }
 
 function storedAnalysisTables(results: (Prisma.JsonValue | null)[]): AnalysisTable[] {
-  const tables: AnalysisTable[] = [];
+  const tables = new Map<string, AnalysisTable>();
   for (const result of results) {
     if (!Array.isArray(result)) continue;
     for (const event of result as unknown as ResultEvent[]) {
-      if (event.type === 'artifact' && event.artifact.kind === 'table' && event.artifact.provenance) {
-        tables.push(event.artifact);
+      if (event.type !== 'artifact') continue;
+      for (const table of analysisSources(event.artifact)) {
+        if (!tables.has(table.id)) tables.set(table.id, table);
+        if (tables.size === 12) return [...tables.values()];
       }
-      if (tables.length === 12) return tables;
     }
   }
-  return tables;
+  return [...tables.values()];
 }
 
 function recentArtifactReferences(results: (Prisma.JsonValue | null)[]): ArtifactRef[] {
@@ -112,7 +114,12 @@ export async function resolveSavedAssistantScope(
   toolNames: string[]
 ): Promise<string> {
   const scopeKey = assistantScope(permissions, toolNames);
-  const beforeOwnershipAnalysis = toolNames.filter(name => name !== 'owner_statements' && name !== 'owner_payouts');
+  const beforeMonthlyReview = toolNames.filter(
+    name => name !== 'rental_due_comparison' && name !== 'rental_monthly_review'
+  );
+  const beforeOwnershipAnalysis = beforeMonthlyReview.filter(
+    name => name !== 'owner_statements' && name !== 'owner_payouts'
+  );
   const beforeCommercialAnalysis = beforeOwnershipAnalysis.filter(
     name => !['crm_pipeline', 'sale_mandates', 'construction_budget'].includes(name)
   );
@@ -130,6 +137,7 @@ export async function resolveSavedAssistantScope(
   const earlierScopes = [
     ...new Set(
       [
+        beforeMonthlyReview,
         beforeOwnershipAnalysis,
         beforeCommercialAnalysis,
         beforeRentalAlerts,

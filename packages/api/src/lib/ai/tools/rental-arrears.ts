@@ -10,6 +10,7 @@ import { assertToolPermission, outcome } from './tool-utils';
 
 const PERMISSION = 'RENTAL_INSTALLMENTS_VIEW';
 const MAX_INSTALLMENTS = 20_000;
+export const openInstallmentStatuses = ['DRAFT', 'DUE', 'PARTIAL', 'OVERDUE'] as const;
 export const monthPattern = /^(20\d\d)-(0[1-9]|1[0-2])$/;
 const inputSchema = z.object({ month: z.string().regex(monthPattern).optional() }).strict();
 
@@ -21,6 +22,15 @@ export function closedMonthBounds(month: string | undefined, now: Date) {
   const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1));
   if (end > firstCurrent) throw new BadRequestError(t('Choisissez un mois terminé.'));
   return { start, end, period: start.toISOString().slice(0, 7) };
+}
+
+export function grossInstallmentAmount(item: {
+  amount_rent: Prisma.Decimal;
+  amount_service: Prisma.Decimal;
+  amount_other_fees: Prisma.Decimal;
+  penalty_amount: Prisma.Decimal;
+}): Prisma.Decimal {
+  return item.amount_rent.plus(item.amount_service).plus(item.amount_other_fees).plus(item.penalty_amount);
 }
 
 export const rentalArrearsTool: CopilotToolDefinition<typeof inputSchema> = {
@@ -44,7 +54,7 @@ export const rentalArrearsTool: CopilotToolDefinition<typeof inputSchema> = {
       where: {
         tenant_id: ctx.tenantId,
         due_date: { gte: start, lt: end },
-        status: { in: ['DRAFT', 'DUE', 'PARTIAL', 'OVERDUE'] },
+        status: { in: [...openInstallmentStatuses] },
         lease: { tenant_id: ctx.tenantId, property: propertyTenantWhere(ctx.tenantId) }
       },
       select: {
@@ -67,7 +77,7 @@ export const rentalArrearsTool: CopilotToolDefinition<typeof inputSchema> = {
       { property: string; href: string; currency: string; count: number; balance: Prisma.Decimal }
     >();
     for (const item of installments) {
-      const due = item.amount_rent.plus(item.amount_service).plus(item.amount_other_fees).plus(item.penalty_amount);
+      const due = grossInstallmentAmount(item);
       const balance = due.minus(item.amount_paid);
       if (balance.lte(0)) continue;
       const property = item.lease.property;

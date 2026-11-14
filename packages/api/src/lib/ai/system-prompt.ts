@@ -50,6 +50,14 @@ const TOOL_CAPABILITIES: Record<CopilotToolName, { group: string; text: string }
   },
   maintenance_overview: { group: 'maintenance', text: 'les tickets de maintenance ouverts, urgents et leurs délais' },
   rental_receipts: { group: 'rentalReceipts', text: 'les encaissements locatifs par mois clos et devise' },
+  rental_due_comparison: {
+    group: 'rentalComparison',
+    text: 'les échéances du mois clos et du même mois N-1, par devise'
+  },
+  rental_monthly_review: {
+    group: 'rentalReview',
+    text: 'le bilan locatif du mois clos avec échéances, encaissements et alertes à préparer'
+  },
   chart_analysis: { group: 'charts', text: 'des graphiques fondés sur les tableaux calculés par le serveur' },
   show_indicators: { group: 'indicators', text: 'des indicateurs chiffrés issus des analyses' },
   compose_report: { group: 'reports', text: 'des rapports structurés avec tableaux et provenance' },
