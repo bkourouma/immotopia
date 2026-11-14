@@ -41,6 +41,16 @@ export function getCopilotSuggestions(pathname: string, tools: readonly CopilotT
         text: t('Quels biens ont le plus d’échéances en retard au dernier mois clos ?'),
         requires: 'rental_arrears'
       },
+      {
+        id: 'default-portfolio',
+        text: t('Quel est le taux d’occupation du parc par type de bien ?'),
+        requires: 'property_portfolio'
+      },
+      {
+        id: 'default-lease-end',
+        text: t('Quels baux se terminent dans les 30 prochains jours ?'),
+        requires: 'lease_portfolio'
+      },
       { id: 'default-leases', text: t('Cherche un bail par numéro'), requires: 'search_leases' },
       { id: 'default-receipt', text: t('Génère une quittance de loyer'), requires: 'propose_rental_document' }
     ];

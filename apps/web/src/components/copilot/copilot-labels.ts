@@ -70,6 +70,8 @@ export function copilotToolLabel(tool: CopilotToolName): string {
     search_properties: t('Recherche de biens'),
     search_leases: t('Recherche de baux'),
     rental_arrears: t('Analyse des impayés locatifs'),
+    property_portfolio: t('Analyse du parc immobilier'),
+    lease_portfolio: t('Analyse des baux et de leurs échéances'),
     rental_receipts: t('Analyse des encaissements locatifs'),
     chart_analysis: t('Création du graphique'),
     show_indicators: t('Calcul des indicateurs'),

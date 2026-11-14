@@ -13,6 +13,8 @@ export type CopilotToolName =
   | 'search_leases'
   | 'rental_arrears'
   | 'rental_receipts'
+  | 'property_portfolio'
+  | 'lease_portfolio'
   | 'chart_analysis'
   | 'show_indicators'
   | 'compose_report'

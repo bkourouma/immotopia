@@ -22,7 +22,7 @@ const schema = z
 export const chartAnalysisTool: CopilotToolDefinition<typeof schema> = {
   name: 'chart_analysis',
   description:
-    'Publie un graphique fondé sur un tableau calculé par rental_arrears ou rental_receipts dans cette conversation. Réutilise son artifactId et les clés de colonnes réellement retournées. Les valeurs sont lues directement depuis le résultat serveur.',
+    'Publie un graphique fondé sur un tableau calculé par un outil d’analyse dans cette conversation. Réutilise son artifactId et les clés de colonnes réellement retournées. Les valeurs sont lues directement depuis le résultat serveur.',
   inputSchema: schema,
   jsonSchema: {
     type: 'object',

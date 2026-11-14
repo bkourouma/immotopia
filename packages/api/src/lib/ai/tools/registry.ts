@@ -13,6 +13,7 @@ import { rentalReceiptsTool } from './rental-receipts';
 import { chartAnalysisTool } from './chart-analysis';
 import { showIndicatorsTool } from './show-indicators';
 import { composeReportTool } from './compose-report';
+import { leasePortfolioTool, propertyPortfolioTool } from './portfolio';
 
 /**
  * Registre des outils exposés au LLM. L'exécution d'un document
@@ -24,6 +25,8 @@ export const ALL_TOOLS: readonly CopilotToolDefinition[] = [
   searchLeasesTool,
   rentalArrearsTool,
   rentalReceiptsTool,
+  propertyPortfolioTool,
+  leasePortfolioTool,
   chartAnalysisTool,
   showIndicatorsTool,
   composeReportTool,

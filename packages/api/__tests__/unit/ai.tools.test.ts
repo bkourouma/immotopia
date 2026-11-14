@@ -56,7 +56,14 @@ const PROPERTY_ID = '44444444-4444-4444-8444-444444444444';
 const PAYMENT_ID = '22222222-2222-4222-8222-222222222222';
 const INSTALLMENT_ID = '33333333-3333-4333-8333-333333333333';
 
-const ALL_PERMS = ['PROPERTIES_VIEW', 'RENTAL_LEASES_VIEW', 'RENTAL_DOCUMENTS_VIEW', 'RENTAL_DOCUMENTS_GENERATE'];
+const ALL_PERMS = [
+  'PROPERTIES_VIEW',
+  'RENTAL_INSTALLMENTS_VIEW',
+  'RENTAL_PAYMENTS_VIEW',
+  'RENTAL_LEASES_VIEW',
+  'RENTAL_DOCUMENTS_VIEW',
+  'RENTAL_DOCUMENTS_GENERATE'
+];
 
 const ctx = (perms: string[] = ALL_PERMS, seen: string[] = [LEASE_ID]): CopilotToolContext => ({
   tenantId: TENANT,
@@ -100,7 +107,7 @@ beforeEach(() => {
 });
 
 describe('registre', () => {
-  it('ne contient que les 9 outils du plan, sans outil d’exécution', () => {
+  it('déclare les outils autorisés, sans outil d’exécution', () => {
     expect(ALL_TOOLS.map(t => t.name).sort()).toEqual(
       [
         'call_read',
@@ -111,7 +118,14 @@ describe('registre', () => {
         'propose_rental_document',
         'search_leases',
         'search_properties',
-        'show_artifact'
+        'show_artifact',
+        'rental_arrears',
+        'rental_receipts',
+        'chart_analysis',
+        'show_indicators',
+        'compose_report',
+        'property_portfolio',
+        'lease_portfolio'
       ].sort()
     );
     expect(ALL_TOOLS.some(t => /execute/i.test(t.name))).toBe(false);
@@ -124,6 +138,13 @@ describe('registre', () => {
     ['list_property_documents', 'PROPERTIES_VIEW'],
     ['propose_rental_document', 'RENTAL_DOCUMENTS_GENERATE'],
     ['show_artifact', 'PROPERTIES_VIEW'],
+    ['rental_arrears', 'RENTAL_INSTALLMENTS_VIEW'],
+    ['rental_receipts', 'RENTAL_PAYMENTS_VIEW'],
+    ['chart_analysis', 'PROPERTIES_VIEW'],
+    ['show_indicators', 'PROPERTIES_VIEW'],
+    ['compose_report', 'PROPERTIES_VIEW'],
+    ['property_portfolio', 'PROPERTIES_VIEW'],
+    ['lease_portfolio', 'RENTAL_LEASES_VIEW'],
     ['list_capabilities', 'PROPERTIES_VIEW'],
     ['call_read', 'PROPERTIES_VIEW'],
     ['plan_write', 'PROPERTIES_VIEW']
@@ -153,31 +174,39 @@ describe('registre', () => {
         .sort()
     ).toEqual([
       'call_read',
+      'chart_analysis',
+      'compose_report',
       'list_capabilities',
       'list_property_documents',
       'plan_write',
+      'property_portfolio',
       'search_properties',
-      'show_artifact'
+      'show_artifact',
+      'show_indicators'
     ]);
-    expect(toolsForUser(new Set(ALL_PERMS))).toHaveLength(9);
+    expect(toolsForUser(new Set(ALL_PERMS))).toHaveLength(ALL_TOOLS.length);
   });
 
   it('filtre aussi selon les droits d’abonnement quand ils sont fournis', () => {
     const core = toolsForUser(new Set(ALL_PERMS), new Set(['CORE'] as const));
     expect(core.map(t => t.name).sort()).toEqual([
       'call_read',
+      'chart_analysis',
+      'compose_report',
       'list_capabilities',
       'list_property_documents',
       'plan_write',
+      'property_portfolio',
       'search_properties',
-      'show_artifact'
+      'show_artifact',
+      'show_indicators'
     ]);
     expect(toolsForUser(new Set(ALL_PERMS), [])).toEqual([]);
   });
 
   it('expose des spécifications neutres avec additionalProperties:false', () => {
     const specs = toLlmToolSpecs(toolsForUser(new Set(ALL_PERMS)));
-    expect(specs).toHaveLength(9);
+    expect(specs).toHaveLength(ALL_TOOLS.length);
     for (const spec of specs) expect(spec.inputSchema.additionalProperties).toBe(false);
   });
 

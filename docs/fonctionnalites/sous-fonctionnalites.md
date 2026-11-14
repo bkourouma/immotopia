@@ -4,8 +4,8 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 
 | Domaine | Sous-fonctionnalités |
 | --- | --- |
-| Parc immobilier | 196 |
-| Gestion locative | 179 |
+| Parc immobilier | 197 |
+| Gestion locative | 180 |
 | Finance | 196 |
 | CRM et Ventes | 70 |
 | Maintenance | 32 |
@@ -13,7 +13,7 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Syndic copropriete | 245 |
 | Administration plateforme | 141 |
 | Portails externes | 84 |
-| **Total** | **1228** |
+| **Total** | **1230** |
 
 ## Sous-fonctionnalités
 
@@ -217,6 +217,7 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Agence, Promoteur, Opérateur intégré, Patrimoine Essentiel, Patrimoine Pro | CORE | Signature électronique du mandat de gestion | Afficher la date de signature d'un mandat de gestion | Voir dans la colonne « Signature » de l'onglet Mandats « Signé le <date> » dès que la demande est scellée ; la colonne reste vide (« — ») tant que le mandat n'est pas signé. Le scellement pose `signedAt` et le lien vers la demande dans la transaction, après avoir relu les données du mandat : un mandat modifié ou révoqué entre-temps n'est pas marqué (la demande est annulée). | Aucune (champ `signedAt` du mandat) | Colonne « Signature » : « Signé le <date> » ou « — » | Envoyer un mandat de gestion pour signature | Collaborateur (accès agence) | Agence (collaborateur) | Aucune route propre : champ `signedAt` renvoyé par GET /tenants/:tenantId/properties/:id/mandates | PROPERTIES_VIEW | Disponible | Biens > Toutes les propriétés > fiche bien (bien CLIENT) > onglet Mandats |
 | Agence, Promoteur, Opérateur intégré, Patrimoine Essentiel, Patrimoine Pro | CORE | Signature électronique du mandat de gestion | Annuler automatiquement les demandes à la résiliation du mandat de gestion | Une fois le mandat révoqué, ses demandes de signature en cours sont annulées (motif SOURCE_CHANGED) et leurs liens cessent d'agir ; un échec de cette annulation est journalisé sans défaire la révocation. Une demande déjà scellée ne s'annule pas. | Aucune (déclenché par la révocation du mandat) | Demandes au statut CANCELED ; liens de signature sans effet (404 uniforme) | Envoyer un mandat de gestion pour signature | Collaborateur (accès agence) | Agence (collaborateur) | Aucune route propre : effet de DELETE /tenants/:tenantId/properties/:id/mandates/:mandateId | PROPERTIES_EDIT | Disponible | Biens > Toutes les propriétés > fiche bien (bien CLIENT) > onglet Mandats |
 | Agence, Promoteur, Opérateur intégré, Patrimoine Essentiel, Patrimoine Pro | PATRIMOINE | Programmes de travaux | Rechercher les programmes de travaux de l’agence | Trouver les programmes de travaux de tous les biens de l’agence, avec pagination serveur. | Query `status?` (CSV), `search?`, `propertyId?`, `plannedFrom?`, `plannedTo?`, `minCost?`, `maxCost?`, `page?`, `limit?` (100 au plus), `upcoming?` | Programmes correspondants et total paginé | Biens du tenant | Collaborateur agence — PROPERTIES_VIEW | Agence (collaborateur) | GET /tenants/:tenantId/work-programs | PROPERTIES_VIEW (`requireAnyPropertyPermission`) | Disponible | Patrimoine > Programmes de travaux |
+| Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Analyser l’occupation du parc | Retrouver le nombre de biens, les biens occupés ou disponibles et le taux d’occupation défini par le tableau de bord. | Zone, type de bien et regroupement | Tableau recalculable avec provenance et export | Droits de lecture du module | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | PROPERTIES_VIEW | Disponible | Assistant > Résultats et documents |
 
 ### Gestion locative
 
@@ -401,6 +402,7 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Agence, Opérateur intégré, Patrimoine Essentiel, Patrimoine Pro | RENTAL | Assistant IA ImmoCopilot | Analyser les échéances locatives non soldées | Classer les biens selon le solde actuel des échéances d’un mois clos, par devise, avec provenance et lien vers le bien. | Mois clos facultatif | Tableau et exports Excel et CSV | Données locatives | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | RENTAL_INSTALLMENTS_VIEW et accès assistant | Disponible | Assistant > Résultats et documents |
 | Agence, Opérateur intégré, Patrimoine Essentiel, Patrimoine Pro | RENTAL | Assistant IA ImmoCopilot | Comparer les encaissements locatifs | Comparer les paiements réussis du mois clos, du mois précédent et du même mois de l’année précédente selon leur date d’encaissement et par devise. | Mois clos facultatif | Tableau et provenance | Données locatives | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | RENTAL_PAYMENTS_VIEW et accès assistant | Disponible | Assistant > Résultats et documents |
 | Agence, Opérateur intégré, Patrimoine Essentiel, Patrimoine Pro | RENTAL | Assistant IA ImmoCopilot | Tracer une analyse locative | Créer un graphique à partir des valeurs calculées d’un tableau de la conversation, avec provenance et séries par devise. | Tableau source, mesure, dimension et type | Graphique avec vue des données | Analyse locative accessible | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | PROPERTIES_VIEW et permissions de l’analyse source | Disponible | Assistant > Résultats et documents |
+| Agence, Opérateur intégré, Patrimoine Essentiel, Patrimoine Pro | RENTAL | Assistant IA ImmoCopilot | Analyser les baux actifs et leurs fins | Compter les baux actifs et les fins contractuelles dans la période, par bien, avec le détail de la première échéance de fin. | Période de fin et bien | Tableau recalculable avec provenance et export | Droits de lecture du module | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | RENTAL_LEASES_VIEW et PROPERTIES_VIEW | Disponible | Assistant > Résultats et documents |
 
 ### Finance
 

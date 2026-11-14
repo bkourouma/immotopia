@@ -13,13 +13,21 @@ import { rentalArrearsTool, monthPattern } from './tools/rental-arrears';
 import { rentalReceiptsTool } from './tools/rental-receipts';
 import { chartAnalysisTool } from './tools/chart-analysis';
 import { showIndicatorsTool } from './tools/show-indicators';
+import { leasePortfolioTool, propertyPortfolioTool } from './tools/portfolio';
 
-const querySchema = z
-  .object({
-    tool: z.enum(['rental_arrears', 'rental_receipts']),
-    month: z.string().regex(monthPattern)
-  })
-  .strict();
+const querySchema = z.discriminatedUnion('tool', [
+  z.object({ tool: z.literal('rental_arrears'), month: z.string().regex(monthPattern) }).strict(),
+  z.object({ tool: z.literal('rental_receipts'), month: z.string().regex(monthPattern) }).strict(),
+  propertyPortfolioTool.inputSchema.required({ groupBy: true }).extend({ tool: z.literal('property_portfolio') }),
+  leasePortfolioTool.inputSchema.required({ start: true, end: true }).extend({ tool: z.literal('lease_portfolio') })
+]);
+
+const analysisTools: Record<AnalysisQuery['tool'], CopilotToolDefinition> = {
+  rental_arrears: rentalArrearsTool,
+  rental_receipts: rentalReceiptsTool,
+  property_portfolio: propertyPortfolioTool,
+  lease_portfolio: leasePortfolioTool
+};
 
 export function canReplayArtifact(artifact: CopilotArtifact): boolean {
   switch (artifact.kind) {
@@ -59,17 +67,15 @@ export async function replayArtifact(
 
   const unavailable = () => new AppError(t('Cette analyse ne peut pas être recalculée.'), 422);
   function read(query: AnalysisQuery): Promise<AnalysisTable> {
-    const { tool, month } = querySchema.parse(query);
+    const { tool, ...input } = querySchema.parse(query);
     if (!allowed.has(tool)) throw new ForbiddenError();
-    const key = `${tool}:${month}`;
+    const key = JSON.stringify([tool, input]);
     const existing = calculations.get(key);
     if (existing) return existing;
-    const operation = (tool === 'rental_arrears' ? rentalArrearsTool : rentalReceiptsTool)
-      .execute({ month }, ctx)
-      .then(result => {
-        if (result.uiEvent?.type !== 'artifact' || result.uiEvent.artifact.kind !== 'table') throw unavailable();
-        return result.uiEvent.artifact;
-      });
+    const operation = analysisTools[tool].execute(input, ctx).then(result => {
+      if (result.uiEvent?.type !== 'artifact' || result.uiEvent.artifact.kind !== 'table') throw unavailable();
+      return result.uiEvent.artifact;
+    });
     calculations.set(key, operation);
     return operation;
   }

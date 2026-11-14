@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { PropertyType } from '@prisma/client';
 
 /**
  * Contrats figés d'ImmoCopilot (docs/architecture/PLAN_IMMOCOPILOT.md, §3).
@@ -28,6 +29,8 @@ export type CopilotToolName =
   | 'search_leases'
   | 'rental_arrears'
   | 'rental_receipts'
+  | 'property_portfolio'
+  | 'lease_portfolio'
   | 'chart_analysis'
   | 'show_indicators'
   | 'compose_report'
@@ -290,10 +293,10 @@ export interface CopilotStatus {
 /** Données d'affichage seulement : jamais de HTML, jamais d'écriture. L'`id` est généré par le serveur. */
 export type ArtifactCell = string | number | null;
 
-export interface AnalysisQuery {
-  tool: 'rental_arrears' | 'rental_receipts';
-  month: string;
-}
+export type AnalysisQuery =
+  | { tool: 'rental_arrears' | 'rental_receipts'; month: string }
+  | { tool: 'property_portfolio'; groupBy: 'propertyType' | 'zone'; propertyType?: PropertyType; zone?: string }
+  | { tool: 'lease_portfolio'; start: string; end: string; propertyId?: string };
 
 export interface ArtifactProvenance {
   source: string;

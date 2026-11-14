@@ -245,6 +245,89 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
   });
 
   describe('Assistant — historique privé', () => {
+    it('retrouve le taux du tableau de bord et les fins de bail dans le seul parc autorisé', async () => {
+      const tenantA = await createTestTenant('Parc-A');
+      const tenantB = await createTestTenant('Parc-B');
+      createdTenantIds.push(tenantA.id, tenantB.id);
+      const adminA = await createTenantAdminUser(tenantA, 'parc-a');
+      const adminB = await createTenantAdminUser(tenantB, 'parc-b');
+      const base = `/api/tenants/${tenantA.id}`;
+      const own = await createRentalFixtureDirect(tenantA.id, adminA.id, 'PortfolioA');
+      const other = await createRentalFixtureDirect(tenantB.id, adminB.id, 'PortfolioB');
+      const vacantId = await createPropertyDirect(tenantA.id, 'Disponible dans le parc A');
+      await prisma.property.updateMany({
+        where: { tenantId: tenantA.id, id: own.propertyId },
+        data: { status: 'RENTED' }
+      });
+      await prisma.property.updateMany({
+        where: { tenantId: tenantA.id, id: vacantId },
+        data: { status: 'AVAILABLE' }
+      });
+      await prisma.property.updateMany({
+        where: { tenantId: tenantB.id, id: other.propertyId },
+        data: { status: 'RENTED' }
+      });
+      for (const [tenantId, id] of [
+        [tenantA.id, own.leaseId],
+        [tenantB.id, other.leaseId]
+      ]) {
+        await prisma.rentalLease.updateMany({
+          where: { tenant_id: tenantId, id },
+          data: { end_date: new Date('2026-12-31T00:00:00Z') }
+        });
+      }
+      mockFakeScript = [
+        { toolCalls: [{ name: 'property_portfolio', input: {} }] },
+        { toolCalls: [{ name: 'lease_portfolio', input: { start: '2026-12-01', end: '2026-12-31' } }] },
+        { text: 'Voici la situation du parc et des baux.' }
+      ];
+      const payload = {
+        turnId: randomUUID(),
+        messages: [{ role: 'user', content: 'Occupation et fins de bail en décembre' }]
+      };
+      const stream = await request(app)
+        .post(base + '/ai/chat')
+        .set(authed(adminA))
+        .send(payload);
+      expect(stream.status).toBe(200);
+      const events = stream.text
+        .split('\n')
+        .filter(line => line.startsWith('data: {'))
+        .map(line => JSON.parse(line.slice(6)));
+      const artifacts = events.filter(event => event.type === 'artifact').map(event => event.artifact);
+      expect(artifacts).toHaveLength(2);
+      const dashboard = await request(app)
+        .get(base + '/dashboard')
+        .set(authed(adminA));
+      expect(dashboard.status).toBe(200);
+      const properties = dashboard.body.data.properties;
+      expect(artifacts[0].rows).toEqual([
+        expect.objectContaining({
+          category: 'APPARTEMENT',
+          total: properties.total,
+          occupied: 1,
+          available: 1,
+          occupancy: properties.occupancyRate
+        })
+      ]);
+      expect(artifacts[1].rows).toEqual([
+        expect.objectContaining({
+          property: expect.stringContaining(own.propertyReference),
+          active: 1,
+          ending: 1,
+          firstEnd: '2026-12-31'
+        })
+      ]);
+      expect(JSON.stringify(artifacts)).not.toContain(other.propertyReference);
+
+      const { conversationId } = events.find(event => event.type === 'meta');
+      const path = base + `/ai/conversations/${conversationId}/artifacts/${artifacts[1].id}`;
+      const recalculated = await request(app).post(path).set(authed(adminA)).send({ expectedVersion: 1 });
+      expect(recalculated.status).toBe(201);
+      expect(recalculated.body.data.artifact.rows).toEqual(artifacts[1].rows);
+      mockFakeScript = undefined;
+    });
+
     it('persiste le fil complet et isole son accès du compte voisin et de l’autre agence', async () => {
       const baseA = `/api/tenants/${tenantA.id}/ai`;
       const baseB = `/api/tenants/${tenantB.id}/ai`;

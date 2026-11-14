@@ -1,4 +1,5 @@
 import { prisma } from '../utils/database';
+import { isOccupiedPropertyStatus, propertyOccupancyRate } from '../utils/property-occupancy';
 import { getUserPermissions } from './permission-service';
 import { getEntitlements } from './subscription-v2-service';
 import { evaluateFeatureAccess } from '../lib/subscription/feature-access';
@@ -404,10 +405,10 @@ async function getProperties(tenantId: string, base: string): Promise<TenantDash
   // brouillons comptent au dénominateur — un bien saisi et jamais publié est du
   // parc immobilisé, et c'est précisément ce que le chiffre doit dire.
   const occupe = byStatus
-    .filter(bucket => bucket.key === 'RENTED' || bucket.key === 'SOLD')
+    .filter(bucket => isOccupiedPropertyStatus(bucket.key))
     .reduce((somme, bucket) => somme + bucket.count, 0);
 
-  return { total, published, occupancyRate: part(occupe, total), byStatus, byType };
+  return { total, published, occupancyRate: propertyOccupancyRate(occupe, total), byStatus, byType };
 }
 
 /** Portefeuille de contacts, réparti entre prospects, clients et archives. */

@@ -57,7 +57,9 @@ function storedAnalysisTables(results: (Prisma.JsonValue | null)[]): AnalysisTab
 export function assistantScope(permissions: Set<string>, toolNames: string[]): string {
   // Les outils de présentation ajoutés ici transforment uniquement des jeux déjà accessibles.
   // Leur disponibilité ne change donc pas le périmètre des fils enregistrés.
-  const readScope = toolNames.filter(name => name !== 'show_indicators' && name !== 'compose_report');
+  // Les analyses du parc et des baux suivent les mêmes gardes de lecture que la recherche.
+  const additionalTools = new Set(['show_indicators', 'compose_report', 'property_portfolio', 'lease_portfolio']);
+  const readScope = toolNames.filter(name => !additionalTools.has(name));
   return createHash('sha256')
     .update(JSON.stringify([[...permissions].sort(), readScope.sort()]))
     .digest('hex');
