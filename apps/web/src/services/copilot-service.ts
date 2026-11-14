@@ -189,6 +189,12 @@ export const copilotService = {
   updateArtifactVersion,
   getArtifactVersion,
   downloadArtifact,
+  downloadAttachment(tenantId: string, conversationId: string, turnId: string, position: number) {
+    return apiClient.get<Blob>(
+      `/tenants/${tenantId}/ai/conversations/${conversationId}/turns/${turnId}/files/${position}`,
+      { responseType: 'blob' }
+    );
+  },
   getStatus,
   streamChat,
   executeAction,

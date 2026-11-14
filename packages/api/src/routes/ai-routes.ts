@@ -16,6 +16,7 @@ import {
   chatHandler,
   deleteConversationHandler,
   downloadArtifactHandler,
+  downloadConversationAttachmentHandler,
   updateArtifactVersionHandler,
   getArtifactVersionHandler,
   executeActionHandler,
@@ -47,6 +48,11 @@ router.use(requireTenantCollaborator);
 router.get('/status', requireAiStatusAccess, getStatusHandler);
 router.get('/conversations', requireAiStatusAccess, listConversationsHandler);
 router.get('/conversations/:id', requireAiStatusAccess, getConversationHandler);
+router.get(
+  '/conversations/:id/turns/:turnId/files/:position',
+  requireAiStatusAccess,
+  downloadConversationAttachmentHandler
+);
 router.get('/conversations/:id/artifacts/:artifactId', requireAiStatusAccess, getArtifactVersionHandler);
 router.post(
   '/conversations/:id/artifacts/:artifactId',

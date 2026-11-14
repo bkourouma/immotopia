@@ -9,11 +9,11 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Finance | 196 |
 | CRM et Ventes | 70 |
 | Maintenance | 32 |
-| Communication et Documents | 86 |
+| Communication et Documents | 87 |
 | Syndic copropriete | 245 |
 | Administration plateforme | 141 |
 | Portails externes | 84 |
-| **Total** | **1231** |
+| **Total** | **1232** |
 
 ## Sous-fonctionnalités
 
@@ -807,6 +807,7 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Lire une réponse à voix haute | Utiliser la synthèse vocale disponible dans le navigateur. Arrêter la lecture avec le bouton ou en quittant le fil. | Réponse de l’assistant | Lecture vocale du texte | Réponse affichée et fonction disponible dans le navigateur | Collaborateur agence éligible | Agence (collaborateur) | — | Accès à l’assistant | Disponible | Assistant > Conversation |
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Copier une réponse | Copier le texte de la réponse dans le presse-papiers du navigateur. | Réponse de l’assistant | Texte réutilisable | Réponse affichée et fonction disponible dans le navigateur | Collaborateur agence éligible | Agence (collaborateur) | — | Accès à l’assistant | Disponible | Assistant > Conversation |
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Joindre des fichiers à une question | Joindre des CSV, TXT, XLSX et PDF avec texte au fil privé. Utiliser les extraits pour répondre et afficher les tableaux importés. | Au plus cinq fichiers de 10 Mo chacun | Noms dans le fil, tableaux CSV ou XLSX avec provenance, et extrait TXT ou PDF au moment de la réponse | Page Assistant et historique privé | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | Accès à l’assistant et au fil privé | Disponible | Assistant > Joindre des fichiers |
+| Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Retrouver les pièces jointes du fil privé | Télécharger le fichier original et réutiliser les extraits récents dans une relance. La suppression du fil supprime les fichiers. | Fil privé et message avec fichier | Original téléchargeable par le propriétaire et extraits récents accessibles à l’assistant | Pièce jointe déposée avec le stockage privé actif | Propriétaire du fil avec les droits correspondants | Agence (collaborateur) | GET /api/tenants/:tenantId/ai/conversations/:id/turns/:turnId/files/:position | Accès à l’assistant et périmètre du fil | Disponible | Assistant > Conversation |
 
 ### Syndic copropriete
 

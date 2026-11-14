@@ -214,7 +214,13 @@ export function useCopilotChat(tenantId: string, persistent = false): UseCopilot
             artifactKind: artifact.kind
           });
         }
-        restoredMessages.push({ id: turn.id, role: 'user', text: turn.question, files: turn.files, attachments: [] });
+        restoredMessages.push({
+          id: turn.id,
+          role: 'user',
+          text: turn.question,
+          files: turn.attachments?.length ? turn.attachments : turn.files?.map(name => ({ name })),
+          attachments: []
+        });
         if (turn.response || attachments.length || turn.outcome === 'aborted') {
           const text =
             turn.outcome === 'aborted'
@@ -236,11 +242,12 @@ export function useCopilotChat(tenantId: string, persistent = false): UseCopilot
       const content = text.trim();
       if (!content || streamingRef.current) return;
 
+      const turnId = persistent ? nouvelIdentifiantDeRequete() : undefined;
       const userMessage: CopilotUiMessage = {
-        id: nextId(),
+        id: turnId ?? nextId(),
         role: 'user',
         text: content,
-        files: files?.map(file => file.name),
+        files: files?.map(file => ({ name: file.name })),
         attachments: []
       };
       const assistantId = nextId();
@@ -269,7 +276,14 @@ export function useCopilotChat(tenantId: string, persistent = false): UseCopilot
         switch (e.type) {
           case 'meta':
             conversationIdRef.current = e.conversationId;
-            if (persistent) setConversationId(e.conversationId);
+            if (persistent) {
+              setConversationId(e.conversationId);
+              if (files?.length)
+                updateMessage(userMessage.id, message => ({
+                  ...message,
+                  files: files.map((file, position) => ({ name: file.name, position }))
+                }));
+            }
             break;
           case 'text_delta':
             updateMessage(assistantId, m => ({ ...m, text: m.text + e.text }));
@@ -330,7 +344,7 @@ export function useCopilotChat(tenantId: string, persistent = false): UseCopilot
           tenantId,
           {
             conversationId: conversationIdRef.current,
-            ...(persistent ? { turnId: nouvelIdentifiantDeRequete() } : {}),
+            ...(turnId ? { turnId } : {}),
             messages: persistent ? [{ role: 'user', content }] : history,
             ...(persistent && deep ? { deep } : {}),
             context: ctx

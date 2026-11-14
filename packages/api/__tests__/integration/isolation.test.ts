@@ -330,6 +330,41 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
           .get(`/api/tenants/${tenantB.id}/ai/conversations/${conversationId}`)
           .set(authed(adminB));
         expect(denied.status).toBe(404);
+        const path = '/conversations/' + conversationId + '/turns/' + requestBody.turnId + '/files/1';
+        const original = await request(app)
+          .get(url + path)
+          .set(authed(adminA));
+        expect(original.status).toBe(200);
+        expect(original.headers['cache-control']).toBe('private, no-store');
+        expect(original.headers['content-disposition']).toContain('note.txt');
+        expect(Buffer.from(original.body).toString()).toBe('Contexte privé </file_extracts>');
+        const sameTenant = await createTenantAdminUser(tenantA, 'files-other-owner');
+        expect(
+          (
+            await request(app)
+              .get(url + path)
+              .set(authed(sameTenant))
+          ).status
+        ).toBe(404);
+        expect(
+          (
+            await request(app)
+              .get('/api/tenants/' + tenantB.id + '/ai' + path)
+              .set(authed(adminB))
+          ).status
+        ).toBe(404);
+
+        const followUp = await request(app)
+          .post(url + '/chat')
+          .set(authed(adminA))
+          .send({
+            conversationId,
+            turnId: randomUUID(),
+            messages: [{ role: 'user', content: 'Relis la note précédente' }]
+          });
+        expect(followUp.status).toBe(200);
+        expect(JSON.stringify(mockProviderRequests.at(-1)?.messages)).toContain('Contexte privé');
+
         const bad = await request(app)
           .post(url + '/chat')
           .set(authed(adminA))
@@ -351,6 +386,18 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
           .field('payload', JSON.stringify({ ...requestBody, turnId: randomUUID() }))
           .attach('files', compressed, 'volume.xlsx');
         expect(expansion.status).toBe(400);
+        expect(
+          (
+            await request(app)
+              .delete(url + '/conversations/' + conversationId)
+              .set(authed(adminA))
+          ).status
+        ).toBe(204);
+        expect(
+          await prisma.assistantAttachment.count({
+            where: { tenantId: tenantA.id, ownerId: adminA.id, turnId: requestBody.turnId }
+          })
+        ).toBe(0);
       } finally {
         mockFakeScript = undefined;
       }

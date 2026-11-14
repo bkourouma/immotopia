@@ -4,6 +4,8 @@ import { CopyOutlined, SoundOutlined, StopOutlined } from '@ant-design/icons';
 import { useCopilotSpeech } from '../../hooks/useCopilotSpeech';
 import i18next from '../../i18n';
 import { t } from '../../i18n/t';
+import { copilotService } from '../../services/copilot-service';
+import { filenameFromDisposition, saveBlob } from '../../utils/save-blob';
 import type { CopilotAttachment, CopilotUiMessage } from '../../types/copilot';
 import { ActionProposalCard } from './ActionProposalCard';
 import { ArtifactChip } from './artifact/ArtifactChip';
@@ -16,6 +18,7 @@ import { WritePlanCard } from './WritePlanCard';
 export interface CopilotMessageListProps {
   messages: CopilotUiMessage[];
   streaming?: boolean;
+  conversationId?: string;
   visible?: boolean;
   tenantId: string;
   onConfirm(proposalId: string): void;
@@ -103,6 +106,7 @@ function Attachment({
 export function CopilotMessageList({
   messages,
   streaming,
+  conversationId,
   visible = true,
   tenantId,
   onConfirm,
@@ -118,6 +122,15 @@ export function CopilotMessageList({
   useEffect(() => {
     if (activeId && (!visible || !messages.some(message => message.id === activeId))) stop();
   }, [activeId, messages, stop, visible]);
+
+  async function downloadFile(threadId: string, turnId: string, position: number, name: string) {
+    try {
+      const { data, headers } = await copilotService.downloadAttachment(tenantId, threadId, turnId, position);
+      saveBlob(data, filenameFromDisposition(headers['content-disposition'], name));
+    } catch {
+      void notifications.error(t('Impossible de télécharger la pièce jointe.'));
+    }
+  }
 
   async function copy(text: string) {
     try {
@@ -160,9 +173,19 @@ export function CopilotMessageList({
             ) : null}
             {!!message.files?.length && (
               <ul style={{ marginBlock: 4, paddingInlineStart: 20 }}>
-                {message.files.map((name, index) => (
+                {message.files.map(({ name, position }, index) => (
                   <li key={index} dir="auto">
-                    {name}
+                    {conversationId && position !== undefined ? (
+                      <Button
+                        type="link"
+                        size="small"
+                        onClick={() => void downloadFile(conversationId, message.id, position, name)}
+                      >
+                        {name}
+                      </Button>
+                    ) : (
+                      name
+                    )}
                   </li>
                 ))}
               </ul>

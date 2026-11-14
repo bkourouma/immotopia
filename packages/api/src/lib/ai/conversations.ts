@@ -39,6 +39,23 @@ export const conversationPatch = z
 
 type ResultEvent = Extract<CopilotSseEvent, { type: 'artifact' }>;
 type AnalysisTable = Extract<ResultEvent['artifact'], { kind: 'table' }>;
+type SavedFile = { name: string; excerpt: string; artifactId?: string | null };
+const fileReference = { name: true, position: true } as const;
+
+export async function getConversationAttachment(
+  owner: AssistantOwner,
+  conversationId: string,
+  turnId: string,
+  position: number,
+  scopeKey: string
+) {
+  const file = await prisma.assistantAttachment.findFirst({
+    where: { ...owner, turnId, position, turn: { ...owner, conversationId, conversation: { scopeKey } } },
+    select: { name: true, bytes: true }
+  });
+  if (!file) throw new NotFoundError();
+  return file;
+}
 
 function storedAnalysisTables(results: (Prisma.JsonValue | null)[]): AnalysisTable[] {
   const tables: AnalysisTable[] = [];
@@ -104,7 +121,15 @@ export async function getConversation(owner: AssistantOwner, id: string, scopeKe
     where: { ...owner, conversationId: id, conversation: { scopeKey } },
     orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
     take: 100,
-    select: { id: true, question: true, files: true, response: true, result: true, outcome: true }
+    select: {
+      id: true,
+      question: true,
+      files: true,
+      response: true,
+      result: true,
+      outcome: true,
+      attachments: { where: owner, select: fileReference, orderBy: { position: 'asc' } }
+    }
   });
   return { ...conversation, turns: turns.reverse() };
 }
@@ -148,64 +173,96 @@ export async function deleteConversation(owner: AssistantOwner, id: string) {
 export async function beginAssistantTurn(
   owner: AssistantOwner,
   scopeKey: string,
-  input: { conversationId?: string; turnId: string; question: string; files?: string[] }
-): Promise<{ conversationId: string; messages: ChatRequest['messages']; analysisTables: AnalysisTable[] }> {
-  return prisma.$transaction(async tx => {
-    let conversationId = input.conversationId;
-    if (conversationId) {
-      // Hold the parent row lock until the new turn is reserved. This serializes callers for a single thread.
-      const result = await tx.assistantConversation.updateMany({
-        where: { ...owner, id: conversationId, archived: false, scopeKey },
-        data: { updatedAt: new Date() }
+  input: { conversationId?: string; turnId: string; question: string; files?: Array<SavedFile & { bytes: Buffer }> }
+): Promise<{
+  conversationId: string;
+  messages: ChatRequest['messages'];
+  analysisTables: AnalysisTable[];
+  priorExtracts: SavedFile[];
+}> {
+  return prisma.$transaction(
+    async tx => {
+      let conversationId = input.conversationId;
+      if (conversationId) {
+        // Hold the parent row lock until the new turn is reserved. This serializes callers for a single thread.
+        const result = await tx.assistantConversation.updateMany({
+          where: { ...owner, id: conversationId, archived: false, scopeKey },
+          data: { updatedAt: new Date() }
+        });
+        if (result.count === 0) throw new NotFoundError();
+      } else {
+        const title = input.question.split('\n')[0].replace(/\s+/g, ' ').slice(0, 80).trim();
+        const conversation = await tx.assistantConversation.create({
+          data: { ...owner, scopeKey, title: title || t('Nouvelle conversation') },
+          select: { id: true }
+        });
+        conversationId = conversation.id;
+      }
+
+      const recent = await tx.assistantTurn.findMany({
+        where: { ...owner, conversationId },
+        orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
+        take: Math.floor((COPILOT_MAX_MESSAGES - 1) / 2),
+        select: { id: true, question: true, response: true, outcome: true, startedAt: true }
       });
-      if (result.count === 0) throw new NotFoundError();
-    } else {
-      const title = input.question.split('\n')[0].replace(/\s+/g, ' ').slice(0, 80).trim();
-      const conversation = await tx.assistantConversation.create({
-        data: { ...owner, scopeKey, title: title || t('Nouvelle conversation') },
-        select: { id: true }
+      const latest = recent[0];
+      if (latest && latest.outcome === null && Date.now() - latest.startedAt.getTime() < 310_000) {
+        throw new ConflictError(t('Une réponse est déjà en cours dans cette conversation.'));
+      }
+
+      const inserted = await tx.assistantTurn.createMany({
+        data: {
+          ...owner,
+          conversationId,
+          id: input.turnId,
+          question: input.question,
+          files: input.files?.map(file => file.name)
+        },
+        skipDuplicates: true
       });
-      conversationId = conversation.id;
-    }
+      if (inserted.count === 0) throw new ConflictError(t('Ce message a déjà été envoyé.'));
 
-    const recent = await tx.assistantTurn.findMany({
-      where: { ...owner, conversationId },
-      orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
-      take: Math.floor((COPILOT_MAX_MESSAGES - 1) / 2),
-      select: { question: true, response: true, outcome: true, startedAt: true }
-    });
-    const latest = recent[0];
-    if (latest && latest.outcome === null && Date.now() - latest.startedAt.getTime() < 310_000) {
-      throw new ConflictError(t('Une réponse est déjà en cours dans cette conversation.'));
-    }
-
-    const inserted = await tx.assistantTurn.createMany({
-      data: { ...owner, conversationId, id: input.turnId, question: input.question, files: input.files },
-      skipDuplicates: true
-    });
-    if (inserted.count === 0) throw new ConflictError(t('Ce message a déjà été envoyé.'));
-
-    const messages: ChatRequest['messages'] = [{ role: 'user', content: input.question }];
-    let remaining = COPILOT_MAX_TOTAL_CHARS - input.question.length;
-    for (const row of recent) {
-      if (row.outcome !== 'end_turn') continue;
-      const answer = row.response.slice(0, COPILOT_MAX_MESSAGE_CHARS).trim();
-      const size = row.question.length + answer.length;
-      if (size > remaining) break;
-      messages.unshift(
-        { role: 'user', content: row.question },
-        ...(answer ? [{ role: 'assistant' as const, content: answer }] : [])
-      );
-      remaining -= size;
-    }
-    const related = await tx.assistantTurn.findMany({
-      where: { ...owner, conversationId, outcome: 'end_turn', result: { not: Prisma.DbNull } },
-      orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
-      take: 6,
-      select: { result: true }
-    });
-    return { conversationId, messages, analysisTables: storedAnalysisTables(related.map(row => row.result)) };
-  });
+      if (input.files?.length) {
+        await tx.assistantAttachment.createMany({
+          data: input.files.map((file, position) => ({ ...owner, ...file, position, turnId: input.turnId }))
+        });
+      }
+      const priorExtracts = recent.length
+        ? await tx.assistantAttachment.findMany({
+            where: { ...owner, turnId: { in: recent.map(turn => turn.id) }, turn: { ...owner, conversationId } },
+            select: { name: true, excerpt: true, artifactId: true },
+            orderBy: [{ turn: { startedAt: 'desc' } }, { turnId: 'desc' }, { position: 'asc' }],
+            take: 5
+          })
+        : [];
+      const messages: ChatRequest['messages'] = [{ role: 'user', content: input.question }];
+      let remaining = COPILOT_MAX_TOTAL_CHARS - input.question.length;
+      for (const row of recent) {
+        if (row.outcome !== 'end_turn') continue;
+        const answer = row.response.slice(0, COPILOT_MAX_MESSAGE_CHARS).trim();
+        const size = row.question.length + answer.length;
+        if (size > remaining) break;
+        messages.unshift(
+          { role: 'user', content: row.question },
+          ...(answer ? [{ role: 'assistant' as const, content: answer }] : [])
+        );
+        remaining -= size;
+      }
+      const related = await tx.assistantTurn.findMany({
+        where: { ...owner, conversationId, outcome: 'end_turn', result: { not: Prisma.DbNull } },
+        orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
+        take: 6,
+        select: { result: true }
+      });
+      return {
+        conversationId,
+        messages,
+        priorExtracts,
+        analysisTables: storedAnalysisTables(related.map(row => row.result))
+      };
+    },
+    { timeout: input.files?.length ? 30_000 : undefined }
+  );
 }
 
 export async function finishAssistantTurn(

@@ -53,6 +53,7 @@ export interface AssistantConversation extends AssistantConversationSummary {
     id: string;
     question: string;
     files?: string[];
+    attachments?: Array<{ name: string; position: number }>;
     response: string;
     result: Array<Extract<CopilotSseEvent, { type: 'artifact' }>> | null;
     outcome: string | null;
@@ -378,7 +379,7 @@ export interface CopilotUiMessage {
   id: string;
   role: 'user' | 'assistant';
   text: string;
-  files?: string[];
+  files?: Array<{ name: string; position?: number }>;
   attachments: CopilotAttachment[];
 }
 

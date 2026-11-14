@@ -11,7 +11,8 @@ vi.mock('../../services/copilot-service', () => {
     streamChat: vi.fn(),
     executeProposal: vi.fn(),
     listConversations: vi.fn().mockResolvedValue({ items: [] }),
-    getConversation: vi.fn()
+    getConversation: vi.fn(),
+    downloadAttachment: vi.fn()
   };
   return { default: service, copilotService: service };
 });
@@ -20,6 +21,11 @@ vi.mock('../../services/dashboard-service', () => ({
   getTenantDashboard: vi.fn().mockResolvedValue({ data: { workQueue: [] } })
 }));
 
+vi.mock('../../utils/save-blob', async importOriginal => ({
+  ...(await importOriginal<typeof import('../../utils/save-blob')>()),
+  saveBlob: vi.fn()
+}));
+import { saveBlob } from '../../utils/save-blob';
 import copilotService from '../../services/copilot-service';
 import AssistantPage, { pageHeight, unavailableMessage } from '../../pages/assistant/AssistantPage';
 
@@ -233,6 +239,7 @@ it('rouvre le fil et ses artefacts depuis le lien de conversation', async () => 
       {
         id: 'tour-1',
         question: 'Bilan du mois',
+        attachments: [{ name: 'bilan.pdf', position: 0 }],
         response: 'Voici le bilan.',
         result: [ARTIFACT_EVENT],
         outcome: 'end_turn'
@@ -243,6 +250,14 @@ it('rouvre le fil et ses artefacts depuis le lien de conversation', async () => 
   expect(await screen.findByText('Voici le bilan.')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Ouvrir : Synthèse du mois' })).toBeInTheDocument();
   expect(getConversation).toHaveBeenCalledWith('t1', id);
+  const file = new Blob(['bilan']);
+  vi.mocked(copilotService.downloadAttachment).mockResolvedValue({
+    data: file,
+    headers: { 'content-disposition': 'attachment; filename="bilan.pdf"' }
+  } as Awaited<ReturnType<typeof copilotService.downloadAttachment>>);
+  fireEvent.click(screen.getByRole('button', { name: 'bilan.pdf' }));
+  await waitFor(() => expect(saveBlob).toHaveBeenCalledWith(file, 'bilan.pdf'));
+  expect(copilotService.downloadAttachment).toHaveBeenCalledWith('t1', id, 'tour-1', 0);
 });
 
 describe('AssistantPage — hauteur', () => {

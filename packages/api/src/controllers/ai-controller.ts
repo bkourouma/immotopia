@@ -37,6 +37,7 @@ import {
   deleteConversation,
   finishAssistantTurn,
   getConversation,
+  getConversationAttachment,
   historyQuery,
   listConversations,
   updateConversation
@@ -137,6 +138,26 @@ export const getConversationHandler = asyncHandler(async (req: Request, res: Res
   res
     .set('Cache-Control', 'private, no-store')
     .json({ success: true, data: await getConversation(owner, id, scopeKey) });
+});
+
+export const downloadConversationAttachmentHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { id, turnId, position } = z
+    .object({
+      id: z.string().uuid(),
+      turnId: z.string().uuid(),
+      position: z
+        .string()
+        .regex(/^[0-4]$/)
+        .transform(Number)
+    })
+    .parse(req.params);
+  const { owner, scopeKey } = await conversationScope(req);
+  const file = await getConversationAttachment(owner, id, turnId, position, scopeKey);
+  res.attachment(file.name);
+  res.type('application/octet-stream');
+  res.set('Cache-Control', 'private, no-store');
+  res.set('X-Content-Type-Options', 'nosniff');
+  res.send(Buffer.from(file.bytes));
 });
 
 const artifactExportParams = z.object({ id: z.string().uuid(), artifactId: z.string().uuid() });
@@ -318,7 +339,12 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
           conversationId: body.conversationId,
           turnId: body.turnId,
           question: body.messages[0].content,
-          files: extracts.map(file => file.name)
+          files: extracts.map(({ name, excerpt, table }, position) => ({
+            name,
+            excerpt,
+            artifactId: table?.id,
+            bytes: files[position].buffer
+          }))
         }
       )
     : undefined;
@@ -336,7 +362,10 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
       provider,
       deep: body.deep,
       analysisTables: saved?.analysisTables,
-      fileExtracts: extracts.map(({ name, excerpt, table }) => ({ name, excerpt, artifactId: table?.id })),
+      fileExtracts: [
+        ...extracts.map(({ name, excerpt, table }) => ({ name, excerpt, artifactId: table?.id })),
+        ...(saved?.priorExtracts ?? []).map(file => ({ ...file, artifactId: file.artifactId ?? undefined }))
+      ].slice(0, 5),
       importedTables,
       tenantId,
       userId,

@@ -67,6 +67,7 @@ export const CopilotThread: React.FC<CopilotThreadProps> = ({
         <CopilotMessageList
           messages={chat.messages}
           streaming={streaming}
+          conversationId={chat.conversationId}
           visible={visible}
           tenantId={tenantId}
           propertyId={propertyId}

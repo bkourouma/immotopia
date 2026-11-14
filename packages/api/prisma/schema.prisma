@@ -11551,10 +11551,27 @@ model AssistantTurn {
   startedAt      DateTime @default(now()) @map("started_at")
 
   conversation AssistantConversation @relation(fields: [tenantId, ownerId, conversationId], references: [tenantId, ownerId, id], onDelete: Cascade, map: "assistant_turns_conversation_fkey")
+  attachments  AssistantAttachment[]
 
   @@id([tenantId, ownerId, id])
   @@index([tenantId, ownerId, conversationId, startedAt, id], map: "assistant_turns_history_idx")
   @@map("assistant_turns")
+}
+
+model AssistantAttachment {
+  tenantId   String  @map("tenant_id")
+  ownerId    String  @map("owner_id")
+  turnId     String  @map("turn_id")
+  position   Int
+  name       String
+  excerpt    String
+  artifactId String? @map("artifact_id")
+  bytes      Bytes
+
+  turn AssistantTurn @relation(fields: [tenantId, ownerId, turnId], references: [tenantId, ownerId, id], onDelete: Cascade)
+
+  @@id([tenantId, ownerId, turnId, position])
+  @@map("assistant_attachments")
 }
 
 model AssistantArtifactVersion {
