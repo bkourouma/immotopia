@@ -12,11 +12,13 @@ const listAiModels = vi.fn();
 const listAssistantFeedback = vi.fn();
 const listAiUsage = vi.fn();
 const downloadAiUsage = vi.fn();
+const testAiConnection = vi.fn();
 
 vi.mock('../../services/ai-settings-service', () => ({
   listAssistantFeedback: (...a: unknown[]) => listAssistantFeedback(...a),
   listAiUsage: (...a: unknown[]) => listAiUsage(...a),
   downloadAiUsage: (...a: unknown[]) => downloadAiUsage(...a),
+  testAiConnection: (...a: unknown[]) => testAiConnection(...a),
   getAiSettings: (...a: unknown[]) => getAiSettings(...a),
   updateAiSettings: (...a: unknown[]) => updateAiSettings(...a),
   listAiModels: (...a: unknown[]) => listAiModels(...a)
@@ -101,6 +103,27 @@ describe('AiSettingsPage', () => {
     expect(screen.getByText(/Awa Koné/)).toBeInTheDocument();
     expect(screen.getByText('Base de données')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Enregistrer/ })).toBeDisabled();
+  });
+
+  it('enregistre le modèle rapide et teste uniquement le réglage sauvegardé', async () => {
+    const modelsByMode = { fast: 'openai/quick' };
+    updateAiSettings.mockResolvedValue({ ...SETTINGS, modelsByMode });
+    testAiConnection.mockResolvedValue({
+      provider: 'openrouter',
+      model: 'openai/gpt-4o',
+      simulated: false,
+      durationMs: 15
+    });
+    mount();
+    const input = await screen.findByRole('combobox', { name: 'Modèle rapide' });
+    fireEvent.change(input, { target: { value: 'openai/quick' } });
+    const test = screen.getByRole('button', { name: 'Tester la connexion' });
+    expect(test).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: /Enregistrer/ }));
+    await waitFor(() => expect(updateAiSettings).toHaveBeenCalledWith(expect.objectContaining({ modelsByMode })));
+    await waitFor(() => expect(test).toBeEnabled());
+    fireEvent.click(test);
+    expect(testAiConnection).toHaveBeenCalledWith('standard');
   });
 
   it('affiche le coût inconnu et exporte la sélection de compte', async () => {

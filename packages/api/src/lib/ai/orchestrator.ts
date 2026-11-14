@@ -39,7 +39,7 @@ import { ALL_TOOLS, findTool, toLlmToolSpecs, type ToolFeature } from './tools/r
  */
 
 /** Plafond d'appels d'outils par requête (plan, décision 4). */
-export const MAX_TOOL_CALLS_PER_REQUEST = 8;
+export const MAX_TOOL_CALLS_PER_REQUEST = 12;
 
 export type ChatDoneReason = Extract<CopilotSseEvent, { type: 'done' }>['reason'];
 
@@ -142,6 +142,10 @@ export async function runChat(input: RunChatInput): Promise<ChatDoneReason> {
   const startedAt = Date.now();
   const maxToolCalls = input.deep ? 30 : MAX_TOOL_CALLS_PER_REQUEST;
   const maxRounds = input.deep ? 30 : env.AI_MAX_TOOL_ROUNDS;
+  const maxOutputTokens =
+    input.deep && provider.id === 'anthropic'
+      ? Math.min(64_000, 2 * env.AI_MAX_OUTPUT_TOKENS)
+      : env.AI_MAX_OUTPUT_TOKENS;
 
   const system = buildSystemPrompt(currentLanguage(), input.tools);
   const analysisTables = new Map(
@@ -225,7 +229,7 @@ export async function runChat(input: RunChatInput): Promise<ChatDoneReason> {
           system,
           messages,
           tools: toolSpecs,
-          maxOutputTokens: env.AI_MAX_OUTPUT_TOKENS,
+          maxOutputTokens,
           ...(input.deep ? { deep: true } : {})
         },
         text => emit({ type: 'text_delta', text }),

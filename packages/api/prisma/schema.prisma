@@ -1470,6 +1470,7 @@ model PlatformAiSettings {
   model           String
   effort          String   @default("low")
   refusalFallback Boolean  @default(true) @map("refusal_fallback")
+  modelsByMode    Json     @default("{}") @map("models_by_mode")
   updatedById     String?  @map("updated_by_id")
   updatedAt       DateTime @updatedAt @map("updated_at")
 

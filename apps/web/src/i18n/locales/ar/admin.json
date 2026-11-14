@@ -714,5 +714,14 @@
   "Période (UTC)": "الفترة (UTC)",
   "Réécriture": "إعادة الصياغة",
   "Tronqué": "مقتطع",
-  "Usages de l’assistant": "استخدام المساعد"
+  "Usages de l’assistant": "استخدام المساعد",
+  "Modèles par mode": "النماذج حسب الوضع",
+  "Modèle approfondi": "نموذج الوضع المعمّق",
+  "Modèle rapide": "نموذج الوضع السريع",
+  "Utilise le modèle standard si vide": "يُستخدم النموذج القياسي عند ترك الحقل فارغًا",
+  "Connexion au fournisseur": "الاتصال بالمزوّد",
+  "Mode du test": "وضع الاختبار",
+  "Rapide": "سريع",
+  "Test effectué avec le fournisseur de recette.": "اكتمل الاختبار باستخدام مزوّد الاختبار.",
+  "Connexion réussie en {{count}} ms.": "تم الاتصال خلال {{count}} مللي ثانية."
 }

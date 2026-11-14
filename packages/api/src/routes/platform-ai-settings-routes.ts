@@ -5,6 +5,7 @@ import {
   listAiModelsHandler,
   listAiUsageHandler,
   listAssistantFeedbackHandler,
+  testAiConnectionHandler,
   updateAiSettingsHandler
 } from '../controllers/platform-ai-settings-controller';
 import { authenticate } from '../middleware/auth-middleware';
@@ -29,6 +30,7 @@ const edit = requirePermission('PLATFORM_TENANTS_EDIT');
 router.get('/', view, requireSuperAdmin, getAiSettingsHandler);
 router.put('/', edit, requireSuperAdmin, updateAiSettingsHandler);
 router.get('/models', view, requireSuperAdmin, listAiModelsHandler);
+router.post('/connection-test', edit, requireSuperAdmin, testAiConnectionHandler);
 router.get('/feedback', view, requireSuperAdmin, listAssistantFeedbackHandler);
 router.get('/usage', view, requireSuperAdmin, listAiUsageHandler);
 router.get('/usage/export', view, requireSuperAdmin, exportAiUsageHandler);

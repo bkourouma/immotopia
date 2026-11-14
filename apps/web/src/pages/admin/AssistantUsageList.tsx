@@ -42,7 +42,7 @@ export function AssistantUsageList() {
     return () => controller.abort();
   }, [filters, offset]);
 
-  const modes = { standard: t('Standard'), deep: t('Approfondi'), rewrite: t('Réécriture') };
+  const modes = { standard: t('Standard'), deep: t('Approfondi'), fast: t('Rapide'), rewrite: t('Réécriture') };
   const statuses = {
     ok: t('Réussi'),
     error: t('Erreur'),

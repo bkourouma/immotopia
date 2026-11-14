@@ -3161,5 +3161,7 @@
   "Jetons écrits dans le cache": "الرموز المكتوبة في الذاكرة المؤقتة",
   "Mode": "الوضع",
   "Modèle": "النموذج",
-  "Réduisez la période ou filtrez les usages avant de les exporter.": "قلّل الفترة أو صفِّ بيانات الاستخدام قبل تصديرها."
+  "Réduisez la période ou filtrez les usages avant de les exporter.": "قلّل الفترة أو صفِّ بيانات الاستخدام قبل تصديرها.",
+  "Le fournisseur de ce mode est indisponible.": "مزوّد هذا الوضع غير متاح.",
+  "Le test de connexion au fournisseur a échoué.": "فشل اختبار الاتصال بالمزوّد."
 }

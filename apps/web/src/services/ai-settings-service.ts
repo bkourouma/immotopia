@@ -1,6 +1,6 @@
 import apiClient from '../utils/api-client';
 import { filenameFromDisposition, saveBlob } from '../utils/save-blob';
-import type { AiModelsResponse, AiSettings, AiSettingsUpdate } from '../types/ai-settings';
+import type { AiMode, AiModelsResponse, AiProviderId, AiSettings, AiSettingsUpdate } from '../types/ai-settings';
 
 /** Les réponses de l'API sont `{ success, data }` ; on tolère aussi le corps nu. */
 function unwrap<T>(body: unknown): T {
@@ -42,7 +42,7 @@ export async function listAssistantFeedback(
   return unwrap<{ items: AssistantFeedbackEntry[]; hasNext: boolean }>(response.data);
 }
 
-export type AssistantUsageMode = 'standard' | 'deep' | 'rewrite';
+export type AssistantUsageMode = AiMode | 'rewrite';
 export type AssistantUsageProvider = 'anthropic' | 'openrouter' | 'fake';
 export type AssistantUsageStatus = 'ok' | 'error' | 'aborted' | 'refused' | 'truncated';
 export interface AssistantUsageFilters {
@@ -93,4 +93,11 @@ export async function downloadAiUsage(filters: AssistantUsageFilters) {
     responseType: 'blob'
   });
   saveBlob(response.data, filenameFromDisposition(response.headers['content-disposition'], 'immotopia-usage-ia.csv'));
+}
+
+export async function testAiConnection(mode: AiMode) {
+  const response = await apiClient.post('/platform/ai-settings/connection-test', { mode });
+  return unwrap<{ provider: AiProviderId; model: string | null; simulated: boolean; durationMs: number }>(
+    response.data
+  );
 }

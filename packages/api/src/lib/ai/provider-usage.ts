@@ -3,7 +3,7 @@ import { logger } from '../../utils/logger';
 import type { LlmProvider } from './contracts';
 import { isAbortError, LlmProviderError } from './providers/anthropic-provider';
 
-export const usageModes = ['standard', 'deep', 'rewrite'] as const;
+export const usageModes = ['standard', 'deep', 'fast', 'rewrite'] as const;
 export const usageProviders = ['anthropic', 'openrouter', 'fake'] as const;
 export type UsageMode = (typeof usageModes)[number];
 

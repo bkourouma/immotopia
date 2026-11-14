@@ -260,14 +260,14 @@ export const rewriteArtifactSectionHandler = asyncHandler(async (req, res) => {
   if (section >= count || text.length > maxLength) {
     throw new AppError(t('Les sections de texte ne correspondent pas au résultat.'), 422);
   }
-  const provider = await getLlmProvider();
+  const provider = await getLlmProvider('fast');
   if (!provider) throw new AiDisabledError();
   const controller = new AbortController();
   const cancel = () => controller.abort();
   res.once('close', cancel);
   const unavailable = () => new AppError(t('La proposition de réécriture est indisponible.'), 502);
   try {
-    const tracked = measuredProvider(provider, { tenantId: owner.tenantId, userId: owner.ownerId, mode: 'rewrite' });
+    const tracked = measuredProvider(provider, { tenantId: owner.tenantId, userId: owner.ownerId, mode: 'fast' });
     const result = await tracked.runTurn(
       {
         system:
@@ -833,8 +833,6 @@ export const getStatusHandler = asyncHandler(async (req: Request, res: Response)
  */
 export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
   const { tenantId, userId } = requireContext(req);
-  const provider = await getLlmProvider();
-  if (!provider) throw new AiDisabledError();
 
   let raw: unknown = req.body ?? {};
   if (req.is('multipart/form-data')) {
@@ -845,6 +843,9 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
     }
   }
   const body = chatRequestSchema.parse(raw);
+  const mode = body.deep ? 'deep' : 'standard';
+  const provider = await getLlmProvider(mode);
+  if (!provider) throw new AiDisabledError();
   const files = Array.isArray(req.files) ? req.files : [];
   if (files.length && !body.turnId)
     throw new AppError(t('Joignez les fichiers dans une conversation enregistrée.'), 400);
@@ -913,7 +914,7 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
   let terminal: Extract<CopilotSseEvent, { type: 'done' }> | undefined;
   try {
     const outcome = await runChat({
-      provider: measuredProvider(provider, { tenantId, userId, mode: body.deep ? 'deep' : 'standard' }),
+      provider: measuredProvider(provider, { tenantId, userId, mode }),
       deep: body.deep,
       focusedArtifact: focus,
       analysisTables: regenerated?.analysisTables ?? saved?.analysisTables,

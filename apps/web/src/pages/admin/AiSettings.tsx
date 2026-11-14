@@ -18,8 +18,15 @@ import { AssistantFeedbackList } from './AssistantFeedbackList';
 import { AssistantUsageList } from './AssistantUsageList';
 import { SaveOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { getAiSettings, listAiModels, updateAiSettings } from '../../services/ai-settings-service';
-import type { AiEffort, AiModelOption, AiProviderId, AiSettings } from '../../types/ai-settings';
+import { getAiSettings, listAiModels, testAiConnection, updateAiSettings } from '../../services/ai-settings-service';
+import type {
+  AiEffort,
+  AiMode,
+  AiModelOption,
+  AiModelsByMode,
+  AiProviderId,
+  AiSettings
+} from '../../types/ai-settings';
 import { handleApiError } from '../../utils/error-handler';
 import { dateFormat } from '../../i18n/format';
 import { t } from '../../i18n/t';
@@ -31,6 +38,13 @@ interface Draft {
   model: string;
   effort: AiEffort;
   refusalFallback: boolean;
+  modelsByMode: AiModelsByMode;
+}
+
+function modeModels(input: AiModelsByMode = {}): AiModelsByMode {
+  const deep = input.deep?.trim();
+  const fast = input.fast?.trim();
+  return { ...(deep ? { deep } : {}), ...(fast ? { fast } : {}) };
 }
 
 function toDraft(settings: AiSettings): Draft {
@@ -38,7 +52,8 @@ function toDraft(settings: AiSettings): Draft {
     provider: settings.provider,
     model: settings.model ?? '',
     effort: settings.effort,
-    refusalFallback: settings.refusalFallback
+    refusalFallback: settings.refusalFallback,
+    modelsByMode: modeModels(settings.modelsByMode)
   };
 }
 
@@ -76,6 +91,8 @@ export const AiSettingsPage: React.FC = () => {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [testMode, setTestMode] = useState<AiMode>('standard');
+  const [testing, setTesting] = useState(false);
 
   const [models, setModels] = useState<AiModelOption[] | null>(null);
   const [modelsLoading, setModelsLoading] = useState(false);
@@ -130,7 +147,8 @@ export const AiSettingsPage: React.FC = () => {
       base.provider !== draft.provider ||
       base.model.trim() !== draft.model.trim() ||
       base.effort !== draft.effort ||
-      base.refusalFallback !== draft.refusalFallback
+      base.refusalFallback !== draft.refusalFallback ||
+      JSON.stringify(base.modelsByMode) !== JSON.stringify(modeModels(draft.modelsByMode))
     );
   }, [settings, draft]);
 
@@ -155,7 +173,14 @@ export const AiSettingsPage: React.FC = () => {
     setSaving(true);
     setSaveError(null);
     try {
-      const saved = await updateAiSettings({ ...draft, model: draft.model.trim() });
+      const { modelsByMode, ...base } = draft;
+      const normalized = modeModels(modelsByMode);
+      const changed = JSON.stringify(normalized) !== JSON.stringify(modeModels(settings?.modelsByMode));
+      const saved = await updateAiSettings({
+        ...base,
+        model: base.model.trim(),
+        ...(changed ? { modelsByMode: normalized } : {})
+      });
       setSettings(saved);
       setDraft(toDraft(saved));
       message.success(t('Réglages de l’assistant IA enregistrés.'));
@@ -165,6 +190,22 @@ export const AiSettingsPage: React.FC = () => {
       setSaving(false);
     }
   };
+
+  async function runConnectionTest() {
+    setTesting(true);
+    try {
+      const result = await testAiConnection(testMode);
+      message.success(
+        result.simulated
+          ? t('Test effectué avec le fournisseur de recette.')
+          : t('Connexion réussie en {{count}} ms.', { count: result.durationMs })
+      );
+    } catch (error) {
+      message.error(handleApiError(error));
+    } finally {
+      setTesting(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -226,7 +267,7 @@ export const AiSettingsPage: React.FC = () => {
             const next = e.target.value as AiProviderId;
             // Un modèle sans « / » (ex. celui d'Anthropic) n'existe pas chez OpenRouter : on le vide.
             const invalid = next === 'openrouter' && !draft.model.includes('/');
-            patch(invalid ? { provider: next, model: '' } : { provider: next });
+            patch({ provider: next, ...(invalid ? { model: '' } : {}), modelsByMode: {} });
           }}
           style={{ width: '100%' }}
         >
@@ -324,6 +365,51 @@ export const AiSettingsPage: React.FC = () => {
           </Space>
         </Card>
       ) : null}
+
+      {draft.provider === 'anthropic' || draft.provider === 'openrouter' ? (
+        <Card title={t('Modèles par mode')}>
+          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+            {(['deep', 'fast'] as const).map(mode => {
+              const label = mode === 'deep' ? t('Modèle approfondi') : t('Modèle rapide');
+              return (
+                <label key={mode} style={{ display: 'grid', gap: 6 }}>
+                  {label}
+                  <AutoComplete
+                    aria-label={label}
+                    allowClear
+                    style={{ width: '100%' }}
+                    value={draft.modelsByMode[mode] ?? ''}
+                    options={
+                      draft.provider === 'anthropic' ? ANTHROPIC_MODELS.map(id => ({ value: id })) : modelOptions
+                    }
+                    placeholder={t('Utilise le modèle standard si vide')}
+                    onChange={value => patch({ modelsByMode: { ...draft.modelsByMode, [mode]: value } })}
+                  />
+                </label>
+              );
+            })}
+          </Space>
+        </Card>
+      ) : null}
+      {draft.provider !== 'disabled' && (
+        <Card title={t('Connexion au fournisseur')}>
+          <Space wrap>
+            <Select
+              aria-label={t('Mode du test')}
+              value={testMode}
+              onChange={setTestMode}
+              options={[
+                { value: 'standard', label: t('Standard') },
+                { value: 'deep', label: t('Approfondi') },
+                { value: 'fast', label: t('Rapide') }
+              ]}
+            />
+            <Button disabled={dirty} loading={testing} onClick={() => void runConnectionTest()}>
+              {t('Tester la connexion')}
+            </Button>
+          </Space>
+        </Card>
+      )}
 
       <Collapse
         items={[

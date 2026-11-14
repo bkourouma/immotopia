@@ -584,6 +584,7 @@ export interface ProviderRuntimeConfig {
   model: string;
   effort: 'low' | 'medium' | 'high';
   refusalFallback: boolean;
+  timeoutMs?: number;
 }
 
 export interface LlmProvider {

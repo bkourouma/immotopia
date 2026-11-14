@@ -461,6 +461,7 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
       ['GET', '/api/platform/ai-settings', 'PLATFORM_TENANTS_VIEW'],
       ['PUT', '/api/platform/ai-settings', 'PLATFORM_TENANTS_EDIT'],
       ['GET', '/api/platform/ai-settings/models', 'PLATFORM_TENANTS_VIEW'],
+      ['POST', '/api/platform/ai-settings/connection-test', 'PLATFORM_TENANTS_EDIT'],
       ['GET', '/api/platform/ai-settings/feedback', 'PLATFORM_TENANTS_VIEW'],
       ['GET', '/api/platform/ai-settings/usage', 'PLATFORM_TENANTS_VIEW'],
       ['GET', '/api/platform/ai-settings/usage/export', 'PLATFORM_TENANTS_VIEW']

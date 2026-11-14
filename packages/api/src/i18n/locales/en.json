@@ -3161,5 +3161,7 @@
   "Jetons écrits dans le cache": "Tokens written to cache",
   "Mode": "Mode",
   "Modèle": "Model",
-  "Réduisez la période ou filtrez les usages avant de les exporter.": "Shorten the period or filter usage before exporting."
+  "Réduisez la période ou filtrez les usages avant de les exporter.": "Shorten the period or filter usage before exporting.",
+  "Le fournisseur de ce mode est indisponible.": "The provider for this mode is unavailable.",
+  "Le test de connexion au fournisseur a échoué.": "The provider connection test failed."
 }

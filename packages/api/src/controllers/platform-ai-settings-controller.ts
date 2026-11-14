@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { assistantUsageCsv, assistantUsageReport, usageReportQuery } from '../lib/ai/provider-usage-report';
 import { t } from '../i18n';
+import { getLlmProvider } from '../lib/ai/providers';
 import { prisma } from '../utils/database';
 import { AppError, asyncHandler, UnauthorizedError } from '../middleware/error-middleware';
 import {
@@ -30,6 +31,40 @@ export const updateAiSettingsHandler = asyncHandler(async (req: Request, res: Re
 
 export const listAiModelsHandler = asyncHandler(async (_req: Request, res: Response) => {
   res.json({ success: true, data: await listOpenRouterModels() });
+});
+
+export const testAiConnectionHandler = asyncHandler(async (req, res) => {
+  const { mode } = z
+    .object({ mode: z.enum(['standard', 'deep', 'fast']).default('standard') })
+    .strict()
+    .parse(req.body ?? {});
+  const provider = await getLlmProvider(mode);
+  if (!provider) throw new AppError(t('Le fournisseur de ce mode est indisponible.'), 503);
+  const start = performance.now();
+  const signal = AbortSignal.timeout(12_000);
+  try {
+    const result = await provider.runTurn(
+      {
+        system: 'Reply with OK.',
+        messages: [{ role: 'user', content: [{ type: 'text', text: 'OK' }] }],
+        tools: [],
+        maxOutputTokens: 32
+      },
+      () => {},
+      signal
+    );
+    res.set('Cache-Control', 'private, no-store').json({
+      success: true,
+      data: {
+        provider: provider.id,
+        model: result.model ?? null,
+        simulated: provider.id === 'fake',
+        durationMs: Math.round(performance.now() - start)
+      }
+    });
+  } catch {
+    throw new AppError(t('Le test de connexion au fournisseur a échoué.'), 502);
+  }
 });
 
 export const listAiUsageHandler = asyncHandler(async (req, res) => {

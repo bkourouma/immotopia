@@ -10,6 +10,7 @@ const mockEnv: Record<string, unknown> = {
   AI_MODEL: 'claude-opus-5-5',
   AI_EFFORT: 'low',
   AI_REFUSAL_FALLBACK: 'on',
+  AI_REQUEST_TIMEOUT_MS: 60000,
   OPENROUTER_API_KEY: 'sk-or-SUPER-SECRET-VALUE',
   ANTHROPIC_API_KEY: 'sk-ant-SUPER-SECRET-VALUE',
   OPENROUTER_BASE_URL: 'https://openrouter.ai/api/v1'
@@ -78,6 +79,7 @@ describe("contrôle d'accès", () => {
     ['get', '/api/platform/ai-settings'],
     ['put', '/api/platform/ai-settings'],
     ['get', '/api/platform/ai-settings/models'],
+    ['post', '/api/platform/ai-settings/connection-test'],
     ['get', '/api/platform/ai-settings/feedback'],
     ['get', '/api/platform/ai-settings/usage'],
     ['get', '/api/platform/ai-settings/usage/export']
@@ -173,6 +175,10 @@ describe('super-admin', () => {
       .put('/api/platform/ai-settings')
       .send({ ...body, apiKey: 'sk-x' });
     expect(unknown.status).toBe(400);
+    const invalidFastModel = await request(app)
+      .put('/api/platform/ai-settings')
+      .send({ ...body, modelsByMode: { fast: 'modele-sans-fournisseur' } });
+    expect(invalidFastModel.status).toBe(422);
 
     const saved = mockEnv.OPENROUTER_API_KEY;
     delete mockEnv.OPENROUTER_API_KEY;
@@ -182,6 +188,33 @@ describe('super-admin', () => {
       expect(mockPrisma.platformAiSettings.upsert).not.toHaveBeenCalled();
     } finally {
       mockEnv.OPENROUTER_API_KEY = saved;
+    }
+  });
+
+  it('teste la connexion du mode demandé avec le modèle enregistré et sans outils', async () => {
+    mockPrisma.platformAiSettings.findUnique.mockResolvedValue({
+      id: 'default',
+      ...body,
+      modelsByMode: { deep: 'provider/deep', fast: 'provider/fast' },
+      updatedAt: new Date()
+    });
+    const responseBody =
+      'data: {"model":"provider/fast","choices":[{"delta":{"content":"Texte fournisseur"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n';
+    const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(async () => new Response(responseBody));
+    try {
+      const response = await request(app).post('/api/platform/ai-settings/connection-test').send({ mode: 'fast' });
+      expect(response.status).toBe(200);
+      expect(response.body.data).toMatchObject({ model: 'provider/fast', provider: 'openrouter', simulated: false });
+      expect(response.text).not.toContain('Texte fournisseur');
+      expect(response.text).not.toContain('SUPER-SECRET');
+      const outbound = JSON.parse(String(fetchSpy.mock.calls[0][1]?.body));
+      expect(outbound).toMatchObject({ model: 'provider/fast', max_tokens: 32 });
+      expect(outbound).not.toHaveProperty('tools');
+      expect(
+        (await request(app).post('/api/platform/ai-settings/connection-test').send({ mode: 'unknown' })).status
+      ).toBe(400);
+    } finally {
+      fetchSpy.mockRestore();
     }
   });
 

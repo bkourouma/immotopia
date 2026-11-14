@@ -136,6 +136,18 @@ describe('AnthropicProvider', () => {
     expect(params).not.toHaveProperty('betas');
   });
 
+  it('omet le choix des outils pour une tâche rapide sans outils', async () => {
+    mockStream.mockReturnValue(fakeStream({ message: { stop_reason: 'end_turn', content: [] } }));
+    await new AnthropicProvider({ getConfig }).runTurn(
+      { ...req, tools: [] },
+      () => undefined,
+      new AbortController().signal
+    );
+    const [params] = mockStream.mock.calls[0];
+    expect(params).not.toHaveProperty('tools');
+    expect(params).not.toHaveProperty('tool_choice');
+  });
+
   it('coupe le cache de prompt avec AI_PROMPT_CACHE=off', async () => {
     mutableEnv.AI_PROMPT_CACHE = 'off';
     try {

@@ -714,5 +714,14 @@
   "Période (UTC)": "Period (UTC)",
   "Réécriture": "Rewrite",
   "Tronqué": "Truncated",
-  "Usages de l’assistant": "Assistant usage"
+  "Usages de l’assistant": "Assistant usage",
+  "Modèles par mode": "Models by mode",
+  "Modèle approfondi": "In-depth model",
+  "Modèle rapide": "Fast model",
+  "Utilise le modèle standard si vide": "Uses the standard model if left blank",
+  "Connexion au fournisseur": "Provider connection",
+  "Mode du test": "Test mode",
+  "Rapide": "Fast",
+  "Test effectué avec le fournisseur de recette.": "Test completed with the acceptance-test provider.",
+  "Connexion réussie en {{count}} ms.": "Connected in {{count}} ms."
 }

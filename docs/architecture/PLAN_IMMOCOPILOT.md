@@ -102,7 +102,7 @@ Cinq écarts changent la conception :
      par agence ; plus un plafond PAR AGENCE, tous collaborateurs confondus
      (`AI_TENANT_MINUTE_LIMIT` 100/min, `AI_TENANT_DAILY_LIMIT` 3000/jour).
      Messages : 20 max, 4 000 caractères chacun, 24 000 au total.
-     4 tours d'outils et 8 appels d'outils max par requête.
+     12 tours et 12 appels d'outils au plus en standard, 30 en approfondi.
    - Sorties d'outils projetées : jamais d'e-mail, téléphone, `file_path`,
      `mm_phone`, notes, propriétaire.
 5. **SSE.** `text/event-stream`, `no-cache, no-transform`,
@@ -148,9 +148,9 @@ export const chatRequestSchema = z
         z
           .object({
             role: z.enum(["user", "assistant"]),
-            content: z.string().trim().min(1).max(4000),
+            content: z.string().trim().min(1).max(4000)
           })
-          .strict(),
+          .strict()
       )
       .min(1)
       .max(20),
@@ -158,10 +158,10 @@ export const chatRequestSchema = z
       .object({
         currentPath: z.string().max(300).optional(),
         activeEntityType: z.enum(["PROPERTY", "LEASE"]).optional(),
-        activeEntityId: z.string().uuid().optional(),
+        activeEntityId: z.string().uuid().optional()
       })
       .strict()
-      .optional(),
+      .optional()
   })
   .strict(); // + superRefine : dernier message = user, somme des contenus ≤ 24 000
 
@@ -327,7 +327,7 @@ export interface LlmProvider {
       maxOutputTokens: number;
     },
     onTextDelta: (text: string) => void,
-    signal: AbortSignal,
+    signal: AbortSignal
   ): Promise<LlmTurnResult>;
 }
 
@@ -352,10 +352,7 @@ export interface CopilotToolDefinition<S extends z.ZodTypeAny = z.ZodTypeAny> {
   requiredPermission: string;
   feature: "CORE" | "RENTAL";
   kind: "read" | "proposal";
-  execute(
-    input: z.infer<S>,
-    ctx: CopilotToolContext,
-  ): Promise<CopilotToolOutcome>;
+  execute(input: z.infer<S>, ctx: CopilotToolContext): Promise<CopilotToolOutcome>;
 }
 ```
 
@@ -411,7 +408,7 @@ useCopilotChat(tenantId: string): {
   `disabled`), `ANTHROPIC_API_KEY` (exigée si `anthropic`), `AI_MODEL`
   (défaut `claude-opus-5-5`), `AI_EFFORT` (`low`|`medium`|`high`, défaut
   `low`), `AI_MAX_OUTPUT_TOKENS` (1024–64000, défaut 16000),
-  `AI_MAX_TOOL_ROUNDS` (1–8, défaut 4), `AI_REQUEST_TIMEOUT_MS` (défaut
+  `AI_MAX_TOOL_ROUNDS` en mode standard (1–12, défaut 12), `AI_REQUEST_TIMEOUT_MS` (défaut
   60000), `AI_PROPOSAL_TTL_SECONDS` (60–900, défaut 300),
   `AI_REFUSAL_FALLBACK` (`on`|`off`, défaut `on`). `fake` interdit en
   production ; aucun secret par défaut.

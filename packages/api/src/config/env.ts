@@ -461,7 +461,7 @@ const envSchema = z
     AI_MODEL: z.string().min(1).default('claude-opus-5-5'),
     AI_EFFORT: z.enum(['low', 'medium', 'high']).default('low'),
     AI_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(1024).max(64000).default(16000),
-    AI_MAX_TOOL_ROUNDS: z.coerce.number().int().min(1).max(8).default(4),
+    AI_MAX_TOOL_ROUNDS: z.coerce.number().int().min(1).max(12).default(12),
     AI_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(60000),
     AI_PROPOSAL_TTL_SECONDS: z.coerce.number().int().min(60).max(900).default(300),
     // Plans d'ecriture generiques (plan V2, etape 4) : l'utilisateur doit lire les

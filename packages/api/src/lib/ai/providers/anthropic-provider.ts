@@ -158,7 +158,7 @@ export class AnthropicProvider implements LlmProvider {
   ): Promise<LlmTurnResult> {
     if (signal.aborted) throw createAbortError();
 
-    // Modèle, effort et repli relus à chaque tour : un changement d'admin s'applique à chaud.
+    // Le contrôleur fournit le profil du mode choisi pour cette requête.
     const config = await this.getConfig();
     if (signal.aborted) throw createAbortError(); // coupé pendant la lecture de la configuration
     const useFallback = config.refusalFallback;
@@ -175,24 +175,27 @@ export class AnthropicProvider implements LlmProvider {
       // chaque tour d'outils relit tout ce qui précède au lieu de le retraiter.
       ...(useCache ? { cache_control: { type: 'ephemeral' as const } } : {}),
       messages: toAnthropicMessages(req.messages),
-      tools: req.tools.map(tool => ({
-        name: tool.name,
-        description: tool.description,
-        input_schema: tool.inputSchema as Anthropic.Beta.Messages.BetaTool.InputSchema,
-        eager_input_streaming: true
-      })),
-      tool_choice: { type: 'auto' },
+      ...(req.tools.length > 0 && {
+        tools: req.tools.map(tool => ({
+          name: tool.name,
+          description: tool.description,
+          input_schema: tool.inputSchema as Anthropic.Beta.Messages.BetaTool.InputSchema,
+          eager_input_streaming: true
+        })),
+        tool_choice: { type: 'auto' as const }
+      }),
       output_config: { effort: req.deep ? 'high' : config.effort },
       ...(useFallback ? { fallbacks: 'default' as const, betas: [SERVER_SIDE_FALLBACK_BETA] } : {})
     };
 
     // Abandon relié au signal de l'appelant et au délai global.
     const controller = new AbortController();
+    const timeoutMs = config.timeoutMs ?? env.AI_REQUEST_TIMEOUT_MS;
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
       controller.abort();
-    }, env.AI_REQUEST_TIMEOUT_MS);
+    }, timeoutMs);
     const onCallerAbort = () => controller.abort();
     signal.addEventListener('abort', onCallerAbort, { once: true });
 
@@ -240,7 +243,7 @@ export class AnthropicProvider implements LlmProvider {
       };
     } catch (error) {
       if (timedOut) {
-        logger.warn('ImmoCopilot : délai dépassé côté fournisseur', { timeoutMs: env.AI_REQUEST_TIMEOUT_MS });
+        logger.warn('ImmoCopilot : délai dépassé côté fournisseur', { timeoutMs });
         throw new LlmProviderError(t("L'assistant a mis trop de temps à répondre. Réessayez."), {
           retryable: true,
           model: config.model

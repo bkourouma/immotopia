@@ -6,6 +6,7 @@ import { AuditActionKey } from '../types/audit-types';
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
 import { recordAuditEvent } from './audit-service';
+import type { ProviderRuntimeConfig } from '../lib/ai/contracts';
 
 /**
  * Réglage ImmoCopilot de la plateforme (fournisseur, modèle, effort, repli).
@@ -21,23 +22,30 @@ export const AI_PROVIDER_IDS = ['disabled', 'fake', 'anthropic', 'openrouter'] a
 export type AiProviderId = (typeof AI_PROVIDER_IDS)[number];
 export const AI_EFFORTS = ['low', 'medium', 'high'] as const;
 export type AiEffort = (typeof AI_EFFORTS)[number];
+export type AiMode = 'standard' | 'deep' | 'fast';
 
 const SETTINGS_ID = 'default';
 const CONFIG_CACHE_TTL_MS = 30_000;
 const MODELS_CACHE_TTL_MS = 10 * 60_000;
 const MODELS_FETCH_TIMEOUT_MS = 5_000;
 
+const modelOverride = z.string().trim().min(1).max(200).regex(/^\S+$/);
+const modelsByModeSchema = z.object({ deep: modelOverride.optional(), fast: modelOverride.optional() }).strict();
+export type AiModelsByMode = z.infer<typeof modelsByModeSchema>;
+
 export const aiSettingsInputSchema = z
   .object({
     provider: z.enum(AI_PROVIDER_IDS),
     model: z.string().trim().min(1).max(200),
     effort: z.enum(AI_EFFORTS),
-    refusalFallback: z.boolean()
+    refusalFallback: z.boolean(),
+    modelsByMode: modelsByModeSchema.optional()
   })
   .strict();
 export type AiSettingsInput = z.infer<typeof aiSettingsInputSchema>;
 
 export interface EffectiveAiConfig extends AiSettingsInput {
+  modelsByMode: AiModelsByMode;
   source: 'database' | 'environment';
   updatedAt: Date | null;
 }
@@ -54,6 +62,7 @@ export interface AiSettingsView {
   model: string;
   effort: AiEffort;
   refusalFallback: boolean;
+  modelsByMode: AiModelsByMode;
   updatedAt: string | null;
   updatedByName: string | null;
   providers: AiProviderAvailability[];
@@ -75,6 +84,7 @@ function fromEnvironment(): EffectiveAiConfig {
     model: env.AI_MODEL,
     effort: env.AI_EFFORT,
     refusalFallback: env.AI_REFUSAL_FALLBACK !== 'off',
+    modelsByMode: {},
     source: 'environment',
     updatedAt: null
   };
@@ -103,7 +113,12 @@ export async function getEffectiveAiConfig(): Promise<EffectiveAiConfig> {
         refusalFallback: row.refusalFallback
       });
       if (parsed.success) {
-        value = { ...parsed.data, source: 'database', updatedAt: row.updatedAt };
+        value = {
+          ...parsed.data,
+          modelsByMode: modelsByModeSchema.catch({}).parse(row.modelsByMode),
+          source: 'database',
+          updatedAt: row.updatedAt
+        };
       } else {
         logger.warn("ImmoCopilot : réglage en base invalide, valeurs d'environnement utilisées");
       }
@@ -116,6 +131,21 @@ export async function getEffectiveAiConfig(): Promise<EffectiveAiConfig> {
   }
   configCache = { value, expiresAt: now + CONFIG_CACHE_TTL_MS };
   return value;
+}
+
+export function resolveAiMode(config: EffectiveAiConfig, mode: AiMode): ProviderRuntimeConfig {
+  const baseTimeout = env.AI_REQUEST_TIMEOUT_MS;
+  return {
+    model: (mode === 'standard' ? undefined : config.modelsByMode[mode]) ?? config.model,
+    effort: mode === 'deep' ? 'high' : mode === 'fast' ? 'low' : config.effort,
+    refusalFallback: config.refusalFallback,
+    timeoutMs:
+      mode === 'fast'
+        ? Math.min(baseTimeout, 45_000)
+        : mode === 'deep'
+          ? Math.max(baseTimeout, Math.min(120_000, baseTimeout * 2))
+          : baseTimeout
+  };
 }
 
 // --- Disponibilité des fournisseurs -------------------------------------------
@@ -179,6 +209,7 @@ export async function getAiSettingsView(): Promise<AiSettingsView> {
     model: config.model,
     effort: config.effort,
     refusalFallback: config.refusalFallback,
+    modelsByMode: config.modelsByMode,
     updatedAt: config.updatedAt ? config.updatedAt.toISOString() : null,
     updatedByName,
     providers: listAiProviders(),
@@ -200,6 +231,13 @@ function assertSettingsAllowed(input: AiSettingsInput): void {
         message: t('Un identifiant OpenRouter est requis (fournisseur/modèle, ex. anthropic/claude-sonnet-4.5).')
       });
     }
+    for (const [mode, model] of Object.entries(input.modelsByMode ?? {})) {
+      if (!model.includes('/'))
+        errors.push({
+          field: `modelsByMode.${mode}`,
+          message: t('Un identifiant OpenRouter est requis (fournisseur/modèle, ex. anthropic/claude-sonnet-4.5).')
+        });
+    }
   }
   if (input.provider === 'anthropic' && !keys.anthropic) {
     errors.push({ field: 'provider', message: t("La clé Anthropic n'est pas configurée sur le serveur.") });
@@ -216,6 +254,7 @@ export async function updateAiSettings(input: AiSettingsInput, userId: string): 
   assertSettingsAllowed(data);
 
   const before = await getEffectiveAiConfig();
+  if (before.provider !== data.provider && data.modelsByMode === undefined) data.modelsByMode = {};
   // Critical action: audit trace in the same transaction as the settings write.
   await prisma.$transaction(async tx => {
     await tx.platformAiSettings.upsert({
@@ -236,6 +275,7 @@ export async function updateAiSettings(input: AiSettingsInput, userId: string): 
           model: before.model,
           effort: before.effort,
           refusalFallback: before.refusalFallback,
+          modelsByMode: before.modelsByMode,
           source: before.source
         },
         after: data
