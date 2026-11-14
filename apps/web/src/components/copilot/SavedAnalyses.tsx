@@ -71,12 +71,14 @@ export function SavedAnalyses({
   tenantId,
   onClose,
   initialAnalysis,
-  onReportCreated
+  onReportCreated,
+  onCreateTask
 }: {
   tenantId: string;
   onClose(): void;
   initialAnalysis?: SavedAnalysisReference;
   onReportCreated(): void;
+  onCreateTask(analysis: SavedAnalysis): void;
 }) {
   const [items, setItems] = useState<SavedAnalysis[]>([]);
   const [selected, setSelected] = useState<SavedAnalysisReference | undefined>(initialAnalysis);
@@ -216,6 +218,9 @@ export function SavedAnalyses({
                   </Button>
                   <Button type="text" onClick={() => setReport({ item, immediate: true })}>
                     {t('Envoyer par e-mail')}
+                  </Button>
+                  <Button type="text" onClick={() => onCreateTask(item)}>
+                    {t('Créer une tâche')}
                   </Button>
                 </li>
               ))}

@@ -804,6 +804,116 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       }
     });
 
+    it('assigne une tâche avec une analyse en lecture seule et protège son achèvement', async () => {
+      const owner = await createTenantAdminUser(tenantA, 'task-owner');
+      const assignee = await createTenantAdminUser(tenantA, 'task-assignee');
+      const outsider = await createTenantAdminUser(tenantA, 'task-outsider');
+      const base = `/api/tenants/${tenantA.id}/ai`;
+      const url = base + '/tasks';
+      const analysis = await saveReportAnalysis(base, owner);
+      const input = {
+        requestId: randomUUID(),
+        analysis,
+        assigneeId: assignee.id,
+        title: 'Vérifier les encaissements',
+        priority: 'high',
+        dueDate: '2028-02-29'
+      };
+      expect((await request(app).post(url).set(authed(owner)).send(input)).status).toBe(409);
+      expect(
+        (
+          await request(app)
+            .post(url)
+            .set(authed(owner))
+            .send({ ...input, share: true, dueDate: '2027-02-29' })
+        ).status
+      ).toBe(400);
+      expect(
+        (
+          await request(app)
+            .post(url)
+            .set(authed(owner))
+            .send({ ...input, share: true, assigneeId: adminB.id })
+        ).status
+      ).toBe(404);
+      const assign = () =>
+        request(app)
+          .post(url)
+          .set(authed(owner))
+          .send({ ...input, share: true });
+      const results = await Promise.all([assign(), assign()]);
+      expect(results.map(result => result.status)).toEqual([201, 201]);
+      expect(results[0].body.data).toEqual(results[1].body.data);
+      const { id } = results[0].body.data;
+      const mine = (
+        await request(app)
+          .get(url + '?focus=' + id)
+          .set(authed(assignee))
+      ).body.data.items;
+      expect(mine).toEqual([
+        expect.objectContaining({
+          id,
+          canComplete: true,
+          dueDate: input.dueDate,
+          priority: 'high',
+          shareId: expect.any(String)
+        })
+      ]);
+      expect(mine[0].analysis).toBeUndefined();
+      expect(
+        (
+          await request(app)
+            .get(url + '?focus=' + id)
+            .set(authed(outsider))
+        ).body.data.items
+      ).toEqual([]);
+      const authored = (await request(app).get(url).set(authed(owner))).body.data.items;
+      expect(authored).toEqual([expect.objectContaining({ id, canComplete: false, analysis })]);
+      expect(
+        await prisma.userNotification.count({
+          where: {
+            tenantId: tenantA.id,
+            recipientUserId: assignee.id,
+            key: 'ASSISTANT_TASK_ASSIGNED',
+            relatedEntityId: id
+          }
+        })
+      ).toBe(1);
+      expect(
+        await prisma.userNotification.count({
+          where: { tenantId: tenantA.id, recipientUserId: assignee.id, key: 'ASSISTANT_ANALYSIS_SHARED' }
+        })
+      ).toBe(0);
+      const taskUrl = url + '/' + id;
+      expect((await request(app).patch(taskUrl).set(authed(owner)).send({ completed: true })).status).toBe(404);
+      expect((await request(app).patch(taskUrl).set(authed(assignee)).send({ completed: true })).status).toBe(204);
+      expect((await request(app).get(url).set(authed(assignee))).body.data.items[0].completedAt).toEqual(
+        expect.any(String)
+      );
+      expect(
+        (
+          await request(app)
+            .delete(base + '/shares/' + mine[0].shareId)
+            .set(authed(assignee))
+        ).status
+      ).toBe(204);
+      expect((await assign()).status).toBe(201);
+      expect((await request(app).get(url).set(authed(assignee))).body.data.items[0].shareId).toBeUndefined();
+      expect((await request(app).patch(taskUrl).set(authed(assignee)).send({ completed: false })).status).toBe(204);
+      expect((await request(app).get(url).set(authed(assignee))).body.data.items[0].completedAt).toBeNull();
+      const self = await request(app).post(url).set(authed(owner)).send({
+        requestId: randomUUID(),
+        title: 'Classer les justificatifs',
+        assigneeId: owner.id
+      });
+      expect(self.status).toBe(201);
+      expect((await request(app).get(url).set(authed(owner))).body.data.items).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: self.body.data.id, canComplete: true, priority: 'normal' })
+        ])
+      );
+    });
+
     it('partage un tableau recalculé, exclut le titre privé et révoque la lecture et l’export', async () => {
       const owner = await createTenantAdminUser(tenantA, 'share-owner');
       const recipient = await createTenantAdminUser(tenantA, 'share-recipient');

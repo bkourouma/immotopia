@@ -18,6 +18,9 @@ vi.mock('../../services/copilot-service', () => {
     listSavedAnalyses: vi.fn(),
     listScheduledReports: vi.fn(),
     setScheduledReportActive: vi.fn(),
+    listTasks: vi.fn(),
+    createTask: vi.fn(),
+    setTaskCompleted: vi.fn(),
     listAnalysisRecipients: vi.fn(),
     queueImmediateReport: vi.fn(),
     listAnalysisShares: vi.fn(),
@@ -110,6 +113,74 @@ function setDesktop(desktop: boolean) {
 
 describe('AssistantPage — artefacts', () => {
   afterEach(() => setDesktop(false));
+
+  it('ouvre une tâche assignée depuis sa notification et permet de la terminer', async () => {
+    getStatus.mockResolvedValue(ENABLED);
+    const id = 'task-1';
+    const task = {
+      id,
+      title: 'Vérifier les encaissements',
+      description: null,
+      dueDate: '2028-02-29',
+      priority: 'high' as const,
+      completedAt: null,
+      canComplete: true,
+      shareId: 'share-1',
+      creator: { fullName: 'Adama' },
+      assignee: { fullName: 'Camille' }
+    };
+    vi.mocked(copilotService.listTasks)
+      .mockResolvedValueOnce({ items: [task] })
+      .mockResolvedValueOnce({ items: [{ ...task, completedAt: '2028-02-29T08:00:00Z' }] });
+    vi.mocked(copilotService.setTaskCompleted).mockResolvedValueOnce(undefined);
+    renderPage('/tenant/t1/assistant?tache=' + id);
+    const drawer = await screen.findByRole('dialog', { name: 'Tâches' });
+    expect(await within(drawer).findByText(task.title)).toBeInTheDocument();
+    expect(within(drawer).getByRole('link', { name: 'Ouvrir l’analyse' })).toHaveAttribute(
+      'href',
+      '/tenant/t1/assistant?partage=share-1'
+    );
+    expect(copilotService.listTasks).toHaveBeenCalledWith('t1', undefined, id, expect.anything());
+    fireEvent.click(within(drawer).getByRole('button', { name: 'Terminer la tâche' }));
+    expect(copilotService.setTaskCompleted).toHaveBeenCalledWith('t1', id, true);
+    expect(await within(drawer).findByRole('button', { name: 'Rouvrir la tâche' })).toBeEnabled();
+  });
+
+  it('confirme la création d’une tâche depuis Mes analyses', async () => {
+    getStatus.mockResolvedValue(ENABLED);
+    const title = 'Situation locative';
+    vi.mocked(copilotService.listSavedAnalyses).mockResolvedValueOnce({
+      items: [{ conversationId: 'c1', artifactId: 'a1', title, createdAt: '2026-11-14' }]
+    });
+    vi.mocked(copilotService.listAnalysisRecipients).mockResolvedValueOnce([
+      { userId: 'recipient-1', displayName: 'Camille Destinataire' }
+    ]);
+    vi.mocked(copilotService.createTask).mockResolvedValueOnce({ id: 'task-2' });
+    vi.mocked(copilotService.listTasks).mockResolvedValueOnce({ items: [] });
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Mes analyses' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Créer une tâche' }));
+    const confirm = await screen.findByRole('button', { name: 'Confirmer la création' });
+    const dialog = within(confirm.closest<HTMLElement>('[role="dialog"]')!);
+    expect(confirm).toBeDisabled();
+    expect(dialog.getByText(/accès en lecture seule à l’analyse/)).toBeInTheDocument();
+    fireEvent.change(dialog.getByRole('textbox', { name: 'Titre' }), { target: { value: 'Vérifier le dossier' } });
+    fireEvent.mouseDown(dialog.getByRole('combobox', { name: 'Collaborateur assigné' }));
+    fireEvent.click(await screen.findByText('Camille Destinataire', { selector: '.ant-select-item-option-content' }));
+    expect(copilotService.createTask).not.toHaveBeenCalled();
+    fireEvent.click(confirm);
+    expect(copilotService.createTask).toHaveBeenCalledWith(
+      't1',
+      expect.objectContaining({
+        title: 'Vérifier le dossier',
+        assigneeId: 'recipient-1',
+        priority: 'normal',
+        analysis: { conversationId: 'c1', artifactId: 'a1' },
+        requestId: expect.any(String)
+      })
+    );
+    expect(await screen.findByRole('dialog', { name: 'Tâches' })).toBeInTheDocument();
+  });
 
   it('ouvre les rapports depuis une notification et active le brouillon', async () => {
     getStatus.mockResolvedValue(ENABLED);

@@ -16,6 +16,12 @@ import {
 } from '../lib/ai/scheduled-reports';
 import { isEmailDeliveryConfigured } from '../services/email-service';
 import {
+  assistantTaskInput,
+  createAssistantTask,
+  listAssistantTasks,
+  setAssistantTaskCompleted
+} from '../lib/ai/tasks';
+import {
   assertSavedAnalysisPinned,
   listSavedAnalyses,
   listSavedAnalysisPins,
@@ -100,10 +106,10 @@ function requireContext(req: Request): { tenantId: string; userId: string } {
   return { tenantId, userId };
 }
 
-async function conversationScope(req: Request) {
+async function conversationScope(req: Request, requireTools = true) {
   const { tenantId, userId } = requireContext(req);
   const { permissions, tools } = await resolveAvailableTools(userId, tenantId, true);
-  if (tools.length === 0) throw new ForbiddenError();
+  if (requireTools && tools.length === 0) throw new ForbiddenError();
   const owner = { tenantId, ownerId: userId };
   return {
     owner,
@@ -316,6 +322,43 @@ export const listScheduledReportsHandler = asyncHandler(async (req, res) => {
     }))
   };
   res.set('Cache-Control', 'private, no-store').json({ success: true, data });
+});
+
+export const listAssistantTasksHandler = asyncHandler(async (req, res) => {
+  const { cursor, focus } = z
+    .object({
+      cursor: z.string().uuid().optional(),
+      focus: z.string().uuid().optional()
+    })
+    .strict()
+    .parse(req.query);
+  const { owner, scopeKey } = await conversationScope(req, false);
+  const data = await listAssistantTasks(owner, scopeKey, cursor, focus);
+  res.set('Cache-Control', 'private, no-store').json({ success: true, data });
+});
+
+export const createAssistantTaskHandler = asyncHandler(async (req, res) => {
+  const input = assistantTaskInput.parse(req.body);
+  const { tenantId, userId } = requireContext(req);
+  const owner = { tenantId, ownerId: userId };
+  const { analysis, assigneeId } = input;
+  const source = analysis ? await conversationScope(req) : undefined;
+  if (analysis && source && assigneeId !== userId) {
+    await assertAnalysisCollaborator(tenantId, assigneeId);
+    const artifact = await getStoredArtifact(owner, analysis.conversationId, analysis.artifactId, source.scopeKey);
+    const recipient = await resolveAvailableTools(assigneeId, tenantId, true);
+    await recalculateSharedArtifact(artifact, tenantId, assigneeId, analysis.conversationId, source, recipient);
+  }
+  const data = await createAssistantTask(owner, source?.scopeKey, input);
+  res.set('Cache-Control', 'private, no-store').status(201).json({ success: true, data });
+});
+
+export const updateAssistantTaskHandler = asyncHandler(async (req, res) => {
+  const { tenantId, userId } = requireContext(req);
+  const { id } = conversationParams.parse(req.params);
+  const { completed } = z.object({ completed: z.boolean() }).strict().parse(req.body);
+  await setAssistantTaskCompleted({ tenantId, ownerId: userId }, id, completed);
+  res.sendStatus(204);
 });
 
 async function assertReportRecipients(

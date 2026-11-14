@@ -10,7 +10,9 @@ import { SavedAnalyses } from '../../components/copilot/SavedAnalyses';
 import { AnalysisShares } from '../../components/copilot/AnalysisShares';
 import { ShareAnalysisDialog } from '../../components/copilot/ShareAnalysisDialog';
 import { ScheduledReports } from '../../components/copilot/ScheduledReports';
-import { copilotService } from '../../services/copilot-service';
+import { AssistantTasks } from '../../components/copilot/AssistantTasks';
+import { CreateAssistantTaskDialog } from '../../components/copilot/CreateAssistantTaskDialog';
+import { copilotService, type SavedAnalysis } from '../../services/copilot-service';
 import { feedback } from '../../lib/feedback';
 import { ArtifactPanel } from '../../components/copilot/artifact/ArtifactPanel';
 import { filenameFromDisposition, saveBlob } from '../../utils/save-blob';
@@ -82,6 +84,9 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
   const activeId = params.get('c');
   const sharedId = params.get('partage');
   const reportsOpen = params.get('rapports') === '1';
+  const taskId = params.get('tache') ?? undefined;
+  const tasksOpen = !!taskId || params.get('taches') === '1';
+  const [taskDraft, setTaskDraft] = useState<{ analysis?: SavedAnalysis }>();
   const analysisConversation = params.get('fil');
   const analysisArtifact = params.get('analyse');
   const initialAnalysis =
@@ -400,6 +405,7 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
           key={analysisArtifact ?? ''}
           tenantId={tenantId}
           initialAnalysis={initialAnalysis}
+          onCreateTask={analysis => setTaskDraft({ analysis })}
           onReportCreated={() => {
             setAnalysesOpen(false);
             setParams(previous => {
@@ -426,6 +432,41 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
         />
       )}
       {reportsOpen && <ScheduledReports tenantId={tenantId} onClose={() => setReportsOpen(false)} />}
+      {tasksOpen && (
+        <AssistantTasks
+          key={taskId ?? ''}
+          tenantId={tenantId}
+          focus={taskId}
+          onCreate={() => setTaskDraft({})}
+          onClose={() =>
+            setParams(previous => {
+              const next = new URLSearchParams(previous);
+              next.delete('taches');
+              next.delete('tache');
+              return next;
+            })
+          }
+        />
+      )}
+      {taskDraft && (
+        <CreateAssistantTaskDialog
+          tenantId={tenantId}
+          analysis={taskDraft.analysis}
+          onClose={() => setTaskDraft(undefined)}
+          onCreated={id => {
+            setTaskDraft(undefined);
+            setAnalysesOpen(false);
+            setParams(previous => {
+              const next = new URLSearchParams(previous);
+              next.delete('fil');
+              next.delete('analyse');
+              next.delete('taches');
+              next.set('tache', id);
+              return next;
+            });
+          }}
+        />
+      )}
       {(sharesOpen || sharedId) && (
         <AnalysisShares
           key={sharedId ?? ''}
@@ -478,6 +519,18 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
             </Button>
             <Button type="text" onClick={() => setReportsOpen(true)}>
               {t('Rapports')}
+            </Button>
+            <Button
+              type="text"
+              onClick={() =>
+                setParams(previous => {
+                  const next = new URLSearchParams(previous);
+                  next.set('taches', '1');
+                  return next;
+                })
+              }
+            >
+              {t('Tâches')}
             </Button>
             {conversationId && activeId === conversationId && !streaming && (
               <Button type="text" onClick={() => setSharedConversation(conversationId)}>

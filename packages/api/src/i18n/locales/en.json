@@ -1,4 +1,8 @@
 {
+  "Confirmez le partage de l’analyse pour créer la tâche.": "Confirm sharing the analysis to create the task.",
+  "Cette confirmation correspond déjà à une autre tâche.": "This confirmation already belongs to another task.",
+  "Une tâche vous a été assignée": "A task was assigned to you",
+  "Ouvrez les tâches de l’assistant pour la consulter.": "Open Tasks in the assistant to view it.",
   "Confirmez le partage de l’analyse pour activer ce rapport.": "Confirm sharing the analysis to activate this report.",
   "Vous trouverez votre rapport en pièce jointe.": "Your report is attached.",
   "Envoi d’un rapport ImmoTopia": "ImmoTopia report delivery",

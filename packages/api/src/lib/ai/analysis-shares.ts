@@ -92,7 +92,8 @@ export async function createAnalysisSharesInTransaction(
   tx: PrismaTransactionClient,
   owner: AssistantOwner,
   scopeKey: string,
-  reference: AnalysisShareReference
+  reference: AnalysisShareReference,
+  notifyRecipient = true
 ) {
   const { recipientIds, message, ...location } = reference;
   const shares = new Map<string, { id: string; recipientId: string }>();
@@ -138,7 +139,7 @@ export async function createAnalysisSharesInTransaction(
     if (!share) throw new NotFoundError();
     // The notification and its in-app delivery commit with the new share. An
     // idempotent retry returns the existing share without notifying again.
-    if (created) {
+    if (created && notifyRecipient) {
       const preferred = share.recipient.preferredLanguage;
       const language = isLanguage(preferred) ? preferred : 'fr';
       const now = new Date();

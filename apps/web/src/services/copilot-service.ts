@@ -206,6 +206,20 @@ export type ScheduledReport = {
 };
 export type SharedConversation = { turns: Array<{ id: string; startedAt: string; artifacts: unknown[] }> };
 export type SavedAnalysis = SavedAnalysisReference & { title: string; createdAt: string; pinnedAt?: string | null };
+export type TaskPriority = 'low' | 'normal' | 'high';
+export type AssistantTask = {
+  id: string;
+  title: string;
+  description: string | null;
+  priority: TaskPriority;
+  dueDate: string | null;
+  completedAt: string | null;
+  creator: { fullName: string };
+  assignee: { fullName: string };
+  canComplete: boolean;
+  analysis?: SavedAnalysisReference;
+  shareId?: string;
+};
 export type AnalysisShare = {
   id: string;
   colleague: string;
@@ -221,6 +235,31 @@ function savedAnalysisPath(tenantId: string, { conversationId, artifactId }: Sav
 }
 
 export const copilotService = {
+  async listTasks(tenantId: string, cursor?: string, focus?: string, signal?: AbortSignal) {
+    const response = await apiClient.get(`/tenants/${tenantId}/ai/tasks`, { params: { cursor, focus }, signal });
+    return unwrap<{ items: AssistantTask[]; nextCursor?: string }>(response.data);
+  },
+  async createTask(
+    tenantId: string,
+    input: {
+      requestId: string;
+      title: string;
+      description?: string;
+      assigneeId: string;
+      dueDate?: string;
+      priority: TaskPriority;
+      analysis?: SavedAnalysisReference;
+    }
+  ) {
+    const response = await apiClient.post(`/tenants/${tenantId}/ai/tasks`, {
+      ...input,
+      ...(input.analysis ? { share: true } : {})
+    });
+    return unwrap<{ id: string }>(response.data);
+  },
+  async setTaskCompleted(tenantId: string, id: string, completed: boolean) {
+    await apiClient.patch(`/tenants/${tenantId}/ai/tasks/${id}`, { completed });
+  },
   async listScheduledReports(tenantId: string, cursor?: string, signal?: AbortSignal) {
     const response = await apiClient.get(`/tenants/${tenantId}/ai/reports`, { params: { cursor }, signal });
     return unwrap<{ items: ScheduledReport[]; nextCursor?: string }>(response.data);
