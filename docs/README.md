@@ -30,6 +30,7 @@
 - [ADR-003 — migration des fonds de copropriété hors dépôt](architecture/adr/ADR-003-migration-hors-git-fonds-copropriete.md)
 - [ADR-005 — staging sur `app`, production sur `clients`](architecture/adr/ADR-005-environnements-staging-production.md)
 - [ADR-005 — patrimoine multi-actifs](architecture/adr/ADR-005-patrimoine-multi-actifs.md)
+- [ADR-009 — contenu de l'aide interne hors des catalogues i18n](architecture/adr/ADR-009-contenu-aide-interne-hors-catalogues-i18n.md)
 - [Standards de code](governance/CODING_STANDARDS.md) et
   [sécurité — modèle de menace](governance/SECURITY.md)
 - [Contexte IA avec Repomix](../repomix.config.json) — génération locale via `npm run repomix`
