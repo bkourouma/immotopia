@@ -126,12 +126,52 @@ export async function getConversation(owner: AssistantOwner, id: string, scopeKe
       question: true,
       files: true,
       response: true,
+      responseRevision: true,
+      feedback: {
+        where: owner,
+        orderBy: { revision: 'desc' },
+        take: 1,
+        select: { revision: true, helpful: true, comment: true }
+      },
       result: true,
       outcome: true,
       attachments: { where: owner, select: fileReference, orderBy: { position: 'asc' } }
     }
   });
-  return { ...conversation, turns: turns.reverse() };
+  return {
+    ...conversation,
+    turns: turns.reverse().map(({ feedback, ...turn }) => ({
+      ...turn,
+      feedback: feedback[0]?.revision === turn.responseRevision ? feedback[0] : null
+    }))
+  };
+}
+
+export async function saveResponseFeedback(
+  owner: AssistantOwner,
+  conversationId: string,
+  turnId: string,
+  scopeKey: string,
+  input: { revision: number; helpful: boolean; comment: string }
+) {
+  await prisma.$transaction(async tx => {
+    const where = { ...owner, id: turnId, conversationId, conversation: { scopeKey }, outcome: 'end_turn' };
+    const turn = await tx.assistantTurn.findFirst({ where, select: { id: true } });
+    if (!turn) throw new NotFoundError();
+    const locked = await tx.assistantTurn.updateMany({
+      where: { ...where, responseRevision: input.revision },
+      data: { responseRevision: input.revision }
+    });
+    if (!locked.count) throw new ConflictError(t('La réponse a déjà été modifiée.'));
+    const current = await tx.assistantTurn.findFirstOrThrow({ where, select: { response: true } });
+    const key = { ...owner, turnId, revision: input.revision };
+    const data = { helpful: input.helpful, comment: input.comment, excerpt: current.response.slice(0, 300) };
+    await tx.assistantResponseFeedback.upsert({
+      where: { tenantId_ownerId_turnId_revision: key },
+      create: { ...key, ...data },
+      update: data
+    });
+  });
 }
 
 export async function getStoredArtifact(owner: AssistantOwner, conversationId: string, id: string, scopeKey: string) {

@@ -227,7 +227,16 @@ export function useCopilotChat(tenantId: string, persistent = false): UseCopilot
             turn.outcome === 'aborted'
               ? [turn.response, t('La réponse a été interrompue.')].filter(Boolean).join('\n\n')
               : turn.response;
-          restoredMessages.push({ id: `${turn.id}-response`, role: 'assistant', text, attachments });
+          restoredMessages.push({
+            id: `${turn.id}-response`,
+            role: 'assistant',
+            text,
+            attachments,
+            rating:
+              turn.outcome === 'end_turn' && turn.responseRevision !== undefined
+                ? { turnId: turn.id, revision: turn.responseRevision, previous: turn.feedback }
+                : undefined
+          });
         }
       }
       setMessages(restoredMessages);
@@ -340,6 +349,9 @@ export function useCopilotChat(tenantId: string, persistent = false): UseCopilot
             break;
           case 'done':
             done = true;
+            if (turnId && !failed && e.reason === 'end_turn' && conversationIdRef.current) {
+              updateMessage(assistantId, message => ({ ...message, rating: { turnId, revision: 0 } }));
+            }
             break;
           default:
             break; // tool_status : rien à conserver

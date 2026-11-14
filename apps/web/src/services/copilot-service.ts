@@ -1,9 +1,9 @@
 import apiClient from '../utils/api-client';
 import { postEventStream } from '../utils/event-stream';
-import type { ArtifactVersionChange } from '../types/copilot';
 import type {
   ActionExecutedPayload,
   ArtifactDownloadFormat,
+  ArtifactVersionChange,
   ArtifactVersionPayload,
   AssistantConversation,
   AssistantConversationSummary,
@@ -11,7 +11,8 @@ import type {
   CopilotSseEvent,
   CopilotStatus,
   ExecuteActionResult,
-  ExecuteRequest
+  ExecuteRequest,
+  ResponseFeedback
 } from '../types/copilot';
 
 const DISABLED_STATUS: CopilotStatus = {
@@ -199,6 +200,9 @@ export const copilotService = {
   },
   getArtifactVersion,
   downloadArtifact,
+  async saveResponseFeedback(tenantId: string, conversationId: string, turnId: string, vote: ResponseFeedback) {
+    await apiClient.put(`/tenants/${tenantId}/ai/conversations/${conversationId}/turns/${turnId}/feedback`, vote);
+  },
   async transcribe(tenantId: string, audio: Blob, signal: AbortSignal) {
     const data = new FormData();
     data.set('audio', audio, 'dictation');

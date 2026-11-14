@@ -4,6 +4,7 @@ import { CopyOutlined, SoundOutlined, StopOutlined } from '@ant-design/icons';
 import { useCopilotSpeech } from '../../hooks/useCopilotSpeech';
 import i18next from '../../i18n';
 import { t } from '../../i18n/t';
+import { ResponseFeedbackButton } from './ResponseFeedbackButton';
 import { copilotService } from '../../services/copilot-service';
 import { filenameFromDisposition, saveBlob } from '../../utils/save-blob';
 import type { CopilotAttachment, CopilotUiMessage } from '../../types/copilot';
@@ -209,6 +210,14 @@ export function CopilotMessageList({
             ))}
             {!isUser && message.text.trim() && !(streaming && index === messages.length - 1) && (
               <Space wrap style={{ marginBlockStart: 4 }}>
+                {conversationId && message.rating && (
+                  <ResponseFeedbackButton
+                    key={message.rating.revision}
+                    tenantId={tenantId}
+                    conversationId={conversationId}
+                    rating={message.rating}
+                  />
+                )}
                 {typeof navigator.clipboard?.writeText === 'function' && (
                   <Button
                     size="small"

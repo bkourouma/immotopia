@@ -13,6 +13,7 @@ vi.mock('../../services/copilot-service', () => {
     executeProposal: vi.fn(),
     listConversations: vi.fn().mockResolvedValue({ items: [] }),
     getConversation: vi.fn(),
+    saveResponseFeedback: vi.fn(),
     getArtifactVersion: vi.fn(),
     downloadAttachment: vi.fn(),
     transcribe: vi.fn()
@@ -270,6 +271,42 @@ describe('AssistantPage', () => {
     Fake.last.onresult?.({ resultIndex: 0, results: [final] });
     await waitFor(() => expect(input).toHaveValue('bonjour'));
     expect(streamChat).not.toHaveBeenCalled();
+  });
+});
+
+it('enregistre un avis avec commentaire sur la révision affichée', async () => {
+  getStatus.mockResolvedValue(ENABLED);
+  const id = '5258bdd1-74d6-47ea-a37f-ab4d1e8eae45';
+  getConversation.mockResolvedValueOnce({
+    id,
+    title: 'Analyse',
+    pinned: false,
+    archived: false,
+    updatedAt: '2026-11-14T12:00:00Z',
+    turns: [
+      {
+        id: 'tour-1',
+        question: 'Bilan',
+        response: 'Voici le bilan.',
+        responseRevision: 3,
+        result: null,
+        outcome: 'end_turn'
+      }
+    ]
+  });
+  vi.mocked(copilotService.saveResponseFeedback).mockResolvedValueOnce(undefined);
+  renderPage(`/tenant/t1/assistant?c=${id}`);
+  fireEvent.click(await screen.findByRole('button', { name: 'Donner un avis' }));
+  fireEvent.click(screen.getByRole('radio', { name: 'Peu utile' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Commentaire facultatif' }), {
+    target: { value: 'À préciser.' }
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+  expect(await screen.findByRole('button', { name: 'Modifier mon avis' })).toBeVisible();
+  expect(copilotService.saveResponseFeedback).toHaveBeenCalledWith('t1', id, 'tour-1', {
+    revision: 3,
+    helpful: false,
+    comment: 'À préciser.'
   });
 });
 

@@ -47,7 +47,9 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 **Édition des rapports (`39692814`)** — Les sections de texte et les réponses Markdown peuvent être modifiées dans le panneau, avec création de version et contrôle de concurrence. Les tableaux restent liés à leurs données.
 
-**Réécriture assistée** — Le panneau propose une réécriture par section. Le serveur vérifie la version et n’expose aucun outil au modèle. La proposition alimente le brouillon et le bouton Enregistrer crée la version.
+**Réécriture assistée (`ad5de59c`)** — Le panneau propose une réécriture par section. Le serveur vérifie la version et n’expose aucun outil au modèle. La proposition alimente le brouillon et le bouton Enregistrer crée la version.
+
+**Avis** — Le propriétaire peut évaluer la réponse terminée et joindre un commentaire. Les avis sont associés à la révision exacte, avec extrait borné et suppression en cascade. La vue administrateur reste à ajouter.
 
 **À poursuivre** — Étendre le catalogue aux lots, au syndic, au patrimoine, à la maintenance, au CRM et à la promotion. Enrichir les exports avec des graphiques natifs. Poursuivre le partage, les épingles, les actions de suivi, les envois, l’administration et les six langues. Recetter avec un fournisseur réel et un navigateur.
 

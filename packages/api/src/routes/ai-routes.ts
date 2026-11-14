@@ -26,6 +26,7 @@ import {
   listConversationsHandler,
   rejectActionHandler,
   requireAssistantTools,
+  saveResponseFeedbackHandler,
   rewriteArtifactSectionHandler,
   updateConversationHandler
 } from '../controllers/ai-controller';
@@ -55,6 +56,12 @@ router.get(
   '/conversations/:id/turns/:turnId/files/:position',
   requireAiStatusAccess,
   downloadConversationAttachmentHandler
+);
+router.put(
+  '/conversations/:id/turns/:turnId/feedback',
+  requireAiStatusAccess,
+  aiActionRateLimiter,
+  saveResponseFeedbackHandler
 );
 router.get('/conversations/:id/artifacts/:artifactId', requireAiStatusAccess, getArtifactVersionHandler);
 router.post(

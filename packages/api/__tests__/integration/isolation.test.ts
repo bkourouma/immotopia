@@ -248,6 +248,9 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
 
   describe('Assistant — historique privé', () => {
     it('régénère seulement le dernier tour et conserve la réponse en cas de sortie vide', async () => {
+      const tenantA = await createTestTenant('Avis-Révisions');
+      createdTenantIds.push(tenantA.id);
+      const adminA = await createTenantAdminUser(tenantA, 'avis-admin');
       const base = `/api/tenants/${tenantA.id}/ai`;
       const post = (body: unknown) =>
         request(app)
@@ -271,12 +274,18 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
             messages: [{ role: 'user', content: 'Texte de remplacement ignoré' }]
           });
         expect((await regenerate(firstId)).status).toBe(409);
+        const feedbackPath = base + '/conversations/' + conversationId + '/turns/' + lastId + '/feedback';
+        const vote = { revision: 0, helpful: false, comment: 'À préciser.' };
+        expect((await request(app).put(feedbackPath).set(authed(adminB)).send(vote)).status).toBe(403);
+        expect((await request(app).put(feedbackPath).set(authed(adminA)).send(vote)).status).toBe(204);
+
         const read = async () =>
           (
             await request(app)
               .get(base + '/conversations/' + conversationId)
               .set(authed(adminA))
           ).body.data.turns;
+        expect((await read())[1].feedback).toEqual(vote);
         mockFakeScript = [{}];
         const empty = await regenerate(lastId);
         expect(empty.text).toContain('"reason":"error"');
@@ -287,6 +296,14 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         mockFakeScript = [{ text: 'Réponse régénérée.' }];
         const success = await regenerate(lastId);
         expect(success.text).toContain('"reason":"end_turn"');
+        expect((await read())[1].feedback).toBeNull();
+        expect((await request(app).put(feedbackPath).set(authed(adminA)).send(vote)).status).toBe(409);
+        expect(
+          await prisma.assistantResponseFeedback.findFirst({
+            where: { tenantId: tenantA.id, ownerId: adminA.id, turnId: lastId }
+          })
+        ).toMatchObject({ ...vote, excerpt: 'Réponse originale.' });
+
         expect(JSON.stringify(mockProviderRequests.at(-1)?.messages)).not.toContain('Texte de remplacement ignoré');
         expect(await read()).toMatchObject([
           { id: firstId, response: 'Réponse originale.' },

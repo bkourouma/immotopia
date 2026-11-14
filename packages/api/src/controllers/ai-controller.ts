@@ -39,6 +39,7 @@ import {
   finishAssistantTurn,
   getConversation,
   getConversationAttachment,
+  saveResponseFeedback,
   prepareRegeneration,
   replaceLatestResponse,
   historyQuery,
@@ -166,6 +167,20 @@ export const downloadConversationAttachmentHandler = asyncHandler(async (req: Re
 const artifactExportParams = z.object({ id: z.string().uuid(), artifactId: z.string().uuid() });
 
 const versionNumber = z.number().int().positive().max(2147483647);
+export const saveResponseFeedbackHandler = asyncHandler(async (req, res) => {
+  const { id, turnId } = z.object({ id: z.string().uuid(), turnId: z.string().uuid() }).parse(req.params);
+  const vote = z
+    .object({
+      revision: z.number().int().min(0).max(2147483647),
+      helpful: z.boolean(),
+      comment: z.string().trim().max(1000).default('')
+    })
+    .strict()
+    .parse(req.body);
+  const { owner, scopeKey } = await conversationScope(req);
+  await saveResponseFeedback(owner, id, turnId, scopeKey, vote);
+  res.sendStatus(204);
+});
 const requestedVersion = z.object({ version: z.coerce.number().pipe(versionNumber).optional() });
 
 export const rewriteArtifactSectionHandler = asyncHandler(async (req, res) => {

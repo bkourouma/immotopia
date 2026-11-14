@@ -48,6 +48,12 @@ export interface AssistantConversationSummary {
   updatedAt: string;
 }
 
+export interface ResponseFeedback {
+  revision: number;
+  helpful: boolean;
+  comment: string;
+}
+
 export interface AssistantConversation extends AssistantConversationSummary {
   turns: Array<{
     id: string;
@@ -55,6 +61,8 @@ export interface AssistantConversation extends AssistantConversationSummary {
     files?: string[];
     attachments?: Array<{ name: string; position: number }>;
     response: string;
+    responseRevision?: number;
+    feedback?: ResponseFeedback | null;
     result: Array<Extract<CopilotSseEvent, { type: 'artifact' }>> | null;
     outcome: string | null;
   }>;
@@ -389,6 +397,7 @@ export interface CopilotUiMessage {
   id: string;
   role: 'user' | 'assistant';
   text: string;
+  rating?: { turnId: string; revision: number; previous?: ResponseFeedback | null };
   files?: Array<{ name: string; position?: number }>;
   attachments: CopilotAttachment[];
 }
