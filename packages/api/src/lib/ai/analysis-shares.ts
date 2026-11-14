@@ -1,8 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import type { Prisma } from '@prisma/client';
 import { isLanguage, t } from '../../i18n';
 import { NotFoundError } from '../../middleware/error-middleware';
-import { prisma } from '../../utils/database';
+import { prisma, type PrismaTransactionClient } from '../../utils/database';
 import type { AssistantOwner } from './conversations';
 
 const metadata = {
@@ -90,7 +89,7 @@ export function createAnalysisShares(owner: AssistantOwner, scopeKey: string, re
 }
 
 export async function createAnalysisSharesInTransaction(
-  tx: Prisma.TransactionClient,
+  tx: PrismaTransactionClient,
   owner: AssistantOwner,
   scopeKey: string,
   reference: AnalysisShareReference
