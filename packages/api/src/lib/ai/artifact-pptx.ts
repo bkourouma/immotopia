@@ -2,6 +2,7 @@ import PptxGenJS from 'pptxgenjs';
 import { currentLanguage, t } from '../../i18n';
 import { AppError } from '../../middleware/error-middleware';
 import type { CopilotArtifact } from './contracts';
+import { chartColors, chartExportData } from './artifact-chart-data';
 import { artifactExportSections, artifactProvenanceLines } from './artifact-pdf';
 
 export async function buildArtifactPowerPoint(artifact: CopilotArtifact): Promise<Buffer> {
@@ -56,6 +57,49 @@ export async function buildArtifactPowerPoint(artifact: CopilotArtifact): Promis
 
   const cover = slide(artifact.title);
   cover.addText(new Date().toISOString(), { x: 0.55, y: 1.25, w: 12.2, h: 0.4, align, fontSize: 12 });
+  if (artifact.kind === 'chart') {
+    const chart = chartExportData(artifact);
+    if (chart.values.length) {
+      const page = slide(artifact.title);
+      page.addChart(
+        pptx.ChartType[chart.type],
+        chart.series.map(series => ({
+          name: series.name,
+          labels: chart.labels,
+          // PptxGenJS ignores falsy workbook values. "0" emits a numeric zero in the embedded XML.
+          values: series.values.map(value => (value === 0 ? '0' : value))
+        })),
+        {
+          x: 0.55,
+          y: 1.15,
+          w: 12.2,
+          h: 5.6,
+          barDir: 'col',
+          barGrouping: 'clustered',
+          displayBlanksAs: 'gap',
+          catAxisLabelFontSize: 10,
+          catAxisLabelFrequency: String(Math.max(1, Math.ceil(chart.labels.length / 14))),
+          catAxisLabelPos: 'low',
+          valAxisLabelFontSize: 10,
+          // The generator writes this OOXML orientation even though its types only list minMax.
+          catAxisOrientation: rtl ? ('maxMin' as 'minMax') : 'minMax',
+          legendPos: 'b',
+          showLegend: true,
+          chartColors: chart.type === 'pie' ? chartColors : chartColors.slice(0, chart.series.length)
+        }
+      );
+      if (chart.fallback)
+        page.addText(t('Les données sont présentées en barres pour faciliter leur lecture.'), {
+          x: 0.55,
+          y: 6.87,
+          w: 12.2,
+          h: 0.25,
+          align,
+          rtlMode: rtl,
+          fontSize: 10
+        });
+    } else narrative(artifact.title, t('Aucune valeur numérique à tracer.'));
+  }
   for (const section of artifactExportSections(artifact)) {
     if (section.kind === 'text') {
       narrative(artifact.title, section.text);

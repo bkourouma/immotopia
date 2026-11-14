@@ -3,6 +3,8 @@ import { t, currentLanguage } from '../../i18n';
 import { AppError } from '../../middleware/error-middleware';
 import { wrapArabicText } from '../documents/pdf-arabic';
 import { embedUnicodeFonts, TextFace } from '../signature/seal-text';
+import { chartExportData } from './artifact-chart-data';
+import { chartHeight, drawArtifactChart } from './artifact-chart-pdf';
 import type { ArtifactCell, ArtifactProvenance, CopilotArtifact } from './contracts';
 
 const margin = 42;
@@ -197,6 +199,16 @@ export async function buildArtifactPdf(artifact: CopilotArtifact, exportedAt = n
   paragraph(artifact.title, bold, 21);
   paragraph(formatExportDate(exportedAt), regular, 9);
   y -= 12;
+  if (artifact.kind === 'chart') {
+    const chart = chartExportData(artifact);
+    if (chart.values.length) {
+      if (chart.fallback)
+        paragraph(t('Les données sont présentées en barres pour faciliter leur lecture.'), regular, 9);
+      reserve(chartHeight);
+      drawArtifactChart(page, chart, regular, { left: margin, width, top: y, rtl });
+      y -= chartHeight;
+    } else paragraph(t('Aucune valeur numérique à tracer.'), regular, 10);
+  }
   for (const section of artifactExportSections(artifact)) {
     if (section.kind === 'text') {
       for (const line of section.text.split(/\r?\n/)) {

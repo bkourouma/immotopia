@@ -3145,5 +3145,7 @@
   "Nombre d’échéances en retard": "عدد الأقساط المتأخرة",
   "Paiements affectés": "المدفوعات المخصصة",
   "Vérifiez les échéances non soldées avant toute relance. Pour les baux arrivant à terme, contrôlez les préavis et préparez une alerte si nécessaire.": "تحقق من الأقساط غير المسددة قبل إرسال أي تذكير. راجع مهل الإشعار للعقود التي يقترب انتهاؤها وأعدّ تنبيهًا عند الحاجة.",
-  "Échéances du mois et de l’année précédente": "أقساط الشهر والشهر نفسه من السنة السابقة"
+  "Échéances du mois et de l’année précédente": "أقساط الشهر والشهر نفسه من السنة السابقة",
+  "Aucune valeur numérique à tracer.": "لا توجد قيم رقمية لعرضها على الرسم.",
+  "Les données sont présentées en barres pour faciliter leur lecture.": "تُعرض البيانات في مخطط أعمدة لتسهيل قراءتها."
 }

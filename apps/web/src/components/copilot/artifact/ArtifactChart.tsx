@@ -15,6 +15,7 @@ import {
   YAxis
 } from 'recharts';
 import { t } from '../../../i18n/t';
+import { useLanguage } from '../../../i18n/useLanguage';
 import type { CopilotArtifact } from '../../../types/copilot';
 import { chartXLabel, formatArtifactCell } from '../../../utils/copilot-artifact';
 
@@ -78,6 +79,7 @@ const DataFallback: React.FC<{ artifact: ChartArtifact }> = ({ artifact }) => (
 );
 
 export const ArtifactChart: React.FC<{ artifact: ChartArtifact }> = ({ artifact }) => {
+  const { direction, rtl } = useLanguage();
   const colors = useMemo(() => PALETTE_TOKENS.map(([name, fallback]) => cssVar(name, fallback)), []);
   const textColor = useMemo(() => cssVar('--text-secondary', '#525252'), []);
   const gridColor = useMemo(() => cssVar('--border-subtle', '#e5e5e5'), []);
@@ -100,8 +102,8 @@ export const ArtifactChart: React.FC<{ artifact: ChartArtifact }> = ({ artifact 
   const axes = (
     <>
       <CartesianGrid stroke={gridColor} strokeDasharray="3 3" />
-      <XAxis dataKey={artifact.xKey} tick={tick} stroke={gridColor} />
-      <YAxis tick={tick} stroke={gridColor} tickFormatter={fmt} />
+      <XAxis dataKey={artifact.xKey} tick={tick} stroke={gridColor} reversed={rtl} />
+      <YAxis tick={tick} stroke={gridColor} tickFormatter={fmt} orientation={rtl ? 'right' : 'left'} />
       <Tooltip formatter={fmt} />
       <Legend />
     </>
@@ -149,7 +151,13 @@ export const ArtifactChart: React.FC<{ artifact: ChartArtifact }> = ({ artifact 
 
   return (
     <div>
-      <div role="img" aria-label={label} data-testid="artifact-chart" style={{ width: '100%', height: 320 }} dir="ltr">
+      <div
+        role="img"
+        aria-label={label}
+        data-testid="artifact-chart"
+        style={{ width: '100%', height: 320 }}
+        dir={direction}
+      >
         <ResponsiveContainer width="100%" height="100%">
           {chart}
         </ResponsiveContainer>

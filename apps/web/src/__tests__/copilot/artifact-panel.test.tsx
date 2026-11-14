@@ -1,12 +1,17 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { LanguageProvider } from '../../i18n/LanguageProvider';
+import { LanguageContext, LanguageProvider } from '../../i18n/LanguageProvider';
+import { useLanguage } from '../../i18n/useLanguage';
 import type { CopilotArtifact } from '../../types/copilot';
 
 vi.mock('recharts', () => {
   const box = (name: string) => {
-    const Stub = (props: { children?: React.ReactNode }) => <div data-testid={`rc-${name}`}>{props.children}</div>;
+    const Stub = (props: { children?: React.ReactNode; reversed?: boolean; orientation?: string }) => (
+      <div data-testid={`rc-${name}`} data-reversed={props.reversed} data-orientation={props.orientation}>
+        {props.children}
+      </div>
+    );
     Stub.displayName = `Stub(${name})`;
     return Stub;
   };
@@ -160,6 +165,25 @@ describe('ArtifactPanel — rendus', () => {
     expect(screen.getByText('Afficher les données du graphique')).toBeInTheDocument();
     expect(screen.getByRole('table', { name: 'Revenus' })).toBeInTheDocument();
     expect(screen.getByText('Fév')).toBeInTheDocument();
+  });
+
+  it('inverse les catégories et place l’axe des valeurs à droite en arabe', async () => {
+    function ArabicPanel() {
+      const locale = useLanguage();
+      return (
+        <LanguageContext.Provider value={{ ...locale, language: 'ar', direction: 'rtl', rtl: true }}>
+          <ArtifactPanel artifacts={[chart]} onSelect={vi.fn()} onClose={vi.fn()} />
+        </LanguageContext.Provider>
+      );
+    }
+    render(
+      <LanguageProvider>
+        <ArabicPanel />
+      </LanguageProvider>
+    );
+    expect(await screen.findByTestId('artifact-chart')).toHaveAttribute('dir', 'rtl');
+    expect(screen.getByTestId('rc-x')).toHaveAttribute('data-reversed', 'true');
+    expect(screen.getByTestId('rc-y')).toHaveAttribute('data-orientation', 'right');
   });
 
   it('propose un sélecteur quand il y a plusieurs artefacts et ferme le panneau', () => {
