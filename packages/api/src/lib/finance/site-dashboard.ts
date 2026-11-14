@@ -59,7 +59,7 @@ export const getSitesDashboard: GetSitesDashboard = async (tenantId, filters) =>
   const budgetIds = validatedBudgets.map((budget: Record<string, any>) => budget.id as string);
 
   const [revisedTotals, engagementTotals, openAlerts] = await Promise.all([
-    getRevisedBudgetTotals(prisma, budgetIds),
+    getRevisedBudgetTotals(prisma, tenantId, budgetIds),
     getSiteEngagementTotals(prisma, tenantId, siteIds),
     // Au plus une alerte non acquittée par budget (index partiel
     // `site_budget_alerts_one_open_per_budget`), et au plus un budget validé

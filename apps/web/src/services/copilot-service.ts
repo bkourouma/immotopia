@@ -59,6 +59,7 @@ const KNOWN_EVENTS = new Set([
   'action_proposal',
   'write_plan',
   'follow_up',
+  'prepared_alert',
   'artifact',
   'error',
   'done'

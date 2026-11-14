@@ -74,6 +74,14 @@ const CORE_TOOLS = [
 ];
 
 describe('ImmoCopilot — outils et prompt par pack', () => {
+  it('réserve la préparation des alertes budgétaires au module Construction et aux gestionnaires de chantier', () => {
+    const permissions = ['FINANCE_SITES_MANAGE', 'FINANCE_ACCOUNTS_READ'];
+    expect(toolsForUser(permissions, ['CONSTRUCTION']).map(tool => tool.name)).toContain('prepare_budget_alert');
+    expect(toolsForUser(permissions, ['CORE']).map(tool => tool.name)).not.toContain('prepare_budget_alert');
+    expect(toolsForUser(['FINANCE_ACCOUNTS_READ'], ['CONSTRUCTION']).map(tool => tool.name)).not.toContain(
+      'prepare_budget_alert'
+    );
+  });
   it.each([
     ['AGENCE', [...CORE_TOOLS, ...RENTAL_TOOLS]],
     ['PATRIMOINE', [...CORE_TOOLS, ...RENTAL_TOOLS]],

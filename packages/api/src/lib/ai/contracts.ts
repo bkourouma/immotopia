@@ -51,7 +51,15 @@ export type CopilotToolName =
   | 'list_capabilities'
   | 'call_read'
   | 'plan_write'
-  | 'propose_follow_up';
+  | 'propose_follow_up'
+  | 'prepare_budget_alert';
+
+export type PreparedAlert = {
+  kind: 'construction_budget';
+  siteId: string;
+  siteName: string;
+  thresholdPercent: number;
+};
 
 export type FollowUpProposal = {
   id: string;
@@ -435,6 +443,7 @@ export type CopilotSseEvent =
   | { type: 'action_proposal'; proposal: ActionProposal }
   | { type: 'write_plan'; plan: WritePlan }
   | { type: 'follow_up'; proposal: FollowUpProposal }
+  | { type: 'prepared_alert'; alert: PreparedAlert }
   | { type: 'artifact'; artifact: CopilotArtifact }
   | {
       type: 'error';
@@ -596,7 +605,7 @@ export interface CopilotToolDefinition<S extends z.ZodTypeAny = z.ZodTypeAny> {
   requiredPermission: string;
   /** Permissions supplémentaires, toutes exigées (ex. voir le document généré pour le télécharger). */
   additionalPermissions?: readonly string[];
-  feature: 'CORE' | 'RENTAL' | 'SYNDIC';
+  feature: 'CORE' | 'RENTAL' | 'SYNDIC' | 'CONSTRUCTION';
   kind: 'read' | 'proposal';
   execute(input: z.infer<S>, ctx: CopilotToolContext): Promise<CopilotToolOutcome>;
 }

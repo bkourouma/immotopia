@@ -252,6 +252,112 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
   });
 
   describe('Assistant — historique privé', () => {
+    it('prépare le seuil budgétaire sans écriture puis applique la règle métier après validation', async () => {
+      const actor = await createTenantMemberUser(tenantA, 'budget-alert-owner', 'TEST_BUDGET_ALERT_MANAGER', [
+        'FINANCE_SITES_MANAGE',
+        'FINANCE_ACCOUNTS_READ'
+      ]);
+      const site = await prisma.constructionSite.create({
+        data: { tenantId: tenantA.id, name: 'Atrium', status: 'IN_PROGRESS' }
+      });
+      const foreign = await prisma.constructionSite.create({ data: { tenantId: tenantB.id, name: 'Autre agence' } });
+      const category = await prisma.costCategory.create({
+        data: { tenantId: tenantA.id, label: 'Préparation chantier' }
+      });
+      const budget = await prisma.siteBudget.create({
+        data: {
+          tenantId: tenantA.id,
+          siteId: site.id,
+          label: 'Budget initial',
+          status: 'VALIDATED',
+          lines: { create: { label: 'Gros œuvre', amountForecast: 1000, costCategoryId: category.id } }
+        }
+      });
+      await prisma.costAllocation.create({
+        data: {
+          tenantId: tenantA.id,
+          siteId: site.id,
+          costCategoryId: category.id,
+          sourceType: 'CASH_VOUCHER',
+          sourceId: randomUUID(),
+          amount: 800,
+          validatedAt: new Date()
+        }
+      });
+      const base = `/api/tenants/${tenantA.id}`;
+      const threshold = (id: string) => `${base}/finance/sites/${id}/budget-alert-threshold`;
+      try {
+        async function prepare(input: { site: string; thresholdPercent: number }) {
+          mockFakeScript = [{ toolCalls: [{ name: 'prepare_budget_alert', input }] }, { text: 'Formulaire prêt.' }];
+          const response = await request(app)
+            .post(base + '/ai/chat')
+            .set(authed(actor))
+            .send({
+              turnId: randomUUID(),
+              messages: [{ role: 'user', content: 'Prépare un seuil du chantier.' }]
+            });
+          expect(response.status).toBe(200);
+          return response.text
+            .split('\n')
+            .filter(line => line.startsWith('data: {'))
+            .map(line => JSON.parse(line.slice(6)));
+        }
+        const events = await prepare({ site: 'Atrium', thresholdPercent: 80 });
+        const card = events.find(event => event.type === 'prepared_alert');
+        expect(card).toEqual({
+          type: 'prepared_alert',
+          alert: {
+            kind: 'construction_budget',
+            siteId: site.id,
+            siteName: site.name,
+            thresholdPercent: 80
+          }
+        });
+        const conversation = events.find(event => event.type === 'meta').conversationId;
+        const reopened = await request(app)
+          .get(base + '/ai/conversations/' + conversation)
+          .set(authed(actor));
+        expect(reopened.body.data.turns[0].result).toContainEqual(card);
+        expect(
+          (await request(app).get(threshold(site.id)).set(authed(actor))).body.data.budgetThresholdPercent
+        ).toBeNull();
+        expect(await prisma.siteBudgetAlert.count({ where: { tenantId: tenantA.id, siteId: site.id } })).toBe(0);
+        expect(
+          (await prepare({ site: foreign.id, thresholdPercent: 90 })).find(event => event.type === 'prepared_alert')
+        ).toBeUndefined();
+        expect(
+          (
+            await request(app).patch(threshold(foreign.id)).set(authed(actor)).send({
+              thresholdPercent: 90,
+              expectedThresholdPercent: null
+            })
+          ).status
+        ).toBe(404);
+        const change = (next: number | null, prior: number | null) =>
+          request(app).patch(threshold(site.id)).set(authed(actor)).send({
+            thresholdPercent: next,
+            expectedThresholdPercent: prior
+          });
+        const confirmed = await change(80, null);
+        expect(confirmed.status).toBe(200);
+        expect((await change(80, null)).status).toBe(200);
+        expect((await change(60, null)).status).toBe(409);
+        const alerts = await prisma.siteBudgetAlert.findMany({ where: { tenantId: tenantA.id, siteId: site.id } });
+        expect(alerts).toEqual([expect.objectContaining({ budgetId: budget.id, thresholdPercent: 80 })]);
+        expect(alerts[0].engagedAmount.toNumber()).toBe(800);
+        expect((await change(null, 80)).status).toBe(200);
+        expect(await prisma.siteBudgetAlert.count({ where: { tenantId: tenantA.id, siteId: site.id } })).toBe(1);
+      } finally {
+        mockFakeScript = undefined;
+        await prisma.siteBudgetAlert.deleteMany({ where: { tenantId: tenantA.id, siteId: site.id } });
+        await prisma.costAllocation.deleteMany({ where: { tenantId: tenantA.id, siteId: site.id } });
+        await prisma.siteBudget.deleteMany({ where: { tenantId: tenantA.id, id: budget.id } });
+        await prisma.constructionSite.deleteMany({ where: { tenantId: tenantA.id, id: site.id } });
+        await prisma.constructionSite.deleteMany({ where: { tenantId: tenantB.id, id: foreign.id } });
+        await prisma.costCategory.deleteMany({ where: { tenantId: tenantA.id, id: category.id } });
+      }
+    });
+
     it('analyse les tickets de maintenance de l’agence avec les mêmes statuts ouverts que le tableau de bord', async () => {
       const agency = await createTestTenant('Maintenance-Assistant');
       createdTenantIds.push(agency.id);

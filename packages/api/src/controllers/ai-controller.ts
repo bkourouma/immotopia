@@ -905,7 +905,7 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
   const timeout = persistent ? setTimeout(() => deadline.abort(), 300_000) : undefined;
   timeout?.unref();
   const signal = persistent ? AbortSignal.any([stream.signal, deadline.signal]) : stream.signal;
-  const result: Extract<CopilotSseEvent, { type: 'artifact' }>[] = [];
+  const result: Extract<CopilotSseEvent, { type: 'artifact' | 'prepared_alert' }>[] = [];
   let response = '';
   let followUps = 0;
   let terminal: Extract<CopilotSseEvent, { type: 'done' }> | undefined;
@@ -940,8 +940,10 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
           ? async action => {
               if (followUps >= 3) throw new AppError(t('Ce message comporte déjà trois propositions.'), 422);
               const artifact = action.artifactId
-                ? (result.find(event => event.artifact.id === action.artifactId)?.artifact ??
-                  (await getStoredArtifact(owner, saved.conversationId, action.artifactId, scopeKey)))
+                ? (result.find(
+                    (event): event is Extract<CopilotSseEvent, { type: 'artifact' }> =>
+                      event.type === 'artifact' && event.artifact.id === action.artifactId
+                  )?.artifact ?? (await getStoredArtifact(owner, saved.conversationId, action.artifactId, scopeKey)))
                 : undefined;
               const proposal = await proposeFollowUp(owner, body.turnId!, action, artifact);
               followUps++;
@@ -951,7 +953,7 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
       emit: event => {
         if (persistent) {
           if (event.type === 'text_delta') response = (response + event.text).slice(0, 100_000);
-          if (event.type === 'artifact' && result.length < 20) result.push(event);
+          if ((event.type === 'artifact' || event.type === 'prepared_alert') && result.length < 20) result.push(event);
           if (event.type === 'done') {
             terminal = event;
             return;
@@ -968,7 +970,10 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
       outcome === 'end_turn' &&
       !signal.aborted &&
       (response.trim() ||
-        result.some(event => !regenerated.importedTables.some(table => table.id === event.artifact.id)))
+        result.some(
+          event =>
+            event.type === 'prepared_alert' || !regenerated.importedTables.some(table => table.id === event.artifact.id)
+        ))
     ) {
       await replaceLatestResponse(
         owner,

@@ -116,6 +116,42 @@ function setDesktop(desktop: boolean) {
 describe('AssistantPage — artefacts', () => {
   afterEach(() => setDesktop(false));
 
+  it('rouvre un formulaire métier depuis une alerte budgétaire conservée dans le fil', async () => {
+    getStatus.mockResolvedValue(ENABLED);
+    getConversation.mockResolvedValueOnce({
+      id: 'c1',
+      title: 'Chantier',
+      pinned: false,
+      archived: false,
+      updatedAt: '2026-11-14',
+      turns: [
+        {
+          id: 't1',
+          question: 'Prépare une alerte à 80 %',
+          response: 'Le formulaire est prêt.',
+          outcome: 'end_turn',
+          result: [
+            {
+              type: 'prepared_alert',
+              alert: {
+                kind: 'construction_budget',
+                siteId: 'site-1',
+                siteName: 'Atrium',
+                thresholdPercent: 80
+              }
+            }
+          ]
+        }
+      ]
+    });
+    renderPage('/tenant/t1/assistant?c=c1');
+    expect(await screen.findByRole('link', { name: 'Ouvrir le formulaire d’alerte' })).toHaveAttribute(
+      'href',
+      '/tenant/t1/finance/chantiers/site-1/budget?alerte-budget=80'
+    );
+    expect(screen.getByText(/Atrium · Seuil de 80 % du budget révisé/)).toBeInTheDocument();
+  });
+
   it('restaure et confirme une proposition durable dans le fil', async () => {
     getStatus.mockResolvedValue(ENABLED);
     getConversation.mockResolvedValueOnce({

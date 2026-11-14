@@ -8,7 +8,7 @@ import { evaluateFeatureAccess } from '../subscription/feature-access';
 import type { CopilotToolDefinition } from './contracts';
 import { toolsForUser, type ToolFeature } from './tools/registry';
 
-const TOOL_FEATURES: readonly ToolFeature[] = ['CORE', 'RENTAL', 'SYNDIC'];
+const TOOL_FEATURES: readonly ToolFeature[] = ['CORE', 'RENTAL', 'SYNDIC', 'CONSTRUCTION'];
 
 /**
  * Modules de l'abonnement ouvrant chaque fonctionnalité d'outil. `undefined`

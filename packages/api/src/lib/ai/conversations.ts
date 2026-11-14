@@ -38,6 +38,7 @@ export const conversationPatch = z
   .refine(value => Object.keys(value).length > 0);
 
 type ResultEvent = Extract<CopilotSseEvent, { type: 'artifact' }>;
+type PersistedResult = Extract<CopilotSseEvent, { type: 'artifact' | 'prepared_alert' }>;
 type AnalysisTable = Extract<ResultEvent['artifact'], { kind: 'table' }>;
 type ArtifactRef = Pick<ResultEvent['artifact'], 'id' | 'kind' | 'title'>;
 type SavedFile = { name: string; excerpt: string; artifactId?: string | null };
@@ -111,21 +112,24 @@ export async function resolveSavedAssistantScope(
   toolNames: string[]
 ): Promise<string> {
   const scopeKey = assistantScope(permissions, toolNames);
-  const beforeBudget = toolNames.filter(name => name !== 'syndicate_budget');
+  const beforeSiteAlert = toolNames.filter(name => name !== 'prepare_budget_alert');
+  const beforeBudget = beforeSiteAlert.filter(name => name !== 'syndicate_budget');
   const previousTools = beforeBudget.filter(name => name !== 'syndicate_charges');
   const originalTools = previousTools.filter(name => name !== 'syndicate_maintenance');
   if (originalTools.length === toolNames.length) return scopeKey;
 
   // Migrate earlier threads without moving them to the top of the history.
-  // Threads written with Syndic access cannot be read under the old scope.
-  const beforeBudgetScope = assistantScope(permissions, beforeBudget);
-  const previousScope = assistantScope(permissions, previousTools);
-  const originalScope = assistantScope(permissions, originalTools);
+  // The migration only adds available tools. Losing access does not migrate a thread.
+  const earlierScopes = [
+    ...new Set(
+      [beforeSiteAlert, beforeBudget, previousTools, originalTools].map(tools => assistantScope(permissions, tools))
+    )
+  ];
   await prisma.$executeRaw`
     UPDATE assistant_conversations
     SET scope_key = ${scopeKey}
     WHERE tenant_id = ${owner.tenantId} AND owner_id = ${owner.ownerId}
-      AND scope_key <> ${scopeKey} AND scope_key IN (${beforeBudgetScope}, ${previousScope}, ${originalScope})
+      AND scope_key <> ${scopeKey} AND scope_key IN (${Prisma.join(earlierScopes)})
   `;
   return scopeKey;
 }
@@ -400,7 +404,7 @@ export async function beginAssistantTurn(
 export async function finishAssistantTurn(
   owner: AssistantOwner,
   id: string,
-  data: { response: string; result: ResultEvent[]; outcome: Extract<CopilotSseEvent, { type: 'done' }>['reason'] }
+  data: { response: string; result: PersistedResult[]; outcome: Extract<CopilotSseEvent, { type: 'done' }>['reason'] }
 ): Promise<void> {
   await prisma.assistantTurn.updateMany({
     where: { ...owner, id, outcome: null },
@@ -458,7 +462,7 @@ export async function replaceLatestResponse(
   scopeKey: string,
   revision: number,
   response: string,
-  result: ResultEvent[]
+  result: PersistedResult[]
 ) {
   await prisma.$transaction(async tx => {
     const parent = await tx.assistantConversation.updateMany({

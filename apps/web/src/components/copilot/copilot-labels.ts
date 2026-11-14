@@ -74,6 +74,7 @@ export function copilotToolLabel(tool: CopilotToolName): string {
     lease_portfolio: t('Analyse des baux et de leurs échéances'),
     syndicate_budget: t('Écarts budgétaires de copropriété'),
     propose_follow_up: t('Préparation d’une action'),
+    prepare_budget_alert: t('Préparation d’une alerte budgétaire'),
     syndicate_charges: t('Analyse des charges de copropriété'),
     syndicate_maintenance: t('Maintenance par copropriété'),
     maintenance_overview: t('Analyse des tickets de maintenance'),

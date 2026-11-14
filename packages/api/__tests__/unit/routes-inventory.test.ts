@@ -33,6 +33,7 @@ import { authenticate } from '../../src/middleware/auth-middleware';
 import { requireSuperAdmin } from '../../src/middleware/super-admin-middleware';
 import { requireTenantPortalAccess } from '../../src/middleware/tenant-portal-access';
 import { requireOwnerPortalAccess } from '../../src/middleware/owner-portal-access';
+import { requireSitesManage } from '../../src/middleware/finance-rbac-middleware';
 import { requireCoOwnerPortalAccess } from '../../src/middleware/coowner-portal-access';
 
 /** Une entree de la liste blanche : routes publiques VOLONTAIRES. */
@@ -465,6 +466,14 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
       expect(route!.middlewares).toContain(requireSuperAdmin);
     }
     expect(routes.filter(r => r.path.startsWith('/api/platform/ai-settings'))).toHaveLength(4);
+  });
+
+  it('protège la lecture et la modification du seuil budgétaire par le droit de gestion des chantiers', () => {
+    const path = '/api/tenants/:tenantId/finance/sites/:siteId/budget-alert-threshold';
+    for (const method of ['GET', 'PATCH']) {
+      const route = routes.find(candidate => candidate.path === path && candidate.method === method);
+      expect(route?.middlewares).toEqual(expect.arrayContaining([requireTenantAccess, requireSitesManage]));
+    }
   });
 
   it('declare les 9 routes agence des acces tiers de confiance (lot B3) avec authentification et garde d’agence', () => {

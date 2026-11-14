@@ -6,14 +6,14 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | --- | --- |
 | Parc immobilier | 197 |
 | Gestion locative | 180 |
-| Finance | 196 |
+| Finance | 197 |
 | CRM et Ventes | 70 |
 | Maintenance | 34 |
-| Communication et Documents | 111 |
+| Communication et Documents | 112 |
 | Syndic copropriete | 247 |
 | Administration plateforme | 142 |
 | Portails externes | 84 |
-| **Total** | **1261** |
+| **Total** | **1263** |
 
 ## Sous-fonctionnalités
 
@@ -604,6 +604,7 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Fournisseurs et commandes | Lister les règlements d'un fournisseur | Relire depuis la fiche du fournisseur tous ses règlements, quelle que soit la personne ou la session qui les a saisis (un règlement saisi par l'un et validé par l'autre reste retrouvable, donc annulable). Chaque règlement indique son statut (brouillon, validé, annulé), son mode, le compte de trésorerie choisi, le saisisseur, le valideur et, s'il est annulé, le motif. | Chemin `supplierId` ; query `invoiceId?` (UUID : seulement les règlements imputés à cette facture) | Liste de règlements (date, montant, devise, statut VOIDED / VALIDATED / DRAFT, imputations avec référence de facture, `method`, `treasuryAccountId`, `treasuryLabel`, saisisseur, valideur, `validatedAt`, `voidedAt`, `voidReason`) triée par date décroissante ; 404 pour un fournisseur d'une autre agence | Saisir un règlement fournisseur | TENANT_ADMIN, TENANT_ACCOUNTANT (lecture des comptes) | Agence | GET /tenants/:tenantId/finance/suppliers/:supplierId/payments | FINANCE_ACCOUNTS_READ | Disponible | Finance > Achats et fournisseurs > Fournisseurs et commandes > Fournisseurs (fiche) |
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Comptabilité | Rechercher un compte comptable | Choisir un compte du plan comptable pour filtrer les écritures ou ouvrir son grand livre. | Query `search?`, `withMovements?`, `from?`, `to?`, `limit?` | Comptes correspondants (maximum 50) | — | TENANT_ADMIN, TENANT_MANAGER, TENANT_ACCOUNTANT | Agence | GET /tenants/:tenantId/finance/accounting/accounts | FINANCE_REPORTS_READ | Disponible | Finance > Caisse et comptabilité > Comptabilité |
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Facturation et balances | Lister les biens disponibles dans les filtres des balances clients | Alimenter le filtre Bien des balances clients et âgée avec les seuls identifiants et titres des biens ayant un bail dans l’agence. Accessible au comptable avec FINANCE_REPORTS_READ, indépendamment de l’accès aux fiches des biens. Le bail et le bien sont filtrés par agence ; le titre utilise la référence interne en repli ; aucun autre détail du bien n’est exposé. | tenantId (URL), contexte agence autorisé ; aucune saisie supplémentaire | Liste triée de { id, title } ; liste vide si aucun bien lié à un bail ; 403 sans lecture des rapports | Consulter la balance clients ; Consulter la balance clients âgée | TENANT_ADMIN, TENANT_MANAGER, TENANT_ACCOUNTANT | Agence | GET /tenants/:tenantId/finance/clients/properties | FINANCE_REPORTS_READ | Disponible | Finance > Clients et propriétaires > Facturation et balances > filtre Bien |
+| Promoteur, Opérateur intégré | CONSTRUCTION | Suivi des chantiers | Configurer le seuil d’alerte budgétaire | Fixer ou désactiver le seuil du chantier. Le contrôle compare l’engagé au budget révisé. | Pourcentage, seuil en vigueur au moment de l’ouverture | Seuil enregistré et alerte ouverte si le seuil est déjà atteint | Chantier ouvert | Gestionnaire de chantier | Agence | GET et PATCH /api/tenants/:tenantId/finance/sites/:siteId/budget-alert-threshold | FINANCE_SITES_MANAGE | Disponible | Finance > Chantiers > Budget > Seuil d’alerte budgétaire |
 
 ### CRM et Ventes
 
@@ -834,6 +835,7 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Consulter et terminer ses tâches | Consulter les tâches créées ou assignées et ouvrir l’analyse liée si elle est accessible. Le collaborateur assigné peut terminer et rouvrir la tâche. | Identifiant de la tâche | Tâche en cours ou terminée | Tâche assignée pour modifier l’état | Créateur ou collaborateur assigné | Agence (collaborateur) | GET /api/tenants/:tenantId/ai/tasks et PATCH /api/tenants/:tenantId/ai/tasks/:id | Accès collaborateur et contrôle de l’affectation | Disponible | Assistant > Tâches |
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Notifier des collègues | Envoyer un message dans la cloche de 1 à 20 collaborateurs actifs. Une analyse jointe est partagée en lecture seule après confirmation. | Destinataires, message, analyse facultative | Une notification interne par destinataire et lien révocable vers l’analyse jointe | Analyse recalculable pour partager avec un collègue | Collaborateur de l’agence | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/notifications | Accès collaborateur et droits sur l’analyse jointe | Disponible | Assistant ou Mes analyses > Notifier des collègues |
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Confirmer une action proposée dans le chat | Préparer une tâche, une notification, un envoi par e-mail ou un rapport programmé. Le fil conserve la carte, l’accord, l’annulation ou l’échec. | Action, destinataires, paramètres métier et analyse selon le type | Carte dans le fil et exécution unique après confirmation | Conversation enregistrée et droits actuels sur les destinataires et l’analyse | Propriétaire de la conversation | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat et PATCH /api/tenants/:tenantId/ai/follow-ups/:id | Accès collaborateur, périmètre du fil et droits métier | Disponible | Assistant > Conversation > Carte d’action |
+| Promoteur, Opérateur intégré | CONSTRUCTION | Assistant IA ImmoCopilot | Préparer une alerte budgétaire | Vérifier le chantier et préparer un lien vers le formulaire prérempli. | Chantier et seuil en pourcentage | Carte dans le chat et formulaire prérempli | Chantier ouvert et module Construction | Gestionnaire de chantier | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | FINANCE_SITES_MANAGE et FINANCE_ACCOUNTS_READ | Disponible | Assistant > Alerte budgétaire préparée |
 
 ### Syndic copropriete
 

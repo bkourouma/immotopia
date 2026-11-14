@@ -28,7 +28,15 @@ export type CopilotToolName =
   | 'show_artifact'
   | 'list_capabilities'
   | 'call_read'
-  | 'propose_follow_up';
+  | 'propose_follow_up'
+  | 'prepare_budget_alert';
+
+export type PreparedAlert = {
+  kind: 'construction_budget';
+  siteId: string;
+  siteName: string;
+  thresholdPercent: number;
+};
 
 export interface FollowUpProposal {
   id: string;
@@ -85,7 +93,7 @@ export interface AssistantConversation extends AssistantConversationSummary {
     response: string;
     responseRevision?: number;
     feedback?: ResponseFeedback | null;
-    result: Array<Extract<CopilotSseEvent, { type: 'artifact' }>> | null;
+    result: Array<Extract<CopilotSseEvent, { type: 'artifact' | 'prepared_alert' }>> | null;
     followUps?: FollowUpProposal[];
     outcome: string | null;
   }>;
@@ -367,6 +375,7 @@ export type CopilotSseEvent =
     }
   | { type: 'action_proposal'; proposal: ActionProposal }
   | { type: 'follow_up'; proposal: FollowUpProposal }
+  | { type: 'prepared_alert'; alert: PreparedAlert }
   | { type: 'write_plan'; plan: WritePlan }
   | { type: 'artifact'; artifact: CopilotArtifact }
   | {
@@ -399,6 +408,7 @@ export type CopilotAttachment =
   | { kind: 'documents'; scope: 'lease' | 'property'; items: DocumentCardItem[] }
   | { kind: 'artifact'; artifactId: string; title: string; artifactKind: CopilotArtifact['kind'] }
   | { kind: 'follow_up'; proposal: FollowUpProposal }
+  | { kind: 'prepared_alert'; alert: PreparedAlert }
   | {
       kind: 'proposal';
       proposal: ActionProposal;

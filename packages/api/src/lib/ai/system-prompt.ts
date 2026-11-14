@@ -58,7 +58,8 @@ const TOOL_CAPABILITIES: Record<CopilotToolName, { group: string; text: string }
   propose_follow_up: {
     group: 'followUp',
     text: 'des tâches, notifications, envois ou rapports proposés à la confirmation'
-  }
+  },
+  prepare_budget_alert: { group: 'budgetAlert', text: 'le formulaire prérempli d’alerte budgétaire d’un chantier' }
 };
 
 /**

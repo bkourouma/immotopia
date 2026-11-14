@@ -205,6 +205,10 @@ export function useCopilotChat(tenantId: string, persistent = false): UseCopilot
       for (const turn of conversation.turns) {
         const attachments: CopilotAttachment[] = [];
         for (const event of turn.result ?? []) {
+          if (event.type === 'prepared_alert') {
+            attachments.push({ kind: 'prepared_alert', alert: event.alert });
+            continue;
+          }
           const artifact = sanitizeArtifact(event.artifact);
           if (!artifact) continue;
           restoredArtifacts.push(artifact);
@@ -319,6 +323,9 @@ export function useCopilotChat(tenantId: string, persistent = false): UseCopilot
             break;
           case 'follow_up':
             addAttachment({ kind: 'follow_up', proposal: e.proposal });
+            break;
+          case 'prepared_alert':
+            addAttachment({ kind: 'prepared_alert', alert: e.alert });
             break;
           case 'write_plan': {
             const plan = sanitizeWritePlan(e.plan);

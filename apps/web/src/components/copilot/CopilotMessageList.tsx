@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
-import { Button, Space, message as antMessage } from 'antd';
+import { Button, Card, Space, message as antMessage } from 'antd';
+import { Link } from 'react-router-dom';
 import { CopyOutlined, SoundOutlined, StopOutlined } from '@ant-design/icons';
 import { useCopilotSpeech } from '../../hooks/useCopilotSpeech';
 import i18next from '../../i18n';
@@ -112,6 +113,18 @@ function Attachment({
           streaming={streaming}
         />
       );
+    case 'prepared_alert': {
+      const { siteId, siteName, thresholdPercent } = attachment.alert;
+      const path = `/tenant/${encodeURIComponent(tenantId)}/finance/chantiers/${encodeURIComponent(siteId)}/budget`;
+      return (
+        <Card title={t('Alerte budgétaire préparée')} size="small">
+          <p>
+            {t('{{site}} · Seuil de {{threshold}} % du budget révisé', { site: siteName, threshold: thresholdPercent })}
+          </p>
+          <Link to={`${path}?alerte-budget=${thresholdPercent}`}>{t('Ouvrir le formulaire d’alerte')}</Link>
+        </Card>
+      );
+    }
   }
 }
 
