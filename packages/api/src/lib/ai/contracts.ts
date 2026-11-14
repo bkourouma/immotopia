@@ -62,6 +62,7 @@ export const chatRequestSchema = z
   .object({
     conversationId: z.string().uuid().optional(),
     turnId: z.string().uuid().optional(),
+    regenerateTurnId: z.string().uuid().optional(),
     deep: z.boolean().optional(),
     messages: z
       .array(
@@ -85,7 +86,10 @@ export const chatRequestSchema = z
   })
   .strict()
   .superRefine((value, ctx) => {
-    if (value.turnId && value.messages.length !== 1) {
+    if (value.regenerateTurnId && (!value.conversationId || value.turnId)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['regenerateTurnId'], message: 'conversation requise' });
+    }
+    if ((value.turnId || value.regenerateTurnId) && value.messages.length !== 1) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['messages'], message: 'un seul message par tour enregistré' });
     }
     const last = value.messages[value.messages.length - 1];

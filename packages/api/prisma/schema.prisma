@@ -11539,16 +11539,17 @@ model AssistantConversation {
 }
 
 model AssistantTurn {
-  id             String   @default(uuid())
-  tenantId       String   @map("tenant_id")
-  ownerId        String   @map("owner_id")
-  conversationId String   @map("conversation_id")
-  question       String
-  files          String[] @default([])
-  response       String   @default("")
-  result         Json?
-  outcome        String?
-  startedAt      DateTime @default(now()) @map("started_at")
+  id               String   @default(uuid())
+  tenantId         String   @map("tenant_id")
+  ownerId          String   @map("owner_id")
+  conversationId   String   @map("conversation_id")
+  question         String
+  files            String[] @default([])
+  response         String   @default("")
+  responseRevision Int      @default(0) @map("response_revision")
+  result           Json?
+  outcome          String?
+  startedAt        DateTime @default(now()) @map("started_at")
 
   conversation AssistantConversation @relation(fields: [tenantId, ownerId, conversationId], references: [tenantId, ownerId, id], onDelete: Cascade, map: "assistant_turns_conversation_fkey")
   attachments  AssistantAttachment[]

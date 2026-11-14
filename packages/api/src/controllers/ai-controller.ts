@@ -39,6 +39,8 @@ import {
   finishAssistantTurn,
   getConversation,
   getConversationAttachment,
+  prepareRegeneration,
+  replaceLatestResponse,
   historyQuery,
   listConversations,
   updateConversation
@@ -326,43 +328,45 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
   const { permissions, tools, unavailableFeatures } = await resolveAvailableTools(
     userId,
     tenantId,
-    Boolean(body.turnId)
+    Boolean(body.turnId || body.regenerateTurnId)
   );
   if (tools.length === 0) {
     throw new ForbiddenError("Aucun outil de l'assistant n'est disponible avec vos droits.");
   }
-  const pageContext = await resolvePageContext(body.context, tenantId, permissions);
+  const pageContext = body.regenerateTurnId ? null : await resolvePageContext(body.context, tenantId, permissions);
 
   const extracts = [];
   for (const file of files) extracts.push(await extractAssistantFile(file, tenantId));
   const importedTables = extracts.flatMap(file => (file.table ? [file.table] : []));
   const owner = { tenantId, ownerId: userId };
+  const scopeKey = assistantScope(
+    permissions,
+    tools.map(tool => tool.name)
+  );
+  const regenerated =
+    body.regenerateTurnId && body.conversationId
+      ? await prepareRegeneration(owner, body.conversationId, body.regenerateTurnId, scopeKey)
+      : undefined;
   const saved = body.turnId
-    ? await beginAssistantTurn(
-        owner,
-        assistantScope(
-          permissions,
-          tools.map(tool => tool.name)
-        ),
-        {
-          conversationId: body.conversationId,
-          turnId: body.turnId,
-          question: body.messages[0].content,
-          files: extracts.map(({ name, excerpt, table }, position) => ({
-            name,
-            excerpt,
-            artifactId: table?.id,
-            bytes: files[position].buffer
-          }))
-        }
-      )
+    ? await beginAssistantTurn(owner, scopeKey, {
+        conversationId: body.conversationId,
+        turnId: body.turnId,
+        question: body.messages[0].content,
+        files: extracts.map(({ name, excerpt, table }, position) => ({
+          name,
+          excerpt,
+          artifactId: table?.id,
+          bytes: files[position].buffer
+        }))
+      })
     : undefined;
 
   const stream = openSseStream(res);
   const deadline = new AbortController();
-  const timeout = saved ? setTimeout(() => deadline.abort(), 300_000) : undefined;
+  const persistent = Boolean(saved || regenerated);
+  const timeout = persistent ? setTimeout(() => deadline.abort(), 300_000) : undefined;
   timeout?.unref();
-  const signal = saved ? AbortSignal.any([stream.signal, deadline.signal]) : stream.signal;
+  const signal = persistent ? AbortSignal.any([stream.signal, deadline.signal]) : stream.signal;
   const result: Extract<CopilotSseEvent, { type: 'artifact' }>[] = [];
   let response = '';
   let terminal: Extract<CopilotSseEvent, { type: 'done' }> | undefined;
@@ -370,25 +374,28 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
     const outcome = await runChat({
       provider,
       deep: body.deep,
-      analysisTables: saved?.analysisTables,
+      analysisTables: regenerated?.analysisTables ?? saved?.analysisTables,
       fileExtracts: [
         ...extracts.map(({ name, excerpt, table }) => ({ name, excerpt, artifactId: table?.id })),
-        ...(saved?.priorExtracts ?? []).map(file => ({ ...file, artifactId: file.artifactId ?? undefined }))
+        ...(regenerated?.extracts ?? saved?.priorExtracts ?? []).map(file => ({
+          ...file,
+          artifactId: file.artifactId ?? undefined
+        }))
       ].slice(0, 5),
-      importedTables,
+      importedTables: regenerated?.importedTables ?? importedTables,
       tenantId,
       userId,
       permissions,
       tools,
       unavailableFeatures,
-      messages: saved?.messages ?? body.messages,
+      messages: regenerated?.messages ?? saved?.messages ?? body.messages,
       pageContext,
       conversationId: saved?.conversationId ?? body.conversationId ?? randomUUID(),
       requestId: randomUUID(),
       signal,
       loopbackHeaders: loopbackHeadersFor(req),
       emit: event => {
-        if (body.turnId) {
+        if (persistent) {
           if (event.type === 'text_delta') response = (response + event.text).slice(0, 100_000);
           if (event.type === 'artifact' && result.length < 20) result.push(event);
           if (event.type === 'done') {
@@ -399,12 +406,31 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
         stream.send(event);
       }
     });
-    if (body.turnId) {
-      await finishAssistantTurn(owner, body.turnId, { response, result, outcome });
-      if (terminal) stream.send(terminal);
+    if (body.turnId) await finishAssistantTurn(owner, body.turnId, { response, result, outcome });
+    if (
+      regenerated &&
+      body.regenerateTurnId &&
+      body.conversationId &&
+      outcome === 'end_turn' &&
+      !signal.aborted &&
+      (response.trim() ||
+        result.some(event => !regenerated.importedTables.some(table => table.id === event.artifact.id)))
+    ) {
+      await replaceLatestResponse(
+        owner,
+        body.conversationId,
+        body.regenerateTurnId,
+        scopeKey,
+        regenerated.revision,
+        response,
+        result
+      );
+    } else if (regenerated && outcome === 'end_turn') {
+      terminal = { type: 'done', reason: 'error' };
     }
+    if (terminal) stream.send(terminal);
   } catch {
-    if (body.turnId) {
+    if (persistent) {
       logger.error('ImmoCopilot : échec de persistance du tour', { tenantId, turnId: body.turnId });
       stream.send({
         type: 'error',

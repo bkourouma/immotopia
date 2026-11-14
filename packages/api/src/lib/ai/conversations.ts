@@ -170,6 +170,26 @@ export async function deleteConversation(owner: AssistantOwner, id: string) {
   if (result.count === 0) throw new NotFoundError();
 }
 
+function buildTurnHistory(
+  question: string,
+  recent: Array<{ question: string; response: string; outcome: string | null }>
+) {
+  const messages: ChatRequest['messages'] = [{ role: 'user', content: question }];
+  let remaining = COPILOT_MAX_TOTAL_CHARS - question.length;
+  for (const row of recent) {
+    if (row.outcome !== 'end_turn') continue;
+    const answer = row.response.slice(0, COPILOT_MAX_MESSAGE_CHARS).trim();
+    const size = row.question.length + answer.length;
+    if (size > remaining) break;
+    messages.unshift(
+      { role: 'user', content: row.question },
+      ...(answer ? [{ role: 'assistant' as const, content: answer }] : [])
+    );
+    remaining -= size;
+  }
+  return messages;
+}
+
 export async function beginAssistantTurn(
   owner: AssistantOwner,
   scopeKey: string,
@@ -235,19 +255,7 @@ export async function beginAssistantTurn(
             take: 5
           })
         : [];
-      const messages: ChatRequest['messages'] = [{ role: 'user', content: input.question }];
-      let remaining = COPILOT_MAX_TOTAL_CHARS - input.question.length;
-      for (const row of recent) {
-        if (row.outcome !== 'end_turn') continue;
-        const answer = row.response.slice(0, COPILOT_MAX_MESSAGE_CHARS).trim();
-        const size = row.question.length + answer.length;
-        if (size > remaining) break;
-        messages.unshift(
-          { role: 'user', content: row.question },
-          ...(answer ? [{ role: 'assistant' as const, content: answer }] : [])
-        );
-        remaining -= size;
-      }
+      const messages = buildTurnHistory(input.question, recent);
       const related = await tx.assistantTurn.findMany({
         where: { ...owner, conversationId, outcome: 'end_turn', result: { not: Prisma.DbNull } },
         orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
@@ -273,5 +281,80 @@ export async function finishAssistantTurn(
   await prisma.assistantTurn.updateMany({
     where: { ...owner, id, outcome: null },
     data: { ...data, result: data.result as unknown as Prisma.InputJsonValue }
+  });
+}
+
+export async function prepareRegeneration(owner: AssistantOwner, conversationId: string, id: string, scopeKey: string) {
+  const parent = await assertConversation(owner, conversationId, scopeKey);
+  if (parent.archived) throw new NotFoundError();
+  const recent = await prisma.assistantTurn.findMany({
+    where: { ...owner, conversationId, conversation: { scopeKey, archived: false } },
+    orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
+    take: Math.floor((COPILOT_MAX_MESSAGES + 1) / 2),
+    select: {
+      id: true,
+      question: true,
+      response: true,
+      outcome: true,
+      responseRevision: true,
+      result: true,
+      attachments: {
+        where: owner,
+        select: { name: true, excerpt: true, artifactId: true },
+        orderBy: { position: 'asc' }
+      }
+    }
+  });
+  const [turn, ...history] = recent;
+  if (turn?.id !== id || turn.outcome === null) {
+    throw new ConflictError(t('Seule la dernière réponse terminée peut être régénérée.'));
+  }
+  const importedIds = new Set(turn.attachments.map(file => file.artifactId));
+  const importedTables = storedAnalysisTables([turn.result]).filter(table => importedIds.has(table.id));
+  return {
+    revision: turn.responseRevision,
+    messages: buildTurnHistory(turn.question, history),
+    analysisTables: storedAnalysisTables(
+      history
+        .filter(row => row.outcome === 'end_turn')
+        .slice(0, 6)
+        .map(row => row.result)
+    ),
+    importedTables,
+    extracts: recent.flatMap(row => row.attachments).slice(0, 5)
+  };
+}
+
+export async function replaceLatestResponse(
+  owner: AssistantOwner,
+  conversationId: string,
+  id: string,
+  scopeKey: string,
+  revision: number,
+  response: string,
+  result: ResultEvent[]
+) {
+  await prisma.$transaction(async tx => {
+    const parent = await tx.assistantConversation.updateMany({
+      where: { ...owner, id: conversationId, scopeKey, archived: false },
+      data: { updatedAt: new Date() }
+    });
+    if (!parent.count) throw new NotFoundError();
+    const latest = await tx.assistantTurn.findFirst({
+      where: { ...owner, conversationId },
+      orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
+      select: { id: true }
+    });
+    if (latest?.id !== id) throw new ConflictError(t('Seule la dernière réponse terminée peut être régénérée.'));
+    const written = await tx.assistantTurn.updateMany({
+      where: { ...owner, id, conversationId, responseRevision: revision },
+      data: {
+        response,
+        result: result as unknown as Prisma.InputJsonValue,
+        outcome: 'end_turn',
+        responseRevision: { increment: 1 }
+      }
+    });
+    if (!written.count) throw new ConflictError(t('La réponse a déjà été modifiée.'));
   });
 }

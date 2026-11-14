@@ -9,11 +9,11 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Finance | 196 |
 | CRM et Ventes | 70 |
 | Maintenance | 32 |
-| Communication et Documents | 88 |
+| Communication et Documents | 89 |
 | Syndic copropriete | 245 |
 | Administration plateforme | 141 |
 | Portails externes | 84 |
-| **Total** | **1233** |
+| **Total** | **1234** |
 
 ## Sous-fonctionnalités
 
@@ -809,6 +809,7 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Joindre des fichiers à une question | Joindre des CSV, TXT, XLSX et PDF avec texte au fil privé. Utiliser les extraits pour répondre et afficher les tableaux importés. | Au plus cinq fichiers de 10 Mo chacun | Noms dans le fil, tableaux CSV ou XLSX avec provenance, et extrait TXT ou PDF au moment de la réponse | Page Assistant et historique privé | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | Accès à l’assistant et au fil privé | Disponible | Assistant > Joindre des fichiers |
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Retrouver les pièces jointes du fil privé | Télécharger le fichier original et réutiliser les extraits récents dans une relance. La suppression du fil supprime les fichiers. | Fil privé et message avec fichier | Original téléchargeable par le propriétaire et extraits récents accessibles à l’assistant | Pièce jointe déposée avec le stockage privé actif | Propriétaire du fil avec les droits correspondants | Agence (collaborateur) | GET /api/tenants/:tenantId/ai/conversations/:id/turns/:turnId/files/:position | Accès à l’assistant et périmètre du fil | Disponible | Assistant > Conversation |
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Dicter via la transcription serveur | Enregistrer jusqu’à une minute lorsque la dictée intégrée est absente. Ajouter le texte au brouillon. | Microphone, WebM, Ogg ou MP4 | Transcription dans le brouillon, audio temporaire | Clé de transcription configurée et navigateur compatible | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/transcribe | Accès à l’assistant | Disponible | Assistant > Dicter un message |
+| Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Régénérer la dernière réponse | Relancer la dernière question enregistrée en conservant la réponse précédente jusqu’au succès. | Conversation et dernier tour | Réponse et résultats de remplacement | Conversation privée ouverte | Propriétaire du fil avec les droits correspondants | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | Accès à l’assistant et périmètre du fil | Disponible | Assistant > Régénérer la dernière réponse |
 
 ### Syndic copropriete
 

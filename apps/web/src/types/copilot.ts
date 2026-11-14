@@ -61,6 +61,7 @@ export interface AssistantConversation extends AssistantConversationSummary {
 }
 
 export interface ChatRequest {
+  regenerateTurnId?: string;
   turnId?: string;
   deep?: boolean;
   conversationId?: string;

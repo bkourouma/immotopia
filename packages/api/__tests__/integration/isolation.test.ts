@@ -247,6 +247,56 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
   });
 
   describe('Assistant — historique privé', () => {
+    it('régénère seulement le dernier tour et conserve la réponse en cas de sortie vide', async () => {
+      const base = `/api/tenants/${tenantA.id}/ai`;
+      const post = (body: unknown) =>
+        request(app)
+          .post(base + '/chat')
+          .set(authed(adminA))
+          .send(body);
+      const firstId = randomUUID();
+      const lastId = randomUUID();
+      const messages = [{ role: 'user', content: 'Question originale' }];
+      try {
+        mockFakeScript = [{ text: 'Réponse originale.' }];
+        const first = await post({ turnId: firstId, messages });
+        expect(first.status).toBe(200);
+        const meta = first.text.split('\n').find(line => line.startsWith('data: {"type":"meta"'))!;
+        const { conversationId } = JSON.parse(meta.slice(6));
+        expect((await post({ conversationId, turnId: lastId, messages })).status).toBe(200);
+        const regenerate = (regenerateTurnId: string) =>
+          post({
+            conversationId,
+            regenerateTurnId,
+            messages: [{ role: 'user', content: 'Texte de remplacement ignoré' }]
+          });
+        expect((await regenerate(firstId)).status).toBe(409);
+        const read = async () =>
+          (
+            await request(app)
+              .get(base + '/conversations/' + conversationId)
+              .set(authed(adminA))
+          ).body.data.turns;
+        mockFakeScript = [{}];
+        const empty = await regenerate(lastId);
+        expect(empty.text).toContain('"reason":"error"');
+        expect((await read()).map((turn: { response: string }) => turn.response)).toEqual([
+          'Réponse originale.',
+          'Réponse originale.'
+        ]);
+        mockFakeScript = [{ text: 'Réponse régénérée.' }];
+        const success = await regenerate(lastId);
+        expect(success.text).toContain('"reason":"end_turn"');
+        expect(JSON.stringify(mockProviderRequests.at(-1)?.messages)).not.toContain('Texte de remplacement ignoré');
+        expect(await read()).toMatchObject([
+          { id: firstId, response: 'Réponse originale.' },
+          { id: lastId, question: 'Question originale', response: 'Réponse régénérée.' }
+        ]);
+      } finally {
+        mockFakeScript = undefined;
+      }
+    });
+
     it('transcrit un enregistrement audio et refuse les formats falsifiés', async () => {
       const savedKey = env.AI_TRANSCRIPTION_OPENAI_KEY;
       env.AI_TRANSCRIPTION_OPENAI_KEY = 'test-only';

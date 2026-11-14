@@ -272,6 +272,36 @@ describe('AssistantPage', () => {
   });
 });
 
+it('affiche la nouvelle réponse après confirmation du serveur', async () => {
+  getStatus.mockResolvedValue(ENABLED);
+  const id = '5258bdd1-74d6-47ea-a37f-ab4d1e8eae45';
+  const turn = {
+    id: 'tour-1',
+    question: 'Bilan du mois',
+    response: 'Ancien bilan.',
+    result: null,
+    outcome: 'end_turn'
+  };
+  const conversation = {
+    id,
+    title: 'Analyse',
+    pinned: false,
+    archived: false,
+    updatedAt: '2026-11-14T12:00:00Z',
+    turns: [turn]
+  };
+  getConversation.mockResolvedValueOnce(conversation).mockResolvedValueOnce({
+    ...conversation,
+    turns: [{ ...turn, response: 'Nouveau bilan.' }]
+  });
+  renderPage(`/tenant/t1/assistant?c=${id}`);
+  expect(await screen.findByText('Ancien bilan.')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Régénérer la dernière réponse' }));
+  expect(await screen.findByText('Nouveau bilan.')).toBeVisible();
+  expect(screen.queryByText('Ancien bilan.')).toBeNull();
+  expect(streamChat.mock.calls[0][1]).toMatchObject({ conversationId: id, regenerateTurnId: turn.id });
+});
+
 it('rouvre le fil et ses artefacts depuis le lien de conversation', async () => {
   getStatus.mockResolvedValue(ENABLED);
   const id = '5258bdd1-74d6-47ea-a37f-ab4d1e8eae45';

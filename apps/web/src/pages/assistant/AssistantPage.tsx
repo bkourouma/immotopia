@@ -149,7 +149,16 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
   const [draft, setDraft] = useState('');
   const [files, setFiles] = useState<File[]>([]);
   const inputRef = useRef<TextAreaRef>(null);
-  const streaming = chat.status === 'streaming';
+  const [regenerating, setRegenerating] = useState(false);
+  const regeneration = useRef<AbortController>();
+  useEffect(() => {
+    setRegenerating(false);
+    return () => {
+      regeneration.current?.abort();
+      regeneration.current = undefined;
+    };
+  }, [activeId, tenantId]);
+  const streaming = regenerating || chat.status === 'streaming';
   const context = getCopilotPageContext(pathname);
   const send = chat.send;
   useEffect(() => {
@@ -253,6 +262,51 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [navigate, pathname, reset]);
+
+  const lastQuestion = [...chat.messages].reverse().find(message => message.role === 'user');
+  const canRegenerate =
+    conversationId &&
+    activeId === conversationId &&
+    !archivedThread &&
+    !loadingHistory &&
+    !streaming &&
+    lastQuestion &&
+    chat.messages.at(-1)?.role === 'assistant';
+
+  async function regenerate() {
+    if (!canRegenerate || !conversationId || !lastQuestion || !restoreConversation || regeneration.current) return;
+    const controller = new AbortController();
+    regeneration.current = controller;
+    setRegenerating(true);
+    try {
+      let succeeded = false;
+      await copilotService.streamChat(
+        tenantId,
+        {
+          conversationId,
+          regenerateTurnId: lastQuestion.id,
+          messages: [{ role: 'user', content: lastQuestion.text }],
+          deep
+        },
+        {
+          signal: controller.signal,
+          onEvent: event => {
+            if (event.type === 'done') succeeded = event.reason === 'end_turn';
+          }
+        }
+      );
+      if (!succeeded) throw new Error();
+      const updated = await copilotService.getConversation(tenantId, conversationId);
+      if (regeneration.current === controller) restoreConversation(updated);
+    } catch {
+      if (!controller.signal.aborted) feedback.error(t('La réponse n’a pas pu être régénérée.'));
+    } finally {
+      if (regeneration.current === controller) {
+        regeneration.current = undefined;
+        setRegenerating(false);
+      }
+    }
+  }
 
   const submit = (text: string) => {
     const value = text.trim() || (files.length ? t('Analyse les fichiers joints.') : '');
@@ -375,6 +429,11 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
                 />
                 {t('Analyse approfondie')}
               </label>
+              {(canRegenerate || regenerating) && (
+                <Button size="small" loading={regenerating} onClick={() => void regenerate()}>
+                  {t('Régénérer la dernière réponse')}
+                </Button>
+              )}
               <CopilotComposer
                 key={activeId ?? 'new'}
                 transcribe={
@@ -388,7 +447,10 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
                 files={files}
                 onFilesChange={setFiles}
                 onSubmit={submit}
-                onStop={() => stop()}
+                onStop={() => {
+                  if (regeneration.current) regeneration.current.abort();
+                  else stop();
+                }}
                 streaming={streaming}
                 maxChars={status.limits.maxMessageChars || undefined}
               />
