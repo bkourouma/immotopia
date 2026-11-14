@@ -1,4 +1,8 @@
 {
+  "Notifier des collègues": "إشعار الزملاء",
+  "Notification envoyée.": "تم إرسال الإشعار.",
+  "Impossible d’envoyer cette notification.": "تعذر إرسال هذا الإشعار.",
+  "Le message apparaîtra dans la cloche des destinataires sélectionnés.": "ستظهر هذه الرسالة في إشعارات المستلمين المحددين.",
   "Tâches": "المهام",
   "Créer une tâche": "إنشاء مهمة",
   "Impossible de charger les tâches.": "تعذر تحميل المهام.",

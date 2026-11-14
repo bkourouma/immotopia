@@ -5,6 +5,7 @@ import { ConflictError, NotFoundError } from '../../middleware/error-middleware'
 import { prisma } from '../../utils/database';
 import { createAnalysisSharesInTransaction } from './analysis-shares';
 import type { AssistantOwner } from './conversations';
+import { writeAssistantNotification } from './in-app-notification';
 
 const date = z
   .string()
@@ -107,26 +108,13 @@ export async function createAssistantTask(
       await tx.assistantTask.updateMany({ where: { ...requested, id }, data: { shareId: share.id } });
     }
     const language = isLanguage(member.user.preferredLanguage) ? member.user.preferredLanguage : 'fr';
-    const now = new Date();
-    await tx.userNotification.create({
-      data: {
-        tenantId,
-        recipientUserId: assigneeId,
-        recipientLabel: member.user.fullName || t('Collaborateur', undefined, language),
-        senderUserId: creatorId,
-        key: 'ASSISTANT_TASK_ASSIGNED',
-        title: t('Une tâche vous a été assignée', undefined, language),
-        body: t('Ouvrez les tâches de l’assistant pour la consulter.', undefined, language),
-        link: `/tenant/${encodeURIComponent(tenantId)}/assistant?tache=${id}`,
-        relatedEntityType: 'AssistantTask',
-        relatedEntityId: id,
-        status: 'SENT',
-        sentAt: now,
-        deliveries: {
-          create: { tenantId, channel: 'IN_APP', status: 'SENT', attempts: 1, sentAt: now, lastAttemptAt: now }
-        }
-      },
-      select: { id: true }
+    await writeAssistantNotification(tx, owner, { id: assigneeId, fullName: member.user.fullName }, language, {
+      key: 'ASSISTANT_TASK_ASSIGNED',
+      title: t('Une tâche vous a été assignée', undefined, language),
+      body: t('Ouvrez les tâches de l’assistant pour la consulter.', undefined, language),
+      link: `/tenant/${encodeURIComponent(tenantId)}/assistant?tache=${id}`,
+      relatedEntityType: 'AssistantTask',
+      relatedEntityId: id
     });
     return { id };
   });

@@ -235,6 +235,20 @@ function savedAnalysisPath(tenantId: string, { conversationId, artifactId }: Sav
 }
 
 export const copilotService = {
+  async notifyColleagues(
+    tenantId: string,
+    input: {
+      requestId: string;
+      recipientIds: string[];
+      message: string;
+      analysis?: SavedAnalysisReference;
+    }
+  ) {
+    await apiClient.post(`/tenants/${tenantId}/ai/notifications`, {
+      ...input,
+      ...(input.analysis ? { share: true } : {})
+    });
+  },
   async listTasks(tenantId: string, cursor?: string, focus?: string, signal?: AbortSignal) {
     const response = await apiClient.get(`/tenants/${tenantId}/ai/tasks`, { params: { cursor, focus }, signal });
     return unwrap<{ items: AssistantTask[]; nextCursor?: string }>(response.data);

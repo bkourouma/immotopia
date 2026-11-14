@@ -459,6 +459,7 @@ model User {
   assistantAnalysisShares AssistantAnalysisShare[] @relation("AssistantAnalysisRecipient")
   createdAssistantTasks AssistantTask[] @relation("AssistantTaskCreator")
   assignedAssistantTasks AssistantTask[] @relation("AssistantTaskAssignee")
+  assistantNotificationRequests AssistantNotificationRequest[]
   id                        String               @id @default(uuid())
   platformAiSettingsUpdated PlatformAiSettings[] @relation("PlatformAiSettingsUpdatedBy")
   email                     String               @unique
@@ -599,6 +600,7 @@ model User {
 model Tenant {
   assistantConversations AssistantConversation[]
   assistantTasks AssistantTask[]
+  assistantNotificationRequests AssistantNotificationRequest[]
   id        String     @id @default(uuid())
   name      String
   slug      String     @unique
@@ -11719,4 +11721,18 @@ model AssistantTask {
   @@index([tenantId, creatorId, createdAt(sort: Desc), id], map: "assistant_tasks_created_idx")
   @@index([tenantId, assigneeId, createdAt(sort: Desc), id], map: "assistant_tasks_assigned_idx")
   @@map("assistant_tasks")
+}
+
+model AssistantNotificationRequest {
+  tenantId   String   @map("tenant_id")
+  senderId   String   @map("sender_id")
+  requestId  String   @map("request_id")
+  inputHash  String   @map("input_hash")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sender User   @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, senderId, requestId])
+  @@map("assistant_notification_requests")
 }

@@ -12,6 +12,7 @@ import { ShareAnalysisDialog } from '../../components/copilot/ShareAnalysisDialo
 import { ScheduledReports } from '../../components/copilot/ScheduledReports';
 import { AssistantTasks } from '../../components/copilot/AssistantTasks';
 import { CreateAssistantTaskDialog } from '../../components/copilot/CreateAssistantTaskDialog';
+import { NotifyColleaguesDialog } from '../../components/copilot/NotifyColleaguesDialog';
 import { copilotService, type SavedAnalysis } from '../../services/copilot-service';
 import { feedback } from '../../lib/feedback';
 import { ArtifactPanel } from '../../components/copilot/artifact/ArtifactPanel';
@@ -87,6 +88,7 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
   const taskId = params.get('tache') ?? undefined;
   const tasksOpen = !!taskId || params.get('taches') === '1';
   const [taskDraft, setTaskDraft] = useState<{ analysis?: SavedAnalysis }>();
+  const [notificationDraft, setNotificationDraft] = useState<{ analysis?: SavedAnalysis }>();
   const analysisConversation = params.get('fil');
   const analysisArtifact = params.get('analyse');
   const initialAnalysis =
@@ -406,6 +408,7 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
           tenantId={tenantId}
           initialAnalysis={initialAnalysis}
           onCreateTask={analysis => setTaskDraft({ analysis })}
+          onNotify={analysis => setNotificationDraft({ analysis })}
           onReportCreated={() => {
             setAnalysesOpen(false);
             setParams(previous => {
@@ -432,6 +435,13 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
         />
       )}
       {reportsOpen && <ScheduledReports tenantId={tenantId} onClose={() => setReportsOpen(false)} />}
+      {notificationDraft && (
+        <NotifyColleaguesDialog
+          tenantId={tenantId}
+          analysis={notificationDraft.analysis}
+          onClose={() => setNotificationDraft(undefined)}
+        />
+      )}
       {tasksOpen && (
         <AssistantTasks
           key={taskId ?? ''}
@@ -519,6 +529,9 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
             </Button>
             <Button type="text" onClick={() => setReportsOpen(true)}>
               {t('Rapports')}
+            </Button>
+            <Button type="text" onClick={() => setNotificationDraft({})}>
+              {t('Notifier des collègues')}
             </Button>
             <Button
               type="text"

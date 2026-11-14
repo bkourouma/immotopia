@@ -3,6 +3,7 @@ import { isLanguage, t } from '../../i18n';
 import { NotFoundError } from '../../middleware/error-middleware';
 import { prisma, type PrismaTransactionClient } from '../../utils/database';
 import type { AssistantOwner } from './conversations';
+import { writeAssistantNotification } from './in-app-notification';
 
 const metadata = {
   message: true,
@@ -142,35 +143,15 @@ export async function createAnalysisSharesInTransaction(
     if (created && notifyRecipient) {
       const preferred = share.recipient.preferredLanguage;
       const language = isLanguage(preferred) ? preferred : 'fr';
-      const now = new Date();
-      await tx.userNotification.create({
-        data: {
-          tenantId: owner.tenantId,
-          recipientUserId: recipientId,
-          recipientLabel: share.recipient.fullName || t('Collaborateur', undefined, language),
-          senderUserId: owner.ownerId,
-          key: 'ASSISTANT_ANALYSIS_SHARED',
-          title: location.artifactId
-            ? t('Une analyse vous a été partagée', undefined, language)
-            : t('Une conversation vous a été partagée', undefined, language),
-          body: t('Ouvrez l’assistant pour consulter ce partage.', undefined, language),
-          link: `/tenant/${encodeURIComponent(owner.tenantId)}/assistant?partage=${share.id}`,
-          relatedEntityType: 'AssistantAnalysisShare',
-          relatedEntityId: share.id,
-          status: 'SENT',
-          sentAt: now,
-          deliveries: {
-            create: {
-              tenantId: owner.tenantId,
-              channel: 'IN_APP',
-              status: 'SENT',
-              attempts: 1,
-              sentAt: now,
-              lastAttemptAt: now
-            }
-          }
-        },
-        select: { id: true }
+      await writeAssistantNotification(tx, owner, { id: recipientId, fullName: share.recipient.fullName }, language, {
+        key: 'ASSISTANT_ANALYSIS_SHARED',
+        title: location.artifactId
+          ? t('Une analyse vous a été partagée', undefined, language)
+          : t('Une conversation vous a été partagée', undefined, language),
+        body: t('Ouvrez l’assistant pour consulter ce partage.', undefined, language),
+        link: `/tenant/${encodeURIComponent(owner.tenantId)}/assistant?partage=${share.id}`,
+        relatedEntityType: 'AssistantAnalysisShare',
+        relatedEntityId: share.id
       });
     }
     shares.set(recipientId, { id: share.id, recipientId });

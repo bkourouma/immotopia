@@ -1,4 +1,8 @@
 {
+  "Notifier des collègues": "Notify colleagues",
+  "Notification envoyée.": "Notification sent.",
+  "Impossible d’envoyer cette notification.": "Could not send this notification.",
+  "Le message apparaîtra dans la cloche des destinataires sélectionnés.": "The selected recipients will see this message in their notifications.",
   "Tâches": "Tasks",
   "Créer une tâche": "Create a task",
   "Impossible de charger les tâches.": "Could not load tasks.",

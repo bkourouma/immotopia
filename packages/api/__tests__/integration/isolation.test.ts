@@ -914,6 +914,102 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       );
     });
 
+    it('notifie des collègues une seule fois et associe un partage révocable', async () => {
+      const owner = await createTenantAdminUser(tenantA, 'notice-sender');
+      const recipient = await createTenantAdminUser(tenantA, 'notice-recipient');
+      await prisma.user.update({ where: { id: recipient.id }, data: { preferredLanguage: 'en' } });
+      const base = `/api/tenants/${tenantA.id}/ai`;
+      const path = base + '/notifications';
+      const analysis = await saveReportAnalysis(base, owner);
+      const input = {
+        requestId: randomUUID(),
+        recipientIds: [recipient.id, owner.id],
+        message: 'Veuillez vérifier le tableau.',
+        analysis
+      };
+      const notices = () =>
+        prisma.userNotification.findMany({
+          where: { tenantId: tenantA.id, senderUserId: owner.id, key: 'ASSISTANT_COLLEAGUE_NOTIFICATION' },
+          select: { recipientUserId: true, link: true, body: true, deliveries: { select: { channel: true } } }
+        });
+      expect((await request(app).post(path).set(authed(owner)).send(input)).status).toBe(409);
+      const invalid = { requestId: randomUUID(), recipientIds: [recipient.id, adminB.id], message: 'Message de test' };
+      expect((await request(app).post(path).set(authed(owner)).send(invalid)).status).toBe(404);
+      expect(await notices()).toEqual([]);
+      const send = () =>
+        request(app)
+          .post(path)
+          .set(authed(owner))
+          .send({ ...input, share: true });
+      expect((await Promise.all([send(), send()])).map(result => result.status)).toEqual([204, 204]);
+      const received = await notices();
+      expect(received).toHaveLength(2);
+      expect(received).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ recipientUserId: owner.id, link: expect.stringContaining('analyse=') }),
+          expect.objectContaining({
+            recipientUserId: recipient.id,
+            link: expect.stringContaining('partage='),
+            body: input.message,
+            deliveries: [{ channel: 'IN_APP' }]
+          })
+        ])
+      );
+      const link = received.find(notice => notice.recipientUserId === recipient.id)?.link ?? '';
+      const inbox = await request(app).get(`/api/tenants/${tenantA.id}/notifications`).set(authed(recipient));
+      expect(inbox.status).toBe(200);
+      expect(inbox.body.data.items).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ title: 'A message from your team', body: input.message, link })
+        ])
+      );
+      const shareId = new URLSearchParams(link.split('?')[1]).get('partage');
+      expect(
+        (
+          await request(app)
+            .get(base + '/shares/' + shareId)
+            .set(authed(recipient))
+        ).status
+      ).toBe(200);
+      expect(
+        (
+          await request(app)
+            .post(path)
+            .set(authed(owner))
+            .send({ ...input, share: true, message: 'Autre' })
+        ).status
+      ).toBe(409);
+      expect(
+        (
+          await request(app)
+            .delete(base + '/shares/' + shareId)
+            .set(authed(recipient))
+        ).status
+      ).toBe(204);
+      expect((await send()).status).toBe(204);
+      expect(
+        (
+          await request(app)
+            .get(base + '/shares/' + shareId)
+            .set(authed(recipient))
+        ).status
+      ).toBe(404);
+      expect(await notices()).toHaveLength(2);
+      expect(
+        (
+          await request(app)
+            .post(path)
+            .set(authed(owner))
+            .send({ ...invalid, recipientIds: [recipient.id] })
+        ).status
+      ).toBe(204);
+      expect(await notices()).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ recipientUserId: recipient.id, link: null, body: invalid.message })
+        ])
+      );
+    });
+
     it('partage un tableau recalculé, exclut le titre privé et révoque la lecture et l’export', async () => {
       const owner = await createTenantAdminUser(tenantA, 'share-owner');
       const recipient = await createTenantAdminUser(tenantA, 'share-recipient');

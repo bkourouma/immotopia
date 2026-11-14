@@ -20,6 +20,7 @@ vi.mock('../../services/copilot-service', () => {
     setScheduledReportActive: vi.fn(),
     listTasks: vi.fn(),
     createTask: vi.fn(),
+    notifyColleagues: vi.fn(),
     setTaskCompleted: vi.fn(),
     listAnalysisRecipients: vi.fn(),
     queueImmediateReport: vi.fn(),
@@ -113,6 +114,37 @@ function setDesktop(desktop: boolean) {
 
 describe('AssistantPage — artefacts', () => {
   afterEach(() => setDesktop(false));
+
+  it('attend la confirmation avant de notifier des collègues depuis une analyse', async () => {
+    getStatus.mockResolvedValue(ENABLED);
+    vi.mocked(copilotService.listSavedAnalyses).mockResolvedValueOnce({
+      items: [{ conversationId: 'c1', artifactId: 'a1', title: 'Situation locative', createdAt: '2026-11-14' }]
+    });
+    vi.mocked(copilotService.listAnalysisRecipients).mockResolvedValueOnce([
+      { userId: 'recipient-1', displayName: 'Camille Destinataire' }
+    ]);
+    vi.mocked(copilotService.notifyColleagues).mockResolvedValueOnce(undefined);
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Mes analyses' }));
+    const drawer = await screen.findByRole('dialog', { name: 'Mes analyses' });
+    fireEvent.click(await within(drawer).findByRole('button', { name: 'Notifier des collègues' }));
+    const confirm = await screen.findByRole('button', { name: 'Confirmer l’envoi' });
+    const dialog = within(confirm.closest<HTMLElement>('[role="dialog"]')!);
+    expect(dialog.getByText(/partage aussi l’analyse en lecture seule/)).toBeInTheDocument();
+    expect(confirm).toBeDisabled();
+    fireEvent.mouseDown(dialog.getByRole('combobox', { name: 'Destinataires' }));
+    fireEvent.click(await screen.findByText('Camille Destinataire', { selector: '.ant-select-item-option-content' }));
+    fireEvent.change(dialog.getByRole('textbox', { name: 'Message' }), { target: { value: 'Relire le tableau.' } });
+    expect(copilotService.notifyColleagues).not.toHaveBeenCalled();
+    fireEvent.click(confirm);
+    expect(copilotService.notifyColleagues).toHaveBeenCalledWith('t1', {
+      analysis: { conversationId: 'c1', artifactId: 'a1' },
+      recipientIds: ['recipient-1'],
+      message: 'Relire le tableau.',
+      requestId: expect.any(String)
+    });
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Confirmer l’envoi' })).not.toBeInTheDocument());
+  });
 
   it('ouvre une tâche assignée depuis sa notification et permet de la terminer', async () => {
     getStatus.mockResolvedValue(ENABLED);

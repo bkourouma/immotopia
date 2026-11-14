@@ -15,6 +15,7 @@ import {
   setScheduledReportActive
 } from '../lib/ai/scheduled-reports';
 import { isEmailDeliveryConfigured } from '../services/email-service';
+import { colleagueNotificationInput, notifyAssistantColleagues } from '../lib/ai/colleague-notifications';
 import {
   assistantTaskInput,
   createAssistantTask,
@@ -343,12 +344,8 @@ export const createAssistantTaskHandler = asyncHandler(async (req, res) => {
   const owner = { tenantId, ownerId: userId };
   const { analysis, assigneeId } = input;
   const source = analysis ? await conversationScope(req) : undefined;
-  if (analysis && source && assigneeId !== userId) {
-    await assertAnalysisCollaborator(tenantId, assigneeId);
-    const artifact = await getStoredArtifact(owner, analysis.conversationId, analysis.artifactId, source.scopeKey);
-    const recipient = await resolveAvailableTools(assigneeId, tenantId, true);
-    await recalculateSharedArtifact(artifact, tenantId, assigneeId, analysis.conversationId, source, recipient);
-  }
+  if (analysis && source && assigneeId !== userId)
+    await assertAnalysisForRecipients(source, { ...analysis, recipientIds: [assigneeId] });
   const data = await createAssistantTask(owner, source?.scopeKey, input);
   res.set('Cache-Control', 'private, no-store').status(201).json({ success: true, data });
 });
@@ -361,9 +358,21 @@ export const updateAssistantTaskHandler = asyncHandler(async (req, res) => {
   res.sendStatus(204);
 });
 
-async function assertReportRecipients(
+export const notifyAssistantColleaguesHandler = asyncHandler(async (req, res) => {
+  const input = colleagueNotificationInput.parse(req.body);
+  const { tenantId, userId } = requireContext(req);
+  const { analysis } = input;
+  const source = analysis ? await conversationScope(req) : undefined;
+  const recipientIds = input.recipientIds.filter(id => id !== userId);
+  if (analysis && source && recipientIds.length)
+    await assertAnalysisForRecipients(source, { ...analysis, recipientIds });
+  await notifyAssistantColleagues({ tenantId, ownerId: userId }, source?.scopeKey, input);
+  res.sendStatus(204);
+});
+
+async function assertAnalysisForRecipients(
   source: Awaited<ReturnType<typeof conversationScope>>,
-  input: { conversationId: string; artifactId: string; recipientIds: string[]; formats: string[] }
+  input: { conversationId: string; artifactId: string; recipientIds: string[]; formats?: string[] }
 ) {
   const { tenantId, ownerId } = source.owner;
   const stored = await getStoredArtifact(source.owner, input.conversationId, input.artifactId, source.scopeKey);
@@ -378,7 +387,7 @@ async function assertReportRecipients(
       source,
       recipient
     );
-    if (input.formats.includes('csv')) buildArtifactCsv(artifact);
+    if (input.formats?.includes('csv')) buildArtifactCsv(artifact);
   }
 }
 
@@ -388,7 +397,7 @@ export const createScheduledReportDraftHandler = asyncHandler(async (req, res) =
   if ('requestId' in input && !isEmailDeliveryConfigured()) {
     throw new AppError(t('Le service d’envoi par e-mail est indisponible.'), 503);
   }
-  await assertReportRecipients(source, input);
+  await assertAnalysisForRecipients(source, input);
   const immediate = 'requestId' in input;
   const data = immediate
     ? await queueImmediateReport(source.owner, source.scopeKey, input)
@@ -416,7 +425,7 @@ export const updateScheduledReportHandler = asyncHandler(async (req, res) => {
   if (active) {
     const report = await findScheduledReport(source.owner, source.scopeKey, id);
     if (!report) throw new NotFoundError();
-    if (!report.active && !report.sharesCreated) await assertReportRecipients(source, report);
+    if (!report.active && !report.sharesCreated) await assertAnalysisForRecipients(source, report);
   }
   await setScheduledReportActive(source.owner, source.scopeKey, id, active, share);
   res.sendStatus(204);

@@ -27,6 +27,7 @@ import {
   listSavedAnalysesHandler,
   listScheduledReportsHandler,
   listAssistantTasksHandler,
+  notifyAssistantColleaguesHandler,
   createAssistantTaskHandler,
   updateAssistantTaskHandler,
   createScheduledReportDraftHandler,
@@ -71,6 +72,7 @@ router.use(requireTenantCollaborator);
 
 // Ce que l'interface peut proposer ; répond `enabled: false` quand l'assistant est désactivé.
 router.get('/status', requireAiStatusAccess, getStatusHandler);
+router.post('/notifications', requireAiStatusAccess, aiActionRateLimiter, notifyAssistantColleaguesHandler);
 router.get('/tasks', requireAiStatusAccess, listAssistantTasksHandler);
 router.post('/tasks', requireAiStatusAccess, aiActionRateLimiter, createAssistantTaskHandler);
 router.patch('/tasks/:id', requireAiStatusAccess, aiActionRateLimiter, updateAssistantTaskHandler);

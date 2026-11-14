@@ -1,4 +1,7 @@
 {
+  "Confirmez le partage de l’analyse pour envoyer la notification.": "Confirm sharing the analysis to send this notification.",
+  "Cette confirmation correspond déjà à une autre notification.": "This confirmation already belongs to another notification.",
+  "Un message de votre équipe": "A message from your team",
   "Confirmez le partage de l’analyse pour créer la tâche.": "Confirm sharing the analysis to create the task.",
   "Cette confirmation correspond déjà à une autre tâche.": "This confirmation already belongs to another task.",
   "Une tâche vous a été assignée": "A task was assigned to you",
