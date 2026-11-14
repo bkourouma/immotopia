@@ -54,7 +54,11 @@ const TOOL_CAPABILITIES: Record<CopilotToolName, { group: string; text: string }
   show_artifact: { group: 'artifacts', text: "des tableaux, graphiques ou synthèses dans le panneau d'affichage" },
   list_capabilities: { group: 'gateway', text: "d'autres données consultables de l'application" },
   call_read: { group: 'gateway', text: "d'autres données consultables de l'application" },
-  plan_write: { group: 'writes', text: "des créations ou modifications soumises à l'accord de l'utilisateur" }
+  plan_write: { group: 'writes', text: "des créations ou modifications soumises à l'accord de l'utilisateur" },
+  propose_follow_up: {
+    group: 'followUp',
+    text: 'des tâches, notifications, envois ou rapports proposés à la confirmation'
+  }
 };
 
 /**

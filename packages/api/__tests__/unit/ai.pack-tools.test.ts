@@ -58,14 +58,19 @@ function toolsOfPack(modules: ModuleKeyCode[], readOnly = false) {
   return toolsForUser(ALL_PERMS, read).filter(tool => tool.kind !== 'proposal' || write.has(tool.feature));
 }
 
-const RENTAL_TOOLS = ['search_leases', 'list_lease_documents', 'propose_rental_document'];
+const RENTAL_TOOLS = ['search_leases', 'list_lease_documents', 'propose_rental_document', 'lease_portfolio'];
 const CORE_TOOLS = [
   'search_properties',
   'list_property_documents',
   'show_artifact',
+  'property_portfolio',
+  'chart_analysis',
+  'show_indicators',
+  'compose_report',
   'list_capabilities',
   'call_read',
-  'plan_write'
+  'plan_write',
+  'propose_follow_up'
 ];
 
 describe('ImmoCopilot — outils et prompt par pack', () => {
@@ -99,6 +104,7 @@ describe('ImmoCopilot — outils et prompt par pack', () => {
   it('lecture seule : aucun outil de proposition, prompt en lecture seule', () => {
     const tools = toolsOfPack(PACKS.AGENCE, true);
     expect(tools.map(tool => tool.name)).not.toContain('propose_rental_document');
+    expect(tools.map(tool => tool.name)).not.toContain('propose_follow_up');
     expect(tools.map(tool => tool.name)).toContain('search_leases');
     expect(buildSystemPrompt('fr', tools)).toContain('lecture seule');
   });

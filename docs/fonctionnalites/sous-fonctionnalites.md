@@ -9,11 +9,11 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Finance | 196 |
 | CRM et Ventes | 70 |
 | Maintenance | 34 |
-| Communication et Documents | 110 |
+| Communication et Documents | 111 |
 | Syndic copropriete | 247 |
 | Administration plateforme | 142 |
 | Portails externes | 84 |
-| **Total** | **1260** |
+| **Total** | **1261** |
 
 ## Sous-fonctionnalités
 
@@ -833,6 +833,7 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Assigner une tâche de suivi | Créer une tâche pour soi-même ou un collaborateur actif. La confirmation partage en lecture seule l’analyse jointe avec le collaborateur. | Titre, collaborateur, priorité, échéance, description et analyse facultatives | Tâche et notification interne | Analyse recalculable pour un partage | Collaborateur de l’agence | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/tasks | Accès collaborateur et contrôle de l’affectation | Disponible | Assistant > Tâches ou Mes analyses > Créer une tâche |
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Consulter et terminer ses tâches | Consulter les tâches créées ou assignées et ouvrir l’analyse liée si elle est accessible. Le collaborateur assigné peut terminer et rouvrir la tâche. | Identifiant de la tâche | Tâche en cours ou terminée | Tâche assignée pour modifier l’état | Créateur ou collaborateur assigné | Agence (collaborateur) | GET /api/tenants/:tenantId/ai/tasks et PATCH /api/tenants/:tenantId/ai/tasks/:id | Accès collaborateur et contrôle de l’affectation | Disponible | Assistant > Tâches |
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Notifier des collègues | Envoyer un message dans la cloche de 1 à 20 collaborateurs actifs. Une analyse jointe est partagée en lecture seule après confirmation. | Destinataires, message, analyse facultative | Une notification interne par destinataire et lien révocable vers l’analyse jointe | Analyse recalculable pour partager avec un collègue | Collaborateur de l’agence | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/notifications | Accès collaborateur et droits sur l’analyse jointe | Disponible | Assistant ou Mes analyses > Notifier des collègues |
+| Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Confirmer une action proposée dans le chat | Préparer une tâche, une notification, un envoi par e-mail ou un rapport programmé. Le fil conserve la carte, l’accord, l’annulation ou l’échec. | Action, destinataires, paramètres métier et analyse selon le type | Carte dans le fil et exécution unique après confirmation | Conversation enregistrée et droits actuels sur les destinataires et l’analyse | Propriétaire de la conversation | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat et PATCH /api/tenants/:tenantId/ai/follow-ups/:id | Accès collaborateur, périmètre du fil et droits métier | Disponible | Assistant > Conversation > Carte d’action |
 
 ### Syndic copropriete
 

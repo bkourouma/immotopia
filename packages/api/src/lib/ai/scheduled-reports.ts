@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { ConflictError, NotFoundError } from '../../middleware/error-middleware';
 import { t } from '../../i18n';
-import { prisma } from '../../utils/database';
+import { prisma, type PrismaTransactionClient } from '../../utils/database';
 import type { AssistantOwner } from './conversations';
 import { nextReportRun, reportSchedule } from './report-schedule';
 import { createAnalysisSharesInTransaction } from './analysis-shares';
@@ -16,8 +16,8 @@ const reportInput = z.object({
     .min(1)
     .max(3)
 });
-const scheduledReportInput = reportInput.extend({ schedule: reportSchedule }).strict();
-const immediateReportInput = reportInput
+export const scheduledReportInput = reportInput.extend({ schedule: reportSchedule }).strict();
+export const immediateReportInput = reportInput
   .extend({
     requestId: z.string().uuid(),
     share: z.literal(true),
@@ -29,10 +29,11 @@ export const assistantReportInput = z.union([scheduledReportInput, immediateRepo
 export async function createScheduledReportDraft(
   owner: AssistantOwner,
   scopeKey: string,
-  input: z.infer<typeof scheduledReportInput>
+  input: z.infer<typeof scheduledReportInput>,
+  db: PrismaTransactionClient = prisma
 ) {
   const id = randomUUID();
-  const result = await prisma.$executeRaw`
+  const result = await db.$executeRaw`
     INSERT INTO assistant_scheduled_reports (id, tenant_id, owner_id, conversation_id, artifact_id, schedule, recipient_ids, formats)
     SELECT ${id}, a.tenant_id, a.owner_id, a.conversation_id, a.artifact_id, ${JSON.stringify(input.schedule)}::jsonb,
       ${[...new Set(input.recipientIds)]}::text[], ${[...new Set(input.formats)]}::text[]
@@ -52,12 +53,20 @@ export async function queueImmediateReport(
   scopeKey: string,
   input: z.infer<typeof immediateReportInput>
 ) {
+  return prisma.$transaction(tx => queueImmediateReportInTransaction(tx, owner, scopeKey, input));
+}
+
+export async function queueImmediateReportInTransaction(
+  tx: PrismaTransactionClient,
+  owner: AssistantOwner,
+  scopeKey: string,
+  input: z.infer<typeof immediateReportInput>
+) {
   const id = randomUUID();
   const recipientIds = [...new Set(input.recipientIds)].sort();
   const formats = [...new Set(input.formats)].sort();
   const message = input.message || null;
-  return prisma.$transaction(async tx => {
-    const inserted = await tx.$executeRaw`
+  const inserted = await tx.$executeRaw`
     INSERT INTO assistant_scheduled_reports
       (id, tenant_id, owner_id, conversation_id, artifact_id, immediate_key, message, recipient_ids, formats, active, next_run_at, shares_created)
     SELECT ${id}, a.tenant_id, a.owner_id, a.conversation_id, a.artifact_id, ${input.requestId}, ${message},
@@ -70,28 +79,27 @@ export async function queueImmediateReport(
     FOR SHARE OF a, c
     ON CONFLICT (tenant_id, owner_id, immediate_key) DO NOTHING
   `;
-    if (inserted) {
-      await createAnalysisSharesInTransaction(tx, owner, scopeKey, {
-        conversationId: input.conversationId,
-        artifactId: input.artifactId,
-        recipientIds: recipientIds.filter(recipientId => recipientId !== owner.ownerId)
-      });
-      return { id };
-    }
-    const previous = await tx.assistantScheduledReport.findFirst({
-      where: { ...owner, immediateKey: input.requestId, analysis: { conversation: { scopeKey } } }
+  if (inserted) {
+    await createAnalysisSharesInTransaction(tx, owner, scopeKey, {
+      conversationId: input.conversationId,
+      artifactId: input.artifactId,
+      recipientIds: recipientIds.filter(recipientId => recipientId !== owner.ownerId)
     });
-    if (!previous) throw new NotFoundError();
-    if (
-      previous.artifactId !== input.artifactId ||
-      previous.conversationId !== input.conversationId ||
-      previous.message !== message ||
-      JSON.stringify(previous.recipientIds) !== JSON.stringify(recipientIds) ||
-      JSON.stringify(previous.formats) !== JSON.stringify(formats)
-    )
-      throw new ConflictError(t('Cette confirmation correspond déjà à un autre envoi.'));
-    return { id: previous.id };
+    return { id };
+  }
+  const previous = await tx.assistantScheduledReport.findFirst({
+    where: { ...owner, immediateKey: input.requestId, analysis: { conversation: { scopeKey } } }
   });
+  if (!previous) throw new NotFoundError();
+  if (
+    previous.artifactId !== input.artifactId ||
+    previous.conversationId !== input.conversationId ||
+    previous.message !== message ||
+    JSON.stringify(previous.recipientIds) !== JSON.stringify(recipientIds) ||
+    JSON.stringify(previous.formats) !== JSON.stringify(formats)
+  )
+    throw new ConflictError(t('Cette confirmation correspond déjà à un autre envoi.'));
+  return { id: previous.id };
 }
 
 export async function listScheduledReports(owner: AssistantOwner, scopeKey: string, cursor?: string) {
@@ -143,26 +151,35 @@ export async function setScheduledReportActive(
   active: boolean,
   share?: true
 ) {
+  return prisma.$transaction(tx => setScheduledReportActiveInTransaction(tx, owner, scopeKey, id, active, share));
+}
+
+export async function setScheduledReportActiveInTransaction(
+  tx: PrismaTransactionClient,
+  owner: AssistantOwner,
+  scopeKey: string,
+  id: string,
+  active: boolean,
+  share?: true
+) {
   const where = { ...owner, id, immediateKey: null, analysis: { conversation: { scopeKey } } };
-  return prisma.$transaction(async tx => {
-    const report = await tx.assistantScheduledReport.findFirst({ where });
-    if (!report) throw new NotFoundError();
-    if (active === report.active) return;
-    const recipients = report.recipientIds.filter(recipientId => recipientId !== owner.ownerId);
-    if (active && !report.sharesCreated && recipients.length && !share) {
-      throw new ConflictError(t('Confirmez le partage de l’analyse pour activer ce rapport.'));
-    }
-    const nextRunAt = active ? nextReportRun(reportSchedule.parse(report.schedule), new Date()) : null;
-    const updated = await tx.assistantScheduledReport.updateMany({
-      where: { ...where, active: !active, sharesCreated: report.sharesCreated },
-      data: { active, nextRunAt, ...(active ? { sharesCreated: true } : {}) }
-    });
-    if (updated.count && active && !report.sharesCreated) {
-      await createAnalysisSharesInTransaction(tx, owner, scopeKey, {
-        conversationId: report.conversationId,
-        artifactId: report.artifactId,
-        recipientIds: recipients
-      });
-    }
+  const report = await tx.assistantScheduledReport.findFirst({ where });
+  if (!report) throw new NotFoundError();
+  if (active === report.active) return;
+  const recipients = report.recipientIds.filter(recipientId => recipientId !== owner.ownerId);
+  if (active && !report.sharesCreated && recipients.length && !share) {
+    throw new ConflictError(t('Confirmez le partage de l’analyse pour activer ce rapport.'));
+  }
+  const nextRunAt = active ? nextReportRun(reportSchedule.parse(report.schedule), new Date()) : null;
+  const updated = await tx.assistantScheduledReport.updateMany({
+    where: { ...where, active: !active, sharesCreated: report.sharesCreated },
+    data: { active, nextRunAt, ...(active ? { sharesCreated: true } : {}) }
   });
+  if (updated.count && active && !report.sharesCreated) {
+    await createAnalysisSharesInTransaction(tx, owner, scopeKey, {
+      conversationId: report.conversationId,
+      artifactId: report.artifactId,
+      recipientIds: recipients
+    });
+  }
 }

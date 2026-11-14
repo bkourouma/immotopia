@@ -27,7 +27,25 @@ export type CopilotToolName =
   | 'propose_rental_document'
   | 'show_artifact'
   | 'list_capabilities'
-  | 'call_read';
+  | 'call_read'
+  | 'propose_follow_up';
+
+export interface FollowUpProposal {
+  id: string;
+  kind: 'notify' | 'task' | 'email' | 'schedule';
+  status: 'PENDING' | 'CONFIRMED' | 'DECLINED' | 'FAILED';
+  display: {
+    recipients: string[];
+    artifactTitle?: string;
+    sharesAnalysis?: boolean;
+    title?: string;
+    message?: string;
+    priority?: 'low' | 'normal' | 'high';
+    dueDate?: string;
+    formats?: string[];
+    schedule?: { frequency: 'daily' | 'weekly' | 'monthly'; time: string; timeZone: string; day?: number };
+  };
+}
 
 export type CopilotErrorCode =
   | 'AI_DISABLED'
@@ -68,6 +86,7 @@ export interface AssistantConversation extends AssistantConversationSummary {
     responseRevision?: number;
     feedback?: ResponseFeedback | null;
     result: Array<Extract<CopilotSseEvent, { type: 'artifact' }>> | null;
+    followUps?: FollowUpProposal[];
     outcome: string | null;
   }>;
 }
@@ -347,6 +366,7 @@ export type CopilotSseEvent =
       items: DocumentCardItem[];
     }
   | { type: 'action_proposal'; proposal: ActionProposal }
+  | { type: 'follow_up'; proposal: FollowUpProposal }
   | { type: 'write_plan'; plan: WritePlan }
   | { type: 'artifact'; artifact: CopilotArtifact }
   | {
@@ -378,6 +398,7 @@ export type CopilotAttachment =
   | { kind: 'leases'; items: LeaseCardItem[] }
   | { kind: 'documents'; scope: 'lease' | 'property'; items: DocumentCardItem[] }
   | { kind: 'artifact'; artifactId: string; title: string; artifactKind: CopilotArtifact['kind'] }
+  | { kind: 'follow_up'; proposal: FollowUpProposal }
   | {
       kind: 'proposal';
       proposal: ActionProposal;

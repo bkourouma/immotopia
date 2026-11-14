@@ -50,7 +50,25 @@ export type CopilotToolName =
   | 'show_artifact'
   | 'list_capabilities'
   | 'call_read'
-  | 'plan_write';
+  | 'plan_write'
+  | 'propose_follow_up';
+
+export type FollowUpProposal = {
+  id: string;
+  kind: 'notify' | 'task' | 'email' | 'schedule';
+  status: 'PENDING' | 'CONFIRMED' | 'DECLINED' | 'FAILED';
+  display: {
+    recipients: string[];
+    artifactTitle?: string;
+    sharesAnalysis?: boolean;
+    message?: string;
+    title?: string;
+    priority?: 'low' | 'normal' | 'high';
+    dueDate?: string;
+    formats?: string[];
+    schedule?: import('./report-schedule').ReportSchedule;
+  };
+};
 
 export type CopilotErrorCode =
   | 'AI_DISABLED'
@@ -416,6 +434,7 @@ export type CopilotSseEvent =
     }
   | { type: 'action_proposal'; proposal: ActionProposal }
   | { type: 'write_plan'; plan: WritePlan }
+  | { type: 'follow_up'; proposal: FollowUpProposal }
   | { type: 'artifact'; artifact: CopilotArtifact }
   | {
       type: 'error';
@@ -561,6 +580,7 @@ export interface CopilotToolContext {
   loopbackHeaders?: () => Record<string, string>;
   /** Plans d'écriture émis pendant CETTE requête de chat (plafond : `COPILOT_MAX_WRITE_PLANS_PER_REQUEST`). Mutable. */
   writePlansIssued?: number;
+  proposeFollowUp?: (input: import('./follow-ups').FollowUpInput) => Promise<FollowUpProposal>;
 }
 
 export interface CopilotToolOutcome {

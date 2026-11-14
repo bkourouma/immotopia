@@ -11563,6 +11563,7 @@ model AssistantTurn {
   conversation AssistantConversation @relation(fields: [tenantId, ownerId, conversationId], references: [tenantId, ownerId, id], onDelete: Cascade, map: "assistant_turns_conversation_fkey")
   attachments  AssistantAttachment[]
   feedback     AssistantResponseFeedback[]
+  followUps    AssistantFollowUp[]
 
   @@id([tenantId, ownerId, id])
   @@index([tenantId, ownerId, conversationId, startedAt, id], map: "assistant_turns_history_idx")
@@ -11735,4 +11736,21 @@ model AssistantNotificationRequest {
 
   @@id([tenantId, senderId, requestId])
   @@map("assistant_notification_requests")
+}
+
+model AssistantFollowUp {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  ownerId   String   @map("owner_id")
+  turnId    String   @map("turn_id")
+  kind      String
+  status    String   @default("PENDING")
+  payload   Json
+  display   Json
+  createdAt DateTime @default(now()) @map("created_at")
+
+  turn AssistantTurn @relation(fields: [tenantId, ownerId, turnId], references: [tenantId, ownerId, id], onDelete: Cascade, map: "assistant_follow_ups_turn_fkey")
+
+  @@index([tenantId, ownerId, turnId], map: "assistant_follow_ups_turn_idx")
+  @@map("assistant_follow_ups")
 }

@@ -58,6 +58,7 @@ const KNOWN_EVENTS = new Set([
   'document_list',
   'action_proposal',
   'write_plan',
+  'follow_up',
   'artifact',
   'error',
   'done'
@@ -235,6 +236,10 @@ function savedAnalysisPath(tenantId: string, { conversationId, artifactId }: Sav
 }
 
 export const copilotService = {
+  async decideFollowUp(tenantId: string, id: string, confirm: boolean) {
+    const response = await apiClient.patch(`/tenants/${tenantId}/ai/follow-ups/${id}`, { confirm });
+    return unwrap<{ status: import('../types/copilot').FollowUpProposal['status'] }>(response.data);
+  },
   async notifyColleagues(
     tenantId: string,
     input: {

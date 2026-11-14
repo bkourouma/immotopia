@@ -591,7 +591,11 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       }
     });
 
-    async function saveReportAnalysis(base: string, owner: Awaited<ReturnType<typeof createTenantAdminUser>>) {
+    async function saveReportAnalysis(
+      base: string,
+      owner: Awaited<ReturnType<typeof createTenantAdminUser>>,
+      save = true
+    ) {
       mockFakeScript = [
         { toolCalls: [{ name: 'rental_receipts', input: { month: '2025-06' } }] },
         { text: 'Voici le tableau.' }
@@ -611,9 +615,10 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
           .map(line => JSON.parse(line.slice(6)));
         const { conversationId } = events.find(event => event.type === 'meta');
         const { id: artifactId } = events.find(event => event.type === 'artifact').artifact;
-        expect(
-          (await request(app).put(`${base}/analyses/${conversationId}/${artifactId}`).set(authed(owner))).status
-        ).toBe(200);
+        if (save)
+          expect(
+            (await request(app).put(`${base}/analyses/${conversationId}/${artifactId}`).set(authed(owner))).status
+          ).toBe(200);
         return { conversationId, artifactId };
       } finally {
         mockFakeScript = undefined;
@@ -1008,6 +1013,114 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
           expect.objectContaining({ recipientUserId: recipient.id, link: null, body: invalid.message })
         ])
       );
+    });
+
+    it('propose les quatre actions depuis le fil et attend une confirmation idempotente', async () => {
+      const owner = await createTenantAdminUser(tenantA, 'follow-up-owner');
+      const peer = await createTenantAdminUser(tenantA, 'follow-up-peer');
+      const { fullName } = await prisma.user.findUniqueOrThrow({ where: { id: peer.id }, select: { fullName: true } });
+      const base = `/api/tenants/${tenantA.id}/ai`;
+      const { conversationId, artifactId } = await saveReportAnalysis(base, owner, false);
+      const recipients = [fullName];
+      const configured = jest.spyOn(reportEmail, 'isEmailDeliveryConfigured').mockReturnValue(true);
+      async function propose(actions: unknown[]) {
+        const before = mockProviderRequests.length;
+        mockFakeScript = [
+          { toolCalls: actions.map(input => ({ name: 'propose_follow_up', input })) },
+          { text: 'Les cartes sont prêtes.' }
+        ];
+        const chat = await request(app)
+          .post(base + '/chat')
+          .set(authed(owner))
+          .send({
+            turnId: randomUUID(),
+            conversationId,
+            messages: [{ role: 'user', content: 'Prépare ces suivis.' }]
+          });
+        expect(chat.status).toBe(200);
+        const modelInput = JSON.stringify(mockProviderRequests[before].messages);
+        expect(modelInput).toContain('<recent_results>');
+        expect(modelInput).toContain(artifactId);
+        const events = chat.text
+          .split('\n')
+          .filter(line => line.startsWith('data: {'))
+          .map(line => JSON.parse(line.slice(6)));
+        const proposals = events.filter(event => event.type === 'follow_up').map(event => event.proposal);
+        if (proposals.length !== actions.length) throw new Error(JSON.stringify(events));
+        return proposals;
+      }
+      const decide = (id: string, confirm = true, actor = owner) =>
+        request(app)
+          .patch(base + '/follow-ups/' + id)
+          .set(authed(actor))
+          .send({ confirm });
+      const notices = () =>
+        prisma.userNotification.count({
+          where: { tenantId: tenantA.id, senderUserId: owner.id, key: 'ASSISTANT_COLLEAGUE_NOTIFICATION' }
+        });
+      try {
+        const [task, notify, email] = await propose([
+          { kind: 'task', title: 'Vérifier le relevé', recipients, artifactId },
+          { kind: 'notify', message: 'À relire.', recipients },
+          { kind: 'email', formats: ['csv'], recipients, artifactId }
+        ]);
+        expect([task.kind, notify.kind, email.kind]).toEqual(['task', 'notify', 'email']);
+        expect(task.display).toMatchObject({ recipients, sharesAnalysis: true });
+        expect(await notices()).toBe(0);
+        expect(await prisma.assistantTask.count({ where: { tenantId: tenantA.id, creatorId: owner.id } })).toBe(0);
+        expect((await decide(task.id, true, peer)).status).toBe(404);
+        expect((await Promise.all([decide(task.id), decide(task.id)])).map(result => result.body.data.status)).toEqual([
+          'CONFIRMED',
+          'CONFIRMED'
+        ]);
+        expect(await prisma.assistantTask.count({ where: { tenantId: tenantA.id, creatorId: owner.id } })).toBe(1);
+        expect((await decide(notify.id)).body.data.status).toBe('CONFIRMED');
+        expect(await notices()).toBe(1);
+        expect((await decide(email.id)).body.data.status).toBe('CONFIRMED');
+        const scheduleInput = { frequency: 'daily', time: '08:00', timeZone: 'Africa/Abidjan' };
+        const [schedule, cancelled, invalidated] = await propose([
+          { kind: 'schedule', recipients, artifactId, formats: ['csv'], schedule: scheduleInput },
+          { kind: 'notify', recipients, message: 'Annuler ce brouillon.' },
+          { kind: 'notify', recipients, message: 'Vérifier le droit courant.' }
+        ]);
+        expect((await decide(schedule.id)).body.data.status).toBe('CONFIRMED');
+        expect((await decide(cancelled.id, false)).body.data.status).toBe('DECLINED');
+        expect((await decide(cancelled.id)).body.data.status).toBe('DECLINED');
+        await prisma.membership.updateMany({
+          where: { tenantId: tenantA.id, userId: peer.id },
+          data: { status: 'DISABLED' }
+        });
+        expect((await decide(invalidated.id)).body.data.status).toBe('FAILED');
+        const reports = (
+          await request(app)
+            .get(base + '/reports')
+            .set(authed(owner))
+        ).body.data.items;
+        expect(reports).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ schedule: null, active: true }),
+            expect.objectContaining({ schedule: scheduleInput, active: true })
+          ])
+        );
+        const restored = await request(app)
+          .get(base + '/conversations/' + conversationId)
+          .set(authed(owner));
+        const restoredCards = restored.body.data.turns.flatMap((turn: { followUps: unknown[] }) => turn.followUps);
+        expect(restoredCards).toHaveLength(6);
+        expect(restoredCards).toEqual(
+          expect.arrayContaining([
+            ...[task, notify, email, schedule].map(proposal =>
+              expect.objectContaining({ id: proposal.id, status: 'CONFIRMED' })
+            ),
+            expect.objectContaining({ id: cancelled.id, status: 'DECLINED' }),
+            expect.objectContaining({ id: invalidated.id, status: 'FAILED' })
+          ])
+        );
+        expect(await notices()).toBe(1);
+      } finally {
+        mockFakeScript = undefined;
+        configured.mockRestore();
+      }
     });
 
     it('partage un tableau recalculé, exclut le titre privé et révoque la lecture et l’export', async () => {

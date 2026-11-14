@@ -21,6 +21,7 @@ vi.mock('../../services/copilot-service', () => {
     listTasks: vi.fn(),
     createTask: vi.fn(),
     notifyColleagues: vi.fn(),
+    decideFollowUp: vi.fn(),
     setTaskCompleted: vi.fn(),
     listAnalysisRecipients: vi.fn(),
     queueImmediateReport: vi.fn(),
@@ -114,6 +115,42 @@ function setDesktop(desktop: boolean) {
 
 describe('AssistantPage — artefacts', () => {
   afterEach(() => setDesktop(false));
+
+  it('restaure et confirme une proposition durable dans le fil', async () => {
+    getStatus.mockResolvedValue(ENABLED);
+    getConversation.mockResolvedValueOnce({
+      id: 'c1',
+      title: 'Suivi',
+      pinned: false,
+      archived: false,
+      updatedAt: '2026-11-14',
+      turns: [
+        {
+          id: 't1',
+          question: 'Prépare une notification',
+          response: 'La carte est prête.',
+          result: null,
+          outcome: 'end_turn',
+          followUps: [
+            {
+              id: 'p1',
+              kind: 'notify',
+              status: 'PENDING',
+              display: { recipients: ['Camille'], message: 'Merci de relire le document.' }
+            }
+          ]
+        }
+      ]
+    });
+    vi.mocked(copilotService.decideFollowUp).mockResolvedValueOnce({ status: 'CONFIRMED' });
+    renderPage('/tenant/t1/assistant?c=c1');
+    expect(await screen.findByText('Merci de relire le document.')).toBeInTheDocument();
+    expect(screen.getByText(/Destinataires · Camille/)).toBeInTheDocument();
+    expect(copilotService.decideFollowUp).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }));
+    expect(copilotService.decideFollowUp).toHaveBeenCalledWith('t1', 'p1', true);
+    expect(await screen.findByText('Confirmée')).toBeInTheDocument();
+  });
 
   it('attend la confirmation avant de notifier des collègues depuis une analyse', async () => {
     getStatus.mockResolvedValue(ENABLED);

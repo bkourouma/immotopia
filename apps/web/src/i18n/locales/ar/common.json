@@ -1,4 +1,9 @@
 {
+  "Envoi mis en file": "أُضيف الإرسال إلى قائمة الانتظار",
+  "Préparation d’une action": "إعداد إجراء",
+  "À confirmer": "بانتظار التأكيد",
+  "Action en échec": "تعذر تنفيذ الإجراء",
+  "Impossible de traiter la décision. Réessayez.": "تعذرت معالجة القرار. حاول مرة أخرى.",
   "Notifier des collègues": "إشعار الزملاء",
   "Notification envoyée.": "تم إرسال الإشعار.",
   "Impossible d’envoyer cette notification.": "تعذر إرسال هذا الإشعار.",

@@ -1,4 +1,9 @@
 {
+  "Envoi mis en file": "Delivery queued",
+  "Préparation d’une action": "Preparing an action",
+  "À confirmer": "Awaiting confirmation",
+  "Action en échec": "Action failed",
+  "Impossible de traiter la décision. Réessayez.": "Could not process the decision. Try again.",
   "Notifier des collègues": "Notify colleagues",
   "Notification envoyée.": "Notification sent.",
   "Impossible d’envoyer cette notification.": "Could not send this notification.",

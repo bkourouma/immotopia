@@ -29,7 +29,7 @@ import { ALL_TOOLS, findTool, toLlmToolSpecs, type ToolFeature } from './tools/r
  * GARANTIE CENTRALE : aucun chemin du chat vers une écriture. Ce module
  * n'importe ni `executeRentalDocument`, ni `executeCapability`, ni `generateDocument`. Les seuls outils
  * joignables sont ceux du registre autorisé pour l'utilisateur (lecture, ou
- * proposition qui n'écrit rien : `propose_rental_document`, `plan_write`) ; la génération n'existe que derrière la route
+ * proposition sans effet métier : `propose_rental_document`, `plan_write`, `propose_follow_up`) ; la génération n'existe que derrière la route
  * HTTP de confirmation, avec un jeton signé.
  *
  * Tout ce qui vient du modèle est non fiable : un nom d'outil hors registre
@@ -48,6 +48,7 @@ export interface RunChatInput {
   fileExtracts?: Array<{ name: string; excerpt: string; artifactId?: string }>;
   importedTables?: Array<Extract<CopilotArtifact, { kind: 'table' }>>;
   analysisTables?: Array<Extract<CopilotArtifact, { kind: 'table' }>>;
+  artifactReferences?: Array<Pick<CopilotArtifact, 'id' | 'kind' | 'title'>>;
   provider: LlmProvider;
   tenantId: string;
   userId: string;
@@ -65,6 +66,7 @@ export interface RunChatInput {
   signal: AbortSignal;
   /** Authentification rejouée par la passerelle (`call_read`) ; voir `gateway/loopback-auth.ts`. Jamais journalisée. */
   loopbackHeaders?: () => Record<string, string>;
+  proposeFollowUp?: CopilotToolContext['proposeFollowUp'];
   emit: (event: CopilotSseEvent) => void;
   now?: () => Date;
 }
@@ -159,6 +161,11 @@ export async function runChat(input: RunChatInput): Promise<ChatDoneReason> {
   const screenContext = formatContextBlock(input.pageContext, input.now?.());
   const contextBlocks = [screenContext];
   if (sourceRefs.length) contextBlocks.push('<analysis_sources>' + JSON.stringify(sourceRefs) + '</analysis_sources>');
+  if (input.proposeFollowUp && input.artifactReferences?.length) {
+    contextBlocks.push(
+      '<recent_results>' + JSON.stringify(input.artifactReferences).replace(/</g, '\\u003c') + '</recent_results>'
+    );
+  }
   if (focus) {
     let omittedItems = false;
     const serialized = JSON.stringify(focus, (key, value: unknown) => {
@@ -189,6 +196,7 @@ export async function runChat(input: RunChatInput): Promise<ChatDoneReason> {
     requestId: input.requestId,
     conversationId: input.conversationId,
     signal,
+    proposeFollowUp: input.proposeFollowUp,
     loopbackHeaders: input.loopbackHeaders,
     writePlansIssued: 0,
     analysisTables,

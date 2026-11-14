@@ -215,6 +215,7 @@ export function useCopilotChat(tenantId: string, persistent = false): UseCopilot
             artifactKind: artifact.kind
           });
         }
+        for (const proposal of turn.followUps ?? []) attachments.push({ kind: 'follow_up', proposal });
         restoredMessages.push({
           id: turn.id,
           role: 'user',
@@ -315,6 +316,9 @@ export function useCopilotChat(tenantId: string, persistent = false): UseCopilot
             break;
           case 'action_proposal':
             addAttachment({ kind: 'proposal', proposal: e.proposal, state: 'pending' });
+            break;
+          case 'follow_up':
+            addAttachment({ kind: 'follow_up', proposal: e.proposal });
             break;
           case 'write_plan': {
             const plan = sanitizeWritePlan(e.plan);

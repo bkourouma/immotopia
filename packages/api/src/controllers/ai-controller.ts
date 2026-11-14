@@ -16,6 +16,7 @@ import {
 } from '../lib/ai/scheduled-reports';
 import { isEmailDeliveryConfigured } from '../services/email-service';
 import { colleagueNotificationInput, notifyAssistantColleagues } from '../lib/ai/colleague-notifications';
+import { decideFollowUp, executeFollowUp, getFollowUp, proposeFollowUp } from '../lib/ai/follow-ups';
 import {
   assistantTaskInput,
   createAssistantTask,
@@ -28,6 +29,7 @@ import {
   listSavedAnalysisPins,
   removeSavedAnalysis,
   saveAnalysis,
+  saveAnalysisSnapshot,
   setSavedAnalysisPin
 } from '../lib/ai/saved-analyses';
 import {
@@ -368,6 +370,49 @@ export const notifyAssistantColleaguesHandler = asyncHandler(async (req, res) =>
     await assertAnalysisForRecipients(source, { ...analysis, recipientIds });
   await notifyAssistantColleagues({ tenantId, ownerId: userId }, source?.scopeKey, input);
   res.sendStatus(204);
+});
+
+export const decideFollowUpHandler = asyncHandler(async (req, res) => {
+  const { id } = conversationParams.parse(req.params);
+  const { confirm } = z.object({ confirm: z.boolean() }).strict().parse(req.body);
+  const source = await conversationScope(req);
+  const { owner, scopeKey } = source;
+  const proposal = await getFollowUp(owner, scopeKey, id);
+  let status = proposal.status;
+  if (status === 'PENDING') {
+    if (!confirm) {
+      status = await decideFollowUp(owner, scopeKey, id, 'DECLINED');
+    } else {
+      try {
+        if (!source.tools.some(tool => tool.name === 'propose_follow_up')) throw new ForbiddenError();
+        const { action, recipientIds, turn } = proposal;
+        if (action.kind === 'email' && !isEmailDeliveryConfigured())
+          throw new AppError(t('Le service d’envoi par e-mail est indisponible.'), 503);
+        const location = action.artifactId
+          ? { conversationId: turn.conversationId, artifactId: action.artifactId }
+          : undefined;
+        const original = location
+          ? await getStoredArtifact(owner, location.conversationId, location.artifactId, scopeKey)
+          : undefined;
+        const current = location ? await readArtifactVersions({ ...owner, ...location }, scopeKey) : undefined;
+        if (location) {
+          const formats = 'formats' in action ? action.formats : undefined;
+          const recipients = formats ? recipientIds : recipientIds.filter(id => id !== owner.ownerId);
+          if (recipients.length)
+            await assertAnalysisForRecipients(source, { ...location, recipientIds: recipients, formats });
+        }
+        status = await decideFollowUp(owner, scopeKey, id, 'CONFIRMED', async tx => {
+          if (location && original && current)
+            await saveAnalysisSnapshot(tx, owner, scopeKey, location, current.artifact.title, original);
+          await executeFollowUp(tx, owner, scopeKey, id, proposal);
+        });
+      } catch (error) {
+        if (!(error instanceof AppError) || error.statusCode >= 500) throw error;
+        status = await decideFollowUp(owner, scopeKey, id, 'FAILED');
+      }
+    }
+  }
+  res.set('Cache-Control', 'private, no-store').json({ success: true, data: { status } });
 });
 
 async function assertAnalysisForRecipients(
@@ -862,6 +907,7 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
   const signal = persistent ? AbortSignal.any([stream.signal, deadline.signal]) : stream.signal;
   const result: Extract<CopilotSseEvent, { type: 'artifact' }>[] = [];
   let response = '';
+  let followUps = 0;
   let terminal: Extract<CopilotSseEvent, { type: 'done' }> | undefined;
   try {
     const outcome = await runChat({
@@ -869,6 +915,7 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
       deep: body.deep,
       focusedArtifact: focus,
       analysisTables: regenerated?.analysisTables ?? saved?.analysisTables,
+      artifactReferences: saved?.artifactReferences,
       fileExtracts: [
         ...extracts.map(({ name, excerpt, table }) => ({ name, excerpt, artifactId: table?.id })),
         ...(regenerated?.extracts ?? saved?.priorExtracts ?? []).map(file => ({
@@ -880,7 +927,7 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
       tenantId,
       userId,
       permissions,
-      tools,
+      tools: saved ? tools : tools.filter(tool => tool.name !== 'propose_follow_up'),
       unavailableFeatures,
       messages: regenerated?.messages ?? saved?.messages ?? body.messages,
       pageContext,
@@ -888,6 +935,19 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
       requestId: randomUUID(),
       signal,
       loopbackHeaders: loopbackHeadersFor(req),
+      proposeFollowUp:
+        saved && body.turnId
+          ? async action => {
+              if (followUps >= 3) throw new AppError(t('Ce message comporte déjà trois propositions.'), 422);
+              const artifact = action.artifactId
+                ? (result.find(event => event.artifact.id === action.artifactId)?.artifact ??
+                  (await getStoredArtifact(owner, saved.conversationId, action.artifactId, scopeKey)))
+                : undefined;
+              const proposal = await proposeFollowUp(owner, body.turnId!, action, artifact);
+              followUps++;
+              return proposal;
+            }
+          : undefined,
       emit: event => {
         if (persistent) {
           if (event.type === 'text_delta') response = (response + event.text).slice(0, 100_000);

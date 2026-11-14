@@ -39,6 +39,7 @@ export const conversationPatch = z
 
 type ResultEvent = Extract<CopilotSseEvent, { type: 'artifact' }>;
 type AnalysisTable = Extract<ResultEvent['artifact'], { kind: 'table' }>;
+type ArtifactRef = Pick<ResultEvent['artifact'], 'id' | 'kind' | 'title'>;
 type SavedFile = { name: string; excerpt: string; artifactId?: string | null };
 const fileReference = { name: true, position: true } as const;
 
@@ -71,6 +72,20 @@ function storedAnalysisTables(results: (Prisma.JsonValue | null)[]): AnalysisTab
   return tables;
 }
 
+function recentArtifactReferences(results: (Prisma.JsonValue | null)[]): ArtifactRef[] {
+  const references = new Map<string, ArtifactRef>();
+  for (const result of results) {
+    if (!Array.isArray(result)) continue;
+    for (const event of result as unknown as ResultEvent[]) {
+      if (event.type !== 'artifact' || references.has(event.artifact.id)) continue;
+      const { id, kind, title } = event.artifact;
+      references.set(id, { id, kind, title: title.slice(0, 160) });
+      if (references.size === 12) return [...references.values()];
+    }
+  }
+  return [...references.values()];
+}
+
 export function assistantScope(permissions: Set<string>, toolNames: string[]): string {
   // Les outils de présentation ajoutés ici transforment uniquement des jeux déjà accessibles.
   // Leur disponibilité ne change donc pas le périmètre des fils enregistrés.
@@ -81,7 +96,8 @@ export function assistantScope(permissions: Set<string>, toolNames: string[]): s
     'compose_report',
     'property_portfolio',
     'lease_portfolio',
-    'maintenance_overview'
+    'maintenance_overview',
+    'propose_follow_up'
   ]);
   const readScope = toolNames.filter(name => !additionalTools.has(name));
   return createHash('sha256')
@@ -167,6 +183,11 @@ export async function getConversation(owner: AssistantOwner, id: string, scopeKe
       },
       result: true,
       outcome: true,
+      followUps: {
+        where: owner,
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        select: { id: true, kind: true, status: true, display: true }
+      },
       attachments: { where: owner, select: fileReference, orderBy: { position: 'asc' } }
     }
   });
@@ -297,6 +318,7 @@ export async function beginAssistantTurn(
   conversationId: string;
   messages: ChatRequest['messages'];
   analysisTables: AnalysisTable[];
+  artifactReferences: ArtifactRef[];
   priorExtracts: SavedFile[];
 }> {
   return prisma.$transaction(
@@ -362,11 +384,13 @@ export async function beginAssistantTurn(
         take: 6,
         select: { result: true }
       });
+      const results = related.map(row => row.result);
       return {
         conversationId,
         messages,
         priorExtracts,
-        analysisTables: storedAnalysisTables(related.map(row => row.result))
+        analysisTables: storedAnalysisTables(results),
+        artifactReferences: recentArtifactReferences(results)
       };
     },
     { timeout: input.files?.length ? 30_000 : undefined }

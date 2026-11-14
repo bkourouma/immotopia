@@ -1,4 +1,8 @@
 {
+  "Destinataire inconnu ou ambigu. Précisez son nom complet.": "The recipient is unknown or ambiguous. Specify their full name.",
+  "Attendez la fin de la réponse avant de confirmer cette action.": "Wait for the response to finish before confirming this action.",
+  "Cette action nécessite un nouveau message dans un fil enregistré.": "This action requires a new message in a saved conversation.",
+  "Ce message comporte déjà trois propositions.": "This message already has three proposals.",
   "Confirmez le partage de l’analyse pour envoyer la notification.": "Confirm sharing the analysis to send this notification.",
   "Cette confirmation correspond déjà à une autre notification.": "This confirmation already belongs to another notification.",
   "Un message de votre équipe": "A message from your team",

@@ -15,6 +15,7 @@ import { LeaseResultCard } from './LeaseResultCard';
 import { PropertyResultCard } from './PropertyResultCard';
 import { SafeMarkdown } from './SafeMarkdown';
 import { WritePlanCard } from './WritePlanCard';
+import { FollowUpCard } from './FollowUpCard';
 
 export interface CopilotMessageListProps {
   messages: CopilotUiMessage[];
@@ -41,7 +42,8 @@ function Attachment({
   onCancel,
   onApprovePlan,
   onRefusePlan,
-  onOpenArtifact
+  onOpenArtifact,
+  streaming
 }: { attachment: CopilotAttachment } & Omit<CopilotMessageListProps, 'messages'>): React.ReactElement {
   switch (attachment.kind) {
     case 'properties':
@@ -99,6 +101,15 @@ function Attachment({
           decidedAt={attachment.decidedAt}
           onApprove={(id, confirmation) => onApprovePlan?.(id, confirmation)}
           onRefuse={id => onRefusePlan?.(id)}
+        />
+      );
+    case 'follow_up':
+      return (
+        <FollowUpCard
+          key={attachment.proposal.id}
+          tenantId={tenantId}
+          proposal={attachment.proposal}
+          streaming={streaming}
         />
       );
   }
@@ -198,6 +209,7 @@ export function CopilotMessageList({
               >
                 <Attachment
                   attachment={attachment}
+                  streaming={streaming}
                   tenantId={tenantId}
                   propertyId={propertyId}
                   onConfirm={onConfirm}

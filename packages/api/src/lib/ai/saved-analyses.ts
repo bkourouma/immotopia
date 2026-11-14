@@ -1,5 +1,5 @@
 import { NotFoundError } from '../../middleware/error-middleware';
-import { prisma } from '../../utils/database';
+import { prisma, type PrismaTransactionClient } from '../../utils/database';
 import { readArtifactVersions } from './artifact-versions';
 import { getStoredArtifact, type AssistantOwner } from './conversations';
 
@@ -31,19 +31,30 @@ export async function listSavedAnalyses(owner: AssistantOwner, scopeKey: string,
 export async function saveAnalysis(owner: AssistantOwner, scopeKey: string, location: AnalysisReference) {
   const original = await getStoredArtifact(owner, location.conversationId, location.artifactId, scopeKey);
   const current = await readArtifactVersions({ ...owner, ...location }, scopeKey);
+  return saveAnalysisSnapshot(prisma, owner, scopeKey, location, current.artifact.title, original);
+}
+
+export async function saveAnalysisSnapshot(
+  db: PrismaTransactionClient,
+  owner: AssistantOwner,
+  scopeKey: string,
+  location: AnalysisReference,
+  title: string,
+  original: Awaited<ReturnType<typeof getStoredArtifact>>
+) {
   const where = { ...owner, ...location, conversation: { scopeKey } };
   // Match the current scope at insertion as well. A concurrent conversation deletion
   // either precedes the SELECT or cascades through the saved analysis.
-  await prisma.$executeRaw`
+  await db.$executeRaw`
     INSERT INTO assistant_saved_analyses (tenant_id, owner_id, conversation_id, artifact_id, title, original)
-    SELECT tenant_id, owner_id, id, ${location.artifactId}, ${current.artifact.title}, ${JSON.stringify(original)}::jsonb
+    SELECT tenant_id, owner_id, id, ${location.artifactId}, ${title}, ${JSON.stringify(original)}::jsonb
     FROM assistant_conversations
     WHERE tenant_id = ${owner.tenantId} AND owner_id = ${owner.ownerId}
       AND id = ${location.conversationId} AND scope_key = ${scopeKey}
     FOR SHARE
     ON CONFLICT (tenant_id, owner_id, conversation_id, artifact_id) DO NOTHING
   `;
-  const saved = await prisma.assistantSavedAnalysis.findFirst({ where, select });
+  const saved = await db.assistantSavedAnalysis.findFirst({ where, select });
   if (!saved) throw new NotFoundError();
   return saved;
 }

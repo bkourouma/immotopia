@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { isLanguage, t } from '../../i18n';
 import { ConflictError, NotFoundError } from '../../middleware/error-middleware';
-import { prisma } from '../../utils/database';
+import { prisma, type PrismaTransactionClient } from '../../utils/database';
 import { createAnalysisSharesInTransaction } from './analysis-shares';
 import type { AssistantOwner } from './conversations';
 import { writeAssistantNotification } from './in-app-notification';
@@ -39,6 +39,15 @@ export async function createAssistantTask(
   scopeKey: string | undefined,
   input: z.infer<typeof assistantTaskInput>
 ) {
+  return prisma.$transaction(tx => createAssistantTaskInTransaction(tx, owner, scopeKey, input));
+}
+
+export async function createAssistantTaskInTransaction(
+  tx: PrismaTransactionClient,
+  owner: AssistantOwner,
+  scopeKey: string | undefined,
+  input: z.infer<typeof assistantTaskInput>
+) {
   const { tenantId, ownerId: creatorId } = owner;
   const { requestId, assigneeId, title, priority, analysis } = input;
   const description = input.description || null;
@@ -49,75 +58,73 @@ export async function createAssistantTask(
   if (analysis && assigneeId !== creatorId && !input.share) {
     throw new ConflictError(t('Confirmez le partage de l’analyse pour créer la tâche.'));
   }
-  return prisma.$transaction(async tx => {
-    const member = await tx.membership.findFirst({
-      where: {
-        tenantId,
-        userId: assigneeId,
-        status: 'ACTIVE',
-        user: {
-          isActive: true,
-          globalRole: { not: 'SUPER_ADMIN' },
-          userRoles: { some: { tenantId, role: { scope: 'TENANT' } } }
-        }
-      },
-      select: { user: { select: { fullName: true, preferredLanguage: true } } }
-    });
-    if (!member) throw new NotFoundError();
-    if (
-      analysis &&
-      !(await tx.assistantSavedAnalysis.findFirst({
-        where: { tenantId, ownerId: creatorId, ...analysis, conversation: { scopeKey } },
-        select: { artifactId: true }
-      }))
-    )
-      throw new NotFoundError();
-    const requested = { tenantId, creatorId, requestId };
-    const id = randomUUID();
-    const inserted = await tx.assistantTask.createMany({
-      data: { id, ...requested, assigneeId, title, description, priority, dueDate, conversationId, artifactId },
-      skipDuplicates: true
-    });
-    if (!inserted.count) {
-      const old = await tx.assistantTask.findFirst({ where: requested });
-      if (
-        !old ||
-        old.assigneeId !== assigneeId ||
-        old.title !== title ||
-        old.description !== description ||
-        old.priority !== priority ||
-        old.dueDate?.getTime() !== dueDate?.getTime() ||
-        old.conversationId !== conversationId ||
-        old.artifactId !== artifactId
-      ) {
-        throw new ConflictError(t('Cette confirmation correspond déjà à une autre tâche.'));
+  const member = await tx.membership.findFirst({
+    where: {
+      tenantId,
+      userId: assigneeId,
+      status: 'ACTIVE',
+      user: {
+        isActive: true,
+        globalRole: { not: 'SUPER_ADMIN' },
+        userRoles: { some: { tenantId, role: { scope: 'TENANT' } } }
       }
-      return { id: old.id };
-    }
-    if (analysis && scopeKey && assigneeId !== creatorId) {
-      const [share] = await createAnalysisSharesInTransaction(
-        tx,
-        owner,
-        scopeKey,
-        {
-          ...analysis,
-          recipientIds: [assigneeId]
-        },
-        false
-      );
-      await tx.assistantTask.updateMany({ where: { ...requested, id }, data: { shareId: share.id } });
-    }
-    const language = isLanguage(member.user.preferredLanguage) ? member.user.preferredLanguage : 'fr';
-    await writeAssistantNotification(tx, owner, { id: assigneeId, fullName: member.user.fullName }, language, {
-      key: 'ASSISTANT_TASK_ASSIGNED',
-      title: t('Une tâche vous a été assignée', undefined, language),
-      body: t('Ouvrez les tâches de l’assistant pour la consulter.', undefined, language),
-      link: `/tenant/${encodeURIComponent(tenantId)}/assistant?tache=${id}`,
-      relatedEntityType: 'AssistantTask',
-      relatedEntityId: id
-    });
-    return { id };
+    },
+    select: { user: { select: { fullName: true, preferredLanguage: true } } }
   });
+  if (!member) throw new NotFoundError();
+  if (
+    analysis &&
+    !(await tx.assistantSavedAnalysis.findFirst({
+      where: { tenantId, ownerId: creatorId, ...analysis, conversation: { scopeKey } },
+      select: { artifactId: true }
+    }))
+  )
+    throw new NotFoundError();
+  const requested = { tenantId, creatorId, requestId };
+  const id = randomUUID();
+  const inserted = await tx.assistantTask.createMany({
+    data: { id, ...requested, assigneeId, title, description, priority, dueDate, conversationId, artifactId },
+    skipDuplicates: true
+  });
+  if (!inserted.count) {
+    const old = await tx.assistantTask.findFirst({ where: requested });
+    if (
+      !old ||
+      old.assigneeId !== assigneeId ||
+      old.title !== title ||
+      old.description !== description ||
+      old.priority !== priority ||
+      old.dueDate?.getTime() !== dueDate?.getTime() ||
+      old.conversationId !== conversationId ||
+      old.artifactId !== artifactId
+    ) {
+      throw new ConflictError(t('Cette confirmation correspond déjà à une autre tâche.'));
+    }
+    return { id: old.id };
+  }
+  if (analysis && scopeKey && assigneeId !== creatorId) {
+    const [share] = await createAnalysisSharesInTransaction(
+      tx,
+      owner,
+      scopeKey,
+      {
+        ...analysis,
+        recipientIds: [assigneeId]
+      },
+      false
+    );
+    await tx.assistantTask.updateMany({ where: { ...requested, id }, data: { shareId: share.id } });
+  }
+  const language = isLanguage(member.user.preferredLanguage) ? member.user.preferredLanguage : 'fr';
+  await writeAssistantNotification(tx, owner, { id: assigneeId, fullName: member.user.fullName }, language, {
+    key: 'ASSISTANT_TASK_ASSIGNED',
+    title: t('Une tâche vous a été assignée', undefined, language),
+    body: t('Ouvrez les tâches de l’assistant pour la consulter.', undefined, language),
+    link: `/tenant/${encodeURIComponent(tenantId)}/assistant?tache=${id}`,
+    relatedEntityType: 'AssistantTask',
+    relatedEntityId: id
+  });
+  return { id };
 }
 
 export async function listAssistantTasks(owner: AssistantOwner, scopeKey?: string, cursor?: string, focus?: string) {
