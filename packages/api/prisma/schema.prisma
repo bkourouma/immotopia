@@ -586,6 +586,8 @@ model User {
   saleCommissionsAsAgent            SaleCommission[]            @relation("SaleCommissionAgent")
   saleCommissionPaymentsCreated     SaleCommissionPayment[]     @relation("SaleCommissionPaymentCreatedBy")
   saleCommissionPaymentsVoided      SaleCommissionPayment[]     @relation("SaleCommissionPaymentVoidedBy")
+  // Avis sur les fiches d'aide interne (RGPD : supprimes avec le compte).
+  helpFeedbacks                     HelpFeedback[]
 
   @@index([email])
   @@map("users")
@@ -843,6 +845,8 @@ model Tenant {
   syndicPaymentDeclarations      SyndicPaymentDeclaration[]
   syndicPaymentDeclarationLines  SyndicPaymentDeclarationLine[]
   syndicPaymentProofReads        SyndicPaymentProofRead[]
+  // Avis sur les fiches d'aide interne rattaches a cette agence.
+  helpFeedbacks                  HelpFeedback[]
 
   @@index([slug])
   @@index([status])
@@ -11513,4 +11517,28 @@ model JobLock {
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   @@map("job_locks")
+}
+
+/// Avis sur une fiche d'aide interne (utile / pas utile, question libre). `tenantId` nul = avis
+/// hors agence (particulier, super-admin, contexte d'agence non verifiable) ; la lecture agence
+/// filtre STRICTEMENT sur tenantId (jamais les avis sans agence), seule la lecture super-admin
+/// traverse les agences. Pas de relation Prisma vers le contenu des fiches (elles vivent dans le web).
+model HelpFeedback {
+  id        String   @id @default(uuid())
+  tenantId  String?  @map("tenant_id")
+  userId    String   @map("user_id")
+  helpId    String   @map("help_id")
+  useful    Boolean?
+  question  String?  @db.Text
+  path      String?
+  locale    String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([helpId, createdAt])
+  @@index([tenantId])
+  @@index([userId])
+  @@map("help_feedback")
 }

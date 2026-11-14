@@ -38,6 +38,11 @@ const OUTSIDE_SUBSCRIPTION: Array<{ prefix: string; exact?: boolean; reason: str
   { prefix: '/api/platform', reason: 'Super-admin : reglages de la plateforme (PLATFORM_* + requireSuperAdmin).' },
   { prefix: '/api/roles', reason: 'Catalogue des roles, commun a la plateforme.' },
   {
+    prefix: '/api/help',
+    reason:
+      "Avis sur les fiches d'aide (aide interne) : tout utilisateur connecte, hors agence ; l'agence est deduite et verifiee cote serveur."
+  },
+  {
     prefix: '/api/personal-space',
     exact: true,
     reason: "Creation de l'espace personnel (lot 4B) : l'utilisateur n'appartient encore a aucune agence."

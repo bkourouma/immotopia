@@ -76,6 +76,11 @@ export const TENANT_ROUTE_FEATURES: readonly RouteFeatureRule[] = [
   { prefix: '/members', feature: 'CORE', note: 'Membres assignables (liste minimale pour les listes deroulantes).' },
   { prefix: '/dashboard', feature: 'CORE' },
   { prefix: '/audit', feature: 'CORE', note: "Journal d'activité de l'agence (ADR-006) : lecture seule." },
+  {
+    prefix: '/help-feedback',
+    feature: 'CORE',
+    note: "Synthèse des avis sur les fiches d'aide interne : lecture seule, socle."
+  },
   { prefix: '/documents', feature: 'CORE' },
   {
     prefix: '/ai',

@@ -128,7 +128,11 @@ const EXEMPT_MODELS = new Set([
   'RoleMenuAccess',
   // Name collision: here `tenantId` is the RENTER (a CrmContact), not the
   // agency. The model is scoped through its lot's syndicate instead.
-  'LotTenantAssignment'
+  'LotTenantAssignment',
+  // Avis d'aide interne : tenantId nul par conception (avis hors agence : particulier, super-admin,
+  // contexte non verifiable). L'ecriture se fait hors contexte d'agence ; la lecture super-admin
+  // traverse les agences a dessein ; la lecture agence filtre explicitement sur tenantId.
+  'HelpFeedback'
 ]);
 
 /** Minimal shape read out of `Prisma.dmmf.datamodel.models`. */
