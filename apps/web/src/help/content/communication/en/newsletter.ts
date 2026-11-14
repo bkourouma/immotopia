@@ -398,7 +398,7 @@ const entries: HelpEntry[] = [
     consequences: [
       'A send cannot be undone: recipients receive the message as soon as you confirm. Only a "Scheduled" campaign can still be cancelled.',
       'Each recipient receives a personalised email with their own unsubscribe link; the message must contain "{{lien_desinscription}}".',
-      'If your agency has set up WhatsApp, a text version is also sent to recipients who have given their WhatsApp consent.'
+      'If the platform has enabled WhatsApp sending, a text version is also sent to recipients who have given their WhatsApp consent.'
     ],
     faq: [
       {
@@ -552,7 +552,7 @@ const entries: HelpEntry[] = [
       },
       {
         q: 'Is my message also sent on WhatsApp?',
-        a: 'If your agency has set up WhatsApp, a text version goes to recipients who have given their WhatsApp consent and whose number is known in the CRM.'
+        a: 'If the platform has enabled WhatsApp sending, a text version goes to recipients who have given their WhatsApp consent and whose number is known in the CRM.'
       },
       {
         q: 'Can I personalise the subject?',

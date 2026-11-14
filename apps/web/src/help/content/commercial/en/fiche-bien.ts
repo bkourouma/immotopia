@@ -29,7 +29,7 @@ const entries: HelpEntry[] = [
     },
     steps: [
       { title: 'Read the banner', detail: 'Title, status, address, price, key figures.' },
-      { title: 'Open a tab', detail: 'Click its name: each has its own "?".' },
+      { title: 'Open a tab', detail: 'Click its name: most tabs have their own "?".' },
       { title: 'Edit the property', detail: 'The "Edit" button: the form also lets you change the status.' },
       {
         title: 'Other actions',

@@ -378,7 +378,7 @@ export default function TenantMaintenance() {
           <Col xs={24} sm={12} lg={6}>
             <Card>
               <Statistic
-                title={<HelpSectionTitle title={t('Ouverts')} helpId="portails.locataire.incidents.indicateurs" />}
+                title={t('Ouverts')}
                 value={data.summary.open}
                 valueStyle={{ color: '#faad14' }}
                 prefix={<ToolOutlined />}
@@ -388,7 +388,7 @@ export default function TenantMaintenance() {
           <Col xs={24} sm={12} lg={6}>
             <Card>
               <Statistic
-                title={<HelpSectionTitle title={t('En cours')} helpId="portails.locataire.incidents.indicateurs" />}
+                title={t('En cours')}
                 value={data.summary.inProgress}
                 valueStyle={{ color: '#1890ff' }}
                 prefix={<ToolOutlined />}
@@ -398,7 +398,7 @@ export default function TenantMaintenance() {
           <Col xs={24} sm={12} lg={6}>
             <Card>
               <Statistic
-                title={<HelpSectionTitle title={t('Résolus')} helpId="portails.locataire.incidents.indicateurs" />}
+                title={t('Résolus')}
                 value={data.summary.resolved}
                 valueStyle={{ color: '#3f8600' }}
                 prefix={<ToolOutlined />}

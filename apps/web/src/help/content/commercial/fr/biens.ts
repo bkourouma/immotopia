@@ -41,7 +41,7 @@ const entries: HelpEntry[] = [
       }
     ],
     consequences: [
-      'La suppression est irréversible. Elle est refusée si le bien est lié à un bail, à des échéances impayées, à un mandat de gestion actif, à une copropriété, à des tickets de maintenance, à une vente, à une affaire active ou à un prêt actif.',
+      "La suppression est irréversible. Elle est refusée notamment si le bien a : un bail en cours ou à venir, ou un historique de baux clos à conserver ; des échéances de loyer impayées ; un mandat de gestion actif ; plusieurs propriétaires en indivision (supprimez d'abord les parts) ; un rattachement à un lot de copropriété ou de site ; des tickets de maintenance ; un mandat ou un compromis de vente ; des visites planifiées ; des documents (supprimez-les avant) ; un prêt actif ; ou une affaire non perdue, quelle que soit son étape. Le message de refus liste les motifs.",
       "Quand la suppression est refusée, l'écran propose « Archiver ce bien » : le bien sort alors de la liste sans que ses données soient effacées.",
       "« Diffuser en newsletter » ouvre la préparation d'une campagne de newsletter pour le bien choisi."
     ],

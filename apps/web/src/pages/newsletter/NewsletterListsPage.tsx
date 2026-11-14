@@ -13,7 +13,7 @@ import { useLocalListSearch } from '../../utils/list-search';
 import { newsletterService, type NewsletterList, type NewsletterSubscriber } from '../../services/newsletter.service';
 import type { ContactSearchResultItem } from '../../services/contact-search.service';
 import { t } from '../../i18n/t';
-import { HelpSectionTitle } from '../../help';
+import { HelpButton, HelpSectionTitle } from '../../help';
 import { collectAllPages } from '../../utils/table-export/collect';
 
 // Stables : déclarés hors du composant (le filtrage local reste mémoïsé).
@@ -255,14 +255,12 @@ export function NewsletterListsPage() {
                   items={[
                     {
                       key: 'public-form',
-                      label: (
-                        <HelpSectionTitle
-                          title={t("Formulaire d'inscription publique")}
-                          helpId="communication.newsletter.listes.inscription"
-                        />
-                      ),
+                      label: t("Formulaire d'inscription publique"),
                       children: (
                         <div>
+                          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                            <HelpButton size="small" helpId="communication.newsletter.listes.inscription" />
+                          </div>
                           <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
                             {t('Lien public :')}{' '}
                             <a

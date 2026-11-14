@@ -41,7 +41,7 @@ const entries: HelpEntry[] = [
       }
     ],
     consequences: [
-      'Deletion cannot be undone. It is refused if the property is linked to a lease, unpaid instalments, an active management mandate, a co-ownership, maintenance tickets, a sale, an active deal or an active loan.',
+      'Deletion cannot be undone. It is refused in particular if the property has: a current or upcoming lease, or a history of closed leases that must be kept; unpaid rent instalments; an active management mandate; several co-owners (delete the shares first); a link to a co-ownership or site lot; maintenance tickets; a sale mandate or agreement; scheduled visits; documents (delete them first); an active loan; or a deal that is not lost, whatever its stage. The refusal message lists the reasons.',
       'When deletion is refused, the screen offers “Archive this property”: the property then leaves the list and its data is not erased.',
       '“Send as a newsletter” opens the preparation of a newsletter campaign for the chosen property.'
     ],

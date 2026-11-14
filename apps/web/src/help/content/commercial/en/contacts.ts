@@ -10,7 +10,7 @@ const entries: HelpEntry[] = [
     summary:
       "Find all your agency's contacts here: leads, clients and archived contacts. This is the starting point to create, search, open, edit or delete a contact.",
     purpose:
-      'A contact is a person or a company your agency follows: a potential buyer, a future tenant, an owner... A newly created contact is first a "Lead". It becomes an "Active client" when you give it a role (Owner, Tenant, Co-owner, Buyer). Each contact has its own record, with its tags, its roles and, if your plan includes the CRM, its deals and activities.',
+      'A contact is a person or a company your agency follows: a potential buyer, a future tenant, an owner... A newly created contact is first a "Lead". It becomes an "Active client" when you give it a role (Owner, Tenant, Co-owner, Buyer). Each contact has its own record (tags, roles, and deals and activities with the CRM plan).',
     steps: [
       {
         title: 'Create a contact',
@@ -50,9 +50,8 @@ const entries: HelpEntry[] = [
     ],
     consequences: [
       'A new contact is always created with the "Lead" status. The email address must be unique in your agency: a duplicate is refused.',
-      'If WhatsApp is set up for your agency, the contact may receive an invitation to your WhatsApp group when created, provided they have given "WhatsApp consent".',
-      'Deletion is permanent: it also erases the deals, activities, roles and tags attached to the contact. It is refused if the contact has an owner account, a third-party account or a financial history (for example a purchase offer).',
-      'An export contains the contacts matching your criteria: clear the criteria to export everything.'
+      'If the platform has enabled WhatsApp sending, the contact may receive an invitation to your WhatsApp group when created, provided they have given "WhatsApp consent".',
+      'Deletion is permanent: it also erases the deals, activities, roles and tags attached to the contact. It is refused if the contact has an owner account, a third-party account or a financial history (for example a purchase offer).'
     ],
     faq: [
       {
@@ -64,16 +63,8 @@ const entries: HelpEntry[] = [
         a: 'Open its record and click "Convert", then choose at least one role. You can also add a role from the "Roles" card of the record.'
       },
       {
-        q: 'Why is deletion refused?',
-        a: 'The contact has an owner account, a third-party account or a financial history. These links are kept: the contact cannot be deleted.'
-      },
-      {
         q: 'My save is refused. Why?',
         a: 'First check the email (already used?) and the required fields. Otherwise you may be missing a right: "Create contacts" to create, "Edit contacts" to edit or delete.'
-      },
-      {
-        q: 'How do I find a contact?',
-        a: 'Type its name, company name, email or phone number in the search field. Then narrow it down with Status, Tags, Team member or "More filters".'
       }
     ],
     permissions: {
@@ -235,7 +226,7 @@ const entries: HelpEntry[] = [
       'The same form is used to create and edit a contact. It opens as a full page ("New contact") or in a window from the contact list. A created contact is always a "Lead"; you convert it into a client from its record.',
     steps: [
       {
-        title: 'Basique tab',
+        title: 'Basic tab',
         detail:
           'Choose Individual or Company, then enter the first name, last name and "Personal email": all three are required.'
       },
@@ -249,7 +240,7 @@ const entries: HelpEntry[] = [
       },
       {
         title: 'Other tabs',
-        detail: 'Professionnel, CRM and Consentements are optional. Complete them if you have the information.'
+        detail: 'Professional, CRM and Consents are optional. Complete them if you have the information.'
       },
       {
         title: 'Save',
@@ -283,7 +274,7 @@ const entries: HelpEntry[] = [
     ],
     permissions: { note: 'Requires the "Create contacts" right.' },
     related: [
-      { label: 'Basique tab', helpId: 'commercial.contacts.nouveau.basique' },
+      { label: 'Basic tab', helpId: 'commercial.contacts.nouveau.basique' },
       { label: 'Contact list', helpId: 'commercial.contacts.liste' },
       { label: 'Convert a lead into a client', helpId: 'commercial.contacts.detail.convertir' }
     ],
@@ -295,7 +286,7 @@ const entries: HelpEntry[] = [
           target: 'contact-form-onglets',
           title: 'Six tabs',
           description:
-            'The form is split into tabs. Only Basique and Contact (the district) have required fields for an individual.'
+            'The form is split into tabs. Only Basic and Contact (the district) have required fields for an individual.'
         },
         {
           target: 'contact-form-enregistrer',
@@ -309,7 +300,7 @@ const entries: HelpEntry[] = [
   {
     id: 'commercial.contacts.nouveau.basique',
     kind: 'section',
-    title: 'Basique tab',
+    title: 'Basic tab',
     summary: 'The essential information: contact type, first name, last name, emails and phones.',
     steps: [
       { title: 'Contact type', detail: 'Individual or Company. This choice changes the fields of the Identity tab.' },
@@ -365,7 +356,7 @@ const entries: HelpEntry[] = [
       }
     ],
     consequences: [
-      'The fields shown in this tab depend on the contact type chosen in the Basique tab: change the type and the tab changes.'
+      'The fields shown in this tab depend on the contact type chosen in the Basic tab: change the type and the tab changes.'
     ],
     faq: [
       {
@@ -421,7 +412,7 @@ const entries: HelpEntry[] = [
   {
     id: 'commercial.contacts.nouveau.professionnel',
     kind: 'section',
-    title: 'Professionnel tab',
+    title: 'Professional tab',
     summary: "The contact's professional and financial situation: useful to qualify a buyer or a tenant.",
     steps: [
       { title: 'Job and employer', detail: 'Occupation / job title, Business sector (list) and Employer.' },
@@ -484,7 +475,7 @@ const entries: HelpEntry[] = [
   {
     id: 'commercial.contacts.nouveau.consentements',
     kind: 'section',
-    title: 'Consentements tab',
+    title: 'Consents tab',
     summary:
       'The agreements given by the contact to be contacted, and your internal notes. Nothing is ticked by default.',
     steps: [

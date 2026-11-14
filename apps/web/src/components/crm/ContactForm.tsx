@@ -30,7 +30,7 @@ import { formatNumberWithSpaces, parseFormattedNumber } from '../../lib/utils';
 import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { t } from '../../i18n/t';
 import { PortalEmailNotice } from './PortalEmailNotice';
-import { HelpSectionTitle, helpAnchor } from '../../help';
+import { HelpButton, helpAnchor } from '../../help';
 
 const { TextArea } = Input;
 const { TabPane } = Tabs;
@@ -387,11 +387,10 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div {...helpAnchor('contact-form-onglets')}>
           <Tabs activeKey={activeTab} onChange={setActiveTab} type="card">
-            <TabPane
-              forceRender
-              tab={<HelpSectionTitle title="Basique" helpId="commercial.contacts.nouveau.basique" />}
-              key="basic"
-            >
+            <TabPane forceRender tab={t('Basique')} key="basic">
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <HelpButton size="small" helpId="commercial.contacts.nouveau.basique" />
+              </div>
               <Card>
                 <Form.Item
                   label={t('Type de contact')}
@@ -501,11 +500,10 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
               </Card>
             </TabPane>
 
-            <TabPane
-              forceRender
-              tab={<HelpSectionTitle title={t('Identité')} helpId="commercial.contacts.nouveau.identite" />}
-              key="identification"
-            >
+            <TabPane forceRender tab={t('Identité')} key="identification">
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <HelpButton size="small" helpId="commercial.contacts.nouveau.identite" />
+              </div>
               <Card>
                 <Form.Item
                   noStyle
@@ -633,11 +631,10 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
               </Card>
             </TabPane>
 
-            <TabPane
-              forceRender
-              tab={<HelpSectionTitle title="Contact" helpId="commercial.contacts.nouveau.coordonnees" />}
-              key="contact"
-            >
+            <TabPane forceRender tab={t('Contact')} key="contact">
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <HelpButton size="small" helpId="commercial.contacts.nouveau.coordonnees" />
+              </div>
               <Card>
                 <Form.Item label={t('Adresse complète')} name="address">
                   <Input placeholder={t('Adresse complète')} />
@@ -688,11 +685,10 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
               </Card>
             </TabPane>
 
-            <TabPane
-              forceRender
-              tab={<HelpSectionTitle title="Professionnel" helpId="commercial.contacts.nouveau.professionnel" />}
-              key="professional"
-            >
+            <TabPane forceRender tab={t('Professionnel')} key="professional">
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <HelpButton size="small" helpId="commercial.contacts.nouveau.professionnel" />
+              </div>
               <Card>
                 <Row gutter={16}>
                   <Col xs={24} sm={12}>
@@ -787,11 +783,10 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
               </Card>
             </TabPane>
 
-            <TabPane
-              forceRender
-              tab={<HelpSectionTitle title="CRM" helpId="commercial.contacts.nouveau.crm" />}
-              key="crm"
-            >
+            <TabPane forceRender tab={t('CRM')} key="crm">
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <HelpButton size="small" helpId="commercial.contacts.nouveau.crm" />
+              </div>
               <Card>
                 <Row gutter={16}>
                   <Col xs={24} sm={12}>
@@ -840,11 +835,10 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
               </Card>
             </TabPane>
 
-            <TabPane
-              forceRender
-              tab={<HelpSectionTitle title="Consentements" helpId="commercial.contacts.nouveau.consentements" />}
-              key="consents"
-            >
+            <TabPane forceRender tab={t('Consentements')} key="consents">
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <HelpButton size="small" helpId="commercial.contacts.nouveau.consentements" />
+              </div>
               <Card>
                 <Form.Item label={t('Consentements')}>
                   <Space direction="vertical">

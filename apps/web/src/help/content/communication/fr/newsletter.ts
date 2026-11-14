@@ -412,7 +412,7 @@ const entries: HelpEntry[] = [
     consequences: [
       "L'envoi ne peut pas être annulé : les destinataires reçoivent le message dès la confirmation. Seule une campagne « Planifiée » peut encore être annulée.",
       'Chaque destinataire reçoit un e-mail personnalisé avec son propre lien de désinscription ; le message doit contenir « {{lien_desinscription}} ».',
-      'Si votre agence a configuré WhatsApp, une version texte est aussi envoyée aux destinataires qui ont donné leur consentement WhatsApp.'
+      "Si la plateforme a activé l'envoi WhatsApp, une version texte est aussi envoyée aux destinataires qui ont donné leur consentement WhatsApp."
     ],
     faq: [
       {
@@ -567,7 +567,7 @@ const entries: HelpEntry[] = [
       },
       {
         q: 'Mon message est-il aussi envoyé sur WhatsApp ?',
-        a: 'Si votre agence a configuré WhatsApp, une version texte part aux destinataires qui ont donné leur consentement WhatsApp et dont le numéro est connu dans le CRM.'
+        a: "Si la plateforme a activé l'envoi WhatsApp, une version texte part aux destinataires qui ont donné leur consentement WhatsApp et dont le numéro est connu dans le CRM."
       },
       {
         q: 'Puis-je personnaliser le sujet ?',

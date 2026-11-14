@@ -365,18 +365,8 @@ export const SaleCommissions: React.FC = () => {
           label={t('Total TTC')}
           value={<MoneyValue value={totals.amountInclTax} />}
         />
-        <StatCard
-          helpId="commercial.ventes.commissions.indicateurs"
-          label={t('Encaissé')}
-          value={<MoneyValue value={totals.paidAmount} />}
-          tone="positive"
-        />
-        <StatCard
-          helpId="commercial.ventes.commissions.indicateurs"
-          label={t('Reste dû')}
-          value={<MoneyValue value={totals.remainingAmount} />}
-          tone="warning"
-        />
+        <StatCard label={t('Encaissé')} value={<MoneyValue value={totals.paidAmount} />} tone="positive" />
+        <StatCard label={t('Reste dû')} value={<MoneyValue value={totals.remainingAmount} />} tone="warning" />
       </div>
 
       {erreurRequete ? (

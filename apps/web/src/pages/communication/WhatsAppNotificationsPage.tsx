@@ -304,14 +304,12 @@ export function WhatsAppNotificationsPage() {
                   items={[
                     {
                       key: 'twilio-template',
-                      label: (
-                        <HelpSectionTitle
-                          title={t("Template Twilio (message initié par l'entreprise)")}
-                          helpId="communication.canaux.whatsapp.twilio"
-                        />
-                      ),
+                      label: t("Template Twilio (message initié par l'entreprise)"),
                       children: (
                         <>
+                          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                            <HelpButton size="small" helpId="communication.canaux.whatsapp.twilio" />
+                          </div>
                           <Form.Item
                             name="contentSid"
                             label={t('Content SID (Twilio)')}
