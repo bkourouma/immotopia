@@ -187,7 +187,25 @@ async function updateArtifactVersion(
   return unwrap<{ artifact: unknown; version: number }>(response.data);
 }
 
+export type SavedAnalysisReference = { conversationId: string; artifactId: string };
+export type SavedAnalysis = SavedAnalysisReference & { title: string; createdAt: string };
+
+function savedAnalysisPath(tenantId: string, { conversationId, artifactId }: SavedAnalysisReference) {
+  return `/tenants/${tenantId}/ai/analyses/${conversationId}/${artifactId}`;
+}
+
 export const copilotService = {
+  async listSavedAnalyses(tenantId: string, cursor?: SavedAnalysisReference, signal?: AbortSignal) {
+    const response = await apiClient.get(`/tenants/${tenantId}/ai/analyses`, { params: cursor, signal });
+    return unwrap<{ items: SavedAnalysis[]; nextCursor?: SavedAnalysisReference }>(response.data);
+  },
+  async saveAnalysis(tenantId: string, reference: SavedAnalysisReference) {
+    const response = await apiClient.put(savedAnalysisPath(tenantId, reference));
+    return unwrap<SavedAnalysis>(response.data);
+  },
+  async removeSavedAnalysis(tenantId: string, reference: SavedAnalysisReference) {
+    await apiClient.delete(savedAnalysisPath(tenantId, reference));
+  },
   updateArtifactVersion,
   async rewriteArtifactSection(
     tenantId: string,

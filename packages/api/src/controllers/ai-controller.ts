@@ -5,6 +5,7 @@ import { buildArtifactPdf } from '../lib/ai/artifact-pdf';
 import { appendArtifactVersion, readArtifactVersions } from '../lib/ai/artifact-versions';
 import { canReplayArtifact, replayArtifact } from '../lib/ai/artifact-replay';
 import { buildArtifactPowerPoint } from '../lib/ai/artifact-pptx';
+import { listSavedAnalyses, removeSavedAnalysis, saveAnalysis } from '../lib/ai/saved-analyses';
 import { buildArtifactCsv, buildArtifactXlsx } from '../lib/ai/artifact-spreadsheet';
 import type { Request, Response } from 'express';
 import { AiDisabledError } from '../middleware/ai-access-middleware';
@@ -167,6 +168,30 @@ export const downloadConversationAttachmentHandler = asyncHandler(async (req: Re
 });
 
 const artifactExportParams = z.object({ id: z.string().uuid(), artifactId: z.string().uuid() });
+
+const analysisReference = z.object({ conversationId: z.string().uuid(), artifactId: z.string().uuid() });
+const analysisListQuery = z.union([analysisReference.strict(), z.object({}).strict()]);
+
+export const listSavedAnalysesHandler = asyncHandler(async (req, res) => {
+  const query = analysisListQuery.parse(req.query);
+  const { owner, scopeKey } = await conversationScope(req);
+  const data = await listSavedAnalyses(owner, scopeKey, 'artifactId' in query ? query : undefined);
+  res.set('Cache-Control', 'private, no-store').json({ success: true, data });
+});
+
+export const saveAnalysisHandler = asyncHandler(async (req, res) => {
+  const location = analysisReference.parse(req.params);
+  const { owner, scopeKey } = await conversationScope(req);
+  const data = await saveAnalysis(owner, scopeKey, location);
+  res.set('Cache-Control', 'private, no-store').json({ success: true, data });
+});
+
+export const removeSavedAnalysisHandler = asyncHandler(async (req, res) => {
+  const location = analysisReference.parse(req.params);
+  const { owner, scopeKey } = await conversationScope(req);
+  await removeSavedAnalysis(owner, scopeKey, location);
+  res.sendStatus(204);
+});
 
 const versionNumber = z.number().int().positive().max(2147483647);
 export const saveResponseFeedbackHandler = asyncHandler(async (req, res) => {

@@ -15,6 +15,8 @@ vi.mock('../../services/copilot-service', () => {
     getConversation: vi.fn(),
     saveResponseFeedback: vi.fn(),
     getArtifactVersion: vi.fn(),
+    listSavedAnalyses: vi.fn(),
+    removeSavedAnalysis: vi.fn(),
     downloadAttachment: vi.fn(),
     transcribe: vi.fn()
   };
@@ -101,6 +103,36 @@ function setDesktop(desktop: boolean) {
 
 describe('AssistantPage — artefacts', () => {
   afterEach(() => setDesktop(false));
+
+  it('ouvre et retire une analyse enregistrée depuis la page Assistant', async () => {
+    getStatus.mockResolvedValue(ENABLED);
+    const item = {
+      conversationId: 'c1',
+      artifactId: 'a1',
+      title: ARTIFACT_EVENT.artifact.title,
+      createdAt: '2026-11-14'
+    };
+    const list = vi.mocked(copilotService.listSavedAnalyses);
+    list.mockResolvedValueOnce({ items: [item] }).mockResolvedValue({ items: [] });
+    const payload = {
+      artifact: ARTIFACT_EVENT.artifact,
+      version: 1,
+      latest: 1,
+      versions: [{ version: 1, createdAt: null }]
+    };
+    vi.mocked(copilotService.getArtifactVersion).mockResolvedValueOnce(payload).mockResolvedValueOnce(payload);
+    vi.mocked(copilotService.removeSavedAnalysis).mockResolvedValue(undefined);
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Mes analyses' }));
+    const drawer = await screen.findByRole('dialog', { name: 'Mes analyses' });
+    fireEvent.click(await within(drawer).findByRole('button', { name: item.title }));
+    expect(await within(drawer).findByText('important')).toBeInTheDocument();
+    fireEvent.click(within(drawer).getByRole('button', { name: 'Retour aux analyses' }));
+    fireEvent.click(within(drawer).getByRole('button', { name: 'Retirer' }));
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Retirer' })).at(-1)!);
+    await waitFor(() => expect(copilotService.removeSavedAnalysis).toHaveBeenCalledWith('t1', item));
+    expect(await within(drawer).findByText('Aucune analyse enregistrée.')).toBeInTheDocument();
+  });
 
   async function sendWithArtifact() {
     getStatus.mockResolvedValue(ENABLED);

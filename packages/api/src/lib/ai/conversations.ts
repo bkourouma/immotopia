@@ -223,6 +223,11 @@ export async function getStoredArtifact(owner: AssistantOwner, conversationId: s
     );
     if (match) return match.artifact;
   }
+  const saved = await prisma.assistantSavedAnalysis.findFirst({
+    where: { ...owner, conversationId, artifactId: id, conversation: { scopeKey } },
+    select: { original: true }
+  });
+  if (saved) return saved.original as unknown as ResultEvent['artifact'];
   throw new NotFoundError();
 }
 

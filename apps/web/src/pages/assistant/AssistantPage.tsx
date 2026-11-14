@@ -6,6 +6,7 @@ import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'reac
 import { getTenantDashboard } from '../../services/dashboard-service';
 import type { DashboardTask } from '../../services/dashboard-service';
 import { ConversationHistory } from '../../components/copilot/ConversationHistory';
+import { SavedAnalyses } from '../../components/copilot/SavedAnalyses';
 import { copilotService } from '../../services/copilot-service';
 import { feedback } from '../../lib/feedback';
 import { ArtifactPanel } from '../../components/copilot/artifact/ArtifactPanel';
@@ -78,6 +79,7 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
   const activeId = params.get('c');
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [analysesOpen, setAnalysesOpen] = useState(false);
   const [historyRefresh, setHistoryRefresh] = useState(0);
   const [archivedThread, setArchivedThread] = useState(false);
   const [briefing, setBriefing] = useState<DashboardTask[]>([]);
@@ -212,6 +214,14 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
       selectedId={chat.selectedArtifactId}
       onSelect={chat.selectArtifact}
       onClose={closePanel}
+      onSaveAnalysis={
+        conversationId && !streaming
+          ? async artifactId => {
+              await copilotService.saveAnalysis(tenantId, { conversationId, artifactId });
+              feedback.success(t('Analyse enregistrée.'));
+            }
+          : undefined
+      }
       onFollowUp={
         conversationId && !streaming && !archivedThread
           ? (artifact, version) => {
@@ -358,6 +368,7 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
 
   return (
     <div style={{ display: 'flex', height: pageHeight(hasTabs), minHeight: 320, gap: 'var(--space-4)' }}>
+      {analysesOpen && <SavedAnalyses tenantId={tenantId} onClose={() => setAnalysesOpen(false)} />}
       {showArtifact ? (
         <nav aria-label={t('Historique des conversations')} style={{ flex: '0 0 230px', minWidth: 0 }}>
           {history}
@@ -381,6 +392,9 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
             {t('Assistant')}
           </Typography.Title>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <Button type="text" onClick={() => setAnalysesOpen(true)}>
+              {t('Mes analyses')}
+            </Button>
             {!showArtifact && (
               <Button type="text" onClick={() => setHistoryOpen(true)}>
                 {t('Historique')}

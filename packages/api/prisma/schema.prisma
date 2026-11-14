@@ -11532,6 +11532,7 @@ model AssistantConversation {
   owner  User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   turns  AssistantTurn[]
   artifactVersions AssistantArtifactVersion[]
+  savedAnalyses    AssistantSavedAnalysis[]
 
   @@unique([tenantId, ownerId, id])
   @@index([tenantId, ownerId, archived, pinned, updatedAt, id], map: "assistant_conversations_history_idx")
@@ -11606,4 +11607,20 @@ model AssistantArtifactVersion {
 
   @@id([tenantId, ownerId, conversationId, artifactId, version])
   @@map("assistant_artifact_versions")
+}
+
+model AssistantSavedAnalysis {
+  tenantId       String   @map("tenant_id")
+  ownerId        String   @map("owner_id")
+  conversationId String   @map("conversation_id")
+  artifactId     String   @map("artifact_id")
+  title          String
+  original       Json
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  conversation AssistantConversation @relation(fields: [tenantId, ownerId, conversationId], references: [tenantId, ownerId, id], onDelete: Cascade, map: "assistant_saved_analyses_conversation_fkey")
+
+  @@id([tenantId, ownerId, conversationId, artifactId])
+  @@index([tenantId, ownerId, createdAt(sort: Desc), conversationId, artifactId], map: "assistant_saved_analyses_list_idx")
+  @@map("assistant_saved_analyses")
 }

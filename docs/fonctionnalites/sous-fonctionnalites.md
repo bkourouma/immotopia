@@ -9,11 +9,11 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Finance | 196 |
 | CRM et Ventes | 70 |
 | Maintenance | 34 |
-| Communication et Documents | 93 |
+| Communication et Documents | 96 |
 | Syndic copropriete | 247 |
 | Administration plateforme | 142 |
 | Portails externes | 84 |
-| **Total** | **1243** |
+| **Total** | **1246** |
 
 ## Sous-fonctionnalités
 
@@ -816,6 +816,9 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Modifier le texte d’un rapport | Corriger le Markdown ou les sections de texte d’un rapport et enregistrer une version. | Rapport, texte des sections et version attendue | Nouvelle version avec les mêmes tableaux liés | Résultat enregistré | Propriétaire du fil avec les droits correspondants | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/conversations/:id/artifacts/:artifactId | Accès à l’assistant et périmètre du fil | Disponible | Assistant > Résultats et documents > Modifier le texte |
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Réécrire une section avec l’assistant | Appliquer une consigne à une section de texte et relire la proposition avant de créer une version. | Rapport, version, section, brouillon et consigne | Proposition de texte dans le brouillon | Résultat enregistré | Propriétaire du fil avec les droits correspondants | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/conversations/:id/artifacts/:artifactId/rewrite | Accès à l’assistant et périmètre du fil | Disponible | Assistant > Modifier le texte |
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Évaluer une réponse | Indiquer si une réponse est utile et ajouter éventuellement un commentaire. | Conversation, réponse, révision, avis et commentaire | Avis associé à la révision évaluée | Réponse terminée dans le fil privé | Propriétaire du fil avec les droits correspondants | Agence (collaborateur) | PUT /api/tenants/:tenantId/ai/conversations/:id/turns/:turnId/feedback | Accès à l’assistant et périmètre du fil | Disponible | Assistant > Donner un avis |
+| Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Enregistrer un résultat dans Mes analyses | Conserver un résultat pour le retrouver après une nouvelle conversation ou une régénération. | Conversation et résultat | Entrée privée dans Mes analyses | Résultat d’un fil privé | Propriétaire du fil avec les droits correspondants | Agence (collaborateur) | PUT /api/tenants/:tenantId/ai/analyses/:conversationId/:artifactId | Accès à l’assistant et périmètre du fil | Disponible | Assistant > Mes analyses |
+| Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Consulter Mes analyses | Parcourir les analyses enregistrées et ouvrir leurs versions pour les consulter ou les télécharger. | Page et analyse choisie | Liste privée et panneau du résultat | Résultat d’un fil privé | Propriétaire du fil avec les droits correspondants | Agence (collaborateur) | GET /api/tenants/:tenantId/ai/analyses | Accès à l’assistant et périmètre du fil | Disponible | Assistant > Mes analyses |
+| Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Retirer une analyse enregistrée | Retirer une analyse de sa liste personnelle. | Conversation et analyse | Liste mise à jour | Résultat d’un fil privé | Propriétaire du fil avec les droits correspondants | Agence (collaborateur) | DELETE /api/tenants/:tenantId/ai/analyses/:conversationId/:artifactId | Accès à l’assistant et périmètre du fil | Disponible | Assistant > Mes analyses |
 
 ### Syndic copropriete
 

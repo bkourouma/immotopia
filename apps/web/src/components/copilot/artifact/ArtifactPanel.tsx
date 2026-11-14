@@ -24,6 +24,7 @@ export interface ArtifactPanelProps {
   selectedId?: string;
   onSelect(id: string): void;
   onClose(): void;
+  onSaveAnalysis?(artifactId: string): Promise<void>;
   onFollowUp?(artifact: CopilotArtifact, version: number): void;
   onDownloadFile?(artifactId: string, format: ArtifactDownloadFormat, version?: number): Promise<void>;
   onReadVersion?(
@@ -151,6 +152,7 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
   selectedId,
   onSelect,
   onClose,
+  onSaveAnalysis,
   onRefresh,
   onReadVersion,
   onFollowUp,
@@ -231,12 +233,15 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
   const downloadFile = (format: ArtifactDownloadFormat) =>
     downloadVersion ? onDownloadFile?.(artifact.id, format, downloadVersion) : onDownloadFile?.(artifact.id, format);
 
-  const run = async (job: () => void | Promise<void>) => {
+  const run = async (
+    job: () => void | Promise<void>,
+    errorMessage = t("Le téléchargement n'a pas pu être généré.")
+  ) => {
     setBusy(true);
     try {
       await job();
     } catch {
-      feedback.error(t("Le téléchargement n'a pas pu être généré."));
+      feedback.error(errorMessage);
     } finally {
       setBusy(false);
     }
@@ -399,6 +404,14 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
               {t('Télécharger')}
             </Button>
           </Dropdown>
+        )}
+        {onSaveAnalysis && (
+          <Button
+            disabled={busy || versionPending || (!!onReadVersion && !snapshot)}
+            onClick={() => void run(() => onSaveAnalysis(root.id), t('Impossible d’enregistrer cette analyse.'))}
+          >
+            {t('Enregistrer dans Mes analyses')}
+          </Button>
         )}
         <Button
           type="text"

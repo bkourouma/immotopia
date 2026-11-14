@@ -61,6 +61,8 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 **Budgets de copropriété** — Après `0ba1590c`, le tableau `syndicate_budget` compare prévisionnel et réalisé par poste et par exercice. Il réutilise le calcul de l’écran Syndic. Les dépenses non rattachées n’alimentent pas les postes calculés. L’écart est le prévisionnel moins le réalisé. Le jeu est disponible avec `SYNDIC_VIEW` et le module Syndic, et les filtres sont conservés pour les versions et exports.
 
+**Mes analyses** — Après `2b55519d`, le panneau de résultats enregistre une analyse dans la liste privée de son propriétaire. La liste est paginée. Le tiroir permet de relire les versions, recalculer et exporter. Le nom affiché dans la liste est celui au moment de l’enregistrement. La version d’origine reste accessible après régénération du tour, et la suppression du fil enlève ses analyses. Migration `20261115010000_assistant_saved_analyses` appliquée en PostgreSQL de recette. Le partage aux collègues et les épingles restent à intégrer.
+
 ## chore/deps-patch-minor — 2026-11-11
 
 **État** — PR 218 vers `main` (fusion par l'utilisateur), reprend la PR Dependabot 212 (28 mises à jour mineures : antd 6.7, Radix, TanStack Query, aws-sdk, docxtemplater, pizzip…). PR Dependabot 214 (`@vitejs/plugin-react` 6) et 215 (`vitest` 5) fermées le 2026-11-11 : sauts de versions majeures (module introuvable, matchers non typés), à traiter en migration dédiée ; envisager une règle `ignore` des versions majeures dans `.github/dependabot.yml`.

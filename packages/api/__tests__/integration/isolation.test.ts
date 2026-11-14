@@ -589,6 +589,86 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       }
     });
 
+    it('conserve une analyse enregistrée après régénération, avec ses versions et son périmètre privé', async () => {
+      const colleague = await createTenantAdminUser(tenantA, 'analyses-colleague');
+      const analyst = await createTenantAdminUser(tenantA, 'analyses-owner');
+      const base = `/api/tenants/${tenantA.id}/ai`;
+      const turnId = randomUUID();
+      const messages = [{ role: 'user', content: 'Prépare un bilan.' }];
+      mockFakeScript = [
+        {
+          toolCalls: [
+            {
+              name: 'show_artifact',
+              input: { kind: 'markdown', title: 'Bilan à garder', content: 'Résultat initial.' }
+            }
+          ]
+        },
+        { text: 'Voici le bilan.' }
+      ];
+      try {
+        const stream = await request(app)
+          .post(base + '/chat')
+          .set(authed(analyst))
+          .send({ turnId, messages });
+        expect(stream.status).toBe(200);
+        const events = stream.text
+          .split('\n')
+          .filter(line => line.startsWith('data: {'))
+          .map(line => JSON.parse(line.slice(6)));
+        const { conversationId } = events.find(event => event.type === 'meta');
+        const { id: artifactId } = events.find(event => event.type === 'artifact').artifact;
+        const bookmark = `${base}/analyses/${conversationId}/${artifactId}`;
+        const artifact = `${base}/conversations/${conversationId}/artifacts/${artifactId}`;
+        const version = await request(app)
+          .post(artifact)
+          .set(authed(analyst))
+          .send({ expectedVersion: 1, title: 'Bilan vérifié' });
+        expect(version.status).toBe(201);
+        const saves = await Promise.all([1, 2].map(() => request(app).put(bookmark).set(authed(analyst))));
+        expect(saves.map(response => response.status)).toEqual([200, 200]);
+        expect(saves[0].body.data).toEqual(saves[1].body.data);
+        expect(await request(app).put(bookmark).set(authed(colleague))).toMatchObject({ status: 404 });
+        const list = await request(app)
+          .get(base + '/analyses')
+          .set(authed(analyst));
+        expect(list.headers['cache-control']).toBe('private, no-store');
+        expect(list.body.data.items).toEqual([expect.objectContaining({ artifactId, title: 'Bilan vérifié' })]);
+        const privateList = await request(app)
+          .get(base + '/analyses')
+          .set(authed(colleague));
+        expect(privateList.body.data.items).toEqual([]);
+        const foreign = await request(app)
+          .put(`/api/tenants/${tenantB.id}/ai/analyses/${conversationId}/${artifactId}`)
+          .set(authed(adminB));
+        expect(foreign.status).toBe(404);
+
+        mockFakeScript = [{ text: 'Nouvelle réponse.' }];
+        const refreshed = await request(app)
+          .post(base + '/chat')
+          .set(authed(analyst))
+          .send({
+            conversationId,
+            regenerateTurnId: turnId,
+            messages
+          });
+        expect(refreshed.status).toBe(200);
+        const read = await request(app).get(artifact).set(authed(analyst));
+        expect(read.body.data).toMatchObject({ version: 2, artifact: { title: 'Bilan vérifié' } });
+        const original = await request(app).get(artifact).query({ version: 1 }).set(authed(analyst));
+        expect(original.body.data.artifact.content).toBe('Résultat initial.');
+        expect(
+          await request(app)
+            .get(artifact + '/pdf')
+            .set(authed(colleague))
+        ).toMatchObject({ status: 404 });
+        expect(await request(app).delete(bookmark).set(authed(analyst))).toMatchObject({ status: 204 });
+        expect(await request(app).get(artifact).set(authed(analyst))).toMatchObject({ status: 404 });
+      } finally {
+        mockFakeScript = undefined;
+      }
+    });
+
     it('régénère seulement le dernier tour et conserve la réponse en cas de sortie vide', async () => {
       const tenantA = await createTestTenant('Avis-Révisions');
       createdTenantIds.push(tenantA.id);

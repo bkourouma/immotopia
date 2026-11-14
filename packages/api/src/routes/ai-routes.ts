@@ -24,6 +24,9 @@ import {
   getConversationHandler,
   getStatusHandler,
   listConversationsHandler,
+  listSavedAnalysesHandler,
+  saveAnalysisHandler,
+  removeSavedAnalysisHandler,
   rejectActionHandler,
   requireAssistantTools,
   saveResponseFeedbackHandler,
@@ -50,6 +53,14 @@ router.use(requireTenantCollaborator);
 
 // Ce que l'interface peut proposer ; répond `enabled: false` quand l'assistant est désactivé.
 router.get('/status', requireAiStatusAccess, getStatusHandler);
+router.get('/analyses', requireAiStatusAccess, listSavedAnalysesHandler);
+router.put('/analyses/:conversationId/:artifactId', requireAiStatusAccess, aiActionRateLimiter, saveAnalysisHandler);
+router.delete(
+  '/analyses/:conversationId/:artifactId',
+  requireAiStatusAccess,
+  aiActionRateLimiter,
+  removeSavedAnalysisHandler
+);
 router.get('/conversations', requireAiStatusAccess, listConversationsHandler);
 router.get('/conversations/:id', requireAiStatusAccess, getConversationHandler);
 router.get(
