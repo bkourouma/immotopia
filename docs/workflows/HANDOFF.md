@@ -17,6 +17,14 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 
 Modèle de section : voir le bloc « Modèle de section » plus bas.
 
+## feat/assistant-immotopia — 2026-11-14
+
+**Base** — `origin/main` à `af33a6da`. Plan de parité dans [PLAN_PARITE_IMMOCOPILOT_MEDIC_ASSIST.md](../architecture/PLAN_PARITE_IMMOCOPILOT_MEDIC_ASSIST.md).
+
+**En cours** — Historique privé plein écran avec recherche, gestion des fils, rechargement des réponses et artefacts. Lanceur depuis l’en-tête et briefing issu du tableau de bord. Classement des échéances non soldées avec paiements partiels et analyse comparée des encaissements. Exports Excel et CSV avec provenance pour ces tableaux.
+
+**Suite** — Vérifier la migration sur une base isolée et le parcours complet. Continuer les quatre lots du plan, notamment les jeux de données rejouables, les versions, les pièces jointes, les exports PDF et PPTX, la collaboration, les actions de suivi et l’administration.
+
 ## chore/deps-patch-minor — 2026-11-11
 
 **État** — PR 218 vers `main` (fusion par l'utilisateur), reprend la PR Dependabot 212 (28 mises à jour mineures : antd 6.7, Radix, TanStack Query, aws-sdk, docxtemplater, pizzip…). PR Dependabot 214 (`@vitejs/plugin-react` 6) et 215 (`vitest` 5) fermées le 2026-11-11 : sauts de versions majeures (module introuvable, matchers non typés), à traiter en migration dédiée ; envisager une règle `ignore` des versions majeures dans `.github/dependabot.yml`.

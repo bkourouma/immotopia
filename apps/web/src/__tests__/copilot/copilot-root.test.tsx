@@ -6,6 +6,7 @@ import type { AuthContextType } from '../../types/auth-types';
 import { AppShell } from '../../components/shell/AppShell';
 import CopilotRoot from '../../components/copilot/CopilotRoot';
 import { LanguageProvider } from '../../i18n/LanguageProvider';
+import { resetCopilotStatusCache } from '../../utils/copilot-status-cache';
 import type { CopilotStatus } from '../../types/copilot';
 
 vi.mock('../../services/copilot-service', () => ({
@@ -63,7 +64,10 @@ function renderRoot() {
   );
 }
 
-beforeEach(() => getStatus.mockReset());
+beforeEach(() => {
+  resetCopilotStatusCache();
+  getStatus.mockReset();
+});
 
 describe('CopilotRoot', () => {
   it('affiche le bouton quand l’assistant est activé', async () => {
@@ -208,7 +212,7 @@ function renderShell(auth: AuthContextType, path: string) {
 describe('AppShell — montage de l’assistant', () => {
   beforeEach(() => getStatus.mockResolvedValue(ENABLED));
 
-  it('monte le bouton pour un collaborateur d’agence', async () => {
+  it('monte le lanceur dans l’en-tête pour un collaborateur d’agence', async () => {
     renderShell(
       makeAuth({
         tenantMembership: {
@@ -220,7 +224,7 @@ describe('AppShell — montage de l’assistant', () => {
       }),
       `/tenant/${TENANT}/rental/leases`
     );
-    expect(await screen.findByRole('button', BUTTON)).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Demander à ImmoCopilot' })).toBeInTheDocument();
   });
 
   it.each([

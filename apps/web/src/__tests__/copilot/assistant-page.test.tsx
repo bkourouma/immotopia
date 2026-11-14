@@ -6,15 +6,26 @@ import { LanguageProvider } from '../../i18n/LanguageProvider';
 import type { CopilotStatus } from '../../types/copilot';
 
 vi.mock('../../services/copilot-service', () => {
-  const service = { getStatus: vi.fn(), streamChat: vi.fn(), executeProposal: vi.fn() };
+  const service = {
+    getStatus: vi.fn(),
+    streamChat: vi.fn(),
+    executeProposal: vi.fn(),
+    listConversations: vi.fn().mockResolvedValue({ items: [] }),
+    getConversation: vi.fn()
+  };
   return { default: service, copilotService: service };
 });
+
+vi.mock('../../services/dashboard-service', () => ({
+  getTenantDashboard: vi.fn().mockResolvedValue({ data: { workQueue: [] } })
+}));
 
 import copilotService from '../../services/copilot-service';
 import AssistantPage, { pageHeight, unavailableMessage } from '../../pages/assistant/AssistantPage';
 
 const getStatus = vi.mocked(copilotService.getStatus);
 const streamChat = vi.mocked(copilotService.streamChat);
+const getConversation = vi.mocked(copilotService.getConversation);
 
 const ENABLED: CopilotStatus = {
   enabled: true,
@@ -26,10 +37,10 @@ const DISABLED: CopilotStatus = { ...ENABLED, enabled: false, tools: [] };
 
 const w = window as unknown as Record<string, unknown>;
 
-function renderPage() {
+function renderPage(path = '/tenant/t1/assistant') {
   return render(
     <LanguageProvider>
-      <MemoryRouter initialEntries={['/tenant/t1/assistant']}>
+      <MemoryRouter initialEntries={[path]}>
         <Routes>
           <Route path="/tenant/:tenantId/assistant" element={<AssistantPage />} />
         </Routes>
@@ -189,6 +200,31 @@ describe('AssistantPage', () => {
     await waitFor(() => expect(input).toHaveValue('bonjour'));
     expect(streamChat).not.toHaveBeenCalled();
   });
+});
+
+it('rouvre le fil et ses artefacts depuis le lien de conversation', async () => {
+  getStatus.mockResolvedValue(ENABLED);
+  const id = '5258bdd1-74d6-47ea-a37f-ab4d1e8eae45';
+  getConversation.mockResolvedValue({
+    id,
+    title: 'Analyse',
+    pinned: false,
+    archived: false,
+    updatedAt: '2026-11-14T12:00:00Z',
+    turns: [
+      {
+        id: 'tour-1',
+        question: 'Bilan du mois',
+        response: 'Voici le bilan.',
+        result: [ARTIFACT_EVENT],
+        outcome: 'end_turn'
+      }
+    ]
+  });
+  renderPage(`/tenant/t1/assistant?c=${id}`);
+  expect(await screen.findByText('Voici le bilan.')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Ouvrir : Synthèse du mois' })).toBeInTheDocument();
+  expect(getConversation).toHaveBeenCalledWith('t1', id);
 });
 
 describe('AssistantPage — hauteur', () => {

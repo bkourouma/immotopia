@@ -2,6 +2,8 @@ import apiClient from '../utils/api-client';
 import { postEventStream } from '../utils/event-stream';
 import type {
   ActionExecutedPayload,
+  AssistantConversation,
+  AssistantConversationSummary,
   ChatRequest,
   CopilotSseEvent,
   CopilotStatus,
@@ -117,5 +119,37 @@ async function rejectAction(tenantId: string, proposalToken: string): Promise<bo
   }
 }
 
-export const copilotService = { getStatus, streamChat, executeAction, executeProposal, rejectAction };
+async function getConversation(tenantId: string, id: string) {
+  const response = await apiClient.get(`/tenants/${tenantId}/ai/conversations/${id}`);
+  return unwrap<AssistantConversation>(response.data);
+}
+
+async function listConversations(tenantId: string, params: { q: string; archived: boolean; cursor?: string }) {
+  const response = await apiClient.get(`/tenants/${tenantId}/ai/conversations`, { params });
+  return unwrap<{ items: AssistantConversationSummary[]; nextCursor?: string }>(response.data);
+}
+
+async function updateConversation(
+  tenantId: string,
+  id: string,
+  changes: Partial<Pick<AssistantConversationSummary, 'title' | 'pinned' | 'archived'>>
+) {
+  await apiClient.patch(`/tenants/${tenantId}/ai/conversations/${id}`, changes);
+}
+
+async function deleteConversation(tenantId: string, id: string) {
+  await apiClient.delete(`/tenants/${tenantId}/ai/conversations/${id}`);
+}
+
+export const copilotService = {
+  getStatus,
+  streamChat,
+  executeAction,
+  executeProposal,
+  rejectAction,
+  getConversation,
+  listConversations,
+  updateConversation,
+  deleteConversation
+};
 export default copilotService;

@@ -3,7 +3,8 @@ import { Table, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { t } from '../../../i18n/t';
 import type { ArtifactCell, CopilotArtifact } from '../../../types/copilot';
-import { compareCells, formatArtifactCell } from '../../../utils/copilot-artifact';
+import { Link } from 'react-router-dom';
+import { artifactInternalLink, compareCells, formatArtifactCell } from '../../../utils/copilot-artifact';
 import { knownEnumLabel } from '../copilot-labels';
 
 type TableArtifact = Extract<CopilotArtifact, { kind: 'table' }>;
@@ -25,10 +26,12 @@ export const ArtifactTable: React.FC<{ artifact: TableArtifact }> = ({ artifact 
         // L'infobulle de tri recouvrait le bouton « Télécharger » juste après un clic de tri.
         showSorterTooltip: false,
         // `<bdi>` : en arabe, un texte latin ou un signe en début de cellule (« -5 Villa ») ne se retourne pas.
-        render: (value: ArtifactCell) => {
+        render: (value: ArtifactCell, row: Row) => {
           const isText = !col.type || col.type === 'text';
           const label = isText && typeof value === 'string' ? knownEnumLabel(value) : null;
-          return <bdi>{label ?? formatArtifactCell(value ?? null, col.type)}</bdi>;
+          const href = col.linkKey ? artifactInternalLink(row[col.linkKey]) : undefined;
+          const content = <bdi>{label ?? formatArtifactCell(value ?? null, col.type)}</bdi>;
+          return href ? <Link to={href}>{content}</Link> : content;
         }
       })),
     [artifact.columns]

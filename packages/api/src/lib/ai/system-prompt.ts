@@ -28,6 +28,8 @@ const LANGUAGE_NAMES: Record<Language, string> = {
 const TOOL_CAPABILITIES: Record<CopilotToolName, { group: string; text: string }> = {
   search_properties: { group: 'properties', text: 'des biens' },
   search_leases: { group: 'leases', text: 'des baux' },
+  rental_arrears: { group: 'rentalArrears', text: 'les échéances locatives non soldées par bien et par mois clos' },
+  rental_receipts: { group: 'rentalReceipts', text: 'les encaissements locatifs par mois clos et devise' },
   list_lease_documents: { group: 'documents', text: 'des documents' },
   list_property_documents: { group: 'documents', text: 'des documents' },
   propose_rental_document: { group: 'receipts', text: 'des quittances de loyer ou des relevés de compte' },
@@ -68,6 +70,11 @@ export function buildSystemPrompt(
   }
   const cards = ['biens', ...(hasLeases ? ['baux'] : []), 'documents', ...(canPropose ? ['propositions'] : [])];
   const help: string[] = [];
+  if (tools.some(tool => tool.name === 'rental_arrears')) {
+    help.push(
+      'Pour une analyse des impayés par bien sur un mois clos, appelle rental_arrears en priorité. Le tableau et ses sources sont affichés automatiquement. Présente le résultat en une phrase et indique que le solde est calculé à la date de consultation.'
+    );
+  }
   if (finders.length > 0)
     help.push(
       `à retrouver ${finders.length > 1 ? `${finders.slice(0, -1).join(', ')} et ${finders[finders.length - 1]}` : finders[0]}`

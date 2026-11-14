@@ -21,6 +21,19 @@ import { resolvePageContext } from '../lib/ai/page-context';
 import { getLlmProvider } from '../lib/ai/providers';
 import { loopbackHeadersFor } from '../lib/ai/gateway/loopback-auth';
 import { openSseStream } from '../lib/ai/sse';
+import type { CopilotSseEvent } from '../lib/ai/contracts';
+import {
+  assistantScope,
+  beginAssistantTurn,
+  conversationParams,
+  conversationPatch,
+  deleteConversation,
+  finishAssistantTurn,
+  getConversation,
+  historyQuery,
+  listConversations,
+  updateConversation
+} from '../lib/ai/conversations';
 import { toolsForUser, type ToolFeature } from '../lib/ai/tools/registry';
 import { evaluateFeatureAccess } from '../lib/subscription/feature-access';
 import { getSubscriptionEnforcement } from '../lib/subscription/enforcement';
@@ -32,7 +45,7 @@ import { logger } from '../utils/logger';
 /**
  * Contrôleur d'ImmoCopilot (docs/architecture/PLAN_IMMOCOPILOT.md, lot E).
  *
- * `chatHandler` (flux SSE) ne mène à aucune écriture : il passe par
+ * `chatHandler` (flux SSE) ne modifie aucune donnée métier : il passe par
  * l'orchestrateur, qui n'atteint que le registre d'outils autorisé.
  * `executeActionHandler` est la SEULE porte de génération : route HTTP
  * distincte, avec `requireDocumentsGenerate` et un jeton de proposition signé.
@@ -85,6 +98,50 @@ async function resolveAvailableTools(
   return { permissions, tools, unavailableFeatures };
 }
 
+async function conversationScope(req: Request) {
+  const { tenantId, userId } = requireContext(req);
+  const { permissions, tools } = await resolveAvailableTools(userId, tenantId);
+  if (tools.length === 0) throw new ForbiddenError();
+  return {
+    owner: { tenantId, ownerId: userId },
+    scopeKey: assistantScope(
+      permissions,
+      tools.map(tool => tool.name)
+    )
+  };
+}
+
+export const listConversationsHandler = asyncHandler(async (req: Request, res: Response) => {
+  const query = historyQuery.parse(req.query);
+  const { owner, scopeKey } = await conversationScope(req);
+  res
+    .set('Cache-Control', 'private, no-store')
+    .json({ success: true, data: await listConversations(owner, scopeKey, query) });
+});
+
+export const getConversationHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = conversationParams.parse(req.params);
+  const { owner, scopeKey } = await conversationScope(req);
+  res
+    .set('Cache-Control', 'private, no-store')
+    .json({ success: true, data: await getConversation(owner, id, scopeKey) });
+});
+
+export const updateConversationHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = conversationParams.parse(req.params);
+  const changes = conversationPatch.parse(req.body);
+  const { owner, scopeKey } = await conversationScope(req);
+  await updateConversation(owner, id, scopeKey, changes);
+  res.sendStatus(204);
+});
+
+export const deleteConversationHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = conversationParams.parse(req.params);
+  const { tenantId, userId } = requireContext(req);
+  await deleteConversation({ tenantId, ownerId: userId }, id);
+  res.sendStatus(204);
+});
+
 /** GET /ai/status — ce que l'interface peut proposer à cet utilisateur. Répond aussi quand l'assistant est désactivé. */
 export const getStatusHandler = asyncHandler(async (req: Request, res: Response) => {
   const { tenantId, userId } = requireContext(req);
@@ -125,26 +182,74 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
   }
   const pageContext = await resolvePageContext(body.context, tenantId, permissions);
 
+  const owner = { tenantId, ownerId: userId };
+  const saved = body.turnId
+    ? await beginAssistantTurn(
+        owner,
+        assistantScope(
+          permissions,
+          tools.map(tool => tool.name)
+        ),
+        {
+          conversationId: body.conversationId,
+          turnId: body.turnId,
+          question: body.messages[0].content
+        }
+      )
+    : undefined;
+
   const stream = openSseStream(res);
+  const deadline = new AbortController();
+  const timeout = saved ? setTimeout(() => deadline.abort(), 300_000) : undefined;
+  timeout?.unref();
+  const signal = saved ? AbortSignal.any([stream.signal, deadline.signal]) : stream.signal;
+  const result: Extract<CopilotSseEvent, { type: 'artifact' }>[] = [];
+  let response = '';
+  let terminal: Extract<CopilotSseEvent, { type: 'done' }> | undefined;
   try {
-    await runChat({
+    const outcome = await runChat({
       provider,
+      deep: body.deep,
       tenantId,
       userId,
       permissions,
       tools,
       unavailableFeatures,
-      messages: body.messages,
+      messages: saved?.messages ?? body.messages,
       pageContext,
-      // La valeur cliente n'est qu'un écho pour l'interface (événement `meta`) : l'audit
-      // utilise le `requestId` généré ci-dessous, jamais cette valeur.
-      conversationId: body.conversationId ?? randomUUID(),
+      conversationId: saved?.conversationId ?? body.conversationId ?? randomUUID(),
       requestId: randomUUID(),
-      signal: stream.signal,
+      signal,
       loopbackHeaders: loopbackHeadersFor(req),
-      emit: event => stream.send(event)
+      emit: event => {
+        if (body.turnId) {
+          if (event.type === 'text_delta') response = (response + event.text).slice(0, 100_000);
+          if (event.type === 'artifact' && result.length < 20) result.push(event);
+          if (event.type === 'done') {
+            terminal = event;
+            return;
+          }
+        }
+        stream.send(event);
+      }
     });
+    if (body.turnId) {
+      await finishAssistantTurn(owner, body.turnId, { response, result, outcome });
+      if (terminal) stream.send(terminal);
+    }
+  } catch {
+    if (body.turnId) {
+      logger.error('ImmoCopilot : échec de persistance du tour', { tenantId, turnId: body.turnId });
+      stream.send({
+        type: 'error',
+        code: 'INTERNAL',
+        message: t('La conversation n’a pas pu être enregistrée.'),
+        retryable: true
+      });
+      stream.send({ type: 'done', reason: 'error' });
+    }
   } finally {
+    clearTimeout(timeout);
     stream.end();
   }
 });

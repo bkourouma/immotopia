@@ -1,8 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ClearOutlined, DatabaseOutlined } from '@ant-design/icons';
-import { Button, Drawer, Result, Skeleton, Typography } from 'antd';
+import { Button, Drawer, Result, Skeleton, Switch, Typography } from 'antd';
 import type { TextAreaRef } from 'antd/es/input/TextArea';
-import { useLocation, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { getTenantDashboard } from '../../services/dashboard-service';
+import type { DashboardTask } from '../../services/dashboard-service';
+import { ConversationHistory } from '../../components/copilot/ConversationHistory';
+import { copilotService } from '../../services/copilot-service';
+import { feedback } from '../../lib/feedback';
 import { ArtifactPanel } from '../../components/copilot/artifact/ArtifactPanel';
 import { CopilotComposer } from '../../components/copilot/CopilotComposer';
 import { CopilotThread } from '../../components/copilot/CopilotThread';
@@ -61,13 +66,96 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
   hasTabs,
   showArtifact
 }) => {
-  const { pathname } = useLocation();
-  const chat = useCopilotChat(tenantId);
+  const location = useLocation();
+  const { pathname } = location;
+  const navigate = useNavigate();
+  const dispatchedPrompt = useRef<string>();
+  const chat = useCopilotChat(tenantId, true);
+  const { conversationId, restoreConversation, reset } = chat;
+  const [params, setParams] = useSearchParams();
+  const activeId = params.get('c');
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyRefresh, setHistoryRefresh] = useState(0);
+  const [archivedThread, setArchivedThread] = useState(false);
+  const [briefing, setBriefing] = useState<DashboardTask[]>([]);
+  const [showBriefing, setShowBriefing] = useState(false);
+  const [deep, setDeep] = useState(false);
+  const selectConversation = (id: string | null) => {
+    reset();
+    setArchivedThread(false);
+    setDraft('');
+    setHistoryOpen(false);
+    setParams(previous => {
+      const next = new URLSearchParams(previous);
+      if (id) next.set('c', id);
+      else next.delete('c');
+      return next;
+    });
+  };
+  useEffect(() => {
+    if (!activeId || activeId === conversationId || !restoreConversation) {
+      setLoadingHistory(false);
+      return;
+    }
+    let cancelled = false;
+    setLoadingHistory(true);
+    void copilotService
+      .getConversation(tenantId, activeId)
+      .then(conversation => {
+        if (cancelled) return;
+        restoreConversation(conversation);
+        setArchivedThread(conversation.archived);
+      })
+      .catch(() => {
+        if (!cancelled) feedback.error(t('Cette conversation n’est pas disponible.'));
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingHistory(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeId, conversationId, restoreConversation, tenantId]);
+  useEffect(() => {
+    if (!activeId && conversationId) {
+      setParams(
+        previous => {
+          const next = new URLSearchParams(previous);
+          next.set('c', conversationId);
+          return next;
+        },
+        { replace: true }
+      );
+    }
+  }, [activeId, conversationId, setParams]);
+  const isNewConversation = !activeId;
+  useEffect(() => {
+    if (!isNewConversation) return;
+    let cancelled = false;
+    void getTenantDashboard(tenantId)
+      .then(payload => {
+        if (!cancelled) setBriefing(payload.data?.workQueue ?? []);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [isNewConversation, tenantId]);
   const { stop } = chat;
   const [draft, setDraft] = useState('');
   const inputRef = useRef<TextAreaRef>(null);
   const streaming = chat.status === 'streaming';
   const context = getCopilotPageContext(pathname);
+  const send = chat.send;
+  useEffect(() => {
+    const launch = location.state as { prompt?: string; sourcePath?: string } | null;
+    if (activeId || !launch?.prompt || dispatchedPrompt.current === location.key) return;
+    dispatchedPrompt.current = location.key;
+    navigate(pathname, { replace: true, state: null });
+    const origin = launch.sourcePath?.startsWith(`/tenant/${tenantId}/`) ? launch.sourcePath : pathname;
+    void send(launch.prompt, getCopilotPageContext(origin)).finally(() => setHistoryRefresh(value => value + 1));
+  }, [activeId, location.key, location.state, navigate, pathname, send, tenantId]);
   const artifactCount = chat.artifacts.length;
   const hasArtifacts = artifactCount > 0;
   // Ordinateur : le panneau apparaît seul à chaque nouvel artefact. Mobile : tiroir,
@@ -105,15 +193,57 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
     inputRef.current?.focus();
   }, []);
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!event.altKey || event.key.toLowerCase() !== 'n' || event.isComposing) return;
+      event.preventDefault();
+      reset();
+      setArchivedThread(false);
+      setDraft('');
+      navigate(pathname);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [navigate, pathname, reset]);
+
   const submit = (text: string) => {
     const value = text.trim();
-    if (!value || streaming) return;
+    if (!value || streaming || loadingHistory || archivedThread || (activeId && activeId !== conversationId)) return;
     setDraft('');
-    void chat.send(value, context);
+    void chat.send(value, context, deep).finally(() => {
+      setHistoryRefresh(value => value + 1);
+    });
   };
+
+  const history = (
+    <ConversationHistory
+      tenantId={tenantId}
+      activeId={activeId}
+      disabled={streaming}
+      refresh={historyRefresh}
+      onSelect={selectConversation}
+      onArchive={(id, archived) => {
+        if (id === activeId) setArchivedThread(archived);
+      }}
+    />
+  );
 
   return (
     <div style={{ display: 'flex', height: pageHeight(hasTabs), minHeight: 320, gap: 'var(--space-4)' }}>
+      {showArtifact ? (
+        <nav aria-label={t('Historique des conversations')} style={{ flex: '0 0 230px', minWidth: 0 }}>
+          {history}
+        </nav>
+      ) : (
+        <Drawer
+          title={t('Historique des conversations')}
+          placement="left"
+          open={historyOpen}
+          onClose={() => setHistoryOpen(false)}
+        >
+          {history}
+        </Drawer>
+      )}
       <section
         aria-label={t('Conversation')}
         style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}
@@ -123,6 +253,11 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
             {t('Assistant')}
           </Typography.Title>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            {!showArtifact && (
+              <Button type="text" onClick={() => setHistoryOpen(true)}>
+                {t('Historique')}
+              </Button>
+            )}
             {hasArtifacts && (showArtifact ? !desktopOpen : true) && (
               <Button
                 type="text"
@@ -135,13 +270,33 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
             <Button
               type="text"
               icon={<ClearOutlined />}
-              disabled={chat.messages.length === 0}
-              onClick={() => chat.reset()}
+              disabled={chat.messages.length === 0 && !activeId}
+              onClick={() => selectConversation(null)}
             >
               {t('Nouvelle conversation')}
             </Button>
           </div>
         </div>
+        {!activeId && chat.messages.length === 0 && briefing.length > 0 && (
+          <section aria-label={t('Briefing du jour')} style={{ maxHeight: '36%', overflowY: 'auto', paddingBlock: 8 }}>
+            <Typography.Title level={5}>{t('Briefing du jour')}</Typography.Title>
+            <ul style={{ paddingInlineStart: 20 }}>
+              {briefing.slice(0, showBriefing ? briefing.length : 6).map(task => (
+                <li key={`${task.kind}-${task.id}`} style={{ marginBlockEnd: 8 }}>
+                  <Link to={task.href}>{task.title}</Link>
+                  <Typography.Text type="secondary" style={{ display: 'block' }}>
+                    {task.description}
+                  </Typography.Text>
+                </li>
+              ))}
+            </ul>
+            {briefing.length > 6 && (
+              <Button type="link" aria-expanded={showBriefing} onClick={() => setShowBriefing(value => !value)}>
+                {showBriefing ? t('Voir moins') : t('Voir tout')}
+              </Button>
+            )}
+          </section>
+        )}
         <CopilotThread
           chat={chat}
           tenantId={tenantId}
@@ -154,15 +309,33 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
         <div
           style={{ width: '100%', maxWidth: READING_WIDTH, marginInline: 'auto', paddingBlockStart: 'var(--space-2)' }}
         >
-          <CopilotComposer
-            inputRef={inputRef}
-            value={draft}
-            onChange={setDraft}
-            onSubmit={submit}
-            onStop={() => stop()}
-            streaming={streaming}
-            maxChars={status.limits.maxMessageChars || undefined}
-          />
+          {loadingHistory ? (
+            <Skeleton active paragraph={false} />
+          ) : archivedThread ? (
+            <Typography.Text type="secondary">{t('Cette conversation est archivée.')}</Typography.Text>
+          ) : (
+            <>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBlockEnd: 8 }}>
+                <Switch
+                  size="small"
+                  checked={deep}
+                  onChange={setDeep}
+                  disabled={streaming}
+                  aria-label={t('Analyse approfondie')}
+                />
+                {t('Analyse approfondie')}
+              </label>
+              <CopilotComposer
+                inputRef={inputRef}
+                value={draft}
+                onChange={setDraft}
+                onSubmit={submit}
+                onStop={() => stop()}
+                streaming={streaming}
+                maxChars={status.limits.maxMessageChars || undefined}
+              />
+            </>
+          )}
         </div>
       </section>
       {showArtifact && desktopOpen && hasArtifacts && (
@@ -209,7 +382,7 @@ const AssistantPage: React.FC = () => {
   if (!tenantId) return <Result status="info" {...unavailableMessage(null, false)} />;
   if (!status) return <Skeleton active aria-label={t("Chargement de l'écran")} />;
   if (!status.enabled) return <Result status="info" {...unavailableMessage(status, true)} />;
-  return <ChatPane tenantId={tenantId} status={status} hasTabs={!isDesktop} showArtifact={isDesktop} />;
+  return <ChatPane key={tenantId} tenantId={tenantId} status={status} hasTabs={!isDesktop} showArtifact={isDesktop} />;
 };
 
 export default AssistantPage;

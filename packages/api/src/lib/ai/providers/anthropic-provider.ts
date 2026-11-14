@@ -144,7 +144,7 @@ export class AnthropicProvider implements LlmProvider {
   }
 
   async runTurn(
-    req: { system: string; messages: LlmMessage[]; tools: LlmToolSpec[]; maxOutputTokens: number },
+    req: { system: string; messages: LlmMessage[]; tools: LlmToolSpec[]; maxOutputTokens: number; deep?: boolean },
     onTextDelta: (text: string) => void,
     signal: AbortSignal
   ): Promise<LlmTurnResult> {
@@ -174,7 +174,7 @@ export class AnthropicProvider implements LlmProvider {
         eager_input_streaming: true
       })),
       tool_choice: { type: 'auto' },
-      output_config: { effort: config.effort },
+      output_config: { effort: req.deep ? 'high' : config.effort },
       ...(useFallback ? { fallbacks: 'default' as const, betas: [SERVER_SIDE_FALLBACK_BETA] } : {})
     };
 

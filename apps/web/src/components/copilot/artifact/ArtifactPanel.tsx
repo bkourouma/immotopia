@@ -106,6 +106,22 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({ artifacts, selecte
           onClick={onClose}
         />
       </header>
+      {artifact.kind === 'table' && artifact.provenance && (
+        <details style={{ marginBlock: 8 }}>
+          <summary>{t('Comment j’ai calculé')}</summary>
+          <p>
+            <a href={artifact.provenance.href}>{artifact.provenance.source}</a> · {artifact.provenance.period}
+          </p>
+          <ul>
+            {artifact.provenance.rules.map(rule => (
+              <li key={rule}>{rule}</li>
+            ))}
+          </ul>
+          <time dateTime={artifact.provenance.calculatedAt}>
+            {new Date(artifact.provenance.calculatedAt).toLocaleString()}
+          </time>
+        </details>
+      )}
       <div ref={bodyRef} style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
         <ArtifactBody artifact={artifact} />
       </div>

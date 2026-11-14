@@ -8,6 +8,8 @@ import { proposeRentalDocumentTool } from './propose-rental-document';
 import { searchLeasesTool } from './search-leases';
 import { searchPropertiesTool } from './search-properties';
 import { showArtifactTool } from './show-artifact';
+import { rentalArrearsTool } from './rental-arrears';
+import { rentalReceiptsTool } from './rental-receipts';
 
 /**
  * Registre des outils exposés au LLM. L'exécution d'un document
@@ -17,6 +19,8 @@ import { showArtifactTool } from './show-artifact';
 export const ALL_TOOLS: readonly CopilotToolDefinition[] = [
   searchPropertiesTool,
   searchLeasesTool,
+  rentalArrearsTool,
+  rentalReceiptsTool,
   listLeaseDocumentsTool,
   listPropertyDocumentsTool,
   proposeRentalDocumentTool,

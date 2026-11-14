@@ -26,6 +26,8 @@ export const COPILOT_MAX_WRITE_PLANS_PER_REQUEST = 3;
 export type CopilotToolName =
   | 'search_properties'
   | 'search_leases'
+  | 'rental_arrears'
+  | 'rental_receipts'
   | 'list_lease_documents'
   | 'list_property_documents'
   | 'propose_rental_document'
@@ -53,6 +55,8 @@ export type CopilotErrorCode =
 export const chatRequestSchema = z
   .object({
     conversationId: z.string().uuid().optional(),
+    turnId: z.string().uuid().optional(),
+    deep: z.boolean().optional(),
     messages: z
       .array(
         z
@@ -75,6 +79,9 @@ export const chatRequestSchema = z
   })
   .strict()
   .superRefine((value, ctx) => {
+    if (value.turnId && value.messages.length !== 1) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['messages'], message: 'un seul message par tour enregistré' });
+    }
     const last = value.messages[value.messages.length - 1];
     if (last && last.role !== 'user') {
       ctx.addIssue({
@@ -285,7 +292,8 @@ export type CopilotArtifact =
       kind: 'table';
       id: string;
       title: string;
-      columns: { key: string; label: string; type?: 'text' | 'number' | 'currency' | 'date' }[];
+      columns: { key: string; label: string; linkKey?: string; type?: 'text' | 'number' | 'currency' | 'date' }[];
+      provenance?: { source: string; href: string; period: string; calculatedAt: string; rules: string[] };
       rows: Record<string, ArtifactCell>[];
       truncated?: boolean;
     }
@@ -432,6 +440,7 @@ export interface LlmProvider {
       messages: LlmMessage[];
       tools: LlmToolSpec[];
       maxOutputTokens: number;
+      deep?: boolean;
     },
     onTextDelta: (text: string) => void,
     signal: AbortSignal

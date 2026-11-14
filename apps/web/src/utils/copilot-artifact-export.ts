@@ -1,4 +1,5 @@
 import type { CopilotArtifact } from '../types/copilot';
+import { t } from '../i18n/t';
 import { exportableTable, neutralizeFormula, safeFilename, toCsv } from './copilot-artifact';
 import { saveBlob } from './save-blob';
 
@@ -10,10 +11,33 @@ import { saveBlob } from './save-blob';
 
 const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
+function provenanceRows(artifact: CopilotArtifact): string[][] {
+  if (artifact.kind !== 'table' || !artifact.provenance) return [];
+  const provenance = artifact.provenance;
+  return [
+    [t('Source'), provenance.source],
+    [t('Période'), provenance.period],
+    [t('Date de calcul'), provenance.calculatedAt],
+    ...provenance.rules.map(rule => [t('Règle de calcul'), rule])
+  ];
+}
+
 export function downloadCsv(artifact: CopilotArtifact): void {
   const data = exportableTable(artifact);
   if (!data) return;
-  const csv = toCsv(data.columns, data.rows);
+  const meta = provenanceRows(artifact);
+  const main = toCsv(data.columns, data.rows);
+  const csv = meta.length
+    ? main +
+      '\r\n\r\n' +
+      toCsv(
+        [
+          { key: 'key', label: t('Provenance') },
+          { key: 'value', label: t('Valeur') }
+        ],
+        meta.map(([key, value]) => ({ key, value }))
+      )
+    : main;
   // BOM : Excel lit alors correctement l'UTF-8 (accents, arabe).
   saveBlob(new Blob(['﻿', csv], { type: 'text/csv;charset=utf-8' }), `${safeFilename(artifact.title)}.csv`);
 }
@@ -37,6 +61,13 @@ export async function downloadXlsx(artifact: CopilotArtifact): Promise<void> {
   data.columns.forEach((c, i) => {
     sheet.getColumn(i + 1).width = Math.min(Math.max(c.label.length + 2, 12), 50);
   });
+  const meta = provenanceRows(artifact);
+  if (meta.length) {
+    const provenance = workbook.addWorksheet(t('Provenance'));
+    for (const row of meta) provenance.addRow(row.map(neutralizeFormula));
+    provenance.getColumn(1).width = 25;
+    provenance.getColumn(2).width = 70;
+  }
   const buffer = await workbook.xlsx.writeBuffer();
   saveBlob(new Blob([buffer], { type: XLSX_TYPE }), `${safeFilename(artifact.title)}.xlsx`);
 }

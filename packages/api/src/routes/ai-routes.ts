@@ -10,7 +10,16 @@ import {
   aiTenantChatRateLimiter,
   aiTenantDailyLimiter
 } from '../middleware/rate-limit-middleware';
-import { chatHandler, executeActionHandler, getStatusHandler, rejectActionHandler } from '../controllers/ai-controller';
+import {
+  chatHandler,
+  deleteConversationHandler,
+  executeActionHandler,
+  getConversationHandler,
+  getStatusHandler,
+  listConversationsHandler,
+  rejectActionHandler,
+  updateConversationHandler
+} from '../controllers/ai-controller';
 
 /**
  * Assistant ImmoCopilot, monté sur `/api/tenants/:tenantId/ai`.
@@ -27,6 +36,10 @@ router.use(requireTenantCollaborator);
 
 // Ce que l'interface peut proposer ; répond `enabled: false` quand l'assistant est désactivé.
 router.get('/status', requireAiStatusAccess, getStatusHandler);
+router.get('/conversations', requireAiStatusAccess, listConversationsHandler);
+router.get('/conversations/:id', requireAiStatusAccess, getConversationHandler);
+router.patch('/conversations/:id', requireAiStatusAccess, updateConversationHandler);
+router.delete('/conversations/:id', requireAiStatusAccess, deleteConversationHandler);
 
 // Conversation en flux SSE. Chaque outil vérifie sa propre permission ; aucune écriture possible ici.
 router.post(

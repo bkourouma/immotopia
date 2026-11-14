@@ -11,6 +11,8 @@ export const COPILOT_MAX_TOTAL_CHARS = 24000;
 export type CopilotToolName =
   | 'search_properties'
   | 'search_leases'
+  | 'rental_arrears'
+  | 'rental_receipts'
   | 'list_lease_documents'
   | 'list_property_documents'
   | 'propose_rental_document'
@@ -33,7 +35,27 @@ export type CopilotErrorCode =
 
 // --- Requêtes --------------------------------------------------------------
 
+export interface AssistantConversationSummary {
+  id: string;
+  title: string;
+  pinned: boolean;
+  archived: boolean;
+  updatedAt: string;
+}
+
+export interface AssistantConversation extends AssistantConversationSummary {
+  turns: Array<{
+    id: string;
+    question: string;
+    response: string;
+    result: Array<Extract<CopilotSseEvent, { type: 'artifact' }>> | null;
+    outcome: string | null;
+  }>;
+}
+
 export interface ChatRequest {
+  turnId?: string;
+  deep?: boolean;
   conversationId?: string;
   messages: Array<{ role: 'user' | 'assistant'; content: string }>;
   context?: {
@@ -217,7 +239,8 @@ export type CopilotArtifact =
       kind: 'table';
       id: string;
       title: string;
-      columns: { key: string; label: string; type?: 'text' | 'number' | 'currency' | 'date' }[];
+      columns: { key: string; label: string; linkKey?: string; type?: 'text' | 'number' | 'currency' | 'date' }[];
+      provenance?: { source: string; href: string; period: string; calculatedAt: string; rules: string[] };
       rows: Record<string, ArtifactCell>[];
       truncated?: boolean;
     }
@@ -326,7 +349,7 @@ export interface UseCopilotChatResult {
   selectArtifact(id: string): void;
   status: CopilotChatStatus;
   error?: { code: string; message: string };
-  send(text: string, ctx: CopilotPageContext): Promise<void>;
+  send(text: string, ctx: CopilotPageContext, deep?: boolean): Promise<void>;
   stop(): void;
   confirmProposal(proposalId: string): Promise<void>;
   cancelProposal(proposalId: string): void;
@@ -339,4 +362,6 @@ export interface UseCopilotChatResult {
    */
   refuseWritePlan(proposalId: string): void;
   reset(): void;
+  restoreConversation?(conversation: AssistantConversation): void;
+  conversationId?: string;
 }

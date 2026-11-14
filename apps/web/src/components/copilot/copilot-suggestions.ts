@@ -36,6 +36,11 @@ export function getCopilotSuggestions(pathname: string, tools: readonly CopilotT
   } else {
     candidates = [
       { id: 'default-properties', text: t('Montre-moi les biens disponibles'), requires: 'search_properties' },
+      {
+        id: 'default-arrears',
+        text: t('Quels biens ont le plus d’échéances en retard au dernier mois clos ?'),
+        requires: 'rental_arrears'
+      },
       { id: 'default-leases', text: t('Cherche un bail par numéro'), requires: 'search_leases' },
       { id: 'default-receipt', text: t('Génère une quittance de loyer'), requires: 'propose_rental_document' }
     ];

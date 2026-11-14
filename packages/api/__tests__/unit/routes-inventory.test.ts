@@ -393,9 +393,13 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
     }
   });
 
-  it('declare les 4 routes de l’assistant ImmoCopilot avec les gardes d’agence et de collaborateur', () => {
+  it('assistant’assistant ImmoCopilot avec les gardes d’agence et de collaborateur', () => {
     const expected: Array<[string, string]> = [
       ['GET', '/api/tenants/:tenantId/ai/status'],
+      ['GET', '/api/tenants/:tenantId/ai/conversations'],
+      ['GET', '/api/tenants/:tenantId/ai/conversations/:id'],
+      ['PATCH', '/api/tenants/:tenantId/ai/conversations/:id'],
+      ['DELETE', '/api/tenants/:tenantId/ai/conversations/:id'],
       ['POST', '/api/tenants/:tenantId/ai/chat'],
       ['POST', '/api/tenants/:tenantId/ai/actions/execute'],
       ['POST', '/api/tenants/:tenantId/ai/actions/reject']
@@ -414,7 +418,7 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
     // fixe. Le contrôleur exige GENERATE et VIEW pour une quittance (testé dans ai.routes.capability.test.ts) ;
     // un plan d'écriture est gardé par la route réellement appelée par loopback, sous l'identité du confirmeur.
     expect(executeKeys.filter(key => typeof key === 'string')).toEqual([]);
-    expect(routes.filter(r => r.path.startsWith('/api/tenants/:tenantId/ai'))).toHaveLength(4);
+    expect(routes.filter(r => r.path.startsWith('/api/tenants/:tenantId/ai/'))).toHaveLength(expected.length);
   });
 
   it('declare les 3 routes du reglage IA de la plateforme avec permission PLATFORM et super-admin', () => {

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { nouvelIdentifiantDeRequete } from '../utils/stock-client-request-id';
 import { t } from '../i18n/t';
 import copilotService from '../services/copilot-service';
 import { sanitizeArtifact } from '../utils/copilot-artifact';
@@ -14,6 +15,7 @@ import {
   type CopilotProposalState,
   type CopilotSseEvent,
   type CopilotUiMessage,
+  type AssistantConversation,
   type UseCopilotChatResult,
   type WritePlan,
   type WritePlanState,
@@ -104,7 +106,8 @@ const nextId = () => `copilot-msg-${++idCounter}`;
  * État d'une conversation ImmoCopilot. Rien n'est stocké dans le navigateur :
  * la conversation vit en mémoire et disparaît au rechargement.
  */
-export function useCopilotChat(tenantId: string): UseCopilotChatResult {
+export function useCopilotChat(tenantId: string, persistent = false): UseCopilotChatResult {
+  const [conversationId, setConversationId] = useState<string>();
   const [messages, setMessages] = useState<CopilotUiMessage[]>([]);
   const [artifacts, setArtifacts] = useState<CopilotArtifact[]>([]);
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | undefined>();
@@ -170,6 +173,7 @@ export function useCopilotChat(tenantId: string): UseCopilotChatResult {
     abortRef.current = null;
     streamingRef.current = false;
     conversationIdRef.current = undefined;
+    setConversationId(undefined);
     inFlightPlansRef.current.clear();
     setMessages([]);
     setArtifacts([]);
@@ -192,8 +196,43 @@ export function useCopilotChat(tenantId: string): UseCopilotChatResult {
     }
   }, [tenantId, reset]);
 
+  const restoreConversation = useCallback(
+    (conversation: AssistantConversation) => {
+      reset();
+      const restoredMessages: CopilotUiMessage[] = [];
+      const restoredArtifacts: CopilotArtifact[] = [];
+      for (const turn of conversation.turns) {
+        const attachments: CopilotAttachment[] = [];
+        for (const event of turn.result ?? []) {
+          const artifact = sanitizeArtifact(event.artifact);
+          if (!artifact) continue;
+          restoredArtifacts.push(artifact);
+          attachments.push({
+            kind: 'artifact',
+            artifactId: artifact.id,
+            title: artifact.title,
+            artifactKind: artifact.kind
+          });
+        }
+        restoredMessages.push({ id: turn.id, role: 'user', text: turn.question, attachments: [] });
+        if (turn.response || attachments.length || turn.outcome === 'aborted') {
+          const text =
+            turn.outcome === 'aborted'
+              ? [turn.response, t('La réponse a été interrompue.')].filter(Boolean).join('\n\n')
+              : turn.response;
+          restoredMessages.push({ id: `${turn.id}-response`, role: 'assistant', text, attachments });
+        }
+      }
+      setMessages(restoredMessages);
+      setArtifacts(restoredArtifacts);
+      conversationIdRef.current = conversation.id;
+      setConversationId(conversation.id);
+    },
+    [reset]
+  );
+
   const send = useCallback(
-    async (text: string, ctx: CopilotPageContext): Promise<void> => {
+    async (text: string, ctx: CopilotPageContext, deep = false): Promise<void> => {
       const content = text.trim();
       if (!content || streamingRef.current) return;
 
@@ -224,6 +263,7 @@ export function useCopilotChat(tenantId: string): UseCopilotChatResult {
         switch (e.type) {
           case 'meta':
             conversationIdRef.current = e.conversationId;
+            if (persistent) setConversationId(e.conversationId);
             break;
           case 'text_delta':
             updateMessage(assistantId, m => ({ ...m, text: m.text + e.text }));
@@ -284,7 +324,9 @@ export function useCopilotChat(tenantId: string): UseCopilotChatResult {
           tenantId,
           {
             conversationId: conversationIdRef.current,
-            messages: history,
+            ...(persistent ? { turnId: nouvelIdentifiantDeRequete() } : {}),
+            messages: persistent ? [{ role: 'user', content }] : history,
+            ...(persistent && deep ? { deep } : {}),
             context: ctx
           },
           { signal: controller.signal, onEvent }
@@ -308,7 +350,7 @@ export function useCopilotChat(tenantId: string): UseCopilotChatResult {
         setStatus('idle');
       }
     },
-    [tenantId, updateMessage]
+    [tenantId, persistent, updateMessage]
   );
 
   const confirmProposal = useCallback(
@@ -448,7 +490,9 @@ export function useCopilotChat(tenantId: string): UseCopilotChatResult {
     cancelProposal,
     approveWritePlan,
     refuseWritePlan,
-    reset
+    reset,
+    restoreConversation,
+    conversationId
   };
 }
 

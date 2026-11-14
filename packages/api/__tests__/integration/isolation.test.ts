@@ -244,6 +244,53 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
     });
   });
 
+  describe('Assistant — historique privé', () => {
+    it('persiste le fil complet et isole son accès du compte voisin et de l’autre agence', async () => {
+      const baseA = `/api/tenants/${tenantA.id}/ai`;
+      const baseB = `/api/tenants/${tenantB.id}/ai`;
+      const colleague = await createTenantAdminUser(tenantA, 'assistant-colleague');
+      const turnId = randomUUID();
+      const payload = { turnId, messages: [{ role: 'user', content: 'Bilan confidentiel du test' }] };
+      mockFakeScript = [{ text: 'Résultat synthétique.' }];
+      const stream = await request(app).post(`${baseA}/chat`).set(authed(adminA)).send(payload);
+      expect(stream.status).toBe(200);
+      const conversationId = JSON.parse(
+        stream.text
+          .split('\n')
+          .find(line => line.startsWith('data: {"type":"meta"'))!
+          .slice(6)
+      ).conversationId;
+
+      const persisted = await request(app).get(`${baseA}/conversations/${conversationId}`).set(authed(adminA));
+      expect(persisted.status).toBe(200);
+      expect(persisted.body.data.turns).toMatchObject([
+        { id: turnId, question: 'Bilan confidentiel du test', response: 'Résultat synthétique.' }
+      ]);
+
+      const duplicate = await request(app)
+        .post(`${baseA}/chat`)
+        .set(authed(adminA))
+        .send({ ...payload, conversationId });
+      expect(duplicate.status).toBe(409);
+
+      const otherOwner = await request(app).get(`${baseA}/conversations/${conversationId}`).set(authed(colleague));
+      const otherTenant = await request(app).get(`${baseB}/conversations/${conversationId}`).set(authed(adminB));
+      expect(otherOwner.status).toBe(404);
+      expect(otherTenant.status).toBe(404);
+
+      const search = await request(app).get(`${baseA}/conversations`).set(authed(adminA)).query({ q: 'synthétique' });
+      expect(search.body.data.items).toMatchObject([{ id: conversationId }]);
+
+      const deleted = await request(app).delete(`${baseA}/conversations/${conversationId}`).set(authed(adminA));
+      expect(deleted.status).toBe(204);
+      expect(await prisma.assistantTurn.count({ where: { tenantId: tenantA.id, conversationId } })).toBe(0);
+    });
+
+    afterEach(() => {
+      mockFakeScript = undefined;
+    });
+  });
+
   describe('ImmoCopilot — jeton de proposition et agences (assistant IA)', () => {
     const statementArgs = {
       docType: 'RENT_STATEMENT' as const,

@@ -38,6 +38,32 @@ function cleanRows(raw: unknown, keys: string[], max: number): Record<string, Ar
 const COLUMN_TYPES = ['text', 'number', 'currency', 'date'] as const;
 const CHART_TYPES = ['bar', 'line', 'pie'] as const;
 
+export function artifactInternalLink(value: unknown): string | undefined {
+  return typeof value === 'string' && /^\/tenant\/[A-Za-z0-9_-]+\/[A-Za-z0-9_/-]+$/.test(value) ? value : undefined;
+}
+
+function sanitizeProvenance(raw: unknown): Extract<CopilotArtifact, { kind: 'table' }>['provenance'] {
+  if (!isRecord(raw)) return undefined;
+  const { source, period, calculatedAt, rules } = raw;
+  const href = artifactInternalLink(raw.href);
+  if (
+    typeof source !== 'string' ||
+    typeof period !== 'string' ||
+    typeof calculatedAt !== 'string' ||
+    !Number.isFinite(Date.parse(calculatedAt)) ||
+    !href ||
+    !Array.isArray(rules)
+  )
+    return undefined;
+  return {
+    source,
+    href,
+    period,
+    calculatedAt,
+    rules: rules.filter((rule): rule is string => typeof rule === 'string').slice(0, 20)
+  };
+}
+
 /**
  * Valide et borne un artefact reçu du flux. Renvoie `null` si l'objet est mal
  * formé (ignoré par l'appelant) ; tronque ce qui dépasse les limites de l'API.
@@ -61,11 +87,19 @@ export function sanitizeArtifact(raw: unknown): CopilotArtifact | null {
       const key = str(c.key);
       if (!key || columns.some(x => x.key === key)) continue;
       const type = COLUMN_TYPES.find(x => x === c.type);
-      columns.push({ key, label: typeof c.label === 'string' && c.label ? c.label : key, ...(type ? { type } : {}) });
+      const linkKey =
+        typeof c.linkKey === 'string' && /^[A-Za-z][A-Za-z0-9_]{0,39}$/.test(c.linkKey) ? c.linkKey : undefined;
+      columns.push({
+        key,
+        label: typeof c.label === 'string' && c.label ? c.label : key,
+        ...(type ? { type } : {}),
+        ...(linkKey ? { linkKey } : {})
+      });
       if (columns.length >= ARTIFACT_MAX_COLUMNS) break;
     }
     if (columns.length === 0) return null;
     const total = Array.isArray(raw.rows) ? raw.rows.length : 0;
+    const provenance = sanitizeProvenance(raw.provenance);
     return {
       kind: 'table',
       id,
@@ -73,10 +107,11 @@ export function sanitizeArtifact(raw: unknown): CopilotArtifact | null {
       columns,
       rows: cleanRows(
         raw.rows,
-        columns.map(c => c.key),
+        columns.flatMap(c => (c.linkKey ? [c.key, c.linkKey] : [c.key])),
         ARTIFACT_MAX_ROWS
       ),
-      truncated: raw.truncated === true || total > ARTIFACT_MAX_ROWS || undefined
+      truncated: raw.truncated === true || total > ARTIFACT_MAX_ROWS || undefined,
+      ...(provenance ? { provenance } : {})
     };
   }
 

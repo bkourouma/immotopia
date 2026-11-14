@@ -42,6 +42,7 @@ export const MAX_TOOL_CALLS_PER_REQUEST = 8;
 export type ChatDoneReason = Extract<CopilotSseEvent, { type: 'done' }>['reason'];
 
 export interface RunChatInput {
+  deep?: boolean;
   provider: LlmProvider;
   tenantId: string;
   userId: string;
@@ -131,7 +132,8 @@ function toSseError(error: unknown): { code: CopilotErrorCode; message: string; 
 export async function runChat(input: RunChatInput): Promise<ChatDoneReason> {
   const { provider, tenantId, userId, signal, emit } = input;
   const startedAt = Date.now();
-  const maxRounds = env.AI_MAX_TOOL_ROUNDS;
+  const maxToolCalls = input.deep ? 30 : MAX_TOOL_CALLS_PER_REQUEST;
+  const maxRounds = input.deep ? 30 : env.AI_MAX_TOOL_ROUNDS;
 
   const system = buildSystemPrompt(currentLanguage(), input.tools);
   const messages = toLlmMessages(input.messages, formatContextBlock(input.pageContext, input.now?.()));
@@ -169,7 +171,13 @@ export async function runChat(input: RunChatInput): Promise<ChatDoneReason> {
       }
 
       const turn: LlmTurnResult = await provider.runTurn(
-        { system, messages, tools: toolSpecs, maxOutputTokens: env.AI_MAX_OUTPUT_TOKENS },
+        {
+          system,
+          messages,
+          tools: toolSpecs,
+          maxOutputTokens: env.AI_MAX_OUTPUT_TOKENS,
+          ...(input.deep ? { deep: true } : {})
+        },
         text => emit({ type: 'text_delta', text }),
         signal
       );
@@ -194,7 +202,7 @@ export async function runChat(input: RunChatInput): Promise<ChatDoneReason> {
         break;
       }
 
-      if (rounds >= maxRounds || toolCalls + turn.toolCalls.length > MAX_TOOL_CALLS_PER_REQUEST) {
+      if (rounds >= maxRounds || toolCalls + turn.toolCalls.length > maxToolCalls) {
         outcome = 'max_rounds';
         fail('MAX_ROUNDS', t("La demande a nécessité trop d'étapes. Reformulez-la plus simplement."), false);
         break;

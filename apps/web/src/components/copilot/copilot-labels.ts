@@ -69,6 +69,8 @@ export function copilotToolLabel(tool: CopilotToolName): string {
   const labels: Record<CopilotToolName, string> = {
     search_properties: t('Recherche de biens'),
     search_leases: t('Recherche de baux'),
+    rental_arrears: t('Analyse des impayés locatifs'),
+    rental_receipts: t('Analyse des encaissements locatifs'),
     list_lease_documents: t('Liste des documents du bail'),
     list_property_documents: t('Liste des documents du bien'),
     propose_rental_document: t('Préparation d’un document'),
