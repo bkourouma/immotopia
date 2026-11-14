@@ -31,6 +31,7 @@ import app from '../../src/app';
 import { requireTenantAccess, requireTenantCollaborator } from '../../src/middleware/tenant-middleware';
 import { authenticate } from '../../src/middleware/auth-middleware';
 import { requireSuperAdmin } from '../../src/middleware/super-admin-middleware';
+import { helpFeedbackDailyLimiter, helpFeedbackRateLimiter } from '../../src/middleware/rate-limit-middleware';
 import { requireTenantPortalAccess } from '../../src/middleware/tenant-portal-access';
 import { requireOwnerPortalAccess } from '../../src/middleware/owner-portal-access';
 import { requireCoOwnerPortalAccess } from '../../src/middleware/coowner-portal-access';
@@ -296,6 +297,15 @@ const PUBLIC_ROUTES_WHITELIST: WhitelistEntry[] = [
   },
   {
     method: 'POST',
+    test: exact('/api/help/feedback'),
+    reason:
+      "Avis sur une fiche d'aide interne (aide interne, lot A) : authentifie mais hors agence par nature, tout " +
+      'utilisateur connecte peut en envoyer un (agence, particulier, super-admin, portails locataire, proprietaire, ' +
+      "coproprietaire). L'agence du contexte est deduite et verifiee cote serveur (Membership ACTIVE ou TenantClient), " +
+      'jamais lue du corps (schema strict) ; limiteurs par utilisateur (10 par minute, 100 par jour).'
+  },
+  {
+    method: 'POST',
     test: exact('/api/public/signature-provider/yousign'),
     reason:
       'Webhook du prestataire de signature (spec 044, lot S6) : HMAC du prestataire verifie sur le corps brut, aucune session ' +
@@ -415,6 +425,33 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
     // un plan d'écriture est gardé par la route réellement appelée par loopback, sous l'identité du confirmeur.
     expect(executeKeys.filter(key => typeof key === 'string')).toEqual([]);
     expect(routes.filter(r => r.path.startsWith('/api/tenants/:tenantId/ai'))).toHaveLength(4);
+  });
+
+  it('declare les 3 routes des avis d’aide (POST authentifie avec limiteurs, GET super-admin, GET agence TENANT_AUDIT_VIEW)', () => {
+    const post = routes.find(r => r.method === 'POST' && r.path === '/api/help/feedback');
+    expect(post ? 'POST /api/help/feedback' : 'ABSENTE : POST /api/help/feedback').toBe('POST /api/help/feedback');
+    expect(post!.middlewares).toContain(authenticate);
+    expect(post!.middlewares).toContain(helpFeedbackRateLimiter);
+    expect(post!.middlewares).toContain(helpFeedbackDailyLimiter);
+    expect(isWhitelisted(post!)).toBeDefined();
+
+    const admin = routes.find(r => r.method === 'GET' && r.path === '/api/admin/help-feedback');
+    expect(admin ? 'GET /api/admin/help-feedback' : 'ABSENTE : GET /api/admin/help-feedback').toBe(
+      'GET /api/admin/help-feedback'
+    );
+    expect(hasPlatformPermission(admin!)).toBe('PLATFORM_TENANTS_VIEW');
+    expect(admin!.middlewares).toContain(requireSuperAdmin);
+    expect(admin!.middlewares).toContain(authenticate);
+    expect(isWhitelisted(admin!)).toBeUndefined();
+
+    const tenant = routes.find(r => r.method === 'GET' && r.path === '/api/tenants/:tenantId/help-feedback');
+    expect(tenant ? 'GET tenant help-feedback' : 'ABSENTE : GET tenant help-feedback').toBe('GET tenant help-feedback');
+    expect(hasTenantOrPortalGuard(tenant!)).toBe(true);
+    expect(tenant!.middlewares).toContain(authenticate);
+    expect(tenant!.middlewares.map(mw => (mw as any)?.permissionKey)).toContain('TENANT_AUDIT_VIEW');
+    expect(isWhitelisted(tenant!)).toBeUndefined();
+
+    expect(routes.filter(r => /help-feedback|\/help\/feedback/.test(r.path))).toHaveLength(3);
   });
 
   it('declare les 3 routes du reglage IA de la plateforme avec permission PLATFORM et super-admin', () => {

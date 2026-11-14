@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { helpIdSchema } from '../help/help-id';
 
 /**
  * Contrats figés d'ImmoCopilot (docs/architecture/PLAN_IMMOCOPILOT.md, §3).
@@ -10,6 +11,8 @@ import { z } from 'zod';
 export const COPILOT_MAX_MESSAGES = 20;
 export const COPILOT_MAX_MESSAGE_CHARS = 4000;
 export const COPILOT_MAX_TOTAL_CHARS = 24000;
+/** Longueur maximale de l'extrait de fiche d'aide transmis au modèle (après assainissement). */
+export const COPILOT_HELP_EXCERPT_MAX_CHARS = 4000;
 
 // Artefacts (plan V2, étape 2) : limites du panneau d'affichage.
 export const COPILOT_ARTIFACT_MAX_ROWS = 500;
@@ -68,7 +71,11 @@ export const chatRequestSchema = z
       .object({
         currentPath: z.string().max(300).optional(),
         activeEntityType: z.enum(['PROPERTY', 'LEASE']).optional(),
-        activeEntityId: z.string().uuid().optional()
+        activeEntityId: z.string().uuid().optional(),
+        /** Fiche d'aide affichée à l'écran (même format que les fiches d'aide). */
+        helpId: helpIdSchema.optional(),
+        /** Texte brut de la fiche ; 8000 = borne anti-abus du corps, la troncature fonctionnelle est à COPILOT_HELP_EXCERPT_MAX_CHARS. */
+        helpExcerpt: z.string().max(8000).optional()
       })
       .strict()
       .optional()
