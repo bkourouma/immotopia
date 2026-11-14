@@ -361,7 +361,6 @@ export const SyndicRecovery: React.FC = () => {
             </Col>
             <Col xs={24} md={12}>
               <StatCard
-                helpId="syndic.recouvrement.indicateurs"
                 label={t('Montant restant dû')}
                 value={<MoneyValue value={dashboard.totals.overdueAmount} />}
                 tone={dashboard.totals.overdueAmount > 0 ? 'danger' : 'neutral'}

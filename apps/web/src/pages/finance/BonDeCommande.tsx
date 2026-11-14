@@ -607,11 +607,7 @@ export const BonDeCommande: React.FC = () => {
           label={t('Facturé')}
           value={<MoneyValue value={bon.invoicedAmount} />}
         />
-        <StatCard
-          helpId="finance.bon-de-commande.indicateurs"
-          label={t('Reste à facturer')}
-          value={<MoneyValue value={bon.remainingAmount} />}
-        />
+        <StatCard label={t('Reste à facturer')} value={<MoneyValue value={bon.remainingAmount} />} />
       </div>
 
       <Space wrap style={{ marginBottom: 'var(--space-6)' }} {...helpAnchor('bon-actions')}>

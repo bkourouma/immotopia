@@ -400,7 +400,6 @@ export const SyndicDetail: React.FC = () => {
         </Col>
         <Col xs={24} md={8}>
           <StatCard
-            helpId="syndic.copropriete.fiche.indicateurs"
             label={t('Bâtiments')}
             value={syndicate.totalBuildings}
             icon={<ApartmentOutlined />}
@@ -409,7 +408,6 @@ export const SyndicDetail: React.FC = () => {
         </Col>
         <Col xs={24} md={8}>
           <StatCard
-            helpId="syndic.copropriete.fiche.indicateurs"
             label={t('Appels de charges')}
             value={chargeCount ?? '—'}
             icon={<BankOutlined />}

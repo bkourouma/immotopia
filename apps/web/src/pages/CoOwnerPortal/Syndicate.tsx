@@ -128,14 +128,7 @@ function SyndicateDetails({ data }: { data: CoOwnerSyndicateSheet }) {
           </Card>
         </Col>
         <Col xs={24} md={12}>
-          <Card
-            title={
-              <HelpSectionTitle
-                title={t('Gestionnaire de la copropriété')}
-                helpId="syndic.portail.copropriete.contacts"
-              />
-            }
-          >
+          <Card title={t('Gestionnaire de la copropriété')}>
             {data.syndicContact ? (
               <ContactDetails name={data.syndicContact.name} email={data.syndicContact.email} />
             ) : (
