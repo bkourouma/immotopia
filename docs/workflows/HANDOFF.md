@@ -49,7 +49,7 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 **Réécriture assistée (`ad5de59c`)** — Le panneau propose une réécriture par section. Le serveur vérifie la version et n’expose aucun outil au modèle. La proposition alimente le brouillon et le bouton Enregistrer crée la version.
 
-**Avis** — Le propriétaire peut évaluer la réponse terminée et joindre un commentaire. Les avis sont associés à la révision exacte, avec extrait borné et suppression en cascade. La vue administrateur reste à ajouter.
+**Avis (`e9179da5`)** — Le propriétaire peut évaluer la réponse terminée et joindre un commentaire. Les avis sont associés à la révision exacte, avec extrait borné et suppression en cascade. Le super-administrateur actif dispose d’une liste paginée et filtrable dans les réglages IA. La route renvoie une projection limitée à l’agence, l’avis, la date, le commentaire et l’extrait.
 
 **À poursuivre** — Étendre le catalogue aux lots, au syndic, au patrimoine, à la maintenance, au CRM et à la promotion. Enrichir les exports avec des graphiques natifs. Poursuivre le partage, les épingles, les actions de suivi, les envois, l’administration et les six langues. Recetter avec un fournisseur réel et un navigateur.
 

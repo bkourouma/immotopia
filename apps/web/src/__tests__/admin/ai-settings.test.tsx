@@ -9,8 +9,10 @@ import { AiSettingsPage } from '../../pages/admin/AiSettings';
 const getAiSettings = vi.fn();
 const updateAiSettings = vi.fn();
 const listAiModels = vi.fn();
+const listAssistantFeedback = vi.fn();
 
 vi.mock('../../services/ai-settings-service', () => ({
+  listAssistantFeedback: (...a: unknown[]) => listAssistantFeedback(...a),
   getAiSettings: (...a: unknown[]) => getAiSettings(...a),
   updateAiSettings: (...a: unknown[]) => updateAiSettings(...a),
   listAiModels: (...a: unknown[]) => listAiModels(...a)
@@ -60,6 +62,32 @@ describe('AiSettingsPage', () => {
       ],
       unavailable: false
     });
+  });
+
+  it('charge les avis en ouvrant la section et permet de changer de page', async () => {
+    listAssistantFeedback
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: 0,
+            agency: 'Agence A',
+            helpful: false,
+            excerpt: 'Extrait court',
+            comment: 'À préciser',
+            updatedAt: '2026-11-14T10:00:00Z'
+          }
+        ],
+        hasNext: true
+      })
+      .mockResolvedValueOnce({ items: [], hasNext: false });
+    mount();
+    expect(listAssistantFeedback).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByText('Avis sur les réponses de l’assistant'));
+    expect(await screen.findByText('Extrait court')).toBeVisible();
+    expect(screen.getByText('À préciser')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Suivant' }));
+    expect(await screen.findByText('Aucun avis')).toBeVisible();
+    expect(listAssistantFeedback).toHaveBeenLastCalledWith(25, 'all', expect.any(AbortSignal));
   });
 
   it('affiche les réglages, les clés et la dernière modification', async () => {

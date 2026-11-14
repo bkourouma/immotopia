@@ -22,3 +22,21 @@ export async function listAiModels(): Promise<AiModelsResponse> {
   const data = unwrap<Partial<AiModelsResponse> | undefined>(response.data);
   return { models: data?.models ?? [], unavailable: Boolean(data?.unavailable) };
 }
+
+export interface AssistantFeedbackEntry {
+  id: number;
+  agency: string;
+  updatedAt: string;
+  helpful: boolean;
+  comment: string;
+  excerpt: string;
+}
+
+export async function listAssistantFeedback(
+  offset: number,
+  rating: 'all' | 'helpful' | 'unhelpful',
+  signal: AbortSignal
+) {
+  const response = await apiClient.get('/platform/ai-settings/feedback', { params: { offset, rating }, signal });
+  return unwrap<{ items: AssistantFeedbackEntry[]; hasNext: boolean }>(response.data);
+}

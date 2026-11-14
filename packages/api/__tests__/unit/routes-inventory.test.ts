@@ -432,7 +432,8 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
     const expected: Array<[string, string, string]> = [
       ['GET', '/api/platform/ai-settings', 'PLATFORM_TENANTS_VIEW'],
       ['PUT', '/api/platform/ai-settings', 'PLATFORM_TENANTS_EDIT'],
-      ['GET', '/api/platform/ai-settings/models', 'PLATFORM_TENANTS_VIEW']
+      ['GET', '/api/platform/ai-settings/models', 'PLATFORM_TENANTS_VIEW'],
+      ['GET', '/api/platform/ai-settings/feedback', 'PLATFORM_TENANTS_VIEW']
     ];
     for (const [method, path, permission] of expected) {
       const route = routes.find(r => r.method === method && r.path === path);
@@ -440,7 +441,7 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
       expect(hasPlatformPermission(route!)).toBe(permission);
       expect(route!.middlewares).toContain(requireSuperAdmin);
     }
-    expect(routes.filter(r => r.path.startsWith('/api/platform/ai-settings'))).toHaveLength(3);
+    expect(routes.filter(r => r.path.startsWith('/api/platform/ai-settings'))).toHaveLength(4);
   });
 
   it('declare les 9 routes agence des acces tiers de confiance (lot B3) avec authentification et garde d’agence', () => {

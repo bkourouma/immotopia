@@ -37,6 +37,7 @@ jest.mock('../../src/services/permission-service', () => ({
 
 const mockPrisma: any = {
   user: { findUnique: jest.fn() },
+  assistantResponseFeedback: { findMany: jest.fn() },
   platformAiSettings: { findUnique: jest.fn(), upsert: jest.fn() },
   $transaction: jest.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb(mockPrisma))
 };
@@ -76,7 +77,8 @@ describe("contrôle d'accès", () => {
   it.each([
     ['get', '/api/platform/ai-settings'],
     ['put', '/api/platform/ai-settings'],
-    ['get', '/api/platform/ai-settings/models']
+    ['get', '/api/platform/ai-settings/models'],
+    ['get', '/api/platform/ai-settings/feedback']
   ])('%s %s : 403 pour un non super-admin ou un compte inactif, 401 sans session', async (method, path) => {
     const call = (extra?: Record<string, string>) => {
       let req = (request(app) as any)[method](path);
@@ -97,6 +99,39 @@ describe("contrôle d'accès", () => {
 
 describe('super-admin', () => {
   beforeEach(() => asRole('SUPER_ADMIN'));
+
+  it('liste les avis filtrés avec des extraits bornés et sans identité du compte', async () => {
+    const updatedAt = new Date('2026-11-14T10:00:00Z');
+    mockPrisma.assistantResponseFeedback.findMany.mockResolvedValue(
+      Array.from({ length: 26 }, () => ({
+        helpful: false,
+        comment: 'À préciser',
+        excerpt: 'a'.repeat(350),
+        updatedAt,
+        turn: { conversation: { tenant: { name: 'Agence A' } } }
+      }))
+    );
+    const response = await request(app).get('/api/platform/ai-settings/feedback?rating=unhelpful&offset=25');
+    expect(response.status).toBe(200);
+    expect(response.headers['cache-control']).toBe('private, no-store');
+    expect(mockPrisma.assistantResponseFeedback.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { helpful: false },
+        skip: 25,
+        take: 26
+      })
+    );
+    expect(response.body.data.items).toHaveLength(25);
+    expect(response.body.data.hasNext).toBe(true);
+    expect(response.body.data.items[0]).toEqual({
+      id: 25,
+      helpful: false,
+      agency: 'Agence A',
+      comment: 'À préciser',
+      excerpt: 'a'.repeat(300),
+      updatedAt: updatedAt.toISOString()
+    });
+  });
 
   it('GET : réglage, disponibilité et présence des clés, sans aucun secret', async () => {
     const res = await request(app).get('/api/platform/ai-settings');
