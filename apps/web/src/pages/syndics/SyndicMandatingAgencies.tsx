@@ -20,6 +20,7 @@ import {
 import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion } from '../../utils/list-search';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 const { Paragraph, Text, Title } = Typography;
 
@@ -340,6 +341,7 @@ export const SyndicMandatingAgencies: React.FC = () => {
         ) : (
           <Table<MandatingAgency>
             {...local.tableProps}
+            helpId="syndic.mandants.tableau"
             aria-label={t('Agences mandantes')}
             exportFilename={t('Agences mandantes')}
             exportFetchAll={local.exportAll}
@@ -350,7 +352,12 @@ export const SyndicMandatingAgencies: React.FC = () => {
       </Space>
 
       <Drawer
-        title={editingAgency ? t('Modifier l’agence mandante') : t('Nouvelle agence mandante')}
+        title={
+          <HelpSectionTitle
+            title={editingAgency ? t('Modifier l’agence mandante') : t('Nouvelle agence mandante')}
+            helpId="syndic.mandants.edition"
+          />
+        }
         open={drawerOpen}
         onClose={closeDrawer}
         width={480}

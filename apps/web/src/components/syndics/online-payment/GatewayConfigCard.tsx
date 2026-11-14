@@ -31,6 +31,7 @@ import {
 import { formatMoney } from '../../primitives';
 import { onAntFormValidationFailed } from '../../../lib/antFormFailure';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 import { apiErrorCode, apiErrorMessage, formatDateTime } from './helpers';
 import { displayCurrency } from '../../../utils/syndic-currency';
 
@@ -238,7 +239,9 @@ export const GatewayConfigCard: React.FC<GatewayConfigCardProps> = ({
 
   return (
     <Card
-      title={t('Compte de paiement de la copropriété')}
+      title={
+        <HelpSectionTitle title={t('Compte de paiement de la copropriété')} helpId="syndic.paiements.passerelle" />
+      }
       extra={
         settings.usable ? (
           <Tag color="success">{t('Paiement en ligne actif')}</Tag>

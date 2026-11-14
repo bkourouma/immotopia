@@ -4,6 +4,7 @@ import { SyncOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { DataCard, ListSearch, MoneyValue, SkeletonList, StateBlock } from '../../components/primitives';
+import { HelpSectionTitle } from '../../help';
 import { t } from '../../i18n/t';
 import { listMyLots, type CoOwnerLot } from '../../services/coowner-portal-service';
 import { BalanceDirectionTag, lotTypeLabel } from './labels';
@@ -131,7 +132,7 @@ export default function CoOwnerLots() {
         groupBySyndicate(visibleLots).map(group => (
           <Card
             key={group.key}
-            title={group.name}
+            title={<HelpSectionTitle title={group.name} helpId="syndic.portail.lots.cartes" />}
             extra={group.address ? <Text type="secondary">{group.address}</Text> : null}
           >
             <Space direction="vertical" size="middle" style={{ width: '100%' }}>

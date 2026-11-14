@@ -8,6 +8,7 @@ import { ScheduleTable } from '../../components/syndics/charge-schedules/Schedul
 import { useChargeSchedules } from '../../components/syndics/charge-schedules/useChargeSchedules';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 const { Paragraph, Title } = Typography;
 
@@ -96,7 +97,12 @@ export const SyndicChargeSchedules: React.FC = () => {
       </Space>
 
       <Drawer
-        title={editing ? t('Programmation : {{label}}', { label: editing.label }) : t('Nouvelle programmation')}
+        title={
+          <HelpSectionTitle
+            title={editing ? t('Programmation : {{label}}', { label: editing.label }) : t('Nouvelle programmation')}
+            helpId="syndic.programmation.liste.formulaire"
+          />
+        }
         open={drawerOpen}
         onClose={closeDrawer}
         width={560}

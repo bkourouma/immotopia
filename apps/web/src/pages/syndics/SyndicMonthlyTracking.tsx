@@ -8,6 +8,7 @@ import { MonthlyTracking, MonthlyTrackingLotRow, MonthlyTrackingStatus } from '.
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
 import { displayCurrency } from '../../utils/syndic-currency';
+import { HelpSectionTitle } from '../../help';
 
 import { localizedList, localizedRecord } from '../../i18n/localized';
 const { Paragraph, Title, Text } = Typography;
@@ -168,7 +169,7 @@ export const SyndicMonthlyTracking: React.FC = () => {
           <Spin size="large" />
         </div>
       ) : (
-        <Card>
+        <Card title={<HelpSectionTitle title={t('Suivi mensuel')} helpId="syndic.suivi.liste.grille" />}>
           {lots.length > 0 || local.isFiltered ? <ListSearch {...local.searchProps} /> : null}
           <div style={{ overflowX: 'auto' }}>
             <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 900 }}>

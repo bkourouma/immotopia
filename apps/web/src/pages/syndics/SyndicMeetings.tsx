@@ -35,6 +35,7 @@ import { useListSearch } from '../../hooks/useListSearch';
 import { collectAllPages } from '../../utils/table-export/collect';
 import type { SearchCriterion } from '../../utils/list-search';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 import { localizedList } from '../../i18n/localized';
 const { Paragraph, Title } = Typography;
@@ -309,6 +310,7 @@ export const SyndicMeetings: React.FC = () => {
 
         <Card title={t('Liste des assemblées')}>
           <Table<GeneralMeeting>
+            helpId="syndic.assemblees.tableau"
             loading={loading}
             dataSource={meetings}
             search={search.searchProps}
@@ -403,7 +405,7 @@ export const SyndicMeetings: React.FC = () => {
       </Space>
 
       <Modal
-        title={t('Créer une assemblée générale')}
+        title={<HelpSectionTitle title={t('Créer une assemblée générale')} helpId="syndic.assemblees.creation" />}
         open={open}
         onCancel={() => setOpen(false)}
         onOk={() => void handleCreate()}

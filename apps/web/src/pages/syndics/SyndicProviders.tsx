@@ -31,6 +31,7 @@ import { ServiceProvider, SyndicProvidersPayload } from '../../types/syndic-type
 import { useTabParam } from '../../components/syndics/finances/url-params';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 const { Paragraph, Title, Link: TypographyLink } = Typography;
 
@@ -250,7 +251,14 @@ export const SyndicProviders: React.FC = () => {
         </div>
       ) : (
         <>
-          <Card title={t('Prestataires ({{length}})', { length: payload.providers.length })}>
+          <Card
+            title={
+              <HelpSectionTitle
+                title={t('Prestataires ({{length}})', { length: payload.providers.length })}
+                helpId="syndic.prestataires.fiche"
+              />
+            }
+          >
             <ProviderList
               providers={payload.providers as ProviderWithContracts[]}
               renderActions={renderProviderActions}

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Card, Col, Descriptions, Row, Select, Space, Typography } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { PhoneNumber, SkeletonList, StateBlock } from '../../components/primitives';
+import { HelpSectionTitle } from '../../help';
 import { t } from '../../i18n/t';
 import {
   fetchCoOwnerIssuerLogo,
@@ -109,7 +110,9 @@ function SyndicateDetails({ data }: { data: CoOwnerSyndicateSheet }) {
       <Row gutter={[16, 16]}>
         <Col xs={24} md={12}>
           <Card
-            title={t('Émetteur des documents')}
+            title={
+              <HelpSectionTitle title={t('Émetteur des documents')} helpId="syndic.portail.copropriete.contacts" />
+            }
             extra={
               data.hasIssuerLogo ? (
                 <PortalImage loader={() => fetchCoOwnerIssuerLogo(data.id)} alt={data.issuer.name} />
@@ -125,7 +128,14 @@ function SyndicateDetails({ data }: { data: CoOwnerSyndicateSheet }) {
           </Card>
         </Col>
         <Col xs={24} md={12}>
-          <Card title={t('Gestionnaire de la copropriété')}>
+          <Card
+            title={
+              <HelpSectionTitle
+                title={t('Gestionnaire de la copropriété')}
+                helpId="syndic.portail.copropriete.contacts"
+              />
+            }
+          >
             {data.syndicContact ? (
               <ContactDetails name={data.syndicContact.name} email={data.syndicContact.email} />
             ) : (

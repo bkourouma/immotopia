@@ -11,6 +11,7 @@ import { MeetingContact, MeetingLot, MeetingProxy } from '../../types/syndic-typ
 import { contactName, lotOwnerId } from './meeting-governance';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { t } from '../../i18n/t';
+import { helpAnchor } from '../../help';
 
 const { Text } = Typography;
 
@@ -230,6 +231,7 @@ export const MeetingProxies: React.FC<MeetingProxiesProps> = ({
 
   return (
     <Card
+      {...helpAnchor('ag-pouvoirs')}
       title={t('Pouvoirs')}
       extra={
         readOnly ? null : (
@@ -249,6 +251,7 @@ export const MeetingProxies: React.FC<MeetingProxiesProps> = ({
         <Text type="secondary">{t("Aucun lot n'a de copropriétaire : aucun pouvoir possible.")}</Text>
       ) : null}
       <Table<MeetingProxy>
+        helpId="syndic.assemblees.detail.pouvoirs"
         {...local.tableProps}
         aria-label={t('Pouvoirs')}
         exportFilename={t('Pouvoirs')}

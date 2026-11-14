@@ -8,6 +8,7 @@ import type { SearchCriterion } from '../../utils/list-search';
 import { MeetingAttendance, MeetingResolution } from '../../types/syndic-types';
 import { majorityRuleLabel, normalizeMajorityRule } from './meeting-governance';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 const { Text } = Typography;
 
@@ -174,7 +175,11 @@ export const VoteBoard: React.FC<VoteBoardProps> = ({
     <Row gutter={[16, 16]}>
       <Col xs={24} md={8}>
         <Card>
-          <Statistic title={t('Quorum')} value={quorumPercent} suffix="%" />
+          <Statistic
+            title={<HelpSectionTitle title={t('Quorum')} helpId="syndic.assemblees.detail.quorum" />}
+            value={quorumPercent}
+            suffix="%"
+          />
           <Progress percent={Math.min(100, Math.max(0, quorumPercent))} />
           {attendance ? (
             <Text type="secondary">
@@ -189,6 +194,7 @@ export const VoteBoard: React.FC<VoteBoardProps> = ({
       <Col xs={24} md={16}>
         <Card title={t('Résultats des résolutions')}>
           <Table<MeetingResolution>
+            helpId="syndic.assemblees.detail.resultats"
             {...local.tableProps}
             aria-label={t('Résultats des résolutions')}
             exportFilename={t('Resultats des resolutions')}

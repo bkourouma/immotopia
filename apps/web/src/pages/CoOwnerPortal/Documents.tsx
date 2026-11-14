@@ -122,6 +122,7 @@ export default function CoOwnerDocuments() {
       </div>
       <Card>
         <DataView<CoOwnerDocument>
+          helpId="syndic.portail.documents.tableau"
           {...local.dataViewProps}
           rowKey={doc => doc.id}
           aria-label={t('Documents de copropriété')}

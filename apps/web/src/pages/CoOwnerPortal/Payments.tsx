@@ -8,6 +8,7 @@ import { DataCard, DataView, MoneyValue, SkeletonList, Table } from '../../compo
 import { feedback } from '../../lib/feedback';
 import { useListSearch } from '../../hooks/useListSearch';
 import type { SearchCriterion } from '../../utils/list-search';
+import { HelpSectionTitle } from '../../help';
 import { t } from '../../i18n/t';
 import { DeclarationsList } from '../../components/coowner-portal/declared-payment/DeclarationsList';
 import {
@@ -199,7 +200,9 @@ function DeclarationsSection() {
     <Card>
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         <div>
-          <Title level={3}>{t('Mes déclarations')}</Title>
+          <Title level={3}>
+            <HelpSectionTitle title={t('Mes déclarations')} helpId="syndic.portail.paiements.declarations" />
+          </Title>
           <Text type="secondary">
             {t(
               'Paiements mobile money que vous avez déclarés au syndic. Rien n’est porté à votre compte avant validation.'
@@ -339,6 +342,7 @@ export default function CoOwnerPayments() {
         // Sur erreur, la barre et ses critères restent affichés : l'erreur s'affiche dessous (DataView).
         <Card>
           <DataView<CoOwnerPayment>
+            helpId="syndic.portail.paiements.tableau"
             {...search.dataViewProps}
             error={
               payments.error ? portalErrorMessage(payments.error, t('Impossible de charger vos paiements.')) : null
@@ -391,7 +395,16 @@ export default function CoOwnerPayments() {
         open={Boolean(detail)}
         onCancel={() => setDetail(null)}
         onOk={() => setDetail(null)}
-        title={detail ? t('Paiement du {{date}}', { date: dayjs(detail.paidAt).format('DD/MM/YYYY') }) : ''}
+        title={
+          detail ? (
+            <HelpSectionTitle
+              title={t('Paiement du {{date}}', { date: dayjs(detail.paidAt).format('DD/MM/YYYY') })}
+              helpId="syndic.portail.paiements.detail"
+            />
+          ) : (
+            ''
+          )
+        }
         footer={
           <Button type="primary" onClick={() => setDetail(null)}>
             {t('Fermer')}

@@ -19,6 +19,7 @@ export const ScheduleRunsPanel: React.FC<{
   onResent: () => void;
 }> = ({ runs, loading, tenantId, syndicId, scheduleId, onResent }) => (
   <Table
+    helpId="syndic.programmation.liste.executions"
     exportFilename={t('Exécutions de la programmation')}
     rowKey="id"
     loading={loading}

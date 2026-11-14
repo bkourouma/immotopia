@@ -91,6 +91,7 @@ export const OverdueTab: React.FC<OverdueTabProps> = ({
       columns={columns}
       rowKey={row => row.chargeCallId}
       aria-label={t('Détail des impayés et retards')}
+      helpId="syndic.tresorerie.impayes"
       export={{ filename: t('Détail des impayés et retards'), fetchAll: local.exportAll }}
       renderCard={row => (
         <DataCard

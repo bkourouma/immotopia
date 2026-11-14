@@ -469,6 +469,7 @@ export const LotTable: React.FC<LotTableProps> = ({
     <div>
       <Table
         {...local.tableProps}
+        helpId="syndic.lots.tableau"
         aria-label={t('Tableau des lots')}
         exportFilename={t('Lots')}
         exportFetchAll={local.exportAll}

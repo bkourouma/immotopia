@@ -124,6 +124,7 @@ export const AccountingBalanceTab: React.FC<AccountingBalanceTabProps> = ({ tena
       {error ? <Alert type="error" showIcon message={t('Impossible de charger la comptabilité')} /> : null}
 
       <Table<SyndicTrialBalanceLine>
+        helpId="syndic.comptabilite.balance"
         search={search.searchProps}
         exportFilename={t('Balance de vérification')}
         scroll={{ x: 'max-content' }}

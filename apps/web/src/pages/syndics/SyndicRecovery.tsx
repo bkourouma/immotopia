@@ -37,6 +37,7 @@ import {
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { computeLatePenaltyPreview, MAX_MONTHLY_PENALTY_RATE } from '../../utils/syndic-penalty';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 import { dateFormat } from '../../i18n/format';
 import { reminderExclusionLabel, reminderFailureLabel } from '../../components/syndics/reminder-failure';
 import { ReminderBatchPreview } from '../../components/syndics/ReminderBatchPreview';
@@ -352,6 +353,7 @@ export const SyndicRecovery: React.FC = () => {
           <Row gutter={[16, 16]}>
             <Col xs={24} md={12}>
               <StatCard
+                helpId="syndic.recouvrement.indicateurs"
                 label={t('Lots en retard')}
                 value={dashboard.totals.overdueLotCount ?? dashboard.totals.overdueCount}
                 tone={dashboard.totals.overdueCount > 0 ? 'danger' : 'neutral'}
@@ -359,6 +361,7 @@ export const SyndicRecovery: React.FC = () => {
             </Col>
             <Col xs={24} md={12}>
               <StatCard
+                helpId="syndic.recouvrement.indicateurs"
                 label={t('Montant restant dû')}
                 value={<MoneyValue value={dashboard.totals.overdueAmount} />}
                 tone={dashboard.totals.overdueAmount > 0 ? 'danger' : 'neutral'}
@@ -414,7 +417,9 @@ export const SyndicRecovery: React.FC = () => {
       />
 
       <Modal
-        title={t('Créer une relance manuelle')}
+        title={
+          <HelpSectionTitle title={t('Créer une relance manuelle')} helpId="syndic.recouvrement.relance-manuelle" />
+        }
         open={manualOpen}
         onCancel={() => setManualOpen(false)}
         onOk={() => void handleCreateManualReminder()}
@@ -446,7 +451,7 @@ export const SyndicRecovery: React.FC = () => {
       </Modal>
 
       <Modal
-        title={t('Appliquer une pénalité')}
+        title={<HelpSectionTitle title={t('Appliquer une pénalité')} helpId="syndic.recouvrement.penalites" />}
         open={penaltyOpen}
         onCancel={() => setPenaltyOpen(false)}
         onOk={() => void handleCreatePenalty()}
@@ -510,7 +515,7 @@ export const SyndicRecovery: React.FC = () => {
       </Modal>
 
       <Modal
-        title={t('Créer un échéancier')}
+        title={<HelpSectionTitle title={t('Créer un échéancier')} helpId="syndic.recouvrement.echeanciers" />}
         open={scheduleOpen}
         onCancel={() => setScheduleOpen(false)}
         onOk={() => void handleCreateSchedule()}
@@ -592,7 +597,7 @@ export const SyndicRecovery: React.FC = () => {
       </Modal>
 
       <Modal
-        title={t('Remise de pénalité')}
+        title={<HelpSectionTitle title={t('Remise de pénalité')} helpId="syndic.recouvrement.penalites" />}
         open={waiveOpen}
         onCancel={() => {
           setWaiveOpen(false);

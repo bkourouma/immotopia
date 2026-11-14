@@ -4,6 +4,7 @@ import { Button, Card, Space, Tag, Tooltip, Typography } from 'antd';
 import { Link } from 'react-router-dom';
 import { Syndicate } from '../../types/syndic-types';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 import { localizedRecord } from '../../i18n/localized';
 const { Paragraph, Text, Title } = Typography;
@@ -19,6 +20,8 @@ interface SyndicateCardProps {
   tenantId: string;
   onDelete?: (syndicId: string) => void;
   deleting?: boolean;
+  /** Fiche d'aide de la carte (posée sur une seule carte de la liste). */
+  helpId?: string;
 }
 
 /**
@@ -41,7 +44,7 @@ function isSyndicateEmpty(syndicate: Syndicate): boolean | null {
   return total === 0;
 }
 
-export const SyndicateCard: React.FC<SyndicateCardProps> = ({ syndicate, tenantId, onDelete, deleting }) => {
+export const SyndicateCard: React.FC<SyndicateCardProps> = ({ syndicate, tenantId, onDelete, deleting, helpId }) => {
   const status = statusConfig[syndicate.status];
   const lotCount = syndicate._count?.lots ?? syndicate.totalLots ?? syndicate.lots?.length ?? 0;
   const empty = isSyndicateEmpty(syndicate);
@@ -104,7 +107,9 @@ export const SyndicateCard: React.FC<SyndicateCardProps> = ({ syndicate, tenantI
               <Title level={4} style={{ margin: 0 }}>
                 {syndicate.name}
               </Title>
-              <Text type="secondary">{t('Copropriété')}</Text>
+              <Text type="secondary">
+                {helpId ? <HelpSectionTitle title={t('Copropriété')} helpId={helpId} /> : t('Copropriété')}
+              </Text>
             </div>
           </Space>
           <Tag color={status.color}>{status.label}</Tag>

@@ -10,6 +10,7 @@ import {
   toIsoDay
 } from '../../rental/direct-debit/business-days';
 import { apiErrorMessage } from '../../rental/direct-debit/direct-debit-shared';
+import { HelpSectionTitle } from '../../../help';
 import { t } from '../../../i18n/t';
 
 interface SyndicPrepareRemittanceModalProps {
@@ -79,7 +80,7 @@ export const SyndicPrepareRemittanceModal: React.FC<SyndicPrepareRemittanceModal
   return (
     <Modal
       open={open}
-      title={t('Préparer une remise')}
+      title={<HelpSectionTitle title={t('Préparer une remise')} helpId="syndic.prelevements.remise-preparer" />}
       okText={t('Préparer')}
       cancelText={t('Fermer')}
       okButtonProps={{ disabled: !creditor || !creditor.isActive || !date, loading: busy }}

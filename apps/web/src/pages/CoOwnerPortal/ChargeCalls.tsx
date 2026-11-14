@@ -11,6 +11,7 @@ import {
 } from '../../components/coowner-portal/declared-payment/DeclaredPaymentSection';
 import { syndicateNamesFromCalls } from '../../components/coowner-portal/receiving-account-groups';
 import { useDeclaredAvailabilities } from '../../components/coowner-portal/declared-payment/useDeclaredAvailabilities';
+import { HelpButton, helpAnchor } from '../../help';
 import { t } from '../../i18n/t';
 import {
   getOnlinePayment,
@@ -322,9 +323,11 @@ export default function CoOwnerChargeCalls() {
                 disabled={selectedCalls.length === 0}
                 loading={paying}
                 onClick={() => void payOnline()}
+                {...helpAnchor('portail-payer-en-ligne')}
               >
                 {t('Payer en ligne')}
               </Button>
+              <HelpButton helpId="syndic.portail.appels.paiement-en-ligne" size="small" />
             </div>
           </Space>
         </Card>
@@ -337,11 +340,11 @@ export default function CoOwnerChargeCalls() {
         onDeclare={declaredAvailable ? scrollToDeclaration : undefined}
       />
 
-      <div id={DECLARED_SECTION_ID}>
+      <div id={DECLARED_SECTION_ID} {...helpAnchor('portail-mobile-money')}>
         <DeclaredPaymentSection calls={calls} entries={declaredEntries} />
       </div>
 
-      <Card>
+      <Card {...helpAnchor('portail-appels-tableau')}>
         <ChargeCallsTable
           calls={calls}
           serverMode

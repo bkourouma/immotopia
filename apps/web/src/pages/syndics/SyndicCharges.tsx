@@ -55,6 +55,7 @@ import {
   SyndicateLot
 } from '../../types/syndic-types';
 import { useMyMenuAccess } from '../../hooks/useMenuAccess';
+import { HelpSectionTitle, helpAnchor } from '../../help';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { chargeCallCriteria } from '../../components/syndics/finances/charge-call-criteria';
 import { useListSearch } from '../../hooks/useListSearch';
@@ -429,10 +430,16 @@ export const SyndicCharges: React.FC = () => {
           </Space>
 
           <Space>
-            <Button onClick={handleOpenPaymentGeneric} disabled={lots.length === 0}>
+            <Button {...helpAnchor('charges-paiement')} onClick={handleOpenPaymentGeneric} disabled={lots.length === 0}>
               {t('Enregistrer un paiement')}
             </Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)} disabled={lots.length === 0}>
+            <Button
+              {...helpAnchor('charges-nouvel-appel')}
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => setOpen(true)}
+              disabled={lots.length === 0}
+            >
               {t('Nouvel appel de charges')}
             </Button>
           </Space>
@@ -446,9 +453,13 @@ export const SyndicCharges: React.FC = () => {
           </div>
         ) : (
           <>
-            <Row gutter={[16, 16]}>
+            <Row gutter={[16, 16]} {...helpAnchor('charges-synthese')}>
               <Col xs={24} md={8}>
-                <StatCard label={t('Montant appelé')} value={<MoneyValue value={summary.totalAmount} />} />
+                <StatCard
+                  helpId="syndic.charges.liste.synthese"
+                  label={t('Montant appelé')}
+                  value={<MoneyValue value={summary.totalAmount} />}
+                />
               </Col>
               <Col xs={24} md={8}>
                 <StatCard label={t('Dossiers en attente')} value={summary.pendingCount} />
@@ -462,7 +473,7 @@ export const SyndicCharges: React.FC = () => {
               </Col>
             </Row>
 
-            <Card title={t('Liste des appels de charges')}>
+            <Card {...helpAnchor('charges-tableau')} title={t('Liste des appels de charges')}>
               {declaredPendingCount > 0 ? (
                 <Alert
                   type="info"
@@ -484,6 +495,7 @@ export const SyndicCharges: React.FC = () => {
               ) : null}
               <ChargeCallTable
                 items={charges}
+                helpId="syndic.charges.liste.tableau"
                 loading={chargesQuery.isFetching}
                 pagination={{
                   page: search.page,
@@ -507,7 +519,7 @@ export const SyndicCharges: React.FC = () => {
       </Space>
 
       <Modal
-        title={t('Créer un appel de charges')}
+        title={<HelpSectionTitle title={t('Créer un appel de charges')} helpId="syndic.charges.liste.creation" />}
         open={open}
         onCancel={() => setOpen(false)}
         onOk={() => void handleCreate()}
@@ -617,7 +629,12 @@ export const SyndicCharges: React.FC = () => {
           </Row>
 
           {allocationMethod ? (
-            <Form.Item label={t('Répartition entre les lots')} name="allocationMethod">
+            <Form.Item
+              label={
+                <HelpSectionTitle title={t('Répartition entre les lots')} helpId="syndic.charges.liste.repartition" />
+              }
+              name="allocationMethod"
+            >
               <AllocationMethodRadio />
             </Form.Item>
           ) : null}

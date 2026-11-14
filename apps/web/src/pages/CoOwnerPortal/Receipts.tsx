@@ -134,6 +134,7 @@ export default function CoOwnerReceipts() {
       {/* Sur erreur, la barre et ses critères restent affichés : l'erreur s'affiche dessous (DataView). */}
       <Card>
         <DataView<CoOwnerReceipt>
+          helpId="syndic.portail.quittances.tableau"
           {...search.dataViewProps}
           search={search.searchProps}
           items={receipts.data?.items ?? []}

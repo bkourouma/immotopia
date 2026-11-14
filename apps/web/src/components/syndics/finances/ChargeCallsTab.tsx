@@ -95,6 +95,7 @@ export const ChargeCallsTab: React.FC<{ tenantId: string; syndicId: string }> = 
       columns={columns}
       rowKey={row => row.id}
       aria-label={t('Détail des appels de fonds')}
+      helpId="syndic.tresorerie.appels"
       export={{
         filename: t('Détail des appels de fonds'),
         fetchAll: () =>

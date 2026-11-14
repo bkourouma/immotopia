@@ -258,6 +258,7 @@ export const IncidentsTab: React.FC<IncidentsTabProps> = ({
   return (
     <Table<IncidentRow>
       {...local.tableProps}
+      helpId="syndic.profils.incidents"
       exportFilename={t('Incidents et imputations')}
       exportFetchAll={local.exportAll}
       scroll={{ x: 1100 }}
@@ -269,6 +270,7 @@ export const IncidentsTab: React.FC<IncidentsTabProps> = ({
         expandedRowRender: incident => (
           <Space direction="vertical" size="middle" style={{ width: '100%' }}>
             <Table
+              helpId="syndic.profils.imputations"
               // Sous-tableau d'une ligne dépliée : pas d'export propre.
               exportable={false}
               scroll={{ x: 'max-content' }}
