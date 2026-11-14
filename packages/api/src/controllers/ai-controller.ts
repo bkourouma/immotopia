@@ -288,7 +288,7 @@ const artifactExporters = {
   csv: { build: buildArtifactCsv, type: 'text/csv; charset=utf-8' }
 };
 
-type ShareParty = Awaited<ReturnType<typeof resolveAvailableTools>>;
+type ShareParty = Pick<Awaited<ReturnType<typeof resolveAvailableTools>>, 'permissions' | 'tools'>;
 
 async function readSharedTable(
   artifact: CopilotArtifact,

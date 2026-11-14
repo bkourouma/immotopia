@@ -98,7 +98,7 @@ export function AnalysisShares({ tenantId, onClose }: { tenantId: string; onClos
         </>
       ) : (
         <>
-          <Segmented
+          <Segmented<'incoming' | 'outgoing'>
             value={direction}
             onChange={value => {
               setItems([]);
