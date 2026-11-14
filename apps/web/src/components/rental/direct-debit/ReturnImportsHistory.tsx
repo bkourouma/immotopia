@@ -13,6 +13,7 @@ import { collectAllPages } from '../../../utils/table-export/collect';
 import { apiErrorMessage, formatDate } from './direct-debit-shared';
 import { queryKey, STALE_TIME } from '../../../lib/query-keys';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 
 const { Title } = Typography;
 
@@ -45,7 +46,9 @@ export const ReturnImportsHistory: React.FC<{
   /** Extra de clé (le syndicat) pour que deux copropriétés ne partagent pas leur cache. */
   scopeKey?: string;
   fetchPage?: (params: ReturnImportsPageParams) => Promise<ReturnImportListResult>;
-}> = ({ tenantId, entity = RETURN_IMPORTS_ENTITY, scopeKey, fetchPage }) => {
+  /** Fiche d'aide à afficher à côté du titre (absente : pas de « ? »). */
+  helpId?: string;
+}> = ({ tenantId, entity = RETURN_IMPORTS_ENTITY, scopeKey, fetchPage, helpId }) => {
   const search = useListSearch({
     paramPrefix: 'ret',
     ariaLabel: t("Rechercher dans l'historique des retours"),
@@ -88,7 +91,13 @@ export const ReturnImportsHistory: React.FC<{
 
   return (
     <section aria-label={t('Historique des retours de la banque')}>
-      <Title level={5}>{t('Historique des retours de la banque')}</Title>
+      <Title level={5}>
+        {helpId ? (
+          <HelpSectionTitle title={t('Historique des retours de la banque')} helpId={helpId} />
+        ) : (
+          t('Historique des retours de la banque')
+        )}
+      </Title>
       {error && (
         <Alert
           type="error"

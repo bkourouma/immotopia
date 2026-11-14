@@ -28,6 +28,7 @@ import { useListSearch } from '../../hooks/useListSearch';
 import { detailKey, entityKeyPrefix, queryKey, STALE_TIME } from '../../lib/query-keys';
 import { collectAllPages } from '../../utils/table-export/collect';
 import { t } from '../../i18n/t';
+import { helpAnchor } from '../../help';
 
 /**
  * Location › Prélèvements › Remises (spec 042, P2, §7.10) : les remises de
@@ -141,6 +142,7 @@ export const DirectDebitRemittances: React.FC = () => {
         subtitle={data ? `${data.total}` : undefined}
         primaryAction={{
           label: t('Préparer une remise'),
+          helpAnchor: 'remises-preparer',
           icon: <PlusOutlined />,
           onClick: () => setPreparing(true)
         }}
@@ -148,40 +150,44 @@ export const DirectDebitRemittances: React.FC = () => {
       <DirectDebitTabs />
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
         <Space wrap size={[12, 12]}>
-          <Button icon={<UploadOutlined />} onClick={() => setImporting(true)}>
+          <Button icon={<UploadOutlined />} onClick={() => setImporting(true)} {...helpAnchor('remises-import')}>
             {t('Importer un retour de la banque')}
           </Button>
         </Space>
         {error && (
           <Alert type="error" showIcon message={apiErrorMessage(error, t('Erreur lors du chargement des remises'))} />
         )}
-        <Table<RemittanceSummaryDto>
-          aria-label={t('Remises de prélèvement')}
-          rowKey="id"
-          size="middle"
-          search={search.searchProps}
-          exportFilename={t('Remises de prélèvement')}
-          exportFetchAll={() =>
-            collectAllPages<RemittanceSummaryDto>(async (page, limit) => {
-              const response = await listRemittances(tenantId as string, {
-                ...(search.filterParams as RemittanceListFilters),
-                page,
-                pageSize: limit
-              });
-              return { items: response.items, total: response.total };
-            })
-          }
-          loading={isFetching}
-          columns={columns}
-          dataSource={data?.items ?? []}
-          scroll={{ x: 'max-content' }}
-          pagination={search.tablePagination(total)}
-          // Sous critère, la Table affiche seule son bloc « Aucun résultat » + « Effacer les critères ».
-          locale={search.isFiltered ? undefined : { emptyText: t('Aucune remise de prélèvement') }}
-        />
-        <ReturnImportsHistory tenantId={tenantId as string} />
+        <div {...helpAnchor('remises-tableau')}>
+          <Table<RemittanceSummaryDto>
+            helpId="locatif.prelevements.remises.tableau"
+            aria-label={t('Remises de prélèvement')}
+            rowKey="id"
+            size="middle"
+            search={search.searchProps}
+            exportFilename={t('Remises de prélèvement')}
+            exportFetchAll={() =>
+              collectAllPages<RemittanceSummaryDto>(async (page, limit) => {
+                const response = await listRemittances(tenantId as string, {
+                  ...(search.filterParams as RemittanceListFilters),
+                  page,
+                  pageSize: limit
+                });
+                return { items: response.items, total: response.total };
+              })
+            }
+            loading={isFetching}
+            columns={columns}
+            dataSource={data?.items ?? []}
+            scroll={{ x: 'max-content' }}
+            pagination={search.tablePagination(total)}
+            // Sous critère, la Table affiche seule son bloc « Aucun résultat » + « Effacer les critères ».
+            locale={search.isFiltered ? undefined : { emptyText: t('Aucune remise de prélèvement') }}
+          />
+        </div>
+        <ReturnImportsHistory tenantId={tenantId as string} helpId="locatif.prelevements.retours.historique" />
       </Space>
       <ReturnImportModal
+        helpId="locatif.prelevements.retours.import"
         tenantId={tenantId as string}
         open={importing}
         onClose={() => setImporting(false)}
@@ -201,6 +207,7 @@ export const DirectDebitRemittances: React.FC = () => {
         }}
       />
       <PrepareRemittanceModal
+        helpId="locatif.prelevements.remises.preparer"
         tenantId={tenantId as string}
         open={preparing}
         creditors={creditors}

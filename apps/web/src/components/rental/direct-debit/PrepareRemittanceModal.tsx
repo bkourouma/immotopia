@@ -6,6 +6,7 @@ import { dateFormat } from '../../../i18n/format';
 import { firstPossibleCollectionDate, isCollectionDateAllowed, toIsoDay } from './business-days';
 import { apiErrorMessage } from './direct-debit-shared';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 
 interface PrepareRemittanceModalProps {
   tenantId: string;
@@ -16,6 +17,8 @@ interface PrepareRemittanceModalProps {
   initialCreditorId?: string;
   /** « Aujourd'hui » ; injectable pour les tests. */
   today?: Date;
+  /** Fiche d'aide à afficher à côté du titre (absente : pas de « ? »). */
+  helpId?: string;
   onClose: () => void;
   onCreated: (result: RemittanceWithSkipped) => void;
 }
@@ -40,6 +43,7 @@ export const PrepareRemittanceModal: React.FC<PrepareRemittanceModalProps> = ({
   creditors,
   initialCreditorId,
   today,
+  helpId,
   onClose,
   onCreated
 }) => {
@@ -100,7 +104,7 @@ export const PrepareRemittanceModal: React.FC<PrepareRemittanceModalProps> = ({
   return (
     <Modal
       open={open}
-      title={t('Préparer une remise')}
+      title={helpId ? <HelpSectionTitle title={t('Préparer une remise')} helpId={helpId} /> : t('Préparer une remise')}
       okText={t('Préparer')}
       cancelText={t('Fermer')}
       okButtonProps={{ disabled: !creditorId || !date, loading: busy }}

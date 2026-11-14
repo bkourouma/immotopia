@@ -29,6 +29,7 @@ import { SignaturesPanel } from '../../components/signature/SignaturesPanel';
 import type { SignerInput } from '../../types/signature-types';
 import { LeaseDirectDebitPanel } from '../../components/rental/direct-debit/LeaseDirectDebitPanel';
 import { useMyMenuAccess } from '../../hooks/useMenuAccess';
+import { HelpButton, HelpSectionTitle } from '../../help';
 import { t as translate } from '../../i18n/t';
 import { LEASE_TAB_PARAM, defaultLeaseTab, resolveLeaseTab, withLeaseTab, withTabLifecycle } from './lease-detail-tabs';
 
@@ -318,7 +319,7 @@ export const LeaseDetailPage: React.FC = () => {
               title={
                 <Space>
                   <FileTextOutlined />
-                  <span>{translate('Informations générales')}</span>
+                  <HelpSectionTitle title={translate('Informations générales')} helpId="locatif.baux.fiche.identite" />
                 </Space>
               }
             >
@@ -396,7 +397,7 @@ export const LeaseDetailPage: React.FC = () => {
                 title={
                   <Space>
                     <DollarOutlined />
-                    <span>{translate('Financier')}</span>
+                    <HelpSectionTitle title={translate('Financier')} helpId="locatif.baux.fiche.financier" />
                   </Space>
                 }
               >
@@ -436,7 +437,7 @@ export const LeaseDetailPage: React.FC = () => {
                 title={
                   <Space>
                     <SafetyOutlined />
-                    <span>{translate('Pénalités de retard')}</span>
+                    <HelpSectionTitle title={translate('Pénalités de retard')} helpId="locatif.baux.fiche.penalites" />
                   </Space>
                 }
               >
@@ -665,6 +666,7 @@ export const LeaseDetailPage: React.FC = () => {
                 activeKey={currentTab}
                 type="line"
                 size="large"
+                tabBarExtraContent={<HelpButton helpId="locatif.baux.fiche.onglets" />}
                 onChange={key => handleTabChange(key, currentTab)}
                 // Les listes lourdes sont démontées ; dépôt et état des lieux gardent leur saisie.
                 items={withTabLifecycle(itemsWithPress)}

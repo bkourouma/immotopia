@@ -121,6 +121,7 @@ export const DirectDebitMandates: React.FC = () => {
           <Alert type="error" showIcon message={apiErrorMessage(error, t('Erreur lors du chargement des mandats'))} />
         )}
         <Table<MandateDto>
+          helpId="locatif.prelevements.mandats.tableau"
           aria-label={t('Mandats de prélèvement')}
           rowKey="id"
           size="middle"

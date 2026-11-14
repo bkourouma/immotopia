@@ -27,6 +27,7 @@ import {
 } from '../../services/lease-management-terms-service';
 import { formatMoney } from '../primitives';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 const { Text, Paragraph } = Typography;
 
@@ -178,7 +179,7 @@ export const LeaseManagementTermsCard: React.FC<LeaseManagementTermsCardProps> =
   }
 
   return (
-    <Card title={t('Honoraires et gestionnaire')}>
+    <Card title={<HelpSectionTitle title={t('Honoraires et gestionnaire')} helpId="locatif.baux.fiche.honoraires" />}>
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         <div>
           <Text strong>{t('Gestionnaire du bail')}</Text>

@@ -9,6 +9,7 @@ import {
 } from '../../../types/rental-declared-payment';
 import { TreasuryAccountSelector } from '../../finance/TreasuryAccountSelector';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 import {
   DECLARATION_ALREADY_REVIEWED_CODE,
   NOTE_MAX_LENGTH,
@@ -107,7 +108,12 @@ export const ApproveModal: React.FC<ApproveModalProps> = ({ tenantId, declaratio
   return (
     <Modal
       open
-      title={t('Valider la déclaration de paiement')}
+      title={
+        <HelpSectionTitle
+          title={t('Valider la déclaration de paiement')}
+          helpId="locatif.paiements.declarations.approuver"
+        />
+      }
       onCancel={onClose}
       onOk={() => void submit()}
       okText={differs ? t('Valider avec correction') : t('Valider telle que déclarée')}

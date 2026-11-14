@@ -21,6 +21,7 @@ import type { DocumentSearchParams } from './document-search-criteria';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { PageHeader, StateBlock, StatusTag, DataView, DataCard, useConfirmAction } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 import { localizedList, localizedRecord } from '../../i18n/localized';
 
 import { activeLocale } from '../../i18n/format';
@@ -263,6 +264,7 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
   return (
     <>
       <PageHeader
+        helpId="locatif.documents.liste"
         title={t('Documents')}
         subtitle={total > 0 ? `${total} document${total > 1 ? 's' : ''}` : undefined}
         primaryAction={{
@@ -273,6 +275,7 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
       />
 
       <DataView<RentalDocument>
+        helpId="locatif.documents.tableau"
         // Export de TOUS les documents, avec les mêmes filtres que la liste affichée.
         export={{
           filename: t('Documents de location'),
@@ -331,7 +334,7 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
       {isDesktop ? (
         <Modal
           open={formulaireOuvert}
-          title={t('Générer un document')}
+          title={<HelpSectionTitle title={t('Générer un document')} helpId="locatif.documents.generer" />}
           onCancel={() => setFormulaireOuvert(false)}
           footer={null}
           width={720}
@@ -342,7 +345,7 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
       ) : (
         <Drawer
           open={formulaireOuvert}
-          title={t('Générer un document')}
+          title={<HelpSectionTitle title={t('Générer un document')} helpId="locatif.documents.generer" />}
           onClose={() => setFormulaireOuvert(false)}
           placement="bottom"
           height="92%"

@@ -3,6 +3,7 @@ import { Alert, Form, Input, InputNumber, Modal, DatePicker } from 'antd';
 import dayjs, { Dayjs } from 'dayjs';
 import { RenewLeaseRequest } from '../../../services/lease-lifecycle-service';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 
 interface RenewalModalProps {
   open: boolean;
@@ -53,7 +54,7 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({ open, currentEndDate
 
   return (
     <Modal
-      title={t('Renouveler le bail')}
+      title={<HelpSectionTitle title={t('Renouveler le bail')} helpId="locatif.baux.fiche.vie.renouvellement" />}
       open={open}
       onCancel={onCancel}
       onOk={() => form.submit()}

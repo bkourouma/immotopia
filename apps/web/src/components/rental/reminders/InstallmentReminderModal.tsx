@@ -12,6 +12,7 @@ import { formatMoney } from '../../primitives';
 import { libellePeriodeEcheance } from '../../../lib/rental-labels';
 import { activeLocale } from '../../../i18n/format';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 import {
   asReminderLevel,
   reminderChannelLabel,
@@ -154,7 +155,12 @@ export const InstallmentReminderModal: React.FC<InstallmentReminderModalProps> =
       open={open}
       onCancel={onClose}
       destroyOnHidden
-      title={period ? t('Relance de loyer · échéance {{value}}', { value: period }) : t('Relance de loyer')}
+      title={
+        <HelpSectionTitle
+          title={period ? t('Relance de loyer · échéance {{value}}', { value: period }) : t('Relance de loyer')}
+          helpId="locatif.echeances.relance-individuelle"
+        />
+      }
       footer={
         sent ? (
           <Button type="primary" onClick={onClose}>

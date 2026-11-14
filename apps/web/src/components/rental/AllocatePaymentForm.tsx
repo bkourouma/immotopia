@@ -11,6 +11,7 @@ import { Checkbox } from '../ui/checkbox';
 import { Input } from '../ui/input';
 import { formatterMontant, parserMontant } from '../../utils/montant-saisi';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 import { formatMontantLocatif, libellePeriodeEcheance } from '../../lib/rental-labels';
 
 import { activeLocale } from '../../i18n/format';
@@ -160,7 +161,9 @@ export const AllocatePaymentForm: React.FC<AllocatePaymentFormProps> = ({
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <h3 className="text-lg font-semibold mb-2">{t('Allouer le paiement')}</h3>
+        <h3 className="text-lg font-semibold mb-2">
+          <HelpSectionTitle title={t('Allouer le paiement')} helpId="locatif.paiements.affectation" />
+        </h3>
         <div className="text-sm text-muted-foreground mb-4 space-y-1">
           <p>
             {t('Montant total:')} {formatCurrency(payment.amount, payment.currency)}

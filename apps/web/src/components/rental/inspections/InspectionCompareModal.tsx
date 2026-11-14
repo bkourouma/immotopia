@@ -13,6 +13,7 @@ import { StatCard } from '../../primitives/StatCard';
 import { Table } from '../../primitives/Table';
 import { activeLocale } from '../../../i18n/format';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 
 const { Text } = Typography;
 
@@ -252,7 +253,7 @@ export const InspectionCompareModal: React.FC<InspectionCompareModalProps> = ({ 
 
   return (
     <Modal
-      title={t('Comparaison entrée et sortie')}
+      title={<HelpSectionTitle title={t('Comparaison entrée et sortie')} helpId="locatif.edl.comparaison" />}
       open={open}
       onCancel={onClose}
       footer={null}
@@ -266,6 +267,7 @@ export const InspectionCompareModal: React.FC<InspectionCompareModalProps> = ({ 
         <Text>{t('Afficher seulement les écarts')}</Text>
       </Space>
       <Table
+        helpId="locatif.edl.comparaison.tableau"
         exportFilename={t('Comparaison entrée et sortie')}
         rowKey={row => `${row.roomId}-${row.itemId}`}
         dataSource={visibleRows}

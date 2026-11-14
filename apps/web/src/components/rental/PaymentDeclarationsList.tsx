@@ -28,6 +28,7 @@ import { RejectModal } from './declared-payment/RejectModal';
 import { DeclareForThirdPartyModal } from './declared-payment/DeclareForThirdPartyModal';
 import { formatPhone, operatorLabel } from './declared-payment/helpers';
 import { t } from '../../i18n/t';
+import { HelpButton } from '../../help';
 
 import { activeLocale } from '../../i18n/format';
 
@@ -413,15 +414,17 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
           />
         )}
 
-        {canCreate && (
-          <div>
+        <Space size={8} wrap>
+          {canCreate && (
             <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
               {t('Déclarer pour un tiers')}
             </Button>
-          </div>
-        )}
+          )}
+          <HelpButton helpId="locatif.paiements.declarations" />
+        </Space>
 
         <Table
+          helpId="locatif.paiements.declarations.tableau"
           exportFilename={t('Déclarations de paiement')}
           // Export de TOUTES les déclarations qui correspondent à la recherche affichée.
           exportFetchAll={() =>

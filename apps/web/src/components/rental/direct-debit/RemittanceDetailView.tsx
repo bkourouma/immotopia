@@ -41,6 +41,7 @@ import {
 import { saveBlob } from '../../../utils/save-blob';
 import { STALE_TIME } from '../../../lib/query-keys';
 import { t } from '../../../i18n/t';
+import { helpAnchor, HelpSectionTitle } from '../../../help';
 
 // Recherche locale dans les lignes de la remise : accesseurs stables, hors du composant.
 const LINE_SEARCH_TEXT = [
@@ -156,6 +157,14 @@ export interface RemittanceDetailViewProps {
   paymentHref?: (line: RemittanceLineDto) => string | null;
   /** Faux : consultation seule (aucun geste proposé). */
   canManage?: boolean;
+  /** Fiches d'aide des blocs de l'écran (absentes : pas de « ? »), propres à chaque périmètre. */
+  helpIds?: {
+    summary?: string;
+    notices?: string;
+    lines?: string;
+    returns?: string;
+    cancel?: string;
+  };
 }
 
 /**
@@ -175,7 +184,8 @@ export const RemittanceDetailView: React.FC<RemittanceDetailViewProps> = ({
   renderHeader,
   onCollectionsChanged,
   paymentHref,
-  canManage = true
+  canManage = true,
+  helpIds
 }) => {
   const syndic = scope === 'SYNDIC_LOT';
   const location = useLocation();
@@ -754,7 +764,7 @@ export const RemittanceDetailView: React.FC<RemittanceDetailViewProps> = ({
         )}
 
         {canManage && (
-          <Space wrap>
+          <Space wrap {...helpAnchor('remise-actions')}>
             {status === 'DRAFT' && (
               <>
                 <ConfirmButton
@@ -891,13 +901,33 @@ export const RemittanceDetailView: React.FC<RemittanceDetailViewProps> = ({
           />
         )}
         {showNoticesSummary && (
-          <PrenotificationSummaryAlert summary={summary} lineCount={remittance.lineCount} scope={scope} />
+          <PrenotificationSummaryAlert
+            summary={summary}
+            lineCount={remittance.lineCount}
+            scope={scope}
+            helpId={helpIds?.notices}
+          />
         )}
-        {showReturnSummary && <ReturnSummaryAlert summary={remittance.returnSummary} state={remittance.returnState} />}
+        {showReturnSummary && (
+          <ReturnSummaryAlert
+            summary={remittance.returnSummary}
+            state={remittance.returnState}
+            helpId={helpIds?.returns}
+          />
+        )}
         <SkippedMandatesAlert scope={scope} skipped={skipped} onClose={() => setSkipped([])} />
         {status === 'DRAFT' && <DraftSkippedMandatesSection scope={scope} skipped={remittance.skipped} />}
 
-        <Descriptions bordered size="small" column={{ xs: 1, md: 2, xl: 3 }}>
+        <Descriptions
+          bordered
+          size="small"
+          column={{ xs: 1, md: 2, xl: 3 }}
+          title={
+            helpIds?.summary ? (
+              <HelpSectionTitle title={t('Remise de prélèvements')} helpId={helpIds.summary} />
+            ) : undefined
+          }
+        >
           <Descriptions.Item label={t('Référence')}>
             <bdi dir="ltr">{remittance.reference}</bdi>
           </Descriptions.Item>
@@ -957,18 +987,21 @@ export const RemittanceDetailView: React.FC<RemittanceDetailViewProps> = ({
           {remittance.notes && <Descriptions.Item label={t('Notes')}>{remittance.notes}</Descriptions.Item>}
         </Descriptions>
 
-        <Table<RemittanceLineDto>
-          {...lineSearch.tableProps}
-          aria-label={t('Lignes de la remise')}
-          exportFilename={t('Lignes de la remise')}
-          exportFetchAll={lineSearch.exportAll}
-          rowKey="id"
-          size="middle"
-          columns={columns}
-          scroll={{ x: 'max-content' }}
-          onRow={line => ({ style: line.status === 'CANCELED' ? { opacity: 0.55 } : undefined })}
-          locale={lineSearch.isFiltered ? undefined : { emptyText: t('Aucune ligne dans cette remise') }}
-        />
+        <div {...helpAnchor('remise-lignes')}>
+          <Table<RemittanceLineDto>
+            {...lineSearch.tableProps}
+            helpId={helpIds?.lines}
+            aria-label={t('Lignes de la remise')}
+            exportFilename={t('Lignes de la remise')}
+            exportFetchAll={lineSearch.exportAll}
+            rowKey="id"
+            size="middle"
+            columns={columns}
+            scroll={{ x: 'max-content' }}
+            onRow={line => ({ style: line.status === 'CANCELED' ? { opacity: 0.55 } : undefined })}
+            locale={lineSearch.isFiltered ? undefined : { emptyText: t('Aucune ligne dans cette remise') }}
+          />
+        </div>
       </Space>
 
       <ReasonModal
@@ -984,6 +1017,7 @@ export const RemittanceDetailView: React.FC<RemittanceDetailViewProps> = ({
         required
         loading={busy === 'cancel'}
         error={dialogError}
+        helpId={helpIds?.cancel}
         onCancel={() => setCancelOpen(false)}
         onSubmit={reason => void handleCancel(reason)}
       />
@@ -994,6 +1028,7 @@ export const RemittanceDetailView: React.FC<RemittanceDetailViewProps> = ({
         collectionDate={remittance.collectionDate}
         loading={busy === 'settle'}
         error={dialogError}
+        helpId={helpIds?.returns}
         onCancel={() => setLineToSettle(null)}
         onSubmit={settledAt => void handleSettle(settledAt)}
       />
@@ -1005,6 +1040,7 @@ export const RemittanceDetailView: React.FC<RemittanceDetailViewProps> = ({
         collectionDate={remittance.collectionDate}
         loading={busy === 'reject'}
         error={dialogError}
+        helpId={helpIds?.returns}
         onCancel={() => setLineToReject(null)}
         onSubmit={input => void handleReject(input)}
       />
@@ -1016,6 +1052,7 @@ export const RemittanceDetailView: React.FC<RemittanceDetailViewProps> = ({
         collectionDate={remittance.collectionDate}
         loading={busy === 'settleAll'}
         error={dialogError}
+        helpId={helpIds?.returns}
         onCancel={() => {
           setSettleAllOpen(false);
           setSettleAllResult(null);

@@ -6,6 +6,7 @@ import { createRentalCollectionPayout } from '../../../services/rental-online-pa
 import { listTreasuryAccounts, type TreasuryAccountDto } from '../../../services/treasury-service';
 import type { CreateCollectionPayoutResultDto } from '../../../types/rental-online-payment';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 import { apiErrorMessage } from './helpers';
 
 const { Text, Paragraph } = Typography;
@@ -90,7 +91,7 @@ export const RentalPayoutModal: React.FC<RentalPayoutModalProps> = ({
   return (
     <Modal
       open={open}
-      title={t('Reverser vers la trésorerie')}
+      title={<HelpSectionTitle title={t('Reverser vers la trésorerie')} helpId="locatif.enligne.reversement" />}
       onCancel={onClose}
       onOk={() => void submit()}
       okText={t('Enregistrer')}
