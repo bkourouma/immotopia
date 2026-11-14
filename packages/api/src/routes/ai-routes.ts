@@ -13,6 +13,7 @@ import {
 import {
   chatHandler,
   deleteConversationHandler,
+  downloadArtifactHandler,
   executeActionHandler,
   getConversationHandler,
   getStatusHandler,
@@ -38,6 +39,7 @@ router.use(requireTenantCollaborator);
 router.get('/status', requireAiStatusAccess, getStatusHandler);
 router.get('/conversations', requireAiStatusAccess, listConversationsHandler);
 router.get('/conversations/:id', requireAiStatusAccess, getConversationHandler);
+router.get('/conversations/:id/artifacts/:artifactId/:format', requireAiStatusAccess, downloadArtifactHandler);
 router.patch('/conversations/:id', requireAiStatusAccess, updateConversationHandler);
 router.delete('/conversations/:id', requireAiStatusAccess, deleteConversationHandler);
 

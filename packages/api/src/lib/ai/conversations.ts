@@ -107,6 +107,26 @@ export async function getConversation(owner: AssistantOwner, id: string, scopeKe
   return { ...conversation, turns: turns.reverse() };
 }
 
+export async function getStoredArtifact(owner: AssistantOwner, conversationId: string, id: string, scopeKey: string) {
+  const turn = await prisma.assistantTurn.findFirst({
+    where: {
+      ...owner,
+      conversationId,
+      conversation: { scopeKey },
+      result: { array_contains: [{ type: 'artifact', artifact: { id } }] }
+    },
+    select: { result: true }
+  });
+  const events = turn?.result;
+  if (Array.isArray(events)) {
+    const match = (events as unknown as ResultEvent[]).find(
+      event => event.type === 'artifact' && event.artifact.id === id
+    );
+    if (match) return match.artifact;
+  }
+  throw new NotFoundError();
+}
+
 export async function updateConversation(
   owner: AssistantOwner,
   id: string,

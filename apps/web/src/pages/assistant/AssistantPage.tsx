@@ -9,6 +9,7 @@ import { ConversationHistory } from '../../components/copilot/ConversationHistor
 import { copilotService } from '../../services/copilot-service';
 import { feedback } from '../../lib/feedback';
 import { ArtifactPanel } from '../../components/copilot/artifact/ArtifactPanel';
+import { filenameFromDisposition, saveBlob } from '../../utils/save-blob';
 import { CopilotComposer } from '../../components/copilot/CopilotComposer';
 import { CopilotThread } from '../../components/copilot/CopilotThread';
 import { getCopilotPageContext } from '../../components/copilot/copilot-page-context';
@@ -184,6 +185,14 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
       selectedId={chat.selectedArtifactId}
       onSelect={chat.selectArtifact}
       onClose={closePanel}
+      onDownloadFile={
+        conversationId && !streaming
+          ? async (artifactId, format) => {
+              const file = await copilotService.downloadArtifact(tenantId, conversationId, artifactId, format);
+              saveBlob(file.data, filenameFromDisposition(file.headers['content-disposition'], `ImmoTopia.${format}`));
+            }
+          : undefined
+      }
     />
   );
 

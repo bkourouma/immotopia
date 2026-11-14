@@ -18,6 +18,7 @@ export interface ArtifactPanelProps {
   selectedId?: string;
   onSelect(id: string): void;
   onClose(): void;
+  onDownloadFile?(artifactId: string, format: 'pdf' | 'pptx'): Promise<void>;
 }
 
 function ArtifactSource({ provenance }: { provenance: ArtifactProvenance }) {
@@ -118,7 +119,13 @@ function ArtifactBody({ artifact }: { artifact: CopilotArtifact }): React.ReactE
 }
 
 /** Panneau de résultats : sélecteur d'artefact, téléchargement, fermeture, rendu. */
-export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({ artifacts, selectedId, onSelect, onClose }) => {
+export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
+  artifacts,
+  selectedId,
+  onSelect,
+  onClose,
+  onDownloadFile
+}) => {
   const bodyRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
   const artifact = artifacts.find(a => a.id === selectedId) ?? artifacts[artifacts.length - 1];
@@ -150,7 +157,20 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({ artifacts, selecte
             },
             { key: 'csv', label: t('Données (.csv)'), onClick: () => run(() => downloadCsv(artifact)) }
           ]
-        : [];
+        : [{ key: 'md', label: t('Markdown (.md)'), onClick: () => run(() => downloadMarkdown(artifact)) }];
+  if (onDownloadFile)
+    downloads.push({
+      key: 'pdf',
+      label: t('PDF (.pdf)'),
+      onClick: () => run(() => onDownloadFile(artifact.id, 'pdf'))
+    });
+
+  if (onDownloadFile)
+    downloads.push({
+      key: 'pptx',
+      label: t('PowerPoint (.pptx)'),
+      onClick: () => run(() => onDownloadFile(artifact.id, 'pptx'))
+    });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
@@ -172,7 +192,7 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({ artifacts, selecte
             </Typography.Title>
           )}
         </div>
-        {artifact.kind === 'markdown' || artifact.kind === 'document' ? (
+        {!onDownloadFile && (artifact.kind === 'markdown' || artifact.kind === 'document') ? (
           <Button icon={<DownloadOutlined aria-hidden />} onClick={() => void run(() => downloadMarkdown(artifact))}>
             {t('Télécharger')}
           </Button>

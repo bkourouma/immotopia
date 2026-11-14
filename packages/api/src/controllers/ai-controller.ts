@@ -1,4 +1,7 @@
 import { randomUUID } from 'node:crypto';
+import { z } from 'zod';
+import { buildArtifactPdf } from '../lib/ai/artifact-pdf';
+import { buildArtifactPowerPoint } from '../lib/ai/artifact-pptx';
 import type { Request, Response } from 'express';
 import { AiDisabledError } from '../middleware/ai-access-middleware';
 import { AppError, asyncHandler, ForbiddenError } from '../middleware/error-middleware';
@@ -30,6 +33,7 @@ import {
   deleteConversation,
   finishAssistantTurn,
   getConversation,
+  getStoredArtifact,
   historyQuery,
   listConversations,
   updateConversation
@@ -128,6 +132,34 @@ export const getConversationHandler = asyncHandler(async (req: Request, res: Res
   res
     .set('Cache-Control', 'private, no-store')
     .json({ success: true, data: await getConversation(owner, id, scopeKey) });
+});
+
+const artifactExportParams = z.object({ id: z.string().uuid(), artifactId: z.string().uuid() });
+
+const artifactExportFormat = z.enum(['pdf', 'pptx']);
+
+export const downloadArtifactHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { id, artifactId } = artifactExportParams.parse(req.params);
+  const { owner, scopeKey } = await conversationScope(req);
+  const artifact = await getStoredArtifact(owner, id, artifactId, scopeKey);
+  const format = artifactExportFormat.parse(req.params.format);
+  const file = format === 'pdf' ? await buildArtifactPdf(artifact) : await buildArtifactPowerPoint(artifact);
+  const filename =
+    artifact.title
+      .replace(/[^\p{L}\p{N} ._-]+/gu, ' ')
+      .trim()
+      .slice(0, 100) || 'ImmoTopia';
+  res.set('Cache-Control', 'private, no-store');
+  res.set('X-Content-Type-Options', 'nosniff');
+  res.set(
+    'Content-Disposition',
+    `attachment; filename="ImmoTopia.${format}"; filename*=UTF-8''${encodeURIComponent(filename)}.${format}`
+  );
+  res
+    .type(
+      format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+    )
+    .send(file);
 });
 
 export const updateConversationHandler = asyncHandler(async (req: Request, res: Response) => {

@@ -23,9 +23,11 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 **PR #221** — Branche `feat/assistant-immotopia`. Les commits `ab7d75f5` et `a51e965c` livrent le chat et son historique privé, le lanceur, le briefing et les analyses locatives (tableaux, graphiques serveur, provenance et exports Excel/CSV). La migration a été appliquée sur PostgreSQL de test et la suite principale d’isolation a validé les refus entre comptes et agences.
 
-**Dernier lot** — Indicateurs calculés à partir des tableaux de la conversation, comparaisons par devise, rapports Markdown et tableaux reliés avec leur provenance. L’ajout de ces deux transformations préserve l’empreinte des anciens fils. Si la lecture des droits d’abonnement échoue en mode enforce, l’accès aux fils persistants échoue aussi.
+**Artefacts (`3d40a11d`)** — Indicateurs calculés à partir des tableaux de la conversation, comparaisons par devise, rapports Markdown et tableaux reliés avec leur provenance. L’ajout de ces deux transformations préserve l’empreinte des anciens fils. Si la lecture des droits d’abonnement échoue en mode enforce, l’accès aux fils persistants échoue aussi.
 
-**Suite** — Construire les jeux rejouables et les versions, les exports PDF et PPTX, les pièces jointes et la transcription. Poursuivre le partage, les épingles, les actions de suivi, les envois, l’administration et les six langues. Recetter avec un fournisseur réel et un navigateur.
+**Dernier lot** — Téléchargements PDF et PowerPoint des artefacts enregistrés, avec contrôle de l’agence, du propriétaire et de l’empreinte des droits. Les fichiers utilisent les valeurs enregistrées, incluent la provenance et signalent un tableau tronqué. Les graphiques sont exportés sous forme de tableaux de données.
+
+**Suite** — Construire les jeux rejouables et les versions, enrichir les exports avec des graphiques natifs, puis ajouter les pièces jointes et la transcription. Poursuivre le partage, les épingles, les actions de suivi, les envois, l’administration et les six langues. Recetter avec un fournisseur réel et un navigateur.
 
 ## chore/deps-patch-minor — 2026-11-11
 

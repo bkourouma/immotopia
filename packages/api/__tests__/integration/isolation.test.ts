@@ -251,7 +251,17 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       const colleague = await createTenantAdminUser(tenantA, 'assistant-colleague');
       const turnId = randomUUID();
       const payload = { turnId, messages: [{ role: 'user', content: 'Bilan confidentiel du test' }] };
-      mockFakeScript = [{ text: 'Résultat synthétique.' }];
+      mockFakeScript = [
+        {
+          toolCalls: [
+            {
+              name: 'show_artifact',
+              input: { kind: 'markdown', title: 'Bilan confidentiel', content: 'Résultat synthétique.' }
+            }
+          ]
+        },
+        { text: 'Résultat synthétique.' }
+      ];
       const stream = await request(app).post(`${baseA}/chat`).set(authed(adminA)).send(payload);
       expect(stream.status).toBe(200);
       const conversationId = JSON.parse(
@@ -275,6 +285,34 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
 
       const otherOwner = await request(app).get(`${baseA}/conversations/${conversationId}`).set(authed(colleague));
       const otherTenant = await request(app).get(`${baseB}/conversations/${conversationId}`).set(authed(adminB));
+      const artifactId = persisted.body.data.turns[0].result[0].artifact.id;
+      const suffix = `/conversations/${conversationId}/artifacts/${artifactId}/pdf`;
+      const download = await request(app)
+        .get(baseA + suffix)
+        .set(authed(adminA));
+      expect(download.status).toBe(200);
+      expect(download.headers['content-type']).toMatch(/^application\/pdf/);
+      expect(download.headers['cache-control']).toBe('private, no-store');
+      const powerpoint = await request(app)
+        .get(baseA + suffix.replace(/pdf$/, 'pptx'))
+        .set(authed(adminA));
+      expect(powerpoint.status).toBe(200);
+      expect(powerpoint.headers['content-type']).toContain('presentationml.presentation');
+      expect(
+        (
+          await request(app)
+            .get(baseA + suffix)
+            .set(authed(colleague))
+        ).status
+      ).toBe(404);
+      expect(
+        (
+          await request(app)
+            .get(baseB + suffix)
+            .set(authed(adminB))
+        ).status
+      ).toBe(404);
+
       expect(otherOwner.status).toBe(404);
       expect(otherTenant.status).toBe(404);
 
