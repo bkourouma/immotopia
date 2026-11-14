@@ -71,7 +71,7 @@ async function fetchPermissionsFromDB(userId: string, tenantId?: string): Promis
   // client de l'agence (le cache est invalidé à la désactivation).
   if (tenantId) {
     const membership = await prisma.membership.findUnique({
-      where: { userId_tenantId: { userId, tenantId } },
+      where: { userId_tenantId: { userId, tenantId }, tenantId },
       select: { status: true }
     });
     if (membership?.status !== MembershipStatus.ACTIVE) {
