@@ -35,6 +35,7 @@ import { CLE_DUPLICATION_BON, copieDuBon, lireDuplicationBon } from '../../utils
 import type { DuplicationBonDeCommande } from '../../utils/duplication-piece';
 
 import { activeLocale } from '../../i18n/format';
+import { HelpSectionTitle, helpAnchor } from '../../help';
 const { Title, Text } = Typography;
 
 /**
@@ -364,10 +365,14 @@ export const BonDeCommande: React.FC = () => {
   if (modeCreation) {
     return (
       <>
-        <PageHeader title={t('Nouveau bon de commande')} breadcrumbs={[...filAriane, { label: t('Nouveau') }]} />
+        <PageHeader
+          helpId="finance.bon-de-commande.page"
+          title={t('Nouveau bon de commande')}
+          breadcrumbs={[...filAriane, { label: t('Nouveau') }]}
+        />
         <Card>
           <Space wrap size="middle" align="end" style={{ marginBottom: 'var(--space-4)', width: '100%' }}>
-            <div style={{ minWidth: 220 }}>
+            <div style={{ minWidth: 220 }} {...helpAnchor('bon-entete')}>
               <div>
                 <label htmlFor="bon-chantier">{t('Chantier')}</label>
               </div>
@@ -424,7 +429,9 @@ export const BonDeCommande: React.FC = () => {
             </div>
           </Space>
 
-          <Title level={5}>{t('Lignes')}</Title>
+          <Title level={5} {...helpAnchor('bon-lignes')}>
+            <HelpSectionTitle title={t('Lignes')} helpId="finance.bon-de-commande.lignes-saisie" />
+          </Title>
           <Space orientation="vertical" size="small" style={{ width: '100%', marginBottom: 'var(--space-4)' }}>
             {lignes.map(ligne => (
               <Space key={ligne.id} align="start" wrap>
@@ -494,7 +501,13 @@ export const BonDeCommande: React.FC = () => {
             </Text>
           </div>
 
-          <Button type="primary" loading={enregistrementEnCours} disabled={!peutEnregistrer} onClick={enregistrer}>
+          <Button
+            type="primary"
+            loading={enregistrementEnCours}
+            disabled={!peutEnregistrer}
+            onClick={enregistrer}
+            {...helpAnchor('bon-enregistrer')}
+          >
             {t('Enregistrer en brouillon')}
           </Button>
         </Card>
@@ -559,6 +572,7 @@ export const BonDeCommande: React.FC = () => {
   return (
     <>
       <PageHeader
+        helpId="finance.bon-de-commande.page"
         title={bon.reference}
         subtitle={`${bon.siteLabel} · ${bon.supplierLabel}`}
         breadcrumbs={[...filAriane, { label: bon.reference }]}
@@ -588,11 +602,19 @@ export const BonDeCommande: React.FC = () => {
       >
         <StatCard label={t('Date')} value={dateCourte(bon.orderDate)} />
         <StatCard label={t('Montant total')} value={<MoneyValue value={bon.totalAmount} />} />
-        <StatCard label={t('Facturé')} value={<MoneyValue value={bon.invoicedAmount} />} />
-        <StatCard label={t('Reste à facturer')} value={<MoneyValue value={bon.remainingAmount} />} />
+        <StatCard
+          helpId="finance.bon-de-commande.indicateurs"
+          label={t('Facturé')}
+          value={<MoneyValue value={bon.invoicedAmount} />}
+        />
+        <StatCard
+          helpId="finance.bon-de-commande.indicateurs"
+          label={t('Reste à facturer')}
+          value={<MoneyValue value={bon.remainingAmount} />}
+        />
       </div>
 
-      <Space wrap style={{ marginBottom: 'var(--space-6)' }}>
+      <Space wrap style={{ marginBottom: 'var(--space-6)' }} {...helpAnchor('bon-actions')}>
         {bon.status === 'DRAFT' && (
           <ConfirmAction
             title={t('Émettre le bon {{reference}} ?', { reference: bon.reference })}
@@ -622,7 +644,12 @@ export const BonDeCommande: React.FC = () => {
       </Space>
 
       <Modal
-        title={t('Annuler le bon {{reference}} ?', { reference: bon.reference })}
+        title={
+          <HelpSectionTitle
+            title={t('Annuler le bon {{reference}} ?', { reference: bon.reference })}
+            helpId="finance.bon-de-commande.annulation"
+          />
+        }
         open={annulationOuverte}
         onCancel={() => setAnnulationOuverte(false)}
         onOk={annuler}
@@ -650,6 +677,7 @@ export const BonDeCommande: React.FC = () => {
 
       <Title level={4}>{t('Lignes du bon')}</Title>
       <DataView<PurchaseOrder['lines'][number]>
+        helpId="finance.bon-de-commande.lignes"
         items={bon.lines.slice((pageLignesEffective - 1) * taillePageLignes, pageLignesEffective * taillePageLignes)}
         total={bon.lines.length}
         page={pageLignesEffective}

@@ -15,6 +15,7 @@ import { useLocalListSearch } from '../../../../utils/list-search';
 import type { SearchCriterion } from '../../../../utils/list-search';
 import { localizedList } from '../../../../i18n/localized';
 import { t } from '../../../../i18n/t';
+import { helpAnchor } from '../../../../help';
 import { ActivationCodeModal } from './ActivationCodeModal';
 import { RegistrationForm } from './RegistrationForm';
 import { RegistrationSessionsDrawer, RegistrationSitesModal, RevokeRegistrationModal } from './RegistrationDialogs';
@@ -235,37 +236,45 @@ export const WhatsappRegistrationsTab: React.FC<WhatsappRegistrationsTabProps> =
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBlockEnd: 12 }}>
-        <Button type="primary" icon={<UserAddOutlined />} onClick={() => setFormOpen(true)}>
+        <Button
+          type="primary"
+          icon={<UserAddOutlined />}
+          onClick={() => setFormOpen(true)}
+          {...helpAnchor('whatsapp-inscrire')}
+        >
           {t('Inscrire un chef de chantier')}
         </Button>
       </div>
 
-      <DataView<RegistrationView>
-        aria-label={t('Chefs de chantier inscrits')}
-        {...local.dataViewProps}
-        export={{ filename: t('Chefs de chantier inscrits'), fetchAll: local.exportAll }}
-        loading={loading}
-        error={error}
-        errorCause={errorCause}
-        onRetry={onRetry}
-        emptyDescription={t('Aucun chef de chantier inscrit.')}
-        rowKey={r => r.id}
-        columns={columns}
-        scrollX={900}
-        renderCard={r => (
-          <DataCard
-            title={r.userLabel}
-            subtitle={<span dir="ltr">{r.phoneMasked}</span>}
-            status={<StatusCell registration={r} />}
-            fields={[
-              { label: t('Chantiers'), value: <SiteTags sites={r.sites} /> },
-              { label: t('Accès'), value: <AccessCell registration={r} /> },
-              { label: t('Dernier message'), value: formatDateTime(r.lastInboundAt) }
-            ]}
-            secondaryActions={actions(r)}
-          />
-        )}
-      />
+      <div {...helpAnchor('whatsapp-chefs')}>
+        <DataView<RegistrationView>
+          helpId="finance.whatsapp.inscriptions"
+          aria-label={t('Chefs de chantier inscrits')}
+          {...local.dataViewProps}
+          export={{ filename: t('Chefs de chantier inscrits'), fetchAll: local.exportAll }}
+          loading={loading}
+          error={error}
+          errorCause={errorCause}
+          onRetry={onRetry}
+          emptyDescription={t('Aucun chef de chantier inscrit.')}
+          rowKey={r => r.id}
+          columns={columns}
+          scrollX={900}
+          renderCard={r => (
+            <DataCard
+              title={r.userLabel}
+              subtitle={<span dir="ltr">{r.phoneMasked}</span>}
+              status={<StatusCell registration={r} />}
+              fields={[
+                { label: t('Chantiers'), value: <SiteTags sites={r.sites} /> },
+                { label: t('Accès'), value: <AccessCell registration={r} /> },
+                { label: t('Dernier message'), value: formatDateTime(r.lastInboundAt) }
+              ]}
+              secondaryActions={actions(r)}
+            />
+          )}
+        />
+      </div>
 
       <Typography.Paragraph type="secondary" style={{ marginBlockStart: 16 }}>
         {t(

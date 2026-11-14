@@ -5,6 +5,7 @@ import dayjs from 'dayjs';
 import type { SyncMeta } from '../../../../services/accounting-exports-service';
 import { ContexteMontants, deviseParDefaut } from '../../../../components/primitives/MoneyValue';
 import { t } from '../../../../i18n/t';
+import { HelpButton, helpAnchor } from '../../../../help';
 import { useAccountingPeriod } from './useAccountingPeriod';
 import { SyncBanner, SyncStatus, useAccountingSync } from './useAccountingSync';
 
@@ -53,9 +54,10 @@ export const AccountingFrame: React.FC<AccountingFrameProps> = ({ sync, actions,
         )}
       </Text>
 
-      <div style={{ marginBlockEnd: 'var(--space-4)' }}>
+      <div style={{ marginBlockEnd: 'var(--space-4)' }} {...helpAnchor('comptabilite-periode')}>
         <div>
-          <label htmlFor="comptabilite-periode">{t('Période')}</label>
+          <label htmlFor="comptabilite-periode">{t('Période')}</label>{' '}
+          <HelpButton helpId="finance.comptabilite.periode" size="small" />
         </div>
         <Space wrap align="start">
           <RangePicker
@@ -92,8 +94,10 @@ export const AccountingFrame: React.FC<AccountingFrameProps> = ({ sync, actions,
           marginBlockEnd: 'var(--space-4)'
         }}
       >
-        <SyncStatus state={syncState} />
-        {actions}
+        <div {...helpAnchor('comptabilite-synchro')}>
+          <SyncStatus state={syncState} />
+        </div>
+        <div {...helpAnchor('comptabilite-export')}>{actions}</div>
       </div>
 
       <SyncBanner state={syncState} />

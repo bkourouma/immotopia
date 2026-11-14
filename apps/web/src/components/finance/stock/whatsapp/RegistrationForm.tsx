@@ -11,6 +11,7 @@ import {
 import type { RegistrationWithCode, SiteRef } from '../../../../types/finance-stock-whatsapp-types';
 import { handleApiError } from '../../../../utils/error-handler';
 import { t } from '../../../../i18n/t';
+import { HelpSectionTitle } from '../../../../help';
 import { apiErrorOf } from './whatsapp-labels';
 
 export const STOCK_WHATSAPP_ELIGIBLE_MEMBERS_ENTITY = 'stock-whatsapp-eligible-members';
@@ -129,7 +130,7 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({ tenantId, op
   return (
     <Modal
       open={open}
-      title={t('Inscrire un chef de chantier')}
+      title={<HelpSectionTitle title={t('Inscrire un chef de chantier')} helpId="finance.whatsapp.inscrire" />}
       okText={t('Inscrire')}
       cancelText={t('Annuler')}
       okButtonProps={{ loading: mutation.isPending, disabled: aucunChef }}

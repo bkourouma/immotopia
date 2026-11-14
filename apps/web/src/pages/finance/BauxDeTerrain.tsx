@@ -14,6 +14,7 @@ import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion } from '../../utils/list-search';
 import { PageHeader, StateBlock, MoneyValue, DataView, DataCard, StatusTag } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 /**
  * Baux de terrain — liste et création. Lot 4, sous-lot 1
@@ -265,12 +266,14 @@ export const BauxDeTerrain: React.FC = () => {
   return (
     <>
       <PageHeader
+        helpId="finance.baux-terrain.page"
         title={t('Baux de terrain')}
         subtitle={baux.length > 0 ? `${baux.length} bail${baux.length > 1 ? 'aux' : ''}` : undefined}
         primaryAction={{ label: t('Nouveau bail'), icon: <PlusOutlined />, onClick: ouvrirCreation }}
       />
 
       <DataView<LandLease>
+        helpId="finance.baux-terrain.tableau"
         // Le contrat de `listLandLeases` ne pagine pas (data-model.md §5) :
         // recherche et pagination sont locales.
         scrollX={1200}
@@ -305,7 +308,7 @@ export const BauxDeTerrain: React.FC = () => {
       />
 
       <Modal
-        title={t('Nouveau bail de terrain')}
+        title={<HelpSectionTitle title={t('Nouveau bail de terrain')} helpId="finance.baux-terrain.nouveau" />}
         open={modalOuvert}
         onCancel={fermerCreation}
         confirmLoading={creationEnCours}

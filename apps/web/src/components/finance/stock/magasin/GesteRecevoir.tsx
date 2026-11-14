@@ -241,7 +241,11 @@ export const GesteRecevoir: React.FC<GesteProps> = ({
 
   if (etape === 'facture') {
     contenu = (
-      <EtapeGeste titre={t('Quelle facture ?')} onRetour={() => confirmerAbandon(entame)}>
+      <EtapeGeste
+        helpId="finance.magasin.recevoir"
+        titre={t('Quelle facture ?')}
+        onRetour={() => confirmerAbandon(entame)}
+      >
         <ListeChoix
           aria-label={t('Factures validées')}
           lignes={lignesFactures}
@@ -278,6 +282,7 @@ export const GesteRecevoir: React.FC<GesteProps> = ({
     const vue = recus.vue;
     contenu = (
       <EtapeGeste
+        helpId="finance.magasin.recevoir"
         titre={t('Cette facture a déjà été réceptionnée')}
         rappel={rappelFacture}
         onRetour={() => setEtape('facture')}
@@ -326,6 +331,7 @@ export const GesteRecevoir: React.FC<GesteProps> = ({
   } else if (etape === 'lieu') {
     contenu = (
       <EtapeGeste
+        helpId="finance.magasin.recevoir"
         titre={t('Où arrive la marchandise ?')}
         rappel={rappelFacture}
         onRetour={() => setEtape(facture && facture.receiptCount > 0 ? 'deja-recue' : 'facture')}
@@ -347,6 +353,7 @@ export const GesteRecevoir: React.FC<GesteProps> = ({
   } else if (etape === 'articles') {
     contenu = (
       <SaisieArticles
+        helpId="finance.magasin.recevoir"
         mode="reception"
         titre={t('Qu’avez-vous reçu ?')}
         rappel={rappelFacture}
@@ -364,6 +371,7 @@ export const GesteRecevoir: React.FC<GesteProps> = ({
   } else if (etape === 'photos') {
     contenu = (
       <EtapeGeste
+        helpId="finance.magasin.recevoir"
         titre={t('Photos')}
         rappel={t('Facultatif')}
         onRetour={() => setEtape('articles')}
@@ -382,6 +390,7 @@ export const GesteRecevoir: React.FC<GesteProps> = ({
   } else if (etape === 'verifier') {
     contenu = (
       <EtapeGeste
+        helpId="finance.magasin.recevoir"
         titre={t('Vérifiez')}
         onRetour={() => setEtape('photos')}
         persistant={photos}
@@ -433,6 +442,7 @@ export const GesteRecevoir: React.FC<GesteProps> = ({
   } else if (etape === 'fait' && resultat) {
     contenu = (
       <EtapeGeste
+        helpId="finance.magasin.recevoir"
         titre={resultat.replayed ? t('Réception déjà enregistrée') : t('Réception enregistrée')}
         persistant={photos}
       >

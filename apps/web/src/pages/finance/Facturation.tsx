@@ -27,6 +27,7 @@ import { useAgencyFeatures } from '../../hooks/useAgencyFeatures';
 import { ModuleNotIncluded } from '../../components/primitives/ModuleNotIncluded';
 
 import { activeLocale } from '../../i18n/format';
+import { HelpSectionTitle, helpAnchor } from '../../help';
 const { Text, Title } = Typography;
 
 /**
@@ -214,6 +215,7 @@ function TableauFactures({ lignes }: { lignes: LigneFacturee[] }) {
   });
   return (
     <DataView<LigneFacturee>
+      helpId="finance.facturation.factures"
       {...local.dataViewProps}
       search={{ ...local.searchProps, 'aria-label': t('Rechercher dans les baux facturés') }}
       emptyDescription={t('Aucun bail facturé pour cette période.')}
@@ -258,6 +260,7 @@ function TableauExclus({ lignes }: { lignes: LigneExclue[] }) {
   });
   return (
     <DataView<LigneExclue>
+      helpId="finance.facturation.exclus"
       {...local.dataViewProps}
       search={{ ...local.searchProps, 'aria-label': t('Rechercher dans les baux exclus') }}
       emptyDescription={t("Aucun bail exclu : la campagne a facturé l'ensemble des baux éligibles.")}
@@ -290,6 +293,7 @@ function TableauAvances({ lignes }: { lignes: LigneAvance[] }) {
   });
   return (
     <DataView<LigneAvance>
+      helpId="finance.facturation.avances"
       {...local.dataViewProps}
       search={{ ...local.searchProps, 'aria-label': t('Rechercher dans les avances imputées') }}
       emptyDescription={t('Aucune avance à imputer sur cette période.')}
@@ -428,6 +432,7 @@ function HistoriqueCampagnes({ campagnes, loading, fetching, error, onRetry, onO
 
   return (
     <DataView<BillingRun>
+      helpId="finance.facturation.historique"
       {...local.dataViewProps}
       search={{ ...local.searchProps, 'aria-label': t("Rechercher dans l'historique des campagnes") }}
       loading={loading}
@@ -497,7 +502,7 @@ function CompteRendu({ run, loading, error, onRetry }: CompteRenduProps) {
       >
         <div>
           <Title level={4} style={{ margin: 0 }}>
-            {t('Compte rendu —')} {run.label}
+            <HelpSectionTitle title={`${t('Compte rendu —')} ${run.label}`} helpId="finance.facturation.compte-rendu" />
           </Title>
           <Text type="secondary">
             {capitaliser(libellePeriode(run.periodMonth, run.periodYear))} {t('· Exécutée le')}{' '}
@@ -661,16 +666,23 @@ export const Facturation: React.FC = () => {
   return (
     <>
       <PageHeader
+        helpId="finance.facturation.page"
         title={t('Facturation')}
         subtitle={campagnes.length > 0 ? `${campagnes.length} campagne${campagnes.length > 1 ? 's' : ''}` : undefined}
       />
 
       <Card style={{ marginBottom: 'var(--space-6)' }}>
         <Title level={4} style={{ marginTop: 0 }}>
-          {t('Lancer la facturation du mois')}
+          <HelpSectionTitle title={t('Lancer la facturation du mois')} helpId="finance.facturation.lancer" />
         </Title>
 
-        <Space wrap size="middle" align="end" style={{ marginBottom: 'var(--space-3)', width: '100%' }}>
+        <Space
+          wrap
+          size="middle"
+          align="end"
+          style={{ marginBottom: 'var(--space-3)', width: '100%' }}
+          {...helpAnchor('facturation-periode')}
+        >
           <div>
             <div>
               <label htmlFor="facturation-mois">{t('Mois')}</label>
@@ -730,7 +742,7 @@ export const Facturation: React.FC = () => {
           okText={campagneExistante ? t('Relancer') : t('Lancer')}
           onConfirm={handleLaunch}
         >
-          <Button type="primary" icon={<ThunderboltOutlined />}>
+          <Button type="primary" icon={<ThunderboltOutlined />} {...helpAnchor('facturation-lancer')}>
             {campagneExistante ? t('Relancer la campagne') : t('Lancer la campagne')}
           </Button>
         </ConfirmAction>
@@ -752,14 +764,16 @@ export const Facturation: React.FC = () => {
       )}
 
       <Title level={4}>{t('Historique des campagnes')}</Title>
-      <HistoriqueCampagnes
-        campagnes={campagnesData}
-        loading={historiqueEnAttente}
-        fetching={historiqueEnCours}
-        error={erreurHistorique}
-        onRetry={() => refetchHistorique()}
-        onOpen={ouvrirCampagne}
-      />
+      <div {...helpAnchor('facturation-historique')}>
+        <HistoriqueCampagnes
+          campagnes={campagnesData}
+          loading={historiqueEnAttente}
+          fetching={historiqueEnCours}
+          error={erreurHistorique}
+          onRetry={() => refetchHistorique()}
+          onOpen={ouvrirCampagne}
+        />
+      </div>
     </>
   );
 };

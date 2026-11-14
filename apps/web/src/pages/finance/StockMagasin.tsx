@@ -76,6 +76,7 @@ export function StockMagasin(): React.ReactElement {
 
   const enTete = (
     <PageHeader
+      helpId="finance.magasin.page"
       title={t('Magasin')}
       subtitle={
         donnees && lieuValide && vue.kind !== 'lieu' ? (

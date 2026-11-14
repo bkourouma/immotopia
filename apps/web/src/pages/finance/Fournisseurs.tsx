@@ -14,6 +14,7 @@ import { queryKey, entityKeyPrefix, STALE_TIME } from '../../lib/query-keys';
 import { PageHeader, StateBlock, StatusTag, DataView, DataCard } from '../../components/primitives';
 import { t } from '../../i18n/t';
 import { localizedList } from '../../i18n/localized';
+import { HelpSectionTitle } from '../../help';
 
 /**
  * Fournisseurs — liste et création, récit 2 du lot 2
@@ -165,6 +166,7 @@ export const Fournisseurs: React.FC = () => {
   return (
     <>
       <PageHeader
+        helpId="finance.fournisseurs.page"
         title={t('Fournisseurs')}
         subtitle={
           // Deux clés plutôt qu'un « s » collé : chaque langue accorde à sa façon.
@@ -174,6 +176,7 @@ export const Fournisseurs: React.FC = () => {
       />
 
       <DataView<Supplier>
+        helpId="finance.fournisseurs.tableau"
         items={fournisseurs}
         total={total}
         search={search.searchProps}
@@ -220,7 +223,7 @@ export const Fournisseurs: React.FC = () => {
       />
 
       <Modal
-        title={t('Nouveau fournisseur')}
+        title={<HelpSectionTitle title={t('Nouveau fournisseur')} helpId="finance.fournisseurs.nouveau" />}
         open={ouvert}
         onCancel={fermer}
         onOk={soumettre}

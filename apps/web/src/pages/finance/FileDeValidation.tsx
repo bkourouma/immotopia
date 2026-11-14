@@ -27,6 +27,7 @@ import {
 } from '../../components/primitives';
 import { t } from '../../i18n/t';
 import { localizedList } from '../../i18n/localized';
+import { HelpButton, HelpSectionTitle } from '../../help';
 
 import { activeLocale } from '../../i18n/format';
 const { Text, Title } = Typography;
@@ -470,6 +471,7 @@ export const FileDeValidation: React.FC = () => {
   return (
     <>
       <PageHeader
+        helpId="finance.validation.page"
         title={t('File de validation')}
         subtitle={compteurs.length > 0 ? `${accord(compteurs.length, t('pièce'), t('pièces'))} en attente` : undefined}
       />
@@ -484,14 +486,17 @@ export const FileDeValidation: React.FC = () => {
           }}
         >
           <StatCard
+            helpId="finance.validation.indicateurs"
             label={DOCUMENT_TYPE_LABELS.SUPPLIER_INVOICE}
             value={String(compteurs.filter(d => d.documentType === 'SUPPLIER_INVOICE').length)}
           />
           <StatCard
+            helpId="finance.validation.indicateurs"
             label={DOCUMENT_TYPE_LABELS.SUPPLIER_PAYMENT}
             value={String(compteurs.filter(d => d.documentType === 'SUPPLIER_PAYMENT').length)}
           />
           <StatCard
+            helpId="finance.validation.indicateurs"
             label={DOCUMENT_TYPE_LABELS.CASH_VOUCHER}
             value={String(compteurs.filter(d => d.documentType === 'CASH_VOUCHER').length)}
           />
@@ -510,7 +515,10 @@ export const FileDeValidation: React.FC = () => {
       {selection.size > 0 && (
         <Card style={{ marginBottom: 'var(--space-4)' }}>
           <Space wrap align="center" style={{ justifyContent: 'space-between', width: '100%' }}>
-            <Text>{accord(piecesSelectionnees.length, t('pièce sélectionnée'), t('pièces sélectionnées'))}</Text>
+            <Space size="small">
+              <Text>{accord(piecesSelectionnees.length, t('pièce sélectionnée'), t('pièces sélectionnées'))}</Text>
+              <HelpButton size="small" helpId="finance.validation.lot" />
+            </Space>
             <Button type="primary" onClick={demanderValidationLot}>
               {t('Valider la sélection')}
             </Button>
@@ -530,7 +538,10 @@ export const FileDeValidation: React.FC = () => {
             }}
           >
             <Title level={5} style={{ margin: 0 }}>
-              {t('Compte rendu de la validation en lot')}
+              <HelpSectionTitle
+                title={t('Compte rendu de la validation en lot')}
+                helpId="finance.validation.compte-rendu"
+              />
             </Title>
             <Button type="text" onClick={() => setRapportLot(null)} aria-label={t('Fermer le compte rendu')}>
               {t('Fermer')}
@@ -568,6 +579,7 @@ export const FileDeValidation: React.FC = () => {
       )}
 
       <DataView<PendingDocument>
+        helpId="finance.validation.tableau"
         export={{ filename: t('File de validation'), fetchAll: local.exportAll }}
         // Le contrat (`getValidationQueue`) rend l'ensemble des pièces en
         // attente, sans enveloppe de pagination : pagination locale.

@@ -35,6 +35,7 @@ import {
 } from '../../components/primitives';
 import type { StatusTone } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 import { TreasuryAccountSelector } from '../../components/finance/TreasuryAccountSelector';
 
 import { activeLocale } from '../../i18n/format';
@@ -292,6 +293,7 @@ function SectionNotes({ notes, loading, error, onValider }: SectionNotesProps) {
 
   return (
     <DataView<SalaryNote>
+      helpId="finance.salarie.notes"
       // Le contrat de `listSalaryNotes` ne pagine pas : recherche et pagination locales.
       {...local.dataViewProps}
       search={{ ...local.searchProps, 'aria-label': t('Rechercher dans les notes de salaire') }}
@@ -391,6 +393,7 @@ function SectionReglements({ reglements, loading, error, onValider }: SectionReg
 
   return (
     <DataView<SalaryPayment>
+      helpId="finance.salarie.reglements"
       // Le contrat de `listSalaryPayments` ne pagine pas : recherche et pagination locales.
       {...local.dataViewProps}
       search={{ ...local.searchProps, 'aria-label': t('Rechercher dans les règlements') }}
@@ -691,6 +694,7 @@ export const Salarie: React.FC = () => {
   return (
     <>
       <PageHeader
+        helpId="finance.salarie.page"
         title={salarie.fullName}
         subtitle={salarie.role ?? undefined}
         breadcrumbs={filAriane}
@@ -712,6 +716,7 @@ export const Salarie: React.FC = () => {
           pour que personne ne fasse la soustraction de tête et s'étonne.
         */}
         <StatCard
+          helpId="finance.salarie.solde"
           label={ilNousDoit ? t('Avance à retenir') : t('Ce qu’on lui doit')}
           value={<MoneyValue value={ilNousDoit ? -salarie.accountBalance : salarie.accountBalance} />}
           tone={ilNousDoit ? 'warning' : 'neutral'}
@@ -848,7 +853,7 @@ function Carte_SaisirNote(props: {
       }}
     >
       <Title level={5} style={{ marginTop: 0 }}>
-        {t('Saisir une note de salaire')}
+        <HelpSectionTitle title={t('Saisir une note de salaire')} helpId="finance.salarie.saisir-note" />
       </Title>
       <Text type="secondary">
         {t(
@@ -998,7 +1003,7 @@ function Carte_EnregistrerReglement(props: {
       }}
     >
       <Title level={5} style={{ marginTop: 0 }}>
-        {t('Enregistrer un règlement')}
+        <HelpSectionTitle title={t('Enregistrer un règlement')} helpId="finance.salarie.saisir-reglement" />
       </Title>
       <Text type="secondary">
         {t("On règle un salarié, pas une note : le règlement n'est affecté à aucune note en particulier.")}

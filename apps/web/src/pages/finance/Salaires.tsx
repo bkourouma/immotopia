@@ -194,6 +194,7 @@ export const Salaires: React.FC = () => {
   return (
     <>
       <PageHeader
+        helpId="finance.salaires.page"
         title={t('Salaires')}
         subtitle={
           salaries.length > 0
@@ -204,6 +205,7 @@ export const Salaires: React.FC = () => {
       />
 
       <DataView<Employee>
+        helpId="finance.salaires.liste"
         // Le contrat de `listEmployees` ne pagine pas : recherche et pagination locales.
         {...local.dataViewProps}
         scrollX={900}
