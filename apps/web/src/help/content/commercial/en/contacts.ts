@@ -50,7 +50,7 @@ const entries: HelpEntry[] = [
     ],
     consequences: [
       'A new contact is always created with the "Lead" status. The email address must be unique in your agency: a duplicate is refused.',
-      'If the platform has enabled WhatsApp sending, the contact may receive an invitation to your WhatsApp group when created, provided they have given "WhatsApp consent".',
+      'If WhatsApp sending is enabled, the contact may receive an invitation to the WhatsApp group of the platform when created, provided they have given "WhatsApp consent".',
       'Deletion is permanent: it also erases the deals, activities, roles and tags attached to the contact. It is refused if the contact has an owner account, a third-party account or a financial history (for example a purchase offer).'
     ],
     faq: [
@@ -251,7 +251,7 @@ const entries: HelpEntry[] = [
       'The contact is created with the "Lead" status. No deal or activity is created automatically.',
       'The "Personal email" must be unique in your agency: if another contact already uses it, saving is refused and the error appears under the field.',
       "If you tick a consent, today's date is recorded with it.",
-      'If WhatsApp is set up for your agency and "WhatsApp consent" is ticked, the contact may receive an invitation to your WhatsApp group.',
+      'If WhatsApp sending is enabled and "WhatsApp consent" is ticked, the contact may receive an invitation to the WhatsApp group of the platform.',
       'From the "New contact" page, you return to the contact list after saving. From the list window, it closes and the list updates.'
     ],
     faq: [
@@ -752,7 +752,7 @@ const entries: HelpEntry[] = [
     ],
     consequences: [
       'The status becomes "Active client" and the ticked roles are created.',
-      'With the "Owner" role, the contact becomes selectable as an owner. If no access account exists with their email, one is created; the contact may then receive on WhatsApp (if your agency has set it up and they have the "WhatsApp consent") a message with the link to choose their password.',
+      'With the "Owner" role, the contact becomes selectable as an owner. If no access account exists with their email, one is created; the contact may then receive on WhatsApp (if WhatsApp sending is enabled and they have the "WhatsApp consent") a message with the link to choose their password.',
       'It is not a lock: by removing all its roles, the contact becomes a "Lead" again.'
     ],
     faq: [
@@ -784,7 +784,7 @@ const entries: HelpEntry[] = [
     consequences: [
       'An unticked role is permanently deleted.',
       'The status follows: at least one role turns a Lead into an Active client; no role turns an Active client back into a Lead.',
-      'With the "Owner" role, an access account is created for the contact if they have none, with a possible WhatsApp message (if set up and if the contact has consented).'
+      'With the "Owner" role, an access account is created for the contact if they have none, with a possible WhatsApp message (if WhatsApp sending is enabled and if the contact has consented).'
     ],
     faq: [
       {

@@ -134,6 +134,7 @@ content/<module>/
 - Traduisez à partir du français validé, fiche par fiche, avec les mêmes identifiants.
 - Arabe standard moderne, clair, sans dialecte. Gardez un glossaire cohérent dans le module (« bail », « loyer »,
   « quittance », « syndic »… toujours rendus par le même mot) et notez-le dans votre rapport.
+- Pour l'arabe, appliquez le [glossaire arabe](GLOSSAIRE_AR.md) : un seul terme par concept métier dans tous les modules.
 - Conservez `FCFA` tel quel.
 - Citez les libellés tels que l'interface les affiche **dans chaque langue** : en anglais et en arabe, reprenez le
   libellé traduit du catalogue de l'interface (`apps/web/src/i18n/`), jamais le texte français. Seul un libellé que

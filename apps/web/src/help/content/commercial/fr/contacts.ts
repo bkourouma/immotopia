@@ -52,7 +52,7 @@ const entries: HelpEntry[] = [
     ],
     consequences: [
       "Un nouveau contact est toujours créé avec le statut « Prospect ». L'adresse e-mail doit être unique dans votre agence : un doublon est refusé.",
-      "Si la plateforme a activé l'envoi WhatsApp, le contact peut recevoir à sa création une invitation à votre groupe WhatsApp, à condition d'avoir le « Consentement WhatsApp ».",
+      "Si l'envoi WhatsApp est activé, le contact peut recevoir à sa création une invitation au groupe WhatsApp de la plateforme, à condition d'avoir le « Consentement WhatsApp ».",
       "La suppression est définitive : elle efface aussi les affaires, les activités, les rôles et les tags rattachés au contact. Elle est refusée si le contact a un compte propriétaire, un compte de tiers ou un historique financier (par exemple une offre d'achat)."
     ],
     faq: [
@@ -258,7 +258,7 @@ const entries: HelpEntry[] = [
       "Le contact est créé avec le statut « Prospect ». Aucune affaire ni activité n'est créée automatiquement.",
       "L'« Email personnel » doit être unique dans votre agence : si un contact l'utilise déjà, l'enregistrement est refusé et l'erreur s'affiche sous le champ.",
       'Si vous cochez un consentement, la date du jour est enregistrée avec lui.',
-      'Si WhatsApp est configuré pour votre agence et que le « Consentement WhatsApp » est coché, le contact peut recevoir une invitation à votre groupe WhatsApp.',
+      "Si l'envoi WhatsApp est activé et que le « Consentement WhatsApp » est coché, le contact peut recevoir une invitation au groupe WhatsApp de la plateforme.",
       "Depuis la page « Nouveau contact », vous revenez à la liste des contacts après l'enregistrement. Depuis la fenêtre de la liste, elle se ferme et la liste se met à jour."
     ],
     faq: [
@@ -770,7 +770,7 @@ const entries: HelpEntry[] = [
     ],
     consequences: [
       'Le statut devient « Client actif » et les rôles cochés sont créés.',
-      "Avec le rôle « Propriétaire », le contact devient proposable comme propriétaire. Si aucun compte d'accès n'existe avec son e-mail, un compte est créé ; le contact peut alors recevoir par WhatsApp (si votre agence l'a configuré et s'il a le « Consentement WhatsApp ») un message avec le lien pour choisir son mot de passe.",
+      "Avec le rôle « Propriétaire », le contact devient proposable comme propriétaire. Si aucun compte d'accès n'existe avec son e-mail, un compte est créé ; le contact peut alors recevoir par WhatsApp (si l'envoi WhatsApp est activé et s'il a le « Consentement WhatsApp ») un message avec le lien pour choisir son mot de passe.",
       "Ce n'est pas un verrou : en retirant tous ses rôles, le contact redevient « Prospect »."
     ],
     faq: [
@@ -803,7 +803,7 @@ const entries: HelpEntry[] = [
     consequences: [
       'Un rôle décoché est supprimé définitivement.',
       'Le statut suit : au moins un rôle fait passer un Prospect en Client actif ; aucun rôle ramène un Client actif à Prospect.',
-      "Avec le rôle « Propriétaire », un compte d'accès est créé pour le contact s'il n'en a pas, avec un message WhatsApp possible (si configuré et si le contact y a consenti)."
+      "Avec le rôle « Propriétaire », un compte d'accès est créé pour le contact s'il n'en a pas, avec un message WhatsApp possible (si l'envoi WhatsApp est activé et si le contact y a consenti)."
     ],
     faq: [
       {

@@ -169,7 +169,7 @@ const entries: HelpEntry[] = [
     consequences: [
       'Changes in the form (status, priority, service provider, notes) are only saved when you click "Save changes".',
       '"Resolved" and "Cancelled" are final: the status can no longer be changed afterwards.',
-      'When the status changes, the tenant is notified by e-mail and the property owner by e-mail, if these notifications are enabled for your agency; the tenant can also be notified by WhatsApp if your agency enabled it. Changing only the priority, the service provider or the notes sends no message.',
+      'When the status changes, the tenant is notified by e-mail and the property owner by e-mail, if these notifications are enabled for your agency; the tenant can also be notified by WhatsApp if WhatsApp sending is enabled. Changing only the priority, the service provider or the notes sends no message.',
       'The application does not send any message to the service provider: contact them yourself.'
     ],
     faq: [

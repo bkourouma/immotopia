@@ -623,7 +623,7 @@ const entries: HelpEntry[] = [
     consequences: [
       'Publié, le bien devient visible du public : titre, description, adresse, quartier, coordonnées, prix, charges, surfaces, pièces et photos. Le propriétaire, la référence interne et les documents ne sont pas affichés.',
       'Retirer le bien du portail le rend invisible et efface sa date de publication ; vous pouvez le publier de nouveau.',
-      'Si votre agence a configuré la diffusion WhatsApp, une annonce du bien peut être envoyée à son groupe lors de la publication.'
+      "Si l'envoi WhatsApp est activé, une annonce du bien peut être envoyée au groupe WhatsApp de la plateforme lors de la publication."
     ],
     faq: [
       {

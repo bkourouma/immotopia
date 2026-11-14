@@ -620,7 +620,7 @@ const entries: HelpEntry[] = [
     consequences: [
       'Once published, the property becomes visible to the public: title, description, address, neighbourhood, coordinates, price, charges, areas, rooms and photos. The owner, the internal reference and the documents are not shown.',
       'Removing the property from the portal makes it invisible and erases its publication date; you can publish it again.',
-      'If your agency has set up WhatsApp broadcasting, a notice about the property may be sent to its group when you publish.'
+      "If WhatsApp sending is enabled, a notice about the property may be sent to the platform's WhatsApp group when you publish."
     ],
     faq: [
       {

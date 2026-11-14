@@ -43,7 +43,7 @@ const entries: HelpEntry[] = [
     ],
     consequences: [
       "Un nouveau bail est créé directement « Actif », sans passer par « Brouillon ». Le bien passe à « Loué » (ou « Vendu » s'il n'est proposé qu'à la vente) ; si son état ne le permet pas, le bail est créé et le bien reste inchangé.",
-      "À la création, le locataire et le propriétaire sont prévenus par e-mail (si cette notification est activée pour votre agence) et par WhatsApp (si votre agence l'a configuré). Sans compte, un compte leur est créé et le message contient le lien pour choisir un mot de passe.",
+      "À la création, le locataire et le propriétaire sont prévenus par e-mail (si cette notification est activée pour votre agence) et par WhatsApp (si l'envoi WhatsApp est activé). Sans compte, un compte leur est créé et le message contient le lien pour choisir un mot de passe.",
       'La création ne génère ni échéances ni documents : les échéances se génèrent ensuite depuis la fiche du bail.',
       'Si vous modifiez le loyer, les échéances à venir sont recalculées ; celles déjà payées, commencées ou échues ne changent pas.',
       'La suppression est irréversible : le bail et ses échéances sont effacés. Elle est refusée si un paiement est rattaché à une échéance. Pour garder une trace, préférez terminer ou annuler le bail.'
@@ -245,7 +245,7 @@ const entries: HelpEntry[] = [
       'Le bail est créé « Actif » tout de suite, avec un numéro automatique de la forme BAIL-année-numéro. Vous revenez ensuite à la liste des baux.',
       "Le bien passe à « Loué » (ou « Vendu » s'il n'est proposé qu'à la vente). Si son état ne le permet pas, le bail est créé et le bien reste inchangé.",
       "Un bien ne peut avoir qu'un seul bail en cours sur une même période : si les dates se chevauchent avec un autre bail, la création est refusée.",
-      "Le locataire et le propriétaire sont prévenus par e-mail (si cette notification est activée pour votre agence) et par WhatsApp (si votre agence l'a configuré). Une personne sans compte en reçoit un, avec le lien pour choisir son mot de passe.",
+      "Le locataire et le propriétaire sont prévenus par e-mail (si cette notification est activée pour votre agence) et par WhatsApp (si l'envoi WhatsApp est activé). Une personne sans compte en reçoit un, avec le lien pour choisir son mot de passe.",
       "La création ne génère ni échéances ni documents : les échéances se génèrent ensuite depuis l'onglet « Échéances » de la fiche du bail."
     ],
     faq: [

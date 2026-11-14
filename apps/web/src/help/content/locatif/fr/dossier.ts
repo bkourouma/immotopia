@@ -192,7 +192,7 @@ const entries: HelpEntry[] = [
     consequences: [
       'Irréversible depuis cet écran : un mouvement enregistré ne se modifie ni ne se supprime.',
       'Le solde, le montant bloqué et le statut du dépôt sont recalculés aussitôt.',
-      'Le locataire et le propriétaire sont prévenus par e-mail si cette notification est activée pour votre agence et si leur adresse est connue. Le locataire reçoit aussi un message WhatsApp si votre agence l’a configuré. Un échec d’envoi n’annule pas le mouvement.',
+      'Le locataire et le propriétaire sont prévenus par e-mail si cette notification est activée pour votre agence et si leur adresse est connue. Le locataire reçoit aussi un message WhatsApp si l’envoi WhatsApp est activé. Un échec d’envoi n’annule pas le mouvement.',
       'Collecte : le paiement utilisé est reconnu comme dépôt de garantie. S’il avait créé une avance sur le compte du locataire, cette avance est retirée : un dépôt ne sert jamais à payer un loyer.',
       'Pour un bail en gestion directe, la collecte, le remboursement et la confiscation sont aussi inscrits en comptabilité automatiquement.',
       'Aucun document n’est généré par cette action.'

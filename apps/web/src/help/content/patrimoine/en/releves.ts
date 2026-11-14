@@ -36,7 +36,7 @@ const entries: HelpEntry[] = [
     consequences: [
       'A generated statement is a "Draft" (draft). It has not been sent to the owner yet.',
       'There is only one statement per owner and per month. Generating the same month again replaces the lines of the draft and recalculates it; this is refused if the statement is already "Sent" (up-to-date calculation) or "Paid".',
-      '"Send" sends the statement to the owner by e-mail and, if WhatsApp is set up for your agency, by WhatsApp too. The statement then becomes "Sent" (a "Paid" statement keeps its status).',
+      '"Send" sends the statement to the owner by e-mail and, if WhatsApp sending is enabled, by WhatsApp too. The statement then becomes "Sent" (a "Paid" statement keeps its status).',
       'Sending is refused or does not go out if the owner has no valid e-mail, has not agreed to receive e-mails, or if this notification is switched off in the agency settings.',
       'A statement becomes "Paid" only when the payment to the owner is recorded, not by a manual change.'
     ],
@@ -176,7 +176,7 @@ const entries: HelpEntry[] = [
         {
           value: 'SENT',
           label: 'Sent',
-          description: 'Sent to the owner by e-mail (and WhatsApp if set up).'
+          description: 'Sent to the owner by e-mail (and WhatsApp if sending is enabled).'
         },
         {
           value: 'PAID',
