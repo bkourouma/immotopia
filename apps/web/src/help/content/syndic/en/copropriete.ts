@@ -389,7 +389,7 @@ const entries: HelpEntry[] = [
     faq: [
       {
         q: 'The number of units is wrong.',
-        a: 'It follows the recorded lots. Add, import or delete units in the "Units" tab.'
+        a: 'It follows the recorded units. Add, import or delete units in the "Units" tab.'
       },
       {
         q: 'Why "—" for charge calls?',
@@ -527,7 +527,7 @@ const entries: HelpEntry[] = [
     kind: 'page',
     title: 'Units of the co-ownership',
     summary:
-      "This screen lists the co-ownership's units with their shares, owner, portal access, tenant and linked property. Here you create, import, edit or deactivate lots.",
+      "This screen lists the co-ownership's units with their shares, owner, portal access, tenant and linked property. Here you create, import, edit or deactivate units.",
     purpose:
       'A unit is a unit of the co-ownership (apartment, parking space, cellar, office, shop…). Its shares are used to split charges and count votes at meetings. This is where you link each unit to its owner.',
     steps: [
@@ -562,9 +562,9 @@ const entries: HelpEntry[] = [
       },
       {
         q: 'What does "Declared payment" mean?',
-        a: 'A co-owner has declared a mobile money payment awaiting validation for this lot.'
+        a: 'A co-owner has declared a mobile money payment awaiting validation for this unit.'
       },
-      { q: 'What do "Occupied" and "Unoccupied" mean?', a: 'A tenant is, or is not, attached to the lot.' }
+      { q: 'What do "Occupied" and "Unoccupied" mean?', a: 'A tenant is, or is not, attached to the unit.' }
     ],
     permissions: {
       feature: 'SYNDIC',
@@ -578,7 +578,7 @@ const entries: HelpEntry[] = [
       { label: 'Unit account', helpId: 'syndic.lots.compte' },
       { label: 'Rates by unit type', helpId: 'syndic.lots.bareme' }
     ],
-    keywords: ['lots', 'shares', 'allocation key', 'owner', 'co-owner', 'apartment', 'parking'],
+    keywords: ['units', 'shares', 'allocation key', 'owner', 'co-owner', 'apartment', 'parking'],
     tour: {
       steps: [
         {
@@ -595,7 +595,7 @@ const entries: HelpEntry[] = [
           target: 'lots-tableau',
           title: 'The unit table',
           description:
-            'Each row is a lot. The buttons in the "Actions" column edit it, deactivate it or open its account.'
+            'Each row is a unit. The buttons in the "Actions" column edit it, deactivate it or open its account.'
         }
       ]
     }
@@ -609,7 +609,7 @@ const entries: HelpEntry[] = [
     howToRead: {
       notes: [
         '"Number of units": all units, active or not.',
-        '"Total general shares": the sum of the general shares of all lots.',
+        '"Total general shares": the sum of the general shares of all units.',
         '"Reference total of shares": shown only if filled in on the record; a warning appears if the sum is different.',
         '"Units with an owner": units with an owner recorded.',
         '"Units with portal access": units whose access is "Active" or "Partial".',
@@ -737,7 +737,7 @@ const entries: HelpEntry[] = [
       { label: 'Unit account', helpId: 'syndic.lots.compte' },
       { label: 'Invite to the co-owner portal', helpId: 'syndic.lots.invitation' }
     ],
-    keywords: ['lot', 'deactivate', 'reactivate', 'shares', 'portal', 'tenant', 'joint ownership']
+    keywords: ['unit', 'deactivate', 'reactivate', 'shares', 'portal', 'tenant', 'joint ownership']
   },
   {
     id: 'syndic.lots.creation',
@@ -793,7 +793,7 @@ const entries: HelpEntry[] = [
     kind: 'section',
     title: 'Import properties as units',
     summary:
-      'This window creates several units at once from properties already recorded. For a building, its apartments or units become lots.',
+      'This window creates several units at once from properties already recorded. For a building, each of its apartments or sub-units becomes a co-ownership unit.',
     howToRead: {
       notes: [
         'If you choose a building, the imported units are its sub-properties. For a villa, office or shop, the unit is the property itself.',
@@ -857,7 +857,7 @@ const entries: HelpEntry[] = [
     faq: [
       {
         q: 'Does the tenant receive anything?',
-        a: 'Nothing is shown on screen about this: the action only attaches the contact to the lot.'
+        a: 'Nothing is shown on screen about this: the action only attaches the contact to the unit.'
       },
       { q: 'How do I remove a tenant?', a: 'In the table, "End" next to their name, then "End" to confirm.' },
       { q: 'The contact is not in the list.', a: 'Create it first in the contacts.' }
@@ -870,7 +870,7 @@ const entries: HelpEntry[] = [
     kind: 'section',
     title: 'Rates by unit type',
     summary:
-      'This card sets the amount charged PER LOT according to the unit type (apartment, parking space, cellar…). It is used when you split a charge call "By unit type".',
+      'This card sets the amount charged PER UNIT according to the unit type (apartment, parking space, cellar…). It is used when you split a charge call "By unit type".',
     howToRead: {
       columns: [
         { key: 'lotType', label: 'Type', description: 'Apartment, Parking, Cellar, Office, Shop or Other.' },
@@ -919,7 +919,7 @@ const entries: HelpEntry[] = [
     kind: 'section',
     title: 'Record a payment on a unit',
     summary:
-      'This window records a payment received for a lot. It allocates it to the open charge calls and shows the effect before you confirm.',
+      'This window records a payment received for a unit. It allocates it to the open charge calls and shows the effect before you confirm.',
     howToRead: {
       columns: [
         { key: 'period', label: 'Period', description: 'Period of the charge call.' },
@@ -1123,7 +1123,7 @@ const entries: HelpEntry[] = [
         }
       ],
       statuses: [
-        { value: 'CHARGE_CALL', label: 'Charge call', description: 'Debit: charges called to the lot.' },
+        { value: 'CHARGE_CALL', label: 'Charge call', description: 'Debit: charges called to the unit.' },
         { value: 'PAYMENT', label: 'Payment', description: 'Credit: payment received.' },
         { value: 'PENALTY', label: 'Penalty', description: 'Debit: late-payment penalty.' },
         { value: 'WAIVER', label: 'Waiver', description: 'Credit: waiver granted.' },

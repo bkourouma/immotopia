@@ -1126,8 +1126,99 @@ const entries: HelpEntry[] = [
       feature: 'SYNDIC',
       note: 'Voir demande le droit de voir le module Syndic ; ajouter, modifier, désactiver et supprimer demandent le droit de le modifier.'
     },
-    related: [{ label: 'Réglages des paiements déclarés', helpId: 'syndic.paiements.reglages' }],
+    related: [
+      { label: 'Réglages des paiements déclarés', helpId: 'syndic.paiements.reglages' },
+      { label: 'Comptes de réception de la copropriété', helpId: 'syndic.paiements.comptes-reception' }
+    ],
     keywords: ['numéro de réception', 'orange money', 'mtn momo', 'moov money', 'wave', 'compte de trésorerie']
+  },
+  {
+    id: 'syndic.paiements.comptes-reception',
+    kind: 'section',
+    title: 'Comptes de réception de la copropriété',
+    summary:
+      'Cette carte de l’onglet « Paiements déclarés » liste les comptes (alias ou QR de paiement) que les copropriétaires voient dans « Payer l’agence » sur leur portail. Vous y ajoutez, modifiez, ordonnez, désactivez ou supprimez ces comptes.',
+    purpose:
+      'Un copropriétaire paie depuis son application de paiement ou de banque, en scannant votre QR ou en saisissant votre alias. ImmoTopia ne génère aucun QR et ne préremplit aucun montant : le copropriétaire saisit lui-même le montant, puis déclare son paiement.',
+    howToRead: {
+      notes: [
+        'Chaque compte affiche l’établissement, l’étiquette « Actif » ou « Inactif », l’ordre, « À scanner avec », l’alias, « Nom attendu du bénéficiaire », les instructions et l’image du QR s’il y en a une.',
+        'Formulaire : « Établissement » (obligatoire, 60 caractères au plus, par exemple Wave, Orange Money ou le nom de la banque), « Scannable avec (facultatif) » (80), « Alias (facultatif) » (80), « Nom attendu du bénéficiaire » (obligatoire, de 2 à 80), « Instructions (facultatif) » (500), « QR de paiement (facultatif) », « Ordre d’affichage » et « Actif ».',
+        'Un compte actif doit avoir au moins un alias ou un QR.',
+        'Le QR est une image PNG, JPEG ou WebP de 2 Mo au plus.',
+        'Une copropriété a 10 comptes au plus, actifs ou non : « Ajouter un compte » se grise et « Limite de 10 comptes atteinte. » s’affiche.'
+      ]
+    },
+    steps: [
+      {
+        title: 'Ajouter',
+        detail:
+          '« Ajouter un compte » : renseignez l’établissement et le nom attendu du bénéficiaire, ajoutez un alias et/ou une image de QR, puis « Enregistrer ».'
+      },
+      {
+        title: 'Modifier',
+        detail: '« Modifier » rouvre le formulaire. « Retirer le QR actuel » supprime l’image du compte.'
+      },
+      {
+        title: 'Ordonner',
+        detail: '« Ordre d’affichage » : sur le portail, les comptes sont montrés du plus petit nombre au plus grand.'
+      },
+      {
+        title: 'Désactiver ou activer',
+        detail:
+          '« Désactiver » demande confirmation (« Désactiver ce compte ? »). « Activer » remet le compte en service tout de suite.'
+      },
+      { title: 'Supprimer', detail: '« Supprimer » demande confirmation (« Supprimer ce compte ? »).' }
+    ],
+    consequences: [
+      'Seuls les comptes « Actif » sont montrés aux copropriétaires de cette copropriété, dans la carte « Payer l’agence » de leur portail : alias à copier, QR, nom attendu du bénéficiaire et instructions.',
+      'Un compte désactivé n’est plus montré aux payeurs mais reste dans la liste : vous pouvez le réactiver.',
+      'La suppression retire le compte et son image de QR. Elle ne peut pas être annulée.',
+      'Chaque ajout, modification, désactivation, réactivation ou suppression envoie un e-mail d’alerte aux collaborateurs de l’agence qui ont le droit de modifier les réglages de l’agence, sauf un simple changement d’ordre.',
+      'Un paiement fait sur ces comptes n’est ni détecté ni crédité automatiquement : il n’est porté au compte du copropriétaire qu’une fois sa déclaration traitée (onglet « Paiements déclarés »), ou si l’agence enregistre elle-même le paiement.',
+      'Si quelqu’un d’autre a modifié le compte entre-temps, l’enregistrement est refusé, un message l’indique et la liste est rechargée.'
+    ],
+    faq: [
+      {
+        q: 'Pourquoi « Ajouter un compte » est-il grisé ?',
+        a: 'La copropriété a déjà 10 comptes, actifs ou non. Supprimez-en un avant d’en ajouter.'
+      },
+      {
+        q: 'Pourquoi l’enregistrement d’un compte actif est-il refusé ?',
+        a: 'Un compte actif doit avoir au moins un alias ou un QR. Ajoutez l’un des deux, ou désactivez le compte.'
+      },
+      {
+        q: 'Quelle image de QR puis-je utiliser ?',
+        a: 'Une image PNG, JPEG ou WebP de 2 Mo au plus. ImmoTopia ne la crée ni ne la modifie : le copropriétaire voit l’image que vous avez ajoutée.'
+      },
+      {
+        q: 'Le montant est-il prérempli pour le copropriétaire ?',
+        a: 'Non. Le copropriétaire saisit lui-même le montant dans son application.'
+      },
+      {
+        q: 'Je ne vois aucun bouton pour modifier.',
+        a: 'Il faut le droit de modifier le module Syndic. Sans ce droit, la carte reste en lecture seule.'
+      }
+    ],
+    permissions: {
+      feature: 'SYNDIC',
+      note: 'Voir demande le droit de voir le module Syndic ; ajouter, modifier, activer, désactiver et supprimer demandent le droit de le modifier.'
+    },
+    related: [
+      { label: 'Payer l’agence (portail du copropriétaire)', helpId: 'syndic.portail.appels.payer-agence' },
+      { label: 'Numéros de réception', helpId: 'syndic.paiements.numeros' },
+      { label: 'Réglages des paiements déclarés', helpId: 'syndic.paiements.reglages' }
+    ],
+    keywords: [
+      'compte de réception',
+      'alias',
+      'QR',
+      'wave',
+      'orange money',
+      'banque',
+      'paiement instantané',
+      'payer l’agence'
+    ]
   },
   {
     id: 'syndic.paiements.reglages',

@@ -229,7 +229,8 @@ const entries: HelpEntry[] = [
       },
       {
         title: 'Open a slip',
-        detail: 'Click the number in the “Good” column: the slip opens on the right, with its lines and attachments.'
+        detail:
+          'Click the number in the “Good” column: the slip opens on the right, with its lines and, for a receipt or an issue, its attachments.'
       },
       {
         title: 'See the invoice',
@@ -629,7 +630,7 @@ const entries: HelpEntry[] = [
     kind: 'section',
     title: 'Stock slip',
     summary:
-      'The slip groups the lines of a receipt, an issue or a stocktake, with its number, dates, PDF and attachments.',
+      'The slip groups the lines of a receipt, an issue or a stocktake, with its number, dates and PDF. A receipt or an issue also carries its attachments.',
     purpose:
       'The slip is the document that is signed and archived: “Goods received note”, “Issue slip” or “Stocktake report”. It recalls the location, site, taker or invoice concerned.',
     steps: [
@@ -641,13 +642,18 @@ const entries: HelpEntry[] = [
       { title: 'Download the PDF', detail: 'To have it signed or archive it.' },
       {
         title: 'Attach a document',
-        detail: 'Photo of the signed slip, of the delivery note or of the goods, if your rights allow it.'
+        detail:
+          'Receipt or issue: photo of the signed slip, of the delivery note or of the goods, if your rights allow it. For a stocktake report, “Open the stocktake details” takes you to the “Signed report” section.'
       },
-      { title: 'See the movements', detail: '“View this slip’s movements” opens the journal filtered on this slip.' }
+      {
+        title: 'See the movements',
+        detail:
+          '“View this slip’s movements” opens the journal filtered on this slip. The button exists only for a receipt or an issue, not for a stocktake report.'
+      }
     ],
     consequences: [
       'Viewing a slip changes nothing.',
-      'Adding an attachment is possible depending on the slip type: “Receive” for a receipt, “Issue” for an issue, “Approve stocktakes” for a stocktake report.',
+      'Adding an attachment to the slip is possible for a receipt (“Receive” right) or an issue (“Issue” right). A stocktake slip does not show its attachments here: the signed report is added from the stocktake details, with “Approve stocktakes”.',
       'The “Recorded” date is the server time, and cannot be changed.'
     ],
     faq: [
@@ -655,7 +661,10 @@ const entries: HelpEntry[] = [
         q: 'Why does a transfer or scrap have no slip?',
         a: 'Only receipts, issues and stocktakes produce a numbered slip.'
       },
-      { q: 'Where do I find the signed slip?', a: 'In the slip attachments, if someone photographed it.' },
+      {
+        q: 'Where do I find the signed slip?',
+        a: 'In the slip attachments, if someone photographed it. For a stocktake, in the “Signed report” section of the stocktake details.'
+      },
       {
         q: 'Why does the total value not appear on the slip?',
         a: 'It is shown only if your rights allow you to see values.'

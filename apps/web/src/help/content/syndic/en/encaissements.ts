@@ -47,7 +47,7 @@ const entries: HelpEntry[] = [
       },
       {
         q: 'What is the difference with "Overdue cases" in Treasury?',
-        a: 'Here "Units in arrears" counts lots. Treasury counts late calls: a unit with two unpaid calls counts as two there.'
+        a: 'Here "Units in arrears" counts units. Treasury counts late calls: a unit with two unpaid calls counts as two there.'
       },
       {
         q: 'Does the channel chosen for a manual reminder change how it is sent?',
@@ -136,7 +136,7 @@ const entries: HelpEntry[] = [
       },
       {
         q: 'Why does a row show "No owner"?',
-        a: 'No co-owner is linked to the lot. No reminder can be sent until this is fixed.'
+        a: 'No co-owner is linked to the unit. No reminder can be sent until this is fixed.'
       },
       {
         q: 'What does the search cover?',
@@ -160,7 +160,7 @@ const entries: HelpEntry[] = [
         { key: 'channel', label: 'Channel', description: 'Channel recorded with the reminder (see the note below).' },
         { key: 'status', label: 'Status', description: 'Result of the reminder.' },
         { key: 'lot', label: 'Unit', description: 'The unit reminded.' },
-        { key: 'owner', label: 'Owner', description: 'The co-owner of the lot.' },
+        { key: 'owner', label: 'Owner', description: 'The co-owner of the unit.' },
         { key: 'sentAt', label: 'Sent on', description: 'Date and time of sending.' },
         {
           key: 'cause',
@@ -176,7 +176,7 @@ const entries: HelpEntry[] = [
       notes: [
         'Common failure causes: "the co-owner has no e-mail address", "No co-owner linked to the unit", "the call is already settled", "Reminder notification is disabled for the agency", or a mail server error.',
         'The channel is just a mention: actual sending goes by e-mail and, if WhatsApp is active for the agency, by WhatsApp. No SMS or push notification is sent by this function.',
-        'Filters: status, channel, level, sending date and lot.'
+        'Filters: status, channel, level, sending date and unit.'
       ]
     },
     faq: [
@@ -209,8 +209,8 @@ const entries: HelpEntry[] = [
       "A penalty is an amount calculated on the remaining balance of a late call. It is recorded in the co-owner's account.",
     howToRead: {
       columns: [
-        { key: 'lot', label: 'Unit', description: 'The penalised lot.' },
-        { key: 'owner', label: 'Owner', description: 'The co-owner of the lot.' },
+        { key: 'lot', label: 'Unit', description: 'The penalised unit.' },
+        { key: 'owner', label: 'Owner', description: 'The co-owner of the unit.' },
         { key: 'daysLate', label: 'Days overdue', description: 'Days late used for the calculation.' },
         { key: 'penaltyRate', label: 'Rate', description: 'Monthly rate applied, as a percentage.' },
         { key: 'penaltyAmount', label: 'Amount', description: 'Amount of the penalty.' },
@@ -265,7 +265,7 @@ const entries: HelpEntry[] = [
     howToRead: {
       columns: [
         { key: 'lot', label: 'Unit', description: 'The unit concerned.' },
-        { key: 'owner', label: 'Owner', description: 'The co-owner of the lot.' },
+        { key: 'owner', label: 'Owner', description: 'The co-owner of the unit.' },
         { key: 'chargeCall', label: 'Call', description: 'Period of the charge call concerned.' },
         { key: 'totalAmount', label: 'Total amount', description: 'Sum to be paid according to the agreement.' },
         { key: 'agreedAt', label: 'Agreement', description: 'Date of the agreement.' },
@@ -623,8 +623,8 @@ const entries: HelpEntry[] = [
     howToRead: {
       columns: [
         { key: 'paidAt', label: 'Date', description: 'Date of the payment.' },
-        { key: 'lotLabel', label: 'Unit', description: 'The paying lot.' },
-        { key: 'ownerLabel', label: 'Co-owner', description: 'The co-owner of the lot.' },
+        { key: 'lotLabel', label: 'Unit', description: 'The paying unit.' },
+        { key: 'ownerLabel', label: 'Co-owner', description: 'The co-owner of the unit.' },
         { key: 'chargeReference', label: 'Related charge call', description: 'The call settled by this row.' },
         { key: 'amount', label: 'Amount', description: 'Amount allocated to this call.' },
         { key: 'method', label: 'Method', description: 'Means of payment.' }
@@ -657,8 +657,8 @@ const entries: HelpEntry[] = [
       'This table lists past-due unpaid calls, with the remaining balance, the days late and the number of reminders already sent.',
     howToRead: {
       columns: [
-        { key: 'lotLabel', label: 'Unit', description: 'The late lot.' },
-        { key: 'ownerLabel', label: 'Co-owner', description: 'The co-owner of the lot.' },
+        { key: 'lotLabel', label: 'Unit', description: 'The late unit.' },
+        { key: 'ownerLabel', label: 'Co-owner', description: 'The co-owner of the unit.' },
         { key: 'outstanding', label: 'Amount due', description: 'Remaining balance of the call.' },
         { key: 'daysLate', label: 'Days overdue', description: 'Days since the due date.' },
         { key: 'remindersCount', label: 'Reminders', description: 'Number of reminders recorded for the call.' }
@@ -852,7 +852,7 @@ const entries: HelpEntry[] = [
       notes: [
         'Alerts: reference already used on a recorded payment, probable duplicate, excess that will become an advance, partial payment, declarant no longer the current co-owner, screenshot showing another receiving number, date in a closed fiscal year, pending for several business days.',
         'The "AI" tags mark a field read by the AI, edited or not by the declarant. The AI approves nothing.',
-        '"Units and calls concerned": if no call is specified, the payment applies to the oldest open calls of the lot.',
+        '"Units and calls concerned": if no call is specified, the payment applies to the oldest open calls of the unit.',
         'A processed declaration also shows the accepted amount and date, who processed it, the rejection reason or note, and the documents issued.'
       ]
     },
@@ -1068,8 +1068,90 @@ const entries: HelpEntry[] = [
       feature: 'SYNDIC',
       note: 'Viewing requires the right to view the Syndic module; adding, editing, deactivating and deleting require the right to edit it.'
     },
-    related: [{ label: 'Declared payment settings', helpId: 'syndic.paiements.reglages' }],
+    related: [
+      { label: 'Declared payment settings', helpId: 'syndic.paiements.reglages' },
+      { label: 'Receiving accounts of the co-ownership', helpId: 'syndic.paiements.comptes-reception' }
+    ],
     keywords: ['receiving number', 'orange money', 'mtn momo', 'moov money', 'wave', 'treasury account']
+  },
+  {
+    id: 'syndic.paiements.comptes-reception',
+    kind: 'section',
+    title: 'Receiving accounts of the co-ownership',
+    summary:
+      'This card in the "Declared payments" tab lists the accounts (alias or payment QR) that co-owners see in "Pay the agency" on their portal. You add, edit, order, deactivate or delete these accounts here.',
+    purpose:
+      'A co-owner pays from their payment or banking app, by scanning your QR or entering your alias. ImmoTopia generates no QR and pre-fills no amount: the co-owner enters the amount themselves, then declares their payment.',
+    howToRead: {
+      notes: [
+        'Each account shows the institution, the "Active" or "Inactive" tag, the order, "Scan with", the alias, "Expected beneficiary name", the instructions and the QR image if there is one.',
+        'Form: "Institution" (required, 60 characters at most, for example Wave, Orange Money or the bank name), "Scannable with (optional)" (80), "Alias (optional)" (80), "Expected beneficiary name" (required, 2 to 80), "Instructions (optional)" (500), "Payment QR (optional)", "Display order" and "Active".',
+        'An active account must have at least an alias or a QR.',
+        'The QR is a PNG, JPEG or WebP image of 2 MB at most.',
+        'A co-ownership has 10 accounts at most, active or not: "Add an account" is greyed out and "Limit of 10 accounts reached." is shown.'
+      ]
+    },
+    steps: [
+      {
+        title: 'Add',
+        detail:
+          '"Add an account": fill in the institution and the expected beneficiary name, add an alias and/or a QR image, then "Save".'
+      },
+      {
+        title: 'Edit',
+        detail: '"Edit" reopens the form. "Remove the current QR" deletes the account image.'
+      },
+      {
+        title: 'Order',
+        detail: '"Display order": on the portal, accounts are shown from the lowest number to the highest.'
+      },
+      {
+        title: 'Deactivate or enable',
+        detail:
+          '"Deactivate" asks for confirmation ("Disable this account?"). "Enable" puts the account back in service right away.'
+      },
+      { title: 'Delete', detail: '"Delete" asks for confirmation ("Delete this account?").' }
+    ],
+    consequences: [
+      'Only "Active" accounts are shown to the co-owners of this co-ownership, in the "Pay the agency" card of their portal: alias to copy, QR, expected beneficiary name and instructions.',
+      'A deactivated account is no longer shown to payers but stays in the list: you can enable it again.',
+      'Deleting removes the account and its QR image. It cannot be undone.',
+      'Each addition, change, deactivation, reactivation or deletion sends an alert e-mail to the agency staff who are allowed to change the agency settings, except a simple change of order.',
+      'A payment made to these accounts is neither detected nor credited automatically: it is only posted to the co-owner’s account once their declaration is processed ("Declared payments" tab), or if the agency records the payment itself.',
+      'If someone else changed the account in the meantime, saving is refused, a message says so and the list is reloaded.'
+    ],
+    faq: [
+      {
+        q: 'Why is "Add an account" greyed out?',
+        a: 'The co-ownership already has 10 accounts, active or not. Delete one before adding another.'
+      },
+      {
+        q: 'Why is saving an active account refused?',
+        a: 'An active account must have at least an alias or a QR. Add one of the two, or deactivate the account.'
+      },
+      {
+        q: 'Which QR image can I use?',
+        a: 'A PNG, JPEG or WebP image of 2 MB at most. ImmoTopia neither creates nor changes it: the co-owner sees the image you added.'
+      },
+      {
+        q: 'Is the amount pre-filled for the co-owner?',
+        a: 'No. The co-owner enters the amount themselves in their app.'
+      },
+      {
+        q: 'I do not see any button to edit.',
+        a: 'You need the right to edit the Syndic module. Without it, the card stays read-only.'
+      }
+    ],
+    permissions: {
+      feature: 'SYNDIC',
+      note: 'Viewing requires the right to view the Syndic module; adding, editing, enabling, deactivating and deleting require the right to edit it.'
+    },
+    related: [
+      { label: 'Pay the agency (co-owner portal)', helpId: 'syndic.portail.appels.payer-agence' },
+      { label: 'Receiving numbers', helpId: 'syndic.paiements.numeros' },
+      { label: 'Declared payment settings', helpId: 'syndic.paiements.reglages' }
+    ],
+    keywords: ['receiving account', 'alias', 'QR', 'wave', 'orange money', 'bank', 'instant payment', 'pay the agency']
   },
   {
     id: 'syndic.paiements.reglages',
@@ -1174,7 +1256,7 @@ const entries: HelpEntry[] = [
       columns: [
         { key: 'createdAt', label: 'Date', description: 'Date of the attempt.' },
         { key: 'codePaiement', label: 'Code', description: 'Payment code; the "Simulator" tag marks a test.' },
-        { key: 'lot', label: 'Unit', description: 'The paying lot.' },
+        { key: 'lot', label: 'Unit', description: 'The paying unit.' },
         { key: 'payer', label: 'Payer', description: 'The payer; "Record not found" if their record has disappeared.' },
         { key: 'calls', label: 'Charge calls', description: 'Periods of the calls concerned.' },
         {

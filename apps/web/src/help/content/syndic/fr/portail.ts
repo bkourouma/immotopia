@@ -476,7 +476,10 @@ const entries: HelpEntry[] = [
       }
     ],
     permissions: { roles: ['Copropriétaire'] },
-    related: [{ label: "J'ai payé par mobile money", helpId: 'syndic.portail.appels.declaration' }],
+    related: [
+      { label: "J'ai payé par mobile money", helpId: 'syndic.portail.appels.declaration' },
+      { label: "Payer l'agence", helpId: 'syndic.portail.appels.payer-agence' }
+    ],
     keywords: ['mobile money', 'numéro de réception', 'consigne', 'wave', 'orange', 'mtn', 'moov']
   },
   {
@@ -553,6 +556,63 @@ const entries: HelpEntry[] = [
       'mobile money',
       'preuve de paiement'
     ]
+  },
+  {
+    id: 'syndic.portail.appels.payer-agence',
+    kind: 'section',
+    title: "Payer l'agence",
+    summary:
+      'Cette carte donne les coordonnées de paiement de votre copropriété : comptes, QR ou alias à saisir, nom attendu du bénéficiaire. Vous payez dans votre application de paiement ou de banque, puis vous déclarez votre paiement.',
+    howToRead: {
+      notes: [
+        'Chaque copropriété a sa carte. Si des comptes existent pour plusieurs de vos copropriétés, le nom de la copropriété est ajouté au titre : vérifiez que vous payez la bonne.',
+        "Chaque compte indique l'établissement, « À scanner avec » (s'il est renseigné), l'image du QR (s'il y en a une), « Alias à saisir » avec le bouton « Copier l'alias », « Nom attendu du bénéficiaire » et les instructions de l'agence.",
+        "« Motif suggéré à recopier » apparaît quand votre copropriété a un appel de charges non soldé : c'est le plus ancien, par date d'échéance, avec sa période et, s'il y en a un, votre lot. « Copier le motif » le copie.",
+        "Le bouton « J'ai payé : déclarer mon paiement » n'apparaît que si la déclaration de paiement est ouverte pour cette copropriété. Il vous amène au formulaire de déclaration, plus bas."
+      ]
+    },
+    steps: [
+      { title: 'Ouvrir votre application', detail: 'Ouvrez votre application de paiement ou de banque.' },
+      { title: 'Scanner ou saisir', detail: "Choisissez de scanner le QR ou de saisir l'alias." },
+      { title: 'Saisir le montant', detail: 'Saisissez vous-même le montant à payer.' },
+      { title: 'Vérifier le nom', detail: 'Vérifiez que le nom affiché correspond au nom attendu du bénéficiaire.' },
+      { title: 'Valider', detail: 'Validez le paiement.' }
+    ],
+    consequences: [
+      'Un paiement instantané est irrévocable : il ne peut pas être annulé. Si le nom affiché diffère du nom attendu, ne payez pas.',
+      'ImmoTopia ne génère aucun QR et ne préremplit aucun montant : vous saisissez le montant vous-même.',
+      "Après votre paiement, prévenez l'agence en déclarant votre paiement.",
+      "Votre paiement n'est ni détecté ni crédité automatiquement : rien n'est porté à votre compte tant que l'agence n'a pas validé votre déclaration."
+    ],
+    faq: [
+      {
+        q: 'Je ne vois pas cette carte, pourquoi ?',
+        a: "Elle n'apparaît que si l'agence a ajouté au moins un compte actif pour votre copropriété. Actualisez la page, puis contactez votre agence."
+      },
+      {
+        q: 'Le montant est-il prérempli ?',
+        a: 'Non. Vous saisissez vous-même le montant dans votre application de paiement ou de banque.'
+      },
+      {
+        q: "Le nom affiché n'est pas celui attendu, que faire ?",
+        a: 'Ne payez pas. Le nom attendu du bénéficiaire est affiché sur la carte, sous le compte.'
+      },
+      {
+        q: "Je ne vois pas le bouton « J'ai payé : déclarer mon paiement ».",
+        a: "La déclaration de paiement n'est pas ouverte pour votre copropriété. Contactez votre agence."
+      },
+      {
+        q: 'Avec plusieurs copropriétés, comment ne pas me tromper ?',
+        a: 'Chaque carte porte le nom de sa copropriété. Utilisez les comptes, le motif et le bouton de déclaration de la même carte.'
+      }
+    ],
+    permissions: { roles: ['Copropriétaire'] },
+    related: [
+      { label: "J'ai payé par mobile money", helpId: 'syndic.portail.appels.declaration' },
+      { label: 'Numéros pour payer par mobile money', helpId: 'syndic.portail.appels.mobile-money' },
+      { label: 'Paiement en ligne', helpId: 'syndic.portail.appels.paiement-en-ligne' }
+    ],
+    keywords: ["payer l'agence", 'alias', 'QR', "copier l'alias", 'motif', 'wave', 'orange money', 'banque', 'virement']
   },
 
   // ------------------------------------------------------------------ Documents
