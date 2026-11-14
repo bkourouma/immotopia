@@ -282,6 +282,7 @@ export const EtapeApercu: React.FC<EtapeApercuProps> = props => {
       </Checkbox>
 
       <Table
+        helpId="patrimoine.importation.apercu-tableau"
         exportFilename={t('L’aperçu')}
         size="small"
         rowKey={ligne => String(ligne.numero)}

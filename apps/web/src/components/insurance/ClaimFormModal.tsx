@@ -7,6 +7,7 @@ import type { InsuranceClaimCause, InsurancePolicyDto } from '../../types/insura
 import { apiErrorMessage, applyApiFieldErrors } from '../patrimoine/patrimoine-labels';
 import { feedback } from '../../lib/feedback';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 import { CAUSE_VALUES, causeLabel, currencyLabel, formatAmount, formatDay, options } from './insurance-labels';
 
 interface Props {
@@ -116,7 +117,7 @@ export const ClaimFormModal: React.FC<Props> = ({ open, tenantId, propertyId, po
   return (
     <Modal
       open={open}
-      title={t('Déclarer un sinistre')}
+      title={<HelpSectionTitle title={t('Déclarer un sinistre')} helpId="patrimoine.sinistres.declaration" />}
       okText={t('Déclarer')}
       cancelText={t('Annuler')}
       confirmLoading={saving}

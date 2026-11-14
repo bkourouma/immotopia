@@ -28,6 +28,7 @@ import {
 import { AssetUsageBanner } from '../../components/patrimoine/AssetUsageBanner';
 import { ASSET_USAGE_QUERY_KEY } from '../../services/personal-space-service';
 import { t } from '../../i18n/t';
+import { HelpButton, HelpSectionTitle } from '../../help';
 
 const HISTORY_MONTHS = 12;
 
@@ -45,7 +46,12 @@ const ExclusionBanner: React.FC<{ tenantId: string; result: NetWorthResult; asse
       type="warning"
       showIcon
       style={{ marginBottom: 'var(--space-4)' }}
-      title={t('Certains éléments ne sont pas comptés dans ces totaux')}
+      title={
+        <HelpSectionTitle
+          title={t('Certains éléments ne sont pas comptés dans ces totaux')}
+          helpId="patrimoine.valeur-nette.exclusions"
+        />
+      }
       description={
         <ul style={{ margin: 0, paddingInlineStart: 20 }}>
           {excluded.map(item => (
@@ -150,10 +156,15 @@ export const NetWorthPage: React.FC = () => {
           <ExclusionBanner tenantId={agence} result={data} assets={assetsQuery.data ?? []} />
           <Row gutter={[16, 16]} style={{ marginBottom: 'var(--space-4)' }}>
             <Col xs={24} md={8}>
-              <StatCard label={t('Total des actifs')} value={formatAmount(data.totalAssets, data.currency)} />
+              <StatCard
+                helpId="patrimoine.valeur-nette.total-actifs"
+                label={t('Total des actifs')}
+                value={formatAmount(data.totalAssets, data.currency)}
+              />
             </Col>
             <Col xs={24} md={8}>
               <StatCard
+                helpId="patrimoine.valeur-nette.total-dettes"
                 label={t('Total des dettes')}
                 value={formatAmount(data.totalDebts, data.currency)}
                 tone="warning"
@@ -161,6 +172,7 @@ export const NetWorthPage: React.FC = () => {
             </Col>
             <Col xs={24} md={8}>
               <StatCard
+                helpId="patrimoine.valeur-nette.resultat"
                 highlight
                 label={t('Valeur nette')}
                 value={formatAmount(data.netWorth, data.currency)}
@@ -177,6 +189,7 @@ export const NetWorthPage: React.FC = () => {
                 )
               })}{' '}
               <Link to={`/tenant/${agence}/patrimoine/actifs`}>{t('Voir les actifs')}</Link>
+              <HelpButton size="small" helpId="patrimoine.valeur-nette.fiabilite" />
             </p>
           )}
           <Row gutter={[16, 16]}>

@@ -10,6 +10,7 @@ import type {
 import { apiErrorMessage } from '../../../components/patrimoine/patrimoine-labels';
 import { activeLocale } from '../../../i18n/format';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 import { emailOutcomeMessage } from './external-access-labels';
 
 const { Paragraph, Text } = Typography;
@@ -55,7 +56,7 @@ export const ExternalAccessLinkReveal: React.FC<RevealProps> = ({ revealed, onCl
   return (
     <Modal
       open
-      title={t('Lien d’accès')}
+      title={<HelpSectionTitle title={t('Lien d’accès')} helpId="patrimoine.acces-tiers.lien" />}
       onCancel={onClose}
       destroyOnHidden
       mask={{ closable: false }}
@@ -141,7 +142,7 @@ export const ExternalAccessSendLinkModal: React.FC<SendProps> = ({
   return (
     <Modal
       open={grant !== null}
-      title={t('Renvoyer un lien')}
+      title={<HelpSectionTitle title={t('Renvoyer un lien')} helpId="patrimoine.acces-tiers.renvoi" />}
       onCancel={onClose}
       onOk={handleOk}
       okText={t('Générer le lien')}

@@ -10,6 +10,7 @@ import {
   sourceStatusLabel,
   taxCoveredNoteLabel
 } from './cash-plan-labels';
+import { HelpSectionTitle } from '../../../help';
 
 const { Text } = Typography;
 
@@ -116,7 +117,7 @@ export const CashPlanSourcesCard: React.FC<Props> = ({ plan, saving, saveError, 
   );
 
   return (
-    <Card title={t('Sources du plan')}>
+    <Card title={<HelpSectionTitle title={t('Sources du plan')} helpId="patrimoine.tresorerie.sources" />}>
       {included.length > 0 ? (
         <p>
           <Text strong>{t('Sources incluses :')}</Text>{' '}
@@ -148,7 +149,12 @@ export const CashPlanSourcesCard: React.FC<Props> = ({ plan, saving, saveError, 
       )}
 
       <div style={{ marginTop: 16 }}>
-        <Text strong>{t("Date d'exigibilité de la taxe foncière")}</Text>
+        <Text strong>
+          <HelpSectionTitle
+            title={t("Date d'exigibilité de la taxe foncière")}
+            helpId="patrimoine.tresorerie.taxe-fonciere"
+          />
+        </Text>
         <p style={{ margin: '4px 0 8px' }}>
           <Text type="secondary">
             {taxNotSet

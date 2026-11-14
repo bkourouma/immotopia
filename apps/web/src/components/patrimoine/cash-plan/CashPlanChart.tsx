@@ -16,6 +16,7 @@ import type { CashPlanData } from '../../../types/cash-plan-types';
 import { t } from '../../../i18n/t';
 import { formatMoney } from '../../primitives';
 import { formatPlanMonth } from './cash-plan-labels';
+import { HelpSectionTitle } from '../../../help';
 
 interface Props {
   plan: CashPlanData;
@@ -50,7 +51,7 @@ export const CashPlanChart: React.FC<Props> = ({ plan }) => {
   );
 
   return (
-    <Card title={t('Entrées, sorties et cumul')}>
+    <Card title={<HelpSectionTitle title={t('Entrées, sorties et cumul')} helpId="patrimoine.tresorerie.graphique" />}>
       <div role="img" aria-label={summary} style={{ width: '100%', height: 340 }}>
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={data} margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>

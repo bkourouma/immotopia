@@ -200,6 +200,7 @@ export const TaxParametersPage: React.FC = () => {
         <SkeletonTable rows={8} columns={columns.length} aria-label={t('Paramètres en cours de chargement')} />
       ) : (
         <Table
+          helpId="patrimoine.fiscalite.tableau"
           {...local.tableProps}
           exportFilename={t('Paramètres fiscaux')}
           exportFetchAll={local.exportAll}

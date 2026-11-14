@@ -17,6 +17,7 @@ import { formatMoney } from '../primitives';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { t } from '../../i18n/t';
 import { useMyMenuAccess } from '../../hooks/useMenuAccess';
+import { HelpSectionTitle } from '../../help';
 
 const { Text, Paragraph } = Typography;
 
@@ -172,7 +173,10 @@ export const PersonalTierCard: React.FC<{ tenantId: string; onConfirmed?: () => 
         : 0;
 
   return (
-    <Card title={t('Palier de votre espace')} data-testid="personal-tier-card">
+    <Card
+      title={<HelpSectionTitle title={t('Palier de votre espace')} helpId="patrimoine.espace-personnel.palier" />}
+      data-testid="personal-tier-card"
+    >
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         {waiting && <Alert type="info" showIcon role="status" title={t('Confirmation du paiement en cours…')} />}
         {notice && <Alert type={notice.type} showIcon role="alert" title={notice.text} />}

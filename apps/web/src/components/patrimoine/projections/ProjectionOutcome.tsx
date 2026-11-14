@@ -2,6 +2,7 @@ import React from 'react';
 import { Alert } from 'antd';
 import type { ProjectionResponse, ProjectionScenarioKey } from '../../../services/patrimoine-projections-service';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 import { AssumptionsPanel, type AssumptionOverrides } from './AssumptionsPanel';
 import { collectWarnings, warningText } from './projection-helpers';
 import { ProjectionChartCard, ProjectionTableCard, SimulationDeltaCard } from './ProjectionResults';
@@ -18,7 +19,9 @@ const WarningsAlert: React.FC<{ data: ProjectionResponse; nameOfAsset: (id: stri
       type="warning"
       showIcon
       style={{ marginBottom: 'var(--space-4)' }}
-      title={t('À savoir sur ces résultats')}
+      title={
+        <HelpSectionTitle title={t('À savoir sur ces résultats')} helpId="patrimoine.projections.avertissements" />
+      }
       description={
         <ul style={{ margin: 0, paddingInlineStart: 20 }}>
           {warnings.map((warning, index) => (

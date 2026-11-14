@@ -7,6 +7,7 @@ import { httpStatusOf, landErrorMessage } from './land-errors';
 import { LandValidationAlert } from './LandValidationAlert';
 import { queryKey, STALE_TIME } from '../../../lib/query-keys';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 import { createLandRegularization, listLandTracks } from './land-regularization-service';
 import type { LandRegularizationDetail, LandTrackKey } from './land-types';
 
@@ -153,7 +154,7 @@ export const LandCreateModal: React.FC<LandCreateModalProps> = ({
   return (
     <Modal
       open={open}
-      title={t('Nouveau dossier de régularisation')}
+      title={<HelpSectionTitle title={t('Nouveau dossier de régularisation')} helpId="patrimoine.terrains.nouveau" />}
       onCancel={onClose}
       onOk={handleOk}
       okText={t('Créer le dossier')}

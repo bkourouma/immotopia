@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button, Card, Form, Input, Select } from 'antd';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 interface PropertyOption {
   value: string;
@@ -40,7 +41,7 @@ export const OwnerStatementGenerator: React.FC<Props> = ({
   const ownerContactId = Form.useWatch('ownerContactId', form);
 
   return (
-    <Card title={t('Générer un relevé de gérance')}>
+    <Card title={<HelpSectionTitle title={t('Générer un relevé de gérance')} helpId="patrimoine.releves.generer" />}>
       <Form layout="vertical" form={form} onFinish={onGenerate}>
         <Form.Item
           name="ownerContactId"

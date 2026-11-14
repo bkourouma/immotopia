@@ -3,6 +3,7 @@ import { Card } from 'antd';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { YieldProjectionPoint } from '../../types/patrimoine-types';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 import { activeLocale } from '../../i18n/format';
 interface Props {
@@ -46,7 +47,7 @@ export const YieldProjectionChart: React.FC<Props> = ({ data }) => {
   }, [data]);
 
   return (
-    <Card title={t('Projection de rendement')}>
+    <Card title={<HelpSectionTitle title={t('Projection de rendement')} helpId="patrimoine.performance.projection" />}>
       <div style={{ width: '100%', height: 360 }}>
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data} margin={{ top: 8, right: 20, left: 12, bottom: 8 }}>

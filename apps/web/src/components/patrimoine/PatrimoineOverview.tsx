@@ -3,6 +3,7 @@ import { Col, Row } from 'antd';
 import { PatrimoineOverviewData } from '../../types/patrimoine-types';
 import { StatCard, MoneyValue } from '../primitives';
 import { t } from '../../i18n/t';
+import { helpAnchor } from '../../help';
 
 import { activeLocale } from '../../i18n/format';
 interface Props {
@@ -60,10 +61,16 @@ export const PatrimoineOverview: React.FC<Props> = ({ data }) => {
   ];
 
   return (
-    <Row gutter={[16, 16]}>
+    <Row gutter={[16, 16]} {...helpAnchor('patrimoine-indicateurs')}>
       {indicateurs.map(indicateur => (
         <Col xs={24} sm={12} lg={8} key={indicateur.label}>
-          <StatCard label={indicateur.label} value={indicateur.value} hint={indicateur.hint} tone={indicateur.tone} />
+          <StatCard
+            helpId="patrimoine.accueil.indicateurs"
+            label={indicateur.label}
+            value={indicateur.value}
+            hint={indicateur.hint}
+            tone={indicateur.tone}
+          />
         </Col>
       ))}
     </Row>

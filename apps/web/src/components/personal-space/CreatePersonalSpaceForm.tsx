@@ -12,6 +12,7 @@ import {
   readApiError,
   type UemoaCountryCode
 } from '../../services/personal-space-service';
+import { HelpButton } from '../../help';
 import { t } from '../../i18n/t';
 
 /**
@@ -142,6 +143,9 @@ export const CreatePersonalSpaceForm: React.FC = () => {
       disabled={submitting}
       aria-label={t('Créer mon espace')}
     >
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <HelpButton size="small" helpId="patrimoine.espace-personnel.creation" />
+      </div>
       {error && (
         <Alert
           type="error"

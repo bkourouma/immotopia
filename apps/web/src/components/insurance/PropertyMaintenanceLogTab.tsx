@@ -11,6 +11,7 @@ import { apiErrorMessage } from '../patrimoine/patrimoine-labels';
 import { saveBlob } from '../../utils/save-blob';
 import { feedback } from '../../lib/feedback';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 import { MaintenanceLogFormModal } from './MaintenanceLogFormModal';
 import { MaintenanceLogTimeline } from './MaintenanceLogTimeline';
 import { LOG_CATEGORY_VALUES, logCategoryLabel, options } from './insurance-labels';
@@ -73,7 +74,7 @@ export const PropertyMaintenanceLogTab: React.FC<Props> = ({ propertyId, tenantI
 
   return (
     <Card
-      title={t("Carnet d'entretien")}
+      title={<HelpSectionTitle title={t("Carnet d'entretien")} helpId="patrimoine.assurances.carnet" />}
       extra={
         <Space wrap>
           <Select

@@ -27,6 +27,7 @@ import {
 } from './asset-classes';
 import { apiErrorMessage, serverFieldErrors, todayIso } from './asset-format';
 import { valuationMethodLabel } from '../patrimoine-labels';
+import { HelpButton, HelpSectionTitle, helpAnchor } from '../../../help';
 
 const { TextArea } = Input;
 
@@ -245,9 +246,12 @@ function ValuationFields() {
   // Une expertise sans source est refusée par le serveur ; sans montant, aucune valorisation n'est créée.
   const sourceRequired = method === 'EXPERT_APPRAISAL' && typeof amount === 'number';
   return (
-    <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
+    <fieldset style={{ border: 0, padding: 0, margin: 0 }} {...helpAnchor('actifs-form-valorisation')}>
       <legend style={{ fontWeight: 600, marginBottom: 'var(--space-2)' }}>
-        {t('Première valorisation (facultative)')}
+        <HelpSectionTitle
+          title={t('Première valorisation (facultative)')}
+          helpId="patrimoine.actifs.valorisation-initiale"
+        />
       </legend>
       <Form.Item name={['initialValuation', 'estimatedValue']} label={t('Valeur estimée')}>
         <InputNumber style={{ width: '100%' }} />
@@ -426,13 +430,18 @@ export const AssetFormDrawer: React.FC<AssetFormDrawerProps> = ({
     <Drawer
       open={open}
       size={520}
-      title={editing ? t('Modifier un actif') : t('Ajouter un actif')}
+      title={
+        <HelpSectionTitle
+          title={editing ? t('Modifier un actif') : t('Ajouter un actif')}
+          helpId="patrimoine.actifs.formulaire"
+        />
+      }
       onClose={onClose}
       destroyOnHidden
       footer={
         <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
           <Button onClick={onClose}>{t('Annuler')}</Button>
-          <Button type="primary" loading={submitting} onClick={handleSubmit}>
+          <Button type="primary" loading={submitting} onClick={handleSubmit} {...helpAnchor('actifs-form-creer')}>
             {editing ? t('Enregistrer') : t("Créer l'actif")}
           </Button>
         </Space>
@@ -461,9 +470,20 @@ export const AssetFormDrawer: React.FC<AssetFormDrawerProps> = ({
       )}
       {errorMessage && <Alert type="error" showIcon title={errorMessage} style={{ marginBottom: 'var(--space-3)' }} />}
       <Form form={form} layout="vertical" initialValues={initialValues(asset)}>
-        <Form.Item name="assetClass" label={t("Classe d'actif")} rules={[{ required: true }]}>
-          <Select disabled={editing} options={assetClassOptions()} onChange={() => form.setFieldValue('details', {})} />
-        </Form.Item>
+        <div {...helpAnchor('actifs-form-classe')}>
+          <Form.Item
+            name="assetClass"
+            label={t("Classe d'actif")}
+            extra={<HelpButton size="small" helpId="patrimoine.actifs.classes" />}
+            rules={[{ required: true }]}
+          >
+            <Select
+              disabled={editing}
+              options={assetClassOptions()}
+              onChange={() => form.setFieldValue('details', {})}
+            />
+          </Form.Item>
+        </div>
         {editing && asset?.assetClass === 'REAL_ESTATE' && (
           <p>
             {t('Bien lié : {{bien}}', { bien: asset.property?.internalReference ?? assetClassLabel('REAL_ESTATE') })}
@@ -472,13 +492,15 @@ export const AssetFormDrawer: React.FC<AssetFormDrawerProps> = ({
         {!editing && assetClass === 'REAL_ESTATE' && (
           <RealEstatePicker tenantId={tenantId} linkedPropertyIds={linked} />
         )}
-        <Form.Item
-          name="name"
-          label={t("Nom de l'actif")}
-          rules={[{ required: true, whitespace: true, message: t("Le nom de l'actif est requis") }]}
-        >
-          <Input maxLength={160} />
-        </Form.Item>
+        <div {...helpAnchor('actifs-form-nom')}>
+          <Form.Item
+            name="name"
+            label={t("Nom de l'actif")}
+            rules={[{ required: true, whitespace: true, message: t("Le nom de l'actif est requis") }]}
+          >
+            <Input maxLength={160} />
+          </Form.Item>
+        </div>
         <ClassFields assetClass={assetClass} />
         <CurrencyFields form={form} locked={currencyLocked} />
         <Form.Item name="acquisitionCost" label={t("Coût d'acquisition")}>
