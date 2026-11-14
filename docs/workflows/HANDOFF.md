@@ -81,6 +81,8 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 **Rapports programmés** — Après `b7486844`, les routes de brouillon enregistrent un artefact recalculable, les destinataires habilités, les formats et un horaire dans un fuseau IANA. La migration `20261115070000_assistant_scheduled_reports` rattache la configuration à l’analyse enregistrée. Les brouillons sont inactifs. Reste à brancher le calcul d’échéance au job et aux commandes de pause/reprise, à réserver une livraison par échéance et destinataire et à fournir l’onglet Rapports.
 
+**Envoi des rapports** — Après `4b226566`, le job s’exécute toutes les 15 minutes avec le verrou distribué. L’API active, met en pause et reprend les brouillons. À chaque échéance le job recalcule les pièces jointes selon les droits actuels de chaque destinataire et du propriétaire, puis envoie à l’adresse vérifiée. La migration `20261115080000_assistant_report_deliveries` réserve chaque couple échéance/destinataire avant SMTP. Un accusé incertain reste à vérifier et ne déclenche pas un nouvel envoi. Le propriétaire voit le statut du dernier passage et reçoit une notification interne. L’interface Rapports reste à livrer.
+
 ## chore/deps-patch-minor — 2026-11-11
 
 **État** — PR 218 vers `main` (fusion par l'utilisateur), reprend la PR Dependabot 212 (28 mises à jour mineures : antd 6.7, Radix, TanStack Query, aws-sdk, docxtemplater, pizzip…). PR Dependabot 214 (`@vitejs/plugin-react` 6) et 215 (`vitest` 5) fermées le 2026-11-11 : sauts de versions majeures (module introuvable, matchers non typés), à traiter en migration dédiée ; envisager une règle `ignore` des versions majeures dans `.github/dependabot.yml`.

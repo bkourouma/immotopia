@@ -28,6 +28,7 @@ import {
   listScheduledReportsHandler,
   createScheduledReportDraftHandler,
   deleteScheduledReportHandler,
+  updateScheduledReportHandler,
   listSavedAnalysisPinsHandler,
   getSavedAnalysisPinHandler,
   setSavedAnalysisPinHandler,
@@ -70,6 +71,7 @@ router.get('/status', requireAiStatusAccess, getStatusHandler);
 router.get('/reports', requireAiStatusAccess, listScheduledReportsHandler);
 router.post('/reports', requireAiStatusAccess, aiActionRateLimiter, createScheduledReportDraftHandler);
 router.delete('/reports/:id', requireAiStatusAccess, aiActionRateLimiter, deleteScheduledReportHandler);
+router.patch('/reports/:id', requireAiStatusAccess, aiActionRateLimiter, updateScheduledReportHandler);
 router.get('/shares', requireAiStatusAccess, listAnalysisSharesHandler);
 router.get('/shares/pins', requireAiStatusAccess, listAnalysisSharePinsHandler);
 router.put('/shares/:id/pin', requireAiStatusAccess, aiActionRateLimiter, setAnalysisSharePinHandler);

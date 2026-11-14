@@ -11667,8 +11667,23 @@ model AssistantScheduledReport {
   createdAt      DateTime  @default(now()) @map("created_at")
 
   analysis AssistantSavedAnalysis @relation(fields: [tenantId, ownerId, conversationId, artifactId], references: [tenantId, ownerId, conversationId, artifactId], onDelete: Cascade, map: "assistant_scheduled_reports_analysis_fkey")
+  deliveries AssistantReportDelivery[]
 
+  @@unique([tenantId, id])
   @@index([tenantId, ownerId, createdAt(sort: Desc), id], map: "assistant_scheduled_reports_list_idx")
   @@index([active, nextRunAt], map: "assistant_scheduled_reports_due_idx")
   @@map("assistant_scheduled_reports")
+}
+
+model AssistantReportDelivery {
+  tenantId    String   @map("tenant_id")
+  reportId    String   @map("report_id")
+  dueAt       DateTime @map("due_at")
+  recipientId String   @map("recipient_id")
+  status      String
+
+  report AssistantScheduledReport @relation(fields: [tenantId, reportId], references: [tenantId, id], onDelete: Cascade, map: "assistant_report_deliveries_report_fkey")
+
+  @@id([tenantId, reportId, dueAt, recipientId])
+  @@map("assistant_report_deliveries")
 }

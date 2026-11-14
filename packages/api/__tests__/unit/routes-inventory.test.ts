@@ -399,6 +399,7 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
       ['GET', '/api/tenants/:tenantId/ai/reports'],
       ['POST', '/api/tenants/:tenantId/ai/reports'],
       ['DELETE', '/api/tenants/:tenantId/ai/reports/:id'],
+      ['PATCH', '/api/tenants/:tenantId/ai/reports/:id'],
       ['GET', '/api/tenants/:tenantId/ai/shares'],
       ['GET', '/api/tenants/:tenantId/ai/shares/pins'],
       ['PUT', '/api/tenants/:tenantId/ai/shares/:id/pin'],

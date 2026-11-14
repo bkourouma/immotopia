@@ -73,3 +73,15 @@ export async function listScheduledReports(owner: AssistantOwner, scopeKey: stri
 export async function removeScheduledReport(owner: AssistantOwner, id: string) {
   await prisma.assistantScheduledReport.deleteMany({ where: { ...owner, id } });
 }
+
+export async function setScheduledReportActive(owner: AssistantOwner, scopeKey: string, id: string, active: boolean) {
+  const where = { ...owner, id, analysis: { conversation: { scopeKey } } };
+  const report = await prisma.assistantScheduledReport.findFirst({ where });
+  if (!report) throw new NotFoundError();
+  if (active === report.active) return;
+  const nextRunAt = active ? nextReportRun(reportSchedule.parse(report.schedule), new Date()) : null;
+  await prisma.assistantScheduledReport.updateMany({
+    where: { ...where, active: !active },
+    data: { active, nextRunAt }
+  });
+}

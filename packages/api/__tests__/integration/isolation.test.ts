@@ -32,6 +32,8 @@ import { DocumentType } from '@prisma/client';
 import app from '../../src/app';
 import { prisma } from '../../src/utils/database';
 import { signProposal } from '../../src/lib/ai/proposal-token';
+import { runAssistantReports } from '../../src/jobs/assistant-report-job';
+import * as reportEmail from '../../src/services/email-service';
 import { assistantScope, getConversation } from '../../src/lib/ai/conversations';
 import { toolsForUser } from '../../src/lib/ai/tools/registry';
 import { getUserPermissions } from '../../src/services/permission-service';
@@ -592,6 +594,10 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
     it('enregistre un brouillon de rapport dans le périmètre du propriétaire', async () => {
       const owner = await createTenantAdminUser(tenantA, 'report-owner');
       const recipient = await createTenantAdminUser(tenantA, 'report-recipient');
+      const disabled = await createTenantAdminUser(tenantA, 'report-disabled');
+      await prisma.user.update({ where: { id: recipient.id }, data: { emailVerified: true, preferredLanguage: 'en' } });
+      const configured = jest.spyOn(reportEmail, 'isEmailDeliveryConfigured').mockReturnValue(true);
+      const send = jest.spyOn(reportEmail.emailService, 'sendEmail').mockResolvedValue({ sent: true });
       const base = `/api/tenants/${tenantA.id}/ai`;
       mockFakeScript = [
         { toolCalls: [{ name: 'rental_receipts', input: { month: '2025-06' } }] },
@@ -618,7 +624,7 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         const input = {
           conversationId,
           artifactId,
-          recipientIds: [recipient.id],
+          recipientIds: [recipient.id, disabled.id],
           formats: ['csv'],
           schedule: { frequency: 'weekly', day: 1, time: '08:15', timeZone: 'Africa/Abidjan' }
         };
@@ -638,6 +644,39 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
           expect.objectContaining({ id: report.body.data.id, active: false, schedule: input.schedule, nextRunAt: null })
         ]);
         expect((await request(app).get(reports).set(authed(recipient))).body.data.items).toEqual([]);
+        const id = report.body.data.id;
+        const reportPath = reports + '/' + id;
+        expect((await request(app).patch(reportPath).set(authed(recipient)).send({ active: true })).status).toBe(404);
+        expect((await request(app).patch(reportPath).set(authed(owner)).send({ active: true })).status).toBe(204);
+        const dueAt = new Date('2030-01-07T08:15:00Z');
+        await prisma.assistantScheduledReport.updateMany({
+          where: { tenantId: tenantA.id, id },
+          data: { nextRunAt: dueAt }
+        });
+        await prisma.membership.updateMany({
+          where: { tenantId: tenantA.id, userId: disabled.id },
+          data: { status: 'DISABLED' }
+        });
+        await Promise.all([runAssistantReports(dueAt), runAssistantReports(dueAt)]);
+        await runAssistantReports(dueAt);
+        expect(send).toHaveBeenCalledTimes(1);
+        expect(send).toHaveBeenCalledWith(
+          expect.objectContaining({
+            to: recipient.email,
+            subject: 'Your ImmoTopia report',
+            attachments: [expect.objectContaining({ filename: 'ImmoTopia.csv' })]
+          })
+        );
+        expect((await request(app).get(reports).set(authed(owner))).body.data.items[0]).toMatchObject({
+          active: true,
+          nextRunAt: '2030-01-14T08:15:00.000Z',
+          lastStatus: 'PARTIAL'
+        });
+        expect((await request(app).patch(reportPath).set(authed(owner)).send({ active: false })).status).toBe(204);
+        expect((await request(app).get(reports).set(authed(owner))).body.data.items[0]).toMatchObject({
+          active: false,
+          nextRunAt: null
+        });
         expect(
           (
             await request(app)
@@ -648,6 +687,8 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         expect((await request(app).get(reports).set(authed(owner))).body.data.items).toEqual([]);
       } finally {
         mockFakeScript = undefined;
+        configured.mockRestore();
+        send.mockRestore();
       }
     });
 
