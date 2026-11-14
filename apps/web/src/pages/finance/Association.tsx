@@ -36,6 +36,7 @@ import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion } from '../../utils/list-search';
 
 import { activeLocale } from '../../i18n/format';
+import { HelpSectionTitle } from '../../help';
 const { Title } = Typography;
 
 const { RangePicker } = DatePicker;
@@ -365,6 +366,7 @@ export const Association: React.FC = () => {
   return (
     <>
       <PageHeader
+        helpId="finance.association.page"
         title={association.label}
         breadcrumbs={filAriane}
         extra={<StatusTag status={association.isActive ? 'ACTIVE' : 'INACTIVE'} />}
@@ -380,6 +382,7 @@ export const Association: React.FC = () => {
       >
         <StatCard label={t('Total des quotes-parts')} value={pourcentage(association.totalSharePercent)} />
         <StatCard
+          helpId="finance.association.parts"
           label={t("Part de l'agence")}
           value={pourcentage(association.companySharePercent)}
           tone={rienPourLAgence ? 'warning' : 'neutral'}
@@ -395,6 +398,7 @@ export const Association: React.FC = () => {
         {t('Associés')}
       </Title>
       <DataView<PartnershipShare>
+        helpId="finance.association.associes"
         paginated={false}
         items={association.shares}
         total={association.shares.length}
@@ -478,9 +482,14 @@ export const Association: React.FC = () => {
 
       <Modal
         title={
-          associeConsulte
-            ? t('État de quote-part — {{partnerName}}', { partnerName: associeConsulte.partnerName })
-            : t('État de quote-part')
+          <HelpSectionTitle
+            title={
+              associeConsulte
+                ? t('État de quote-part — {{partnerName}}', { partnerName: associeConsulte.partnerName })
+                : t('État de quote-part')
+            }
+            helpId="finance.association.releve"
+          />
         }
         open={Boolean(associeConsulte)}
         onCancel={() => consulterAssocie(null)}
@@ -587,6 +596,7 @@ const BiensRattachesSection: React.FC<{
 
   return (
     <DataView<PartnershipPropertyRef>
+      helpId="finance.association.biens"
       {...local.dataViewProps}
       search={{ ...local.searchProps, 'aria-label': t('Rechercher dans les biens rattachés') }}
       emptyDescription={t("Aucun bien n'est encore rattaché à cette association.")}
@@ -683,7 +693,7 @@ function Card_AjoutAssocie(props: {
       }}
     >
       <Title level={5} style={{ marginTop: 0 }}>
-        {t('Ajouter un associé')}
+        <HelpSectionTitle title={t('Ajouter un associé')} helpId="finance.association.ajout-associe" />
       </Title>
       <Space wrap size="middle" align="end">
         <div>

@@ -15,6 +15,7 @@ import { entityKeyPrefix, queryKey, STALE_TIME } from '../../lib/query-keys';
 import { PageHeader, StateBlock, MoneyValue, DataView, DataCard, StatusTag } from '../../components/primitives';
 import { t } from '../../i18n/t';
 import { localizedList } from '../../i18n/localized';
+import { HelpSectionTitle } from '../../help';
 
 import { activeLocale } from '../../i18n/format';
 /**
@@ -257,6 +258,7 @@ export const Chantiers: React.FC = () => {
   return (
     <>
       <PageHeader
+        helpId="finance.chantiers.page"
         title={t('Chantiers')}
         subtitle={
           chantiers.length > 0
@@ -267,6 +269,7 @@ export const Chantiers: React.FC = () => {
       />
 
       <DataView<ConstructionSite>
+        helpId="finance.chantiers.tableau"
         // Le contrat de `listConstructionSites` ne pagine pas : recherche et
         // pagination (20 par page) sont locales ; l'export reprend toute la
         // liste filtrée.
@@ -300,7 +303,7 @@ export const Chantiers: React.FC = () => {
       />
 
       <Modal
-        title={t('Nouveau chantier')}
+        title={<HelpSectionTitle title={t('Nouveau chantier')} helpId="finance.chantiers.nouveau" />}
         open={modalOuvert}
         onCancel={fermerCreation}
         confirmLoading={creationEnCours}

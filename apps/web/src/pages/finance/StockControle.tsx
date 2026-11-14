@@ -62,6 +62,7 @@ import { safeFormatDate } from '../../utils/date-utils';
 import { formatNumber } from '../../i18n/format';
 import { EXPORT_MAX_ROWS } from '../../utils/table-export/collect';
 import { t } from '../../i18n/t';
+import { HelpButton, HelpSectionTitle } from '../../help';
 
 const { Text, Paragraph } = Typography;
 
@@ -168,7 +169,11 @@ export function StockControle(): React.ReactElement {
 
   const entete = (
     <>
-      <PageHeader title={t('Contrôle du stock')} subtitle={t('Alertes, indicateurs et réglages')} />
+      <PageHeader
+        helpId="finance.controle-stock.page"
+        title={t('Contrôle du stock')}
+        subtitle={t('Alertes, indicateurs et réglages')}
+      />
       <Paragraph type="secondary">
         {t(
           'Une alerte ou un indicateur signale un fait au-dessus d’un seuil. Il ne désigne personne et n’interdit rien : c’est à vous de regarder et de qualifier.'
@@ -235,16 +240,41 @@ export function StockControle(): React.ReactElement {
       return {
         key: cle,
         label: t('Alertes'),
-        children: <OngletAlertes tenantId={tenantId} champ={champ} alerteId={params.get('alerte')} />
+        children: (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <HelpButton size="small" helpId="finance.controle-stock.alertes" />
+            </div>
+            <OngletAlertes tenantId={tenantId} champ={champ} alerteId={params.get('alerte')} />
+          </>
+        )
       };
     }
     if (cle === 'indicateurs') {
-      return { key: cle, label: t('Indicateurs'), children: <OngletIndicateurs tenantId={tenantId} champ={champ} /> };
+      return {
+        key: cle,
+        label: t('Indicateurs'),
+        children: (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <HelpButton size="small" helpId="finance.controle-stock.indicateurs" />
+            </div>
+            <OngletIndicateurs tenantId={tenantId} champ={champ} />
+          </>
+        )
+      };
     }
     return {
       key: cle,
       label: t('Réglages de contrôle'),
-      children: <OngletReglages tenantId={tenantId} champ={champ} peutModifier={champ.abilities.canManageSettings} />
+      children: (
+        <>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <HelpButton size="small" helpId="finance.controle-stock.reglages" />
+          </div>
+          <OngletReglages tenantId={tenantId} champ={champ} peutModifier={champ.abilities.canManageSettings} />
+        </>
+      )
     };
   });
 
@@ -632,6 +662,7 @@ const OngletAlertes: React.FC<OngletAlertesProps> = ({ tenantId, champ, alerteId
 
       {alerteIntrouvable && alertes.length === 0 ? null : (
         <DataView<StockAlertView>
+          helpId="finance.controle-stock.alertes-tableau"
           aria-label={t('Alertes du stock')}
           // Liste par curseur : l'export reparcourt toutes les pages, avec les
           // mêmes filtres que la liste affichée.
@@ -915,6 +946,7 @@ const OngletIndicateurs: React.FC<{ tenantId: string; champ: StockFieldContext }
             <Row gutter={[12, 12]}>
               <Col xs={24} sm={12} lg={6}>
                 <StatCard
+                  helpId="finance.controle-stock.indicateurs-cartes"
                   label={t('Taux d’écart')}
                   value={pourcent(dernier.varianceRate)}
                   hint={aideTauxEcart(dernier)}
@@ -946,7 +978,10 @@ const OngletIndicateurs: React.FC<{ tenantId: string; champ: StockFieldContext }
             </Row>
           ) : null}
 
-          <Card title={t('Par mois')} size="small">
+          <Card
+            title={<HelpSectionTitle title={t('Par mois')} helpId="finance.controle-stock.par-mois" />}
+            size="small"
+          >
             <DataView<StockIndicatorRow>
               aria-label={t('Indicateurs par mois')}
               export={{ filename: t('Indicateurs par mois'), fetchAll: async () => totaux }}
@@ -963,7 +998,7 @@ const OngletIndicateurs: React.FC<{ tenantId: string; champ: StockFieldContext }
           </Card>
 
           <Card
-            title={t('Par lieu et par mois')}
+            title={<HelpSectionTitle title={t('Par lieu et par mois')} helpId="finance.controle-stock.par-lieu" />}
             size="small"
             extra={
               <Select<string>

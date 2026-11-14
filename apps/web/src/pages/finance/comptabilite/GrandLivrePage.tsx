@@ -292,7 +292,11 @@ export const GrandLivrePage: React.FC = () => {
         {synthese && (
           <Row gutter={[16, 16]} style={{ marginBlockEnd: 'var(--space-4)' }}>
             <Col xs={12} lg={6}>
-              <StatCard label={t("Solde d'ouverture")} value={<MoneyValue value={synthese.openingBalance} signed />} />
+              <StatCard
+                helpId="finance.grand-livre.synthese"
+                label={t("Solde d'ouverture")}
+                value={<MoneyValue value={synthese.openingBalance} signed />}
+              />
             </Col>
             <Col xs={12} lg={6}>
               <StatCard label={t('Total débit')} value={<MoneyValue value={synthese.totalDebit} />} />
@@ -310,6 +314,7 @@ export const GrandLivrePage: React.FC = () => {
           </Row>
         )}
         <DataView<GeneralLedgerLine>
+          helpId="finance.grand-livre.compte"
           aria-label={t('Grand livre')}
           columns={colonnesLignes}
           items={grandLivre?.items ?? []}
@@ -343,6 +348,7 @@ export const GrandLivrePage: React.FC = () => {
     contenu = (
       <>
         <DataView<AccountBalanceRow>
+          helpId="finance.grand-livre.recap"
           aria-label={t('Grand livre')}
           columns={colonnesResume}
           items={recap?.items ?? []}

@@ -42,6 +42,7 @@ import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion } from '../../utils/list-search';
 import { localizedList } from '../../i18n/localized';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle, helpAnchor } from '../../help';
 
 import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
@@ -653,6 +654,7 @@ export const Tacheron: React.FC = () => {
   const tableauMarches = useMemo(
     () => (
       <DataView<ContractorContract>
+        helpId="finance.tacheron.marches"
         export={{ filename: t('Marchés'), fetchAll: marchesLocal.exportAll }}
         scrollX={1400}
         {...marchesLocal.dataViewProps}
@@ -697,6 +699,7 @@ export const Tacheron: React.FC = () => {
   const tableauSituations = useMemo(
     () => (
       <DataView<ProgressStatement>
+        helpId="finance.tacheron.situations"
         export={{ filename: t("Situations d'avancement du marché") }}
         scrollX={1000}
         items={(situations ?? []).slice(
@@ -770,6 +773,7 @@ export const Tacheron: React.FC = () => {
   const tableauReglements = useMemo(
     () => (
       <DataView<ContractorPayment>
+        helpId="finance.tacheron.reglements"
         export={{ filename: t('Règlements'), fetchAll: reglementsLocal.exportAll }}
         scrollX={900}
         {...reglementsLocal.dataViewProps}
@@ -874,6 +878,7 @@ export const Tacheron: React.FC = () => {
   return (
     <>
       <PageHeader
+        helpId="finance.tacheron.page"
         title={tacheron.fullName}
         subtitle={tacheron.trade ?? t('Corps de métier non renseigné')}
         breadcrumbs={filAriane}
@@ -887,9 +892,9 @@ export const Tacheron: React.FC = () => {
         répondent à deux questions différentes, et rien dans les nombres ne le
         dit. Voir l'en-tête de ce fichier.
       */}
-      <Card style={{ marginBottom: 'var(--space-4)' }}>
+      <Card {...helpAnchor('tacheron-soldes')} style={{ marginBottom: 'var(--space-4)' }}>
         <Title level={5} style={{ marginTop: 0 }}>
-          {t('Deux chiffres à ne pas confondre')}
+          <HelpSectionTitle title={t('Deux chiffres à ne pas confondre')} helpId="finance.tacheron.soldes" />
         </Title>
         <Text type="secondary">
           <strong>{t('Marché restant')}</strong> {t('= montant convenu − situations validées : ce qui reste à')}{' '}
@@ -939,11 +944,11 @@ export const Tacheron: React.FC = () => {
             label: t('Marchés'),
             children: (
               <>
-                {tableauMarches}
+                <div {...helpAnchor('tacheron-marches')}>{tableauMarches}</div>
 
-                <Card style={{ marginTop: 'var(--space-4)' }}>
+                <Card {...helpAnchor('tacheron-convenir')} style={{ marginTop: 'var(--space-4)' }}>
                   <Title level={5} style={{ marginTop: 0 }}>
-                    {t("Convenir d'un marché")}
+                    <HelpSectionTitle title={t("Convenir d'un marché")} helpId="finance.tacheron.convenir-marche" />
                   </Title>
                   <Space wrap size="middle" align="end">
                     <div style={{ minWidth: 220 }}>
@@ -1053,11 +1058,16 @@ export const Tacheron: React.FC = () => {
                         : t('— ce qui reste à exécuter, et non ce qu’on lui doit.')}
                     </Text>
 
-                    <div style={{ marginTop: 'var(--space-3)' }}>{tableauSituations}</div>
+                    <div {...helpAnchor('tacheron-situations')} style={{ marginTop: 'var(--space-3)' }}>
+                      {tableauSituations}
+                    </div>
 
-                    <Card style={{ marginTop: 'var(--space-4)' }}>
+                    <Card {...helpAnchor('tacheron-saisir-situation')} style={{ marginTop: 'var(--space-4)' }}>
                       <Title level={5} style={{ marginTop: 0 }}>
-                        {t('Saisir une situation')}
+                        <HelpSectionTitle
+                          title={t('Saisir une situation')}
+                          helpId="finance.tacheron.saisir-situation"
+                        />
                       </Title>
                       <Space wrap size="middle" align="end">
                         <div>
@@ -1153,7 +1163,10 @@ export const Tacheron: React.FC = () => {
 
                 <Card style={{ marginTop: 'var(--space-4)' }}>
                   <Title level={5} style={{ marginTop: 0 }}>
-                    {t('Enregistrer un règlement')}
+                    <HelpSectionTitle
+                      title={t('Enregistrer un règlement')}
+                      helpId="finance.tacheron.saisir-reglement"
+                    />
                   </Title>
                   <Space wrap size="middle" align="end">
                     <div>

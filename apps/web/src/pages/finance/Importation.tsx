@@ -44,6 +44,7 @@ import type {
   LigneEvaluee
 } from '../../lib/importation';
 import { t } from '../../i18n/t';
+import { HelpButton, HelpSectionTitle, helpAnchor } from '../../help';
 
 const { Text, Paragraph } = Typography;
 
@@ -428,24 +429,28 @@ export const Importation: React.FC = () => {
   return (
     <div>
       <PageHeader
+        helpId="finance.importation.page"
         title={t('Importation')}
         subtitle={t('Reprendre un suivi Excel : les pièces sont saisies en brouillon, jamais validées.')}
       />
 
-      <Steps
-        current={etape}
-        size="small"
-        style={{ marginBlockEnd: 'var(--space-6)' }}
-        items={etapeTitles().map(title => ({ title }))}
-      />
+      <div {...helpAnchor('importation-etapes')}>
+        <Steps
+          current={etape}
+          size="small"
+          style={{ marginBlockEnd: 'var(--space-6)' }}
+          items={etapeTitles().map(title => ({ title }))}
+        />
+      </div>
 
       {/* ---------------------------------------------------------------- */}
       {/* Étape 1 — le document                                            */}
       {/* ---------------------------------------------------------------- */}
       {etape === 0 ? (
         <Space direction="vertical" size="middle" style={{ width: '100%', maxWidth: 640 }}>
-          <div>
-            <Text strong>{t('Type de document')}</Text>
+          <div {...helpAnchor('importation-type')}>
+            <Text strong>{t('Type de document')}</Text>{' '}
+            <HelpButton size="small" helpId="finance.importation.document" />
             <Select
               style={{ width: '100%', marginBlockStart: 'var(--space-1)' }}
               placeholder={t('Choisir ce que le fichier contient')}
@@ -508,6 +513,7 @@ export const Importation: React.FC = () => {
             disabled={!naturePrete || referentiel.isPending || referentiel.isError}
             loading={Boolean(descripteur) && referentiel.isPending}
             onClick={() => setEtape(1)}
+            {...helpAnchor('importation-continuer')}
           >
             {t('Continuer')}
           </Button>
@@ -529,7 +535,10 @@ export const Importation: React.FC = () => {
             </p>
           </Upload.Dragger>
           {lectureEnCours ? <Text type="secondary">{t('Lecture du classeur…')}</Text> : null}
-          <Button onClick={() => setEtape(0)}>{t('Revenir au document')}</Button>
+          <Space>
+            <Button onClick={() => setEtape(0)}>{t('Revenir au document')}</Button>
+            <HelpButton size="small" helpId="finance.importation.fichier" />
+          </Space>
         </Space>
       ) : null}
 
@@ -554,6 +563,7 @@ export const Importation: React.FC = () => {
           ) : null}
 
           <Table
+            helpId="finance.importation.colonnes"
             // Tableau de rapprochement : chaque ligne porte un sélecteur à remplir.
             exportable={false}
             size="small"
@@ -649,6 +659,7 @@ export const Importation: React.FC = () => {
           ) : null}
 
           <Table
+            helpId="finance.importation.apercu"
             // Aperçu éditable : chaque cellule est un champ de saisie.
             exportable={false}
             size="small"
@@ -691,7 +702,12 @@ export const Importation: React.FC = () => {
 
           {compteRendu ? (
             <>
-              <Descriptions size="small" column={1} bordered title={t('Compte rendu')}>
+              <Descriptions
+                size="small"
+                column={1}
+                bordered
+                title={<HelpSectionTitle title={t('Compte rendu')} helpId="finance.importation.compte-rendu" />}
+              >
                 <Descriptions.Item label={t('Pièces saisies en brouillon')}>{compteRendu.creees}</Descriptions.Item>
                 <Descriptions.Item label={t('Lignes refusées par le serveur')}>
                   {compteRendu.echouees.length}
@@ -704,6 +720,7 @@ export const Importation: React.FC = () => {
 
               {compteRendu.echouees.length > 0 ? (
                 <Table
+                  helpId="finance.importation.refus"
                   exportFilename={t('Lignes refusées par le serveur')}
                   size="small"
                   rowKey={resultat => String(resultat.numero)}

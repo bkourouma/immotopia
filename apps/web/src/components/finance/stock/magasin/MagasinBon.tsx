@@ -51,7 +51,7 @@ export const MagasinBon: React.FC<MagasinBonProps> = ({ tenantId, slipId, abilit
   if (lecture.isError) {
     const erreur = lireErreurStock(lecture.error, t('Le bon n’a pas pu être lu.'));
     return (
-      <EtapeGeste titre={t('Bon')} onRetour={onRetour}>
+      <EtapeGeste helpId="finance.magasin.bon" titre={t('Bon')} onRetour={onRetour}>
         {erreur.status === 404 ? (
           <Alert type="info" showIcon message={t('Ce bon est introuvable.')} />
         ) : (
@@ -73,7 +73,7 @@ export const MagasinBon: React.FC<MagasinBonProps> = ({ tenantId, slipId, abilit
   const bon = lecture.data?.data;
   if (!bon) {
     return (
-      <EtapeGeste titre={t('Bon')} onRetour={onRetour}>
+      <EtapeGeste helpId="finance.magasin.bon" titre={t('Bon')} onRetour={onRetour}>
         <Text type="secondary">{t('Chargement du bon…')}</Text>
       </EtapeGeste>
     );
@@ -82,7 +82,11 @@ export const MagasinBon: React.FC<MagasinBonProps> = ({ tenantId, slipId, abilit
   const demandeur = bon.taker?.label ?? bon.requestedBy;
 
   return (
-    <EtapeGeste titre={`${STOCK_SLIP_KIND_LABELS[bon.kind]} ${bon.number}`} onRetour={onRetour}>
+    <EtapeGeste
+      helpId="finance.magasin.bon"
+      titre={`${STOCK_SLIP_KIND_LABELS[bon.kind]} ${bon.number}`}
+      onRetour={onRetour}
+    >
       <LigneRecap label={t('Date du document')}>{dayjs(bon.documentDate).format(dateFormat('short'))}</LigneRecap>
       <LigneRecap label={t('Enregistré')}>
         {t('le {{date}} à {{heure}} (heure du serveur) par {{nom}}', {

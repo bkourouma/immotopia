@@ -162,11 +162,13 @@ export const BalanceFournisseurs: React.FC = () => {
   return (
     <>
       <PageHeader
+        helpId="finance.balance-fournisseurs.page"
         title={t('Balance fournisseurs')}
         subtitle={lignes.length > 0 ? `${lignes.length} fournisseur${lignes.length > 1 ? 's' : ''}` : undefined}
       />
 
       <DataView<SuppliersBalanceLine>
+        helpId="finance.balance-fournisseurs.tableau"
         {...local.dataViewProps}
         loading={isPending}
         isReloading={isFetching && !isPending}
@@ -196,7 +198,11 @@ export const BalanceFournisseurs: React.FC = () => {
           libre ou l'intervalle de solde restreignent la liste reçue : il ne serait plus celui des lignes visibles. */}
       {data && lignes.length > 0 && local.total === lignes.length && (
         <div style={{ marginTop: 'var(--space-4)', maxWidth: 320 }}>
-          <StatCard label={t('Total de contrôle')} value={<MoneyValue value={data.totalBalance} signed />} />
+          <StatCard
+            helpId="finance.balance-fournisseurs.total"
+            label={t('Total de contrôle')}
+            value={<MoneyValue value={data.totalBalance} signed />}
+          />
         </div>
       )}
     </>

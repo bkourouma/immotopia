@@ -139,7 +139,12 @@ export const GesteTransferer: React.FC<GesteProps> = ({
   switch (etape) {
     case 'arrivee':
       return (
-        <EtapeGeste titre={t('Vers quel lieu ?')} rappel={rappel} onRetour={() => confirmerAbandon(entame)}>
+        <EtapeGeste
+          helpId="finance.magasin.transferer"
+          titre={t('Vers quel lieu ?')}
+          rappel={rappel}
+          onRetour={() => confirmerAbandon(entame)}
+        >
           <ListeChoix
             aria-label={t('Lieux d’arrivée')}
             lignes={contexte.locations
@@ -162,7 +167,12 @@ export const GesteTransferer: React.FC<GesteProps> = ({
       );
     case 'article':
       return (
-        <EtapeGeste titre={t('Quel article ?')} rappel={rappel} onRetour={() => setEtape('arrivee')}>
+        <EtapeGeste
+          helpId="finance.magasin.transferer"
+          titre={t('Quel article ?')}
+          rappel={rappel}
+          onRetour={() => setEtape('arrivee')}
+        >
           <ListeChoix
             aria-label={t('Articles')}
             lignes={[...contexte.items]
@@ -186,6 +196,7 @@ export const GesteTransferer: React.FC<GesteProps> = ({
     case 'quantite':
       return (
         <EtapeGeste
+          helpId="finance.magasin.transferer"
           titre={article ? `${article.reference} — ${article.label}` : t('Quantité')}
           rappel={rappel}
           onRetour={() => setEtape('article')}
@@ -216,6 +227,7 @@ export const GesteTransferer: React.FC<GesteProps> = ({
     case 'demandeur':
       return (
         <EtapeGeste
+          helpId="finance.magasin.transferer"
           titre={t('Qui demande ou emporte ce transfert ?')}
           rappel={rappel}
           onRetour={() => setEtape('quantite')}
@@ -239,6 +251,7 @@ export const GesteTransferer: React.FC<GesteProps> = ({
     case 'motif':
       return (
         <EtapeGeste
+          helpId="finance.magasin.transferer"
           titre={t('Pourquoi ce transfert ?')}
           rappel={rappel}
           onRetour={() => setEtape('demandeur')}
@@ -273,6 +286,7 @@ export const GesteTransferer: React.FC<GesteProps> = ({
     case 'photo':
       return (
         <EtapeGeste
+          helpId="finance.magasin.transferer"
           titre={t('Photo')}
           rappel={t('Facultatif')}
           onRetour={() => setEtape('motif')}
@@ -291,6 +305,7 @@ export const GesteTransferer: React.FC<GesteProps> = ({
     case 'verifier':
       return (
         <EtapeGeste
+          helpId="finance.magasin.transferer"
           titre={t('Vérifiez')}
           onRetour={() => setEtape('photo')}
           persistant={photos}
@@ -343,6 +358,7 @@ export const GesteTransferer: React.FC<GesteProps> = ({
       if (!resultat) return null;
       return (
         <EtapeGeste
+          helpId="finance.magasin.transferer"
           titre={resultat.replayed ? t('Transfert déjà enregistré') : t('Transfert enregistré')}
           persistant={photos}
         >

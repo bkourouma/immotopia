@@ -8,6 +8,7 @@ import { useListSearch } from '../../../hooks/useListSearch';
 import { getJournal } from '../../../services/accounting-exports-service';
 import type { JournalEntry } from '../../../services/accounting-exports-service';
 import { t } from '../../../i18n/t';
+import { helpAnchor } from '../../../help';
 import {
   ACCOUNTING_PAGE_SIZE,
   AccountingFrame,
@@ -182,27 +183,30 @@ export const JournalPage: React.FC = () => {
         />
       }
     >
-      <DataView<JournalEntry>
-        aria-label={t('Journal')}
-        columns={columns}
-        items={data?.items ?? []}
-        total={data?.total ?? 0}
-        page={page}
-        pageSize={limit}
-        onPageChange={(nextPage, nextSize) =>
-          nextSize !== limit ? search.setPageSize(nextSize) : search.setPage(nextPage)
-        }
-        loading={query.isPending}
-        isReloading={query.isFetching && !query.isPending}
-        error={query.isError ? t('Impossible de charger le journal.') : null}
-        onRetry={() => void query.refetch()}
-        isFiltered={search.isFiltered}
-        onClearFilters={search.clear}
-        emptyDescription={t('Aucune écriture sur cette période.')}
-        renderCard={renderCard}
-        rowKey={e => e.id}
-        export={false}
-      />
+      <div {...helpAnchor('journal-tableau')}>
+        <DataView<JournalEntry>
+          helpId="finance.journal.tableau"
+          aria-label={t('Journal')}
+          columns={columns}
+          items={data?.items ?? []}
+          total={data?.total ?? 0}
+          page={page}
+          pageSize={limit}
+          onPageChange={(nextPage, nextSize) =>
+            nextSize !== limit ? search.setPageSize(nextSize) : search.setPage(nextPage)
+          }
+          loading={query.isPending}
+          isReloading={query.isFetching && !query.isPending}
+          error={query.isError ? t('Impossible de charger le journal.') : null}
+          onRetry={() => void query.refetch()}
+          isFiltered={search.isFiltered}
+          onClearFilters={search.clear}
+          emptyDescription={t('Aucune écriture sur cette période.')}
+          renderCard={renderCard}
+          rowKey={e => e.id}
+          export={false}
+        />
+      </div>
       {data && data.items.length > 0 && (
         <Text strong style={{ display: 'block', marginBlockStart: 'var(--space-3)' }}>
           {t('Total débit')} : <MoneyValue value={data.totals.debit} /> · {t('Total crédit')} :{' '}

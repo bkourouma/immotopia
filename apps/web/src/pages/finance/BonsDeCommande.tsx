@@ -239,12 +239,14 @@ export const BonsDeCommande: React.FC = () => {
   return (
     <>
       <PageHeader
+        helpId="finance.bons-de-commande.page"
         title={t('Bons de commande')}
         subtitle={bons.length > 0 ? `${bons.length} bon${bons.length > 1 ? 's' : ''}` : undefined}
         primaryAction={{ label: t('Nouveau bon'), icon: <PlusOutlined />, onClick: ouvrirNouveauBon }}
       />
 
       <DataView<PurchaseOrder>
+        helpId="finance.bons-de-commande.tableau"
         key={tenantId}
         {...local.dataViewProps}
         scrollX={1080}

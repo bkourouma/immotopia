@@ -44,6 +44,7 @@ import { montantSaisiProps } from '../../utils/montant-saisi';
 import { TreasuryAccountSelector } from '../../components/finance/TreasuryAccountSelector';
 import { useAuth } from '../../hooks/useAuth';
 import { useMyMenuAccess } from '../../hooks/useMenuAccess';
+import { HelpSectionTitle, helpAnchor } from '../../help';
 import { isPermissionDenied, writeErrorMessage } from '../../utils/error-handler';
 
 const { Title, Text } = Typography;
@@ -135,7 +136,9 @@ const LignesAttendues: React.FC<{
   paramPrefix: string;
   /** Nom accessible de la barre de recherche (distinct d'une instance à l'autre). */
   rechercheLabel: string;
-}> = ({ lignes, colonnes, paramPrefix, rechercheLabel }) => {
+  /** Fiche d'aide du tableau. */
+  helpId: string;
+}> = ({ lignes, colonnes, paramPrefix, rechercheLabel, helpId }) => {
   const criteres: SearchCriterion[] = [
     { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t("Libellé de l'opération…") },
     {
@@ -159,6 +162,7 @@ const LignesAttendues: React.FC<{
 
   return (
     <Table<ExpectedLine>
+      helpId={helpId}
       {...local.tableProps}
       // Deux barres peuvent coexister (session courante, détail) : noms distincts.
       search={{ ...local.tableProps.search, 'aria-label': rechercheLabel }}
@@ -344,6 +348,7 @@ const HistoriqueSessions: React.FC<{ tenantId: string; onOpen: (id: string) => v
   return (
     <>
       <DataView<CashSession>
+        helpId="finance.caisse.historique"
         items={donnees}
         total={total}
         {...recherche.dataViewProps}
@@ -561,9 +566,9 @@ export const Caisse: React.FC = () => {
   ];
 
   const formulaireOuverture = (
-    <Card>
+    <Card {...helpAnchor('caisse-ouvrir')}>
       <Title level={4} style={{ marginTop: 0 }}>
-        {t('Ouvrir ma caisse')}
+        <HelpSectionTitle title={t('Ouvrir ma caisse')} helpId="finance.caisse.ouverture" />
       </Title>
       <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
         <div>
@@ -619,7 +624,10 @@ export const Caisse: React.FC = () => {
         >
           <div>
             <Title level={4} style={{ margin: 0 }}>
-              {t('Caisse {{number}}', { number: session.number })}
+              <HelpSectionTitle
+                title={t('Caisse {{number}}', { number: session.number })}
+                helpId="finance.caisse.session"
+              />
             </Title>
             <Text type="secondary">{t('Ouverte le {{heure}}', { heure: dateHeure(session.openedAt) })}</Text>
             {session.treasuryLabel && (
@@ -652,6 +660,7 @@ export const Caisse: React.FC = () => {
         </Space>
 
         <div
+          {...helpAnchor('caisse-montant-attendu')}
           style={{
             padding: 'var(--space-4)',
             background: 'var(--surface-sunken)',
@@ -659,19 +668,25 @@ export const Caisse: React.FC = () => {
             marginBottom: 'var(--space-4)'
           }}
         >
-          <Text type="secondary">{t('Montant attendu')}</Text>
+          <HelpSectionTitle
+            title={<Text type="secondary">{t('Montant attendu')}</Text>}
+            helpId="finance.caisse.montant-attendu"
+          />
           <Title level={2} style={{ margin: 0 }}>
             <MoneyValue value={session.expected.amount} />
           </Title>
         </div>
 
         {session.expected.lines.length > 0 ? (
-          <LignesAttendues
-            lignes={session.expected.lines}
-            colonnes={colonnesOperations}
-            paramPrefix="att"
-            rechercheLabel={t('Rechercher dans les opérations de la session en cours')}
-          />
+          <div {...helpAnchor('caisse-operations')}>
+            <LignesAttendues
+              helpId="finance.caisse.operations"
+              lignes={session.expected.lines}
+              colonnes={colonnesOperations}
+              paramPrefix="att"
+              rechercheLabel={t('Rechercher dans les opérations de la session en cours')}
+            />
+          </div>
         ) : (
           <Text type="secondary">{t('Aucune opération pour le moment.')}</Text>
         )}
@@ -683,6 +698,7 @@ export const Caisse: React.FC = () => {
           size="large"
           style={{ marginTop: 'var(--space-4)' }}
           onClick={() => setClotureOuverte(true)}
+          {...helpAnchor('caisse-cloturer')}
         >
           {t('Clôturer la caisse')}
         </Button>
@@ -717,11 +733,16 @@ export const Caisse: React.FC = () => {
   return (
     <>
       <PageHeader
+        helpId="finance.caisse.page"
         title={t('Caisse')}
         breadcrumbs={[{ label: t('Finance'), to: `/tenant/${tenantId}/finance/comptabilite` }, { label: t('Caisse') }]}
       />
 
-      <div role="tablist" style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
+      <div
+        role="tablist"
+        {...helpAnchor('caisse-onglets')}
+        style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}
+      >
         {peutTenirCaisse && (
           <Button
             role="tab"
@@ -745,7 +766,7 @@ export const Caisse: React.FC = () => {
       {onglet === 'ma-caisse' ? ongletMaCaisse : ongletHistorique}
 
       <Modal
-        title={t('Clôturer la caisse')}
+        title={<HelpSectionTitle title={t('Clôturer la caisse')} helpId="finance.caisse.cloture" />}
         open={clotureOuverte}
         onCancel={() => setClotureOuverte(false)}
         footer={null}
@@ -888,7 +909,12 @@ export const Caisse: React.FC = () => {
 
       <Modal
         title={
-          detailQuery.data ? t('Caisse {{number}}', { number: detailQuery.data.number }) : t('Détail de la caisse')
+          <HelpSectionTitle
+            title={
+              detailQuery.data ? t('Caisse {{number}}', { number: detailQuery.data.number }) : t('Détail de la caisse')
+            }
+            helpId="finance.caisse.detail"
+          />
         }
         open={Boolean(sessionOuverteId)}
         onCancel={() => {
@@ -959,6 +985,7 @@ export const Caisse: React.FC = () => {
             <Title level={5}>{t('Opérations')}</Title>
             {detailQuery.data.expected.lines.length > 0 ? (
               <LignesAttendues
+                helpId="finance.caisse.operations"
                 lignes={detailQuery.data.expected.lines}
                 paramPrefix="det"
                 rechercheLabel={t('Rechercher dans les opérations de la session')}
@@ -983,6 +1010,7 @@ export const Caisse: React.FC = () => {
               <>
                 <Title level={5}>{t('Billetage')}</Title>
                 <Table<{ valeur: DenominationValue; nombre: number }>
+                  helpId="finance.caisse.billetage"
                   dataSource={(() => {
                     const denombrement = detailQuery.data.denominations ?? {};
                     return TOUTES_DENOMINATIONS.filter(v => (denombrement[v] ?? 0) > 0).map(valeur => ({

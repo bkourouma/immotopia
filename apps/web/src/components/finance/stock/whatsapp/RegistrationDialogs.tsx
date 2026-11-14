@@ -13,6 +13,7 @@ import {
 import type { RegistrationView, SessionView } from '../../../../types/finance-stock-whatsapp-types';
 import { handleApiError } from '../../../../utils/error-handler';
 import { t } from '../../../../i18n/t';
+import { HelpSectionTitle } from '../../../../help';
 import { ConversationThread } from './ConversationThread';
 import { STOCK_WHATSAPP_ELIGIBLE_SITES_ENTITY, refusedSiteNames, siteIdsRules, siteOptions } from './RegistrationForm';
 import { apiErrorOf, formatDateTime, sessionCloseReasonLabel, sessionStateLabel } from './whatsapp-labels';
@@ -82,7 +83,7 @@ export const RegistrationSitesModal: React.FC<RegistrationSitesModalProps> = ({
   return (
     <Modal
       open={open}
-      title={t('Modifier les chantiers')}
+      title={<HelpSectionTitle title={t('Modifier les chantiers')} helpId="finance.whatsapp.chantiers" />}
       okText={t('Enregistrer')}
       cancelText={t('Annuler')}
       // Fermé tant que les chantiers actuels ne sont pas posés dans le champ.
@@ -149,7 +150,7 @@ export const RevokeRegistrationModal: React.FC<RevokeRegistrationModalProps> = (
   return (
     <Modal
       open={Boolean(registration)}
-      title={t('Révoquer l’accès')}
+      title={<HelpSectionTitle title={t('Révoquer l’accès')} helpId="finance.whatsapp.revocation" />}
       okText={t('Révoquer')}
       cancelText={t('Annuler')}
       okButtonProps={{ danger: true, loading: mutation.isPending }}
@@ -209,7 +210,12 @@ export const RegistrationSessionsDrawer: React.FC<RegistrationSessionsDrawerProp
     <Drawer
       open={open}
       onClose={onClose}
-      title={t('Conversations de {{name}}', { name: registration?.userLabel ?? '' })}
+      title={
+        <HelpSectionTitle
+          title={t('Conversations de {{name}}', { name: registration?.userLabel ?? '' })}
+          helpId="finance.whatsapp.conversations"
+        />
+      }
       size={isMobile ? '100%' : 560}
       destroyOnHidden
     >

@@ -15,6 +15,7 @@ import type {
   StockMovementView
 } from '../../../../types/finance-stock-controle-types';
 import { t } from '../../../../i18n/t';
+import { HelpSectionTitle } from '../../../../help';
 
 const { Text, Title } = Typography;
 
@@ -40,7 +41,7 @@ export const ChoixLieu: React.FC<{
 }> = ({ lieux, lieuId, onChoisir }) => (
   <section aria-label={t('Choisir le lieu')}>
     <Title level={4} style={{ fontSize: 20 }}>
-      {t('Sur quel lieu travaillez-vous ?')}
+      <HelpSectionTitle title={t('Sur quel lieu travaillez-vous ?')} helpId="finance.magasin.lieu" />
     </Title>
     <ListeChoix
       aria-label={t('Lieux')}
@@ -165,7 +166,9 @@ export const MagasinAccueil: React.FC<MagasinAccueilProps> = ({ tenantId, contex
       ) : null}
 
       <section aria-label={t('Aujourd’hui sur ce lieu')} style={{ marginBlockStart: 'var(--space-4)' }}>
-        <Title level={5}>{t('Aujourd’hui sur ce lieu')}</Title>
+        <Title level={5}>
+          <HelpSectionTitle title={t('Aujourd’hui sur ce lieu')} helpId="finance.magasin.accueil" />
+        </Title>
         {duJour.isPending ? (
           <Text type="secondary">{t('Chargement…')}</Text>
         ) : duJour.isError ? (

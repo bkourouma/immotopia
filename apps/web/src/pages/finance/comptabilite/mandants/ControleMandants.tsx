@@ -3,6 +3,7 @@ import { Alert } from 'antd';
 import type { MandantControl } from '../../../../services/accounting-exports-service';
 import { MoneyValue, formatMoney } from '../../../../components/primitives/MoneyValue';
 import { t } from '../../../../i18n/t';
+import { HelpButton } from '../../../../help';
 
 /**
  * Contrôle « total auxiliaire = solde général du compte de fonds ». Muet quand
@@ -28,7 +29,10 @@ export const ControleMandants: React.FC<{
             {t('Solde général du compte {{numero}}', { numero: accountNumber ?? '' })} :{' '}
             <MoneyValue value={control.generalBalance} signed />
           </div>
-          <div>{t('Écart : {{montant}}', { montant: formatMoney(control.difference, { currency: null }) })}</div>
+          <div>
+            {t('Écart : {{montant}}', { montant: formatMoney(control.difference, { currency: null }) })}{' '}
+            <HelpButton helpId="finance.mandants.controle" size="small" />
+          </div>
         </div>
       }
       style={{ marginBlockEnd: 'var(--space-4)' }}

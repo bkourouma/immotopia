@@ -196,6 +196,7 @@ export const BalancePage: React.FC = () => {
       )}
 
       <DataView<TrialBalanceLine>
+        helpId="finance.balance-generale.tableau"
         aria-label={t('Balance générale')}
         columns={columns}
         items={visibles}

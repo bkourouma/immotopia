@@ -24,6 +24,7 @@ import { StockQuantityCell } from '../../components/finance/stock/StockQuantityC
 import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion } from '../../utils/list-search';
 import { t } from '../../i18n/t';
+import { HelpButton, HelpSectionTitle } from '../../help';
 
 import { activeLocale } from '../../i18n/format';
 const { Title, Text, Paragraph } = Typography;
@@ -441,6 +442,7 @@ export const StockChantier: React.FC = () => {
   return (
     <>
       <PageHeader
+        helpId="finance.stock-chantier.page"
         title={t('{{siteLabel}} — stock du chantier', { siteLabel: rapprochement.siteLabel })}
         breadcrumbs={filAriane}
         subtitle={
@@ -479,7 +481,12 @@ export const StockChantier: React.FC = () => {
           type="success"
           showIcon
           style={{ marginBottom: 'var(--space-4)' }}
-          message={t('Ce chantier est passé au stock le {{value}}.', { value: dateCourte(basculeeLe as string) })}
+          message={
+            <>
+              {t('Ce chantier est passé au stock le {{value}}.', { value: dateCourte(basculeeLe as string) })}{' '}
+              <HelpButton helpId="finance.stock-chantier.bascule" size="small" />
+            </>
+          }
           description={
             <>
               <Paragraph style={{ marginBottom: 'var(--space-2)' }}>
@@ -510,7 +517,12 @@ export const StockChantier: React.FC = () => {
           type="warning"
           showIcon
           style={{ marginBottom: 'var(--space-4)' }}
-          message={t("Ce chantier n'est pas passé au stock.")}
+          message={
+            <>
+              {t("Ce chantier n'est pas passé au stock.")}{' '}
+              <HelpButton helpId="finance.stock-chantier.bascule" size="small" />
+            </>
+          }
           description={
             <>
               <Paragraph style={{ marginBottom: 'var(--space-2)' }}>
@@ -596,7 +608,9 @@ export const StockChantier: React.FC = () => {
       {/* Les totaux — tous calculés par le serveur (P-4)                */}
       {/* ------------------------------------------------------------- */}
 
-      <Title level={4}>{t('Acheté, consommé, restant')}</Title>
+      <Title level={4}>
+        <HelpSectionTitle title={t('Acheté, consommé, restant')} helpId="finance.stock-chantier.indicateurs" />
+      </Title>
 
       <div
         style={{
@@ -718,6 +732,7 @@ export const StockChantier: React.FC = () => {
       </Paragraph>
 
       <DataView<SiteStockReconciliationLine>
+        helpId="finance.stock-chantier.articles"
         // Le contrat de `getSiteStockReconciliation` ne pagine pas : il rend le
         // rapprochement entier d'un chantier, filtré et paginé ici.
         {...local.dataViewProps}

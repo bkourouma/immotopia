@@ -3,6 +3,7 @@ import { Alert, App, Button, Modal, Space, Typography } from 'antd';
 import { CopyOutlined } from '@ant-design/icons';
 import type { RegistrationWithCode } from '../../../../types/finance-stock-whatsapp-types';
 import { t } from '../../../../i18n/t';
+import { HelpSectionTitle } from '../../../../help';
 import { formatDateTime } from './whatsapp-labels';
 
 export interface ActivationCodeModalProps {
@@ -58,7 +59,7 @@ export const ActivationCodeModal: React.FC<ActivationCodeModalProps> = ({
   return (
     <Modal
       open={open}
-      title={t('Code d’activation')}
+      title={<HelpSectionTitle title={t('Code d’activation')} helpId="finance.whatsapp.code-activation" />}
       onCancel={onClose}
       footer={[
         <Button key="fermer" type="primary" onClick={onClose}>

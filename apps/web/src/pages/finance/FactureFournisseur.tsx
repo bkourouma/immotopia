@@ -62,6 +62,7 @@ import type { SearchCriterion } from '../../utils/list-search';
 import { localizedList } from '../../i18n/localized';
 
 import { activeLocale } from '../../i18n/format';
+import { HelpSectionTitle, helpAnchor } from '../../help';
 const { Text, Title } = Typography;
 
 /**
@@ -855,6 +856,7 @@ export const FactureFournisseur: React.FC = () => {
 
     return (
       <DataView<SupplierInvoice>
+        helpId="finance.factures-fournisseurs.factures"
         {...rechercheFactures.dataViewProps}
         search={{ ...rechercheFactures.searchProps, 'aria-label': t('Rechercher dans les factures') }}
         export={{ filename: t('Factures fournisseurs'), fetchAll: rechercheFactures.exportAll }}
@@ -922,6 +924,7 @@ export const FactureFournisseur: React.FC = () => {
     if (!fournisseur) return null;
     return (
       <DataView<SupplierPayment>
+        helpId="finance.factures-fournisseurs.reglements"
         {...rechercheReglements.dataViewProps}
         search={{ ...rechercheReglements.searchProps, 'aria-label': t('Rechercher dans les règlements') }}
         export={{
@@ -1122,9 +1125,13 @@ export const FactureFournisseur: React.FC = () => {
 
   return (
     <>
-      <PageHeader title={t('Factures fournisseurs')} subtitle={fournisseur ? fournisseur.name : undefined} />
+      <PageHeader
+        helpId="finance.factures-fournisseurs.page"
+        title={t('Factures fournisseurs')}
+        subtitle={fournisseur ? fournisseur.name : undefined}
+      />
 
-      <Card style={{ marginBottom: 'var(--space-6)' }}>
+      <Card style={{ marginBottom: 'var(--space-6)' }} {...helpAnchor('facture-fournisseur-choix')}>
         <div style={{ maxWidth: 420 }}>
           <label htmlFor="facture-fournisseur">{t('Fournisseur')}</label>
           <SupplierSelect
@@ -1148,9 +1155,9 @@ export const FactureFournisseur: React.FC = () => {
         />
       ) : (
         <>
-          <Card style={{ marginBottom: 'var(--space-6)' }}>
+          <Card style={{ marginBottom: 'var(--space-6)' }} {...helpAnchor('facture-saisie')}>
             <Title level={4} style={{ marginTop: 0 }}>
-              {t('Nouvelle facture')}
+              <HelpSectionTitle title={t('Nouvelle facture')} helpId="finance.factures-fournisseurs.saisie" />
             </Title>
 
             <Space wrap size="middle" align="end" style={{ marginBottom: 'var(--space-4)', width: '100%' }}>
@@ -1237,7 +1244,12 @@ export const FactureFournisseur: React.FC = () => {
 
             {avecChantiers && (
               <>
-                <Title level={5}>{t('Imputations au chantier')}</Title>
+                <Title level={5}>
+                  <HelpSectionTitle
+                    title={t('Imputations au chantier')}
+                    helpId="finance.factures-fournisseurs.imputations"
+                  />
+                </Title>
                 {/* Un seul avertissement pour toutes les lignes : chacune choisit
                 son propre chantier, mais la règle est la même partout. Même
                 modèle que la sortie de stock (Stock.tsx). */}
@@ -1340,11 +1352,11 @@ export const FactureFournisseur: React.FC = () => {
           <Title level={4}>
             {t('Factures de')} {fournisseur.name}
           </Title>
-          {tableauFactures}
+          <div {...helpAnchor('facture-liste')}>{tableauFactures}</div>
 
-          <Card style={{ marginTop: 'var(--space-6)' }}>
+          <Card style={{ marginTop: 'var(--space-6)' }} {...helpAnchor('facture-reglement')}>
             <Title level={4} style={{ marginTop: 0 }}>
-              {t('Règlement')}
+              <HelpSectionTitle title={t('Règlement')} helpId="finance.factures-fournisseurs.reglement" />
             </Title>
 
             <Space wrap size="middle" align="end" style={{ marginBottom: 'var(--space-4)', width: '100%' }}>
@@ -1497,9 +1509,14 @@ export const FactureFournisseur: React.FC = () => {
 
       <Modal
         title={
-          cibleAnnulation
-            ? t('Annuler la facture {{reference}} ?', { reference: cibleAnnulation.reference })
-            : t('Annuler la facture ?')
+          <HelpSectionTitle
+            title={
+              cibleAnnulation
+                ? t('Annuler la facture {{reference}} ?', { reference: cibleAnnulation.reference })
+                : t('Annuler la facture ?')
+            }
+            helpId="finance.factures-fournisseurs.annulation"
+          />
         }
         open={Boolean(cibleAnnulation)}
         onCancel={() => setCibleAnnulation(null)}
@@ -1527,7 +1544,9 @@ export const FactureFournisseur: React.FC = () => {
       </Modal>
 
       <Modal
-        title={t('Annuler ce règlement ?')}
+        title={
+          <HelpSectionTitle title={t('Annuler ce règlement ?')} helpId="finance.factures-fournisseurs.annulation" />
+        }
         open={Boolean(cibleAnnulationReglement)}
         onCancel={() => setCibleAnnulationReglement(null)}
         onOk={confirmerAnnulationReglement}

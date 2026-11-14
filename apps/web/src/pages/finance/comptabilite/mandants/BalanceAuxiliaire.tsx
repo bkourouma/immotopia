@@ -161,6 +161,7 @@ export const BalanceAuxiliaire: React.FC = () => {
         )}
       />
       <DataView<MandantTrialBalanceRow>
+        helpId="finance.mandants.balance"
         aria-label={t('Balance auxiliaire des mandants')}
         columns={columns}
         items={data?.items ?? []}

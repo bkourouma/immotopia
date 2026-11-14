@@ -83,6 +83,7 @@ import { isModuleNotIncludedError } from '../../utils/module-not-included';
 import { dateFormat } from '../../i18n/format';
 import { localizedList } from '../../i18n/localized';
 import { t } from '../../i18n/t';
+import { HelpButton, HelpSectionTitle, helpAnchor } from '../../help';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -735,7 +736,7 @@ const FenetreOuverture: React.FC<FenetreOuvertureProps> = ({
 
   return (
     <Modal
-      title={t('Ouvrir un inventaire')}
+      title={<HelpSectionTitle title={t('Ouvrir un inventaire')} helpId="finance.inventaire.ouverture" />}
       open={open}
       onCancel={() => {
         if (!enCours) onFermer();
@@ -1119,6 +1120,7 @@ const TableauLignes: React.FC<TableauLignesProps> = ({
   });
   return (
     <DataView<StockCountLine>
+      helpId="finance.inventaire.lignes"
       {...local.dataViewProps}
       // La liste des inventaires et celle d'un comptage ouvert sont montées ensemble : une barre, un nom.
       search={{ ...local.searchProps, 'aria-label': t('Rechercher dans les lignes du comptage') }}
@@ -1146,6 +1148,7 @@ const TableauLignesSimple: React.FC<TableauLignesProps> = ({
   const pagination = usePaginationLocale(lignes, LIGNES_PAR_PAGE);
   return (
     <DataView<StockCountLine>
+      helpId="finance.inventaire.lignes-ecartees"
       export={{ filename: ariaLabel, fetchAll: async () => lignes }}
       scrollX={1100}
       items={pagination.items}
@@ -1299,7 +1302,7 @@ const DetailBrouillon: React.FC<DetailProps> = ({ tenantId, contexte, comptage, 
           }}
         >
           <Title level={5} style={{ marginBlockStart: 0 }}>
-            {t('Saisir le comptage d’un article')}
+            <HelpSectionTitle title={t('Saisir le comptage d’un article')} helpId="finance.inventaire.saisie" />
           </Title>
           <Space wrap size="middle" align="end">
             <div>
@@ -1530,7 +1533,11 @@ const DetailClos: React.FC<DetailProps> = ({ tenantId, contexte, comptage, value
         )}
       />
       <div style={grille}>
-        <StatCard label={t('Articles comptés')} value={String(comptage.linesCount)} />
+        <StatCard
+          helpId="finance.inventaire.indicateurs-clos"
+          label={t('Articles comptés')}
+          value={String(comptage.linesCount)}
+        />
         <StatCard
           label={t('Lignes en écart')}
           value={String(comptage.varianceCount ?? enEcart.length)}
@@ -1594,7 +1601,16 @@ const DetailClos: React.FC<DetailProps> = ({ tenantId, contexte, comptage, value
       ) : null}
 
       <Modal
-        title={aJustifier ? t('Justifier l’écart de {{article}}', { article: aJustifier.itemLabel }) : ''}
+        title={
+          aJustifier ? (
+            <HelpSectionTitle
+              title={t('Justifier l’écart de {{article}}', { article: aJustifier.itemLabel })}
+              helpId="finance.inventaire.justification"
+            />
+          ) : (
+            ''
+          )
+        }
         open={Boolean(aJustifier)}
         onCancel={() => {
           if (!justificationEnCours) setAJustifier(null);
@@ -1700,8 +1716,10 @@ const BlocValidation: React.FC<{
   };
 
   return (
-    <div style={{ marginBlockStart: 'var(--space-5)' }}>
-      <Title level={5}>{t('Valider l’inventaire')}</Title>
+    <div style={{ marginBlockStart: 'var(--space-5)' }} {...helpAnchor('inventaire-validation')}>
+      <Title level={5}>
+        <HelpSectionTitle title={t('Valider l’inventaire')} helpId="finance.inventaire.validation" />
+      </Title>
 
       {sansMotif.length > 0 ? (
         <Alert
@@ -1904,7 +1922,11 @@ const DetailValide: React.FC<DetailProps> = ({ tenantId, contexte, comptage, val
         <Paragraph type="secondary">{t('Inventaire d’ouverture : les surplus sont entrés sans valeur.')}</Paragraph>
       ) : null}
       <div style={grille}>
-        <StatCard label={t('Articles comptés')} value={String(comptage.linesCount)} />
+        <StatCard
+          helpId="finance.inventaire.indicateurs-valide"
+          label={t('Articles comptés')}
+          value={String(comptage.linesCount)}
+        />
         <StatCard label={t('Lignes en écart')} value={String(comptage.varianceCount ?? 0)} />
         <StatCard label={t('Non comptés')} value={String(comptage.uncountedLinesCount)} />
         {valeur(t('Valeur comptée'), comptage.countedValue)}
@@ -1952,7 +1974,9 @@ const DetailValide: React.FC<DetailProps> = ({ tenantId, contexte, comptage, val
       ) : null}
       {comptage.slip ? (
         <div style={{ marginBlockStart: 'var(--space-5)' }}>
-          <Title level={5}>{t('Procès-verbal signé')}</Title>
+          <Title level={5}>
+            <HelpSectionTitle title={t('Procès-verbal signé')} helpId="finance.inventaire.proces-verbal" />
+          </Title>
           <StockAttachmentList
             tenantId={tenantId}
             targetType="SLIP"
@@ -2227,46 +2251,49 @@ const OngletInventaire: React.FC<{
       />
       {canCount ? (
         <Space wrap size="middle" align="end" style={{ marginBlockEnd: 'var(--space-3)' }}>
-          <Button type="primary" onClick={() => setFenetre({})}>
+          <Button type="primary" onClick={() => setFenetre({})} {...helpAnchor('inventaire-ouvrir')}>
             {t('Ouvrir un inventaire')}
           </Button>
         </Space>
       ) : null}
 
-      <DataView<StockCount>
-        {...local.dataViewProps}
-        search={{ ...local.searchProps, 'aria-label': t('Rechercher dans les inventaires') }}
-        export={{ filename: t('Inventaires'), fetchAll: local.exportAll }}
-        scrollX={1300}
-        loading={liste.isPending}
-        isReloading={liste.isFetching && !liste.isPending}
-        error={liste.isError ? t('Impossible de charger les inventaires.') : null}
-        errorCause={liste.error}
-        onRetry={() => void liste.refetch()}
-        emptyDescription={t('Aucun inventaire n’a encore été ouvert.')}
-        emptyAction={canCount ? { label: t('Ouvrir un inventaire'), onClick: () => setFenetre({}) } : undefined}
-        columns={colonnes}
-        rowKey={c => c.id}
-        aria-label={t('Inventaires')}
-        renderCard={c => (
-          <DataCard
-            title={c.locationLabel}
-            aria-label={c.locationLabel}
-            subtitle={`${STOCK_COUNT_KIND_LABELS[c.kind]} · ${t('Compté le {{value}}', { value: dateCourte(c.countedAt) })}`}
-            status={etat(c)}
-            highlight={valuesVisible ? valeurEcart(c) : undefined}
-            fields={[
-              { label: t('Lignes'), value: String(c.linesCount) },
-              {
-                label: t('Lignes en écart'),
-                value: c.blind || c.varianceCount === null ? t('Masqué') : String(c.varianceCount)
-              },
-              { label: t('Ouvert par'), value: c.createdByLabel }
-            ]}
-            primaryAction={{ label: actionDeListe(c.status), onClick: () => onOuvrirDetail(c.id) }}
-          />
-        )}
-      />
+      <div {...helpAnchor('inventaire-liste')}>
+        <DataView<StockCount>
+          helpId="finance.inventaire.liste"
+          {...local.dataViewProps}
+          search={{ ...local.searchProps, 'aria-label': t('Rechercher dans les inventaires') }}
+          export={{ filename: t('Inventaires'), fetchAll: local.exportAll }}
+          scrollX={1300}
+          loading={liste.isPending}
+          isReloading={liste.isFetching && !liste.isPending}
+          error={liste.isError ? t('Impossible de charger les inventaires.') : null}
+          errorCause={liste.error}
+          onRetry={() => void liste.refetch()}
+          emptyDescription={t('Aucun inventaire n’a encore été ouvert.')}
+          emptyAction={canCount ? { label: t('Ouvrir un inventaire'), onClick: () => setFenetre({}) } : undefined}
+          columns={colonnes}
+          rowKey={c => c.id}
+          aria-label={t('Inventaires')}
+          renderCard={c => (
+            <DataCard
+              title={c.locationLabel}
+              aria-label={c.locationLabel}
+              subtitle={`${STOCK_COUNT_KIND_LABELS[c.kind]} · ${t('Compté le {{value}}', { value: dateCourte(c.countedAt) })}`}
+              status={etat(c)}
+              highlight={valuesVisible ? valeurEcart(c) : undefined}
+              fields={[
+                { label: t('Lignes'), value: String(c.linesCount) },
+                {
+                  label: t('Lignes en écart'),
+                  value: c.blind || c.varianceCount === null ? t('Masqué') : String(c.varianceCount)
+                },
+                { label: t('Ouvert par'), value: c.createdByLabel }
+              ]}
+              primaryAction={{ label: actionDeListe(c.status), onClick: () => onOuvrirDetail(c.id) }}
+            />
+          )}
+        />
+      </div>
 
       {countId ? (
         <DetailInventaire
@@ -2338,6 +2365,7 @@ export const StockInventaire: React.FC = () => {
 
   const enTete = (
     <PageHeader
+      helpId="finance.inventaire.page"
       title={t('Transferts et inventaire du stock')}
       subtitle={t('Déplacer de la matière d’un lieu à un autre, et compter ce qui s’y trouve')}
     />
@@ -2403,12 +2431,17 @@ export const StockInventaire: React.FC = () => {
             key: 'transfert',
             label: t('Transfert entre lieux'),
             children: (
-              <OngletTransfert
-                tenantId={tenantId}
-                contexte={donnees}
-                valuesVisible={valuesVisible}
-                origineInitiale={searchParams.get('origine') ?? undefined}
-              />
+              <>
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <HelpButton size="small" helpId="finance.inventaire.transfert" />
+                </div>
+                <OngletTransfert
+                  tenantId={tenantId}
+                  contexte={donnees}
+                  valuesVisible={valuesVisible}
+                  origineInitiale={searchParams.get('origine') ?? undefined}
+                />
+              </>
             )
           }
         ]
@@ -2417,14 +2450,19 @@ export const StockInventaire: React.FC = () => {
       key: 'inventaire',
       label: t('Inventaire physique'),
       children: (
-        <OngletInventaire
-          tenantId={tenantId}
-          contexte={donnees}
-          countId={countId}
-          onOuvrirDetail={id => majParametres({ inventaire: id, onglet: 'inventaire' })}
-          ouverture={ouverture}
-          onFermerOuverture={() => majParametres({ ouvrir: null, lieu: null })}
-        />
+        <>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <HelpButton size="small" helpId="finance.inventaire.physique" />
+          </div>
+          <OngletInventaire
+            tenantId={tenantId}
+            contexte={donnees}
+            countId={countId}
+            onOuvrirDetail={id => majParametres({ inventaire: id, onglet: 'inventaire' })}
+            ouverture={ouverture}
+            onFermerOuverture={() => majParametres({ ouvrir: null, lieu: null })}
+          />
+        </>
       )
     }
   ];
@@ -2437,7 +2475,9 @@ export const StockInventaire: React.FC = () => {
           {t('Les valeurs du stock ne sont pas affichées pour votre rôle.')}
         </Text>
       ) : null}
-      <Tabs activeKey={onglet} onChange={cle => majParametres({ onglet: cle })} items={onglets} />
+      <div {...helpAnchor('inventaire-onglets')}>
+        <Tabs activeKey={onglet} onChange={cle => majParametres({ onglet: cle })} items={onglets} />
+      </div>
       <FieldCaptureDrawer tenantId={tenantId} captureId={captureId} onClose={closeCapture} />
     </>
   );

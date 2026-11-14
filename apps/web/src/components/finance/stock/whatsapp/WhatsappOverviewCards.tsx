@@ -5,6 +5,7 @@ import type { WhatsappOverview } from '../../../../types/finance-stock-whatsapp-
 import { StatusTag } from '../../../primitives/StatusTag';
 import { formatNumber } from '../../../../i18n/format';
 import { t } from '../../../../i18n/t';
+import { HelpSectionTitle } from '../../../../help';
 import type { WhatsappTone } from './whatsapp-labels';
 
 export interface WhatsappOverviewCardsProps {
@@ -66,7 +67,11 @@ export const WhatsappOverviewCards: React.FC<WhatsappOverviewCardsProps> = ({
   return (
     <Row gutter={[16, 16]} style={{ marginBlockEnd: 16 }}>
       <Col xs={24} md={8}>
-        <Card title={t('Passerelle')} size="small" style={{ height: '100%' }}>
+        <Card
+          title={<HelpSectionTitle title={t('Passerelle')} helpId="finance.whatsapp.etat" />}
+          size="small"
+          style={{ height: '100%' }}
+        >
           <StatusTag status={`WHATSAPP_${overview.transport}`} tone={passerelle.tone} label={passerelle.label} />
           {overview.botNumber && (
             <div style={{ marginBlockStart: 12 }}>
@@ -82,7 +87,11 @@ export const WhatsappOverviewCards: React.FC<WhatsappOverviewCardsProps> = ({
       </Col>
 
       <Col xs={24} md={8}>
-        <Card title={t('Photos analysées ce mois-ci')} size="small" style={{ height: '100%' }}>
+        <Card
+          title={<HelpSectionTitle title={t('Photos analysées ce mois-ci')} helpId="finance.whatsapp.etat" />}
+          size="small"
+          style={{ height: '100%' }}
+        >
           <Typography.Text strong style={{ fontSize: 22 }} data-testid="whatsapp-quota-usage">
             {formatNumber(quota.used)} / {formatNumber(quota.limit)}
           </Typography.Text>
@@ -105,7 +114,11 @@ export const WhatsappOverviewCards: React.FC<WhatsappOverviewCardsProps> = ({
       </Col>
 
       <Col xs={24} md={8}>
-        <Card title={t('Analyse')} size="small" style={{ height: '100%' }}>
+        <Card
+          title={<HelpSectionTitle title={t('Analyse')} helpId="finance.whatsapp.etat" />}
+          size="small"
+          style={{ height: '100%' }}
+        >
           {visionCoupee ? (
             <Typography.Text type="warning">
               {t(

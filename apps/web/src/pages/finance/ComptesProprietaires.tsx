@@ -167,6 +167,7 @@ export const ComptesProprietaires: React.FC = () => {
   return (
     <>
       <PageHeader
+        helpId="finance.comptes-proprietaires.page"
         title={t('Comptes propriétaires')}
         subtitle={
           comptes.length > 0
@@ -177,11 +178,17 @@ export const ComptesProprietaires: React.FC = () => {
 
       {data && (
         <div style={{ marginBottom: 'var(--space-6)', maxWidth: 320 }}>
-          <StatCard label={t('Total dû aux propriétaires')} value={<MoneyValue value={totalDu} />} tone="warning" />
+          <StatCard
+            helpId="finance.comptes-proprietaires.total"
+            label={t('Total dû aux propriétaires')}
+            value={<MoneyValue value={totalDu} />}
+            tone="warning"
+          />
         </div>
       )}
 
       <DataView<OwnerAccountSummary>
+        helpId="finance.comptes-proprietaires.tableau"
         {...local.dataViewProps}
         loading={isPending}
         isReloading={isFetching && !isPending}

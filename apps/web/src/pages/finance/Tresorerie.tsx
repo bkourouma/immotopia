@@ -58,6 +58,7 @@ import { dateFormat } from '../../i18n/format';
 import { t } from '../../i18n/t';
 import { localizedList, localizedRecord } from '../../i18n/localized';
 import { montantSaisiProps } from '../../utils/montant-saisi';
+import { HelpSectionTitle, helpAnchor } from '../../help';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -271,42 +272,47 @@ function OngletComptes({ query, onNouveau, onModifier }: OngletComptesProps) {
           marginBottom: 'var(--space-4)'
         }}
       >
-        <Text type="secondary">
+        <Text type="secondary" {...helpAnchor('tresorerie-numerotation')}>
           {t(
             'Numérotation SYSCOHADA : caisses 5711x, banques 5211x, Mobile Money 552x (5521 Wave, 5522 Orange Money, 5523 MTN), chèques à encaisser 513, cartes 515.'
           )}
         </Text>
-        <Button type="primary" icon={<PlusOutlined />} onClick={onNouveau}>
+        <Button type="primary" icon={<PlusOutlined />} onClick={onNouveau} {...helpAnchor('tresorerie-nouveau-compte')}>
           {t('Nouveau compte')}
         </Button>
       </div>
 
-      <DataView<TreasuryAccountDto>
-        {...local.dataViewProps}
-        search={{ ...local.searchProps, 'aria-label': t('Rechercher dans les comptes de trésorerie') }}
-        export={{ filename: t('Comptes de trésorerie'), fetchAll: local.exportAll }}
-        loading={query.isPending}
-        isReloading={query.isFetching && !query.isPending}
-        error={query.error ? t('Impossible de charger les comptes de trésorerie.') : null}
-        errorCause={query.error}
-        onRetry={() => query.refetch()}
-        emptyDescription={t('Aucun compte de trésorerie.')}
-        emptyAction={{ label: t('Nouveau compte'), onClick: onNouveau }}
-        columns={colonnes}
-        rowKey={c => c.id}
-        aria-label={t('Comptes de trésorerie')}
-        renderCard={c => (
-          <DataCard
-            title={c.label}
-            aria-label={c.label}
-            subtitle={`${KIND_LABEL[c.kind]} · ${c.accountNumber}`}
-            status={<StatusTag status={c.isActive ? 'ACTIVE' : 'INACTIVE'} tone={c.isActive ? 'success' : 'neutral'} />}
-            highlight={<MoneyValue value={c.balance} />}
-            fields={[{ label: t('Défaut'), value: c.isDefault ? t('Oui') : t('Non') }]}
-            primaryAction={{ label: t('Modifier'), onClick: () => onModifier(c) }}
-          />
-        )}
-      />
+      <div {...helpAnchor('tresorerie-comptes')}>
+        <DataView<TreasuryAccountDto>
+          helpId="finance.tresorerie.comptes"
+          {...local.dataViewProps}
+          search={{ ...local.searchProps, 'aria-label': t('Rechercher dans les comptes de trésorerie') }}
+          export={{ filename: t('Comptes de trésorerie'), fetchAll: local.exportAll }}
+          loading={query.isPending}
+          isReloading={query.isFetching && !query.isPending}
+          error={query.error ? t('Impossible de charger les comptes de trésorerie.') : null}
+          errorCause={query.error}
+          onRetry={() => query.refetch()}
+          emptyDescription={t('Aucun compte de trésorerie.')}
+          emptyAction={{ label: t('Nouveau compte'), onClick: onNouveau }}
+          columns={colonnes}
+          rowKey={c => c.id}
+          aria-label={t('Comptes de trésorerie')}
+          renderCard={c => (
+            <DataCard
+              title={c.label}
+              aria-label={c.label}
+              subtitle={`${KIND_LABEL[c.kind]} · ${c.accountNumber}`}
+              status={
+                <StatusTag status={c.isActive ? 'ACTIVE' : 'INACTIVE'} tone={c.isActive ? 'success' : 'neutral'} />
+              }
+              highlight={<MoneyValue value={c.balance} />}
+              fields={[{ label: t('Défaut'), value: c.isDefault ? t('Oui') : t('Non') }]}
+              primaryAction={{ label: t('Modifier'), onClick: () => onModifier(c) }}
+            />
+          )}
+        />
+      </div>
     </>
   );
 }
@@ -410,6 +416,7 @@ function OngletVirements({ tenantId, comptes, onNouveau, onAnnuler }: OngletVire
       </div>
 
       <DataView<TreasuryTransferDto>
+        helpId="finance.tresorerie.virements"
         items={rows}
         total={total}
         {...recherche.dataViewProps}
@@ -546,6 +553,7 @@ function TableauVersements({ tenantId, comptes, peutCreer, onNouveau, onAnnuler 
       </div>
 
       <DataView<TaxRemittanceDto>
+        helpId="finance.tresorerie.versements"
         items={rows}
         total={total}
         {...recherche.dataViewProps}
@@ -865,13 +873,19 @@ export const Tresorerie: React.FC = () => {
       ) : (
         <>
           <Space size="middle" wrap style={{ width: '100%', marginBottom: 'var(--space-4)' }}>
-            <StatCard label={t('Collecté')} value={<MoneyValue value={retenue?.collected ?? 0} />} />
             <StatCard
+              helpId="finance.tresorerie.retenue"
+              label={t('Collecté')}
+              value={<MoneyValue value={retenue?.collected ?? 0} />}
+            />
+            <StatCard
+              helpId="finance.tresorerie.retenue"
               label={t('Reversé à la DGI')}
               value={<MoneyValue value={retenue?.remitted ?? 0} />}
               tone="positive"
             />
             <StatCard
+              helpId="finance.tresorerie.retenue"
               label={t('Dû')}
               value={<MoneyValue value={retenue?.due ?? 0} />}
               tone={retenue?.due ? 'danger' : 'neutral'}
@@ -903,6 +917,7 @@ export const Tresorerie: React.FC = () => {
   return (
     <>
       <PageHeader
+        helpId="finance.tresorerie.page"
         title={t('Trésorerie')}
         breadcrumbs={[
           { label: t('Finance'), to: `/tenant/${tenantId}/finance/comptabilite` },
@@ -910,20 +925,24 @@ export const Tresorerie: React.FC = () => {
         ]}
       />
 
-      <Tabs
-        activeKey={onglet}
-        destroyOnHidden
-        onChange={valeur => setOnglet(valeur as Onglet)}
-        items={[
-          { key: 'comptes', label: t('Comptes'), children: ongletComptes },
-          { key: 'virements', label: t('Virements internes'), children: ongletVirements },
-          { key: 'retenues', label: t('Retenues à la source'), children: ongletRetenues }
-        ]}
-      />
+      <div {...helpAnchor('tresorerie-onglets')}>
+        <Tabs
+          activeKey={onglet}
+          destroyOnHidden
+          onChange={valeur => setOnglet(valeur as Onglet)}
+          items={[
+            { key: 'comptes', label: t('Comptes'), children: ongletComptes },
+            { key: 'virements', label: t('Virements internes'), children: ongletVirements },
+            { key: 'retenues', label: t('Retenues à la source'), children: ongletRetenues }
+          ]}
+        />
+      </div>
 
       {/* Création d'un compte de trésorerie. */}
       <Modal
-        title={t('Nouveau compte de trésorerie')}
+        title={
+          <HelpSectionTitle title={t('Nouveau compte de trésorerie')} helpId="finance.tresorerie.compte-nouveau" />
+        }
         open={modalCompteOuvert}
         onCancel={fermerModalCompte}
         onOk={soumettreCompte}
@@ -988,7 +1007,14 @@ export const Tresorerie: React.FC = () => {
 
       {/* Modification d'un compte de trésorerie. */}
       <Modal
-        title={compteEnEdition ? t('Modifier {{label}}', { label: compteEnEdition.label }) : t('Modifier le compte')}
+        title={
+          <HelpSectionTitle
+            title={
+              compteEnEdition ? t('Modifier {{label}}', { label: compteEnEdition.label }) : t('Modifier le compte')
+            }
+            helpId="finance.tresorerie.compte-modification"
+          />
+        }
         open={Boolean(compteEnEdition)}
         onCancel={fermerModalEditionCompte}
         onOk={soumettreEditionCompte}
@@ -1035,7 +1061,7 @@ export const Tresorerie: React.FC = () => {
 
       {/* Nouveau virement interne. */}
       <Modal
-        title={t('Nouveau virement interne')}
+        title={<HelpSectionTitle title={t('Nouveau virement interne')} helpId="finance.tresorerie.virement-nouveau" />}
         open={modalVirementOuvert}
         onCancel={fermerModalVirement}
         onOk={soumettreVirement}
@@ -1133,7 +1159,9 @@ export const Tresorerie: React.FC = () => {
 
       {/* Nouveau versement à la DGI. */}
       <Modal
-        title={t('Nouveau versement à la DGI')}
+        title={
+          <HelpSectionTitle title={t('Nouveau versement à la DGI')} helpId="finance.tresorerie.versement-nouveau" />
+        }
         open={modalVersementOuvert}
         onCancel={fermerModalVersement}
         onOk={soumettreVersement}

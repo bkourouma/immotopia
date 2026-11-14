@@ -197,7 +197,7 @@ export const CommissionsAgents: React.FC = () => {
 
   return (
     <>
-      <PageHeader title={t('Commissions des agents')} />
+      <PageHeader helpId="finance.commissions.page" title={t('Commissions des agents')} />
 
       <div
         style={{
@@ -251,6 +251,7 @@ export const CommissionsAgents: React.FC = () => {
             <StatCard label={t('Honoraires HT')} value={<MoneyValue value={data?.totals.feesAmount} />} />
             <StatCard label={t('TVA')} value={<MoneyValue value={data?.totals.vatAmount} />} />
             <StatCard
+              helpId="finance.commissions.indicateurs"
               label={t('Commissions dues aux agents')}
               value={<MoneyValue value={data?.totals.shareAmount} />}
             />
@@ -265,6 +266,7 @@ export const CommissionsAgents: React.FC = () => {
           ) : (
             <>
               <Table<AgentCommissionLine>
+                helpId="finance.commissions.tableau"
                 {...local.tableProps}
                 pagination={{ ...local.tableProps.pagination, showTotal: afficherTotal }}
                 columns={colonnesAgents}
