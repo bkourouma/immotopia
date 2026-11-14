@@ -16,6 +16,8 @@ vi.mock('../../services/copilot-service', () => {
     saveResponseFeedback: vi.fn(),
     getArtifactVersion: vi.fn(),
     listSavedAnalyses: vi.fn(),
+    listScheduledReports: vi.fn(),
+    setScheduledReportActive: vi.fn(),
     listAnalysisShares: vi.fn(),
     setAnalysisPin: vi.fn(),
     getSharedAnalysis: vi.fn(),
@@ -106,6 +108,32 @@ function setDesktop(desktop: boolean) {
 
 describe('AssistantPage — artefacts', () => {
   afterEach(() => setDesktop(false));
+
+  it('ouvre les rapports depuis une notification et active le brouillon', async () => {
+    getStatus.mockResolvedValue(ENABLED);
+    const report = {
+      id: 'report-1',
+      schedule: { frequency: 'weekly' as const, day: 1, time: '08:00', timeZone: 'Africa/Abidjan' },
+      formats: ['pdf' as const],
+      active: false,
+      nextRunAt: null,
+      lastRunAt: null,
+      lastStatus: null,
+      analysis: { title: 'Situation locative' }
+    };
+    vi.mocked(copilotService.listScheduledReports)
+      .mockResolvedValueOnce({ items: [report] })
+      .mockResolvedValueOnce({ items: [{ ...report, active: true, nextRunAt: '2026-11-16T08:00:00Z' }] });
+    vi.mocked(copilotService.setScheduledReportActive).mockResolvedValue(undefined);
+    renderPage('/tenant/t1/assistant?rapports=1');
+
+    const drawer = await screen.findByRole('dialog', { name: 'Rapports programmés' });
+    expect(await within(drawer).findByText('Situation locative')).toBeInTheDocument();
+    fireEvent.click(within(drawer).getByRole('button', { name: 'Activer' }));
+    expect(copilotService.setScheduledReportActive).toHaveBeenCalledWith('t1', 'report-1', true);
+    expect(await within(drawer).findByRole('button', { name: 'Mettre en pause' })).toBeEnabled();
+    expect(within(drawer).getByText(/Prochaine échéance/)).toBeInTheDocument();
+  });
 
   it('ouvre les résultats d’une conversation partagée en lecture seule', async () => {
     getStatus.mockResolvedValue(ENABLED);

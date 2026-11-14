@@ -8,6 +8,7 @@ import { sanitizeArtifact } from '../../utils/copilot-artifact';
 import { filenameFromDisposition, saveBlob } from '../../utils/save-blob';
 import { ArtifactPanel } from './artifact/ArtifactPanel';
 import { ShareAnalysisDialog } from './ShareAnalysisDialog';
+import { ScheduleReportDialog } from './ScheduleReportDialog';
 
 function SavedAnalysisPreview({
   tenantId,
@@ -69,11 +70,13 @@ function SavedAnalysisPreview({
 export function SavedAnalyses({
   tenantId,
   onClose,
-  initialAnalysis
+  initialAnalysis,
+  onReportCreated
 }: {
   tenantId: string;
   onClose(): void;
   initialAnalysis?: SavedAnalysisReference;
+  onReportCreated(): void;
 }) {
   const [items, setItems] = useState<SavedAnalysis[]>([]);
   const [selected, setSelected] = useState<SavedAnalysisReference | undefined>(initialAnalysis);
@@ -83,6 +86,7 @@ export function SavedAnalyses({
   const [failed, setFailed] = useState(false);
   const [reload, setReload] = useState(0);
   const [shareItem, setShareItem] = useState<SavedAnalysis>();
+  const [reportItem, setReportItem] = useState<SavedAnalysis>();
   useEffect(() => {
     const controller = new AbortController();
     setBusy(true);
@@ -126,6 +130,14 @@ export function SavedAnalyses({
       {shareItem && (
         <ShareAnalysisDialog tenantId={tenantId} reference={shareItem} onClose={() => setShareItem(undefined)} />
       )}
+      {reportItem && (
+        <ScheduleReportDialog
+          tenantId={tenantId}
+          analysis={reportItem}
+          onClose={() => setReportItem(undefined)}
+          onCreated={onReportCreated}
+        />
+      )}
       {selected ? (
         <SavedAnalysisPreview tenantId={tenantId} item={selected} onBack={() => setSelected(undefined)} />
       ) : (
@@ -146,6 +158,7 @@ export function SavedAnalyses({
                   key={`${item.conversationId}/${item.artifactId}`}
                   style={{
                     display: 'flex',
+                    flexWrap: 'wrap',
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     gap: 8,
@@ -197,6 +210,9 @@ export function SavedAnalyses({
                       {t('Retirer')}
                     </Button>
                   </Popconfirm>
+                  <Button type="text" onClick={() => setReportItem(item)}>
+                    {t('Programmer un rapport')}
+                  </Button>
                 </li>
               ))}
             </ul>

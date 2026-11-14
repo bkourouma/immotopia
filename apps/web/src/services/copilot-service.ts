@@ -188,6 +188,20 @@ async function updateArtifactVersion(
 }
 
 export type SavedAnalysisReference = { conversationId: string; artifactId: string };
+export type ReportSchedule = { time: string; timeZone: string } & (
+  { frequency: 'daily' } | { frequency: 'weekly' | 'monthly'; day: number }
+);
+export type ReportFormat = 'xlsx' | 'pdf' | 'csv';
+export type ScheduledReport = {
+  id: string;
+  schedule: ReportSchedule;
+  formats: ReportFormat[];
+  active: boolean;
+  nextRunAt: string | null;
+  lastRunAt: string | null;
+  lastStatus: string | null;
+  analysis: { title: string };
+};
 export type SharedConversation = { turns: Array<{ id: string; startedAt: string; artifacts: unknown[] }> };
 export type SavedAnalysis = SavedAnalysisReference & { title: string; createdAt: string; pinnedAt?: string | null };
 export type AnalysisShare = {
@@ -205,6 +219,27 @@ function savedAnalysisPath(tenantId: string, { conversationId, artifactId }: Sav
 }
 
 export const copilotService = {
+  async listScheduledReports(tenantId: string, cursor?: string, signal?: AbortSignal) {
+    const response = await apiClient.get(`/tenants/${tenantId}/ai/reports`, { params: { cursor }, signal });
+    return unwrap<{ items: ScheduledReport[]; nextCursor?: string }>(response.data);
+  },
+  async createScheduledReport(
+    tenantId: string,
+    input: SavedAnalysisReference & {
+      schedule: ReportSchedule;
+      formats: ReportFormat[];
+      recipientIds: string[];
+    }
+  ) {
+    const response = await apiClient.post(`/tenants/${tenantId}/ai/reports`, input);
+    return unwrap<{ id: string; previewRunAt: string }>(response.data);
+  },
+  async setScheduledReportActive(tenantId: string, id: string, active: boolean) {
+    await apiClient.patch(`/tenants/${tenantId}/ai/reports/${id}`, { active });
+  },
+  async deleteScheduledReport(tenantId: string, id: string) {
+    await apiClient.delete(`/tenants/${tenantId}/ai/reports/${id}`);
+  },
   async listSavedAnalysisPins(tenantId: string, signal: AbortSignal) {
     const response = await apiClient.get(`/tenants/${tenantId}/ai/analyses/pins`, { signal });
     return unwrap<SavedAnalysisReference[]>(response.data);
@@ -223,8 +258,10 @@ export const copilotService = {
   async setAnalysisPin(tenantId: string, id: string, pinned: boolean) {
     await apiClient.put(`/tenants/${tenantId}/ai/shares/${id}/pin`, { pinned });
   },
-  async listAnalysisRecipients(tenantId: string) {
-    const response = await apiClient.get(`/tenants/${tenantId}/ai/shares/recipients`);
+  async listAnalysisRecipients(tenantId: string, includeSelf = false) {
+    const response = await apiClient.get(`/tenants/${tenantId}/ai/shares/recipients`, {
+      params: includeSelf ? { includeSelf: 'true' } : undefined
+    });
     return unwrap<Array<{ userId: string; displayName: string }>>(response.data);
   },
   async listAnalysisShares(tenantId: string, direction: 'incoming' | 'outgoing', cursor?: string) {

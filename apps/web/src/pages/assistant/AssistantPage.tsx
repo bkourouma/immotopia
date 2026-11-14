@@ -9,6 +9,7 @@ import { ConversationHistory } from '../../components/copilot/ConversationHistor
 import { SavedAnalyses } from '../../components/copilot/SavedAnalyses';
 import { AnalysisShares } from '../../components/copilot/AnalysisShares';
 import { ShareAnalysisDialog } from '../../components/copilot/ShareAnalysisDialog';
+import { ScheduledReports } from '../../components/copilot/ScheduledReports';
 import { copilotService } from '../../services/copilot-service';
 import { feedback } from '../../lib/feedback';
 import { ArtifactPanel } from '../../components/copilot/artifact/ArtifactPanel';
@@ -80,6 +81,7 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
   const [params, setParams] = useSearchParams();
   const activeId = params.get('c');
   const sharedId = params.get('partage');
+  const reportsOpen = params.get('rapports') === '1';
   const analysisConversation = params.get('fil');
   const analysisArtifact = params.get('analyse');
   const initialAnalysis =
@@ -89,6 +91,13 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [analysesOpen, setAnalysesOpen] = useState(false);
+  const setReportsOpen = (open: boolean) =>
+    setParams(previous => {
+      const next = new URLSearchParams(previous);
+      if (open) next.set('rapports', '1');
+      else next.delete('rapports');
+      return next;
+    });
   const [sharesOpen, setSharesOpen] = useState(false);
   const [sharedConversation, setSharedConversation] = useState<string>();
   const [historyRefresh, setHistoryRefresh] = useState(0);
@@ -391,6 +400,16 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
           key={analysisArtifact ?? ''}
           tenantId={tenantId}
           initialAnalysis={initialAnalysis}
+          onReportCreated={() => {
+            setAnalysesOpen(false);
+            setParams(previous => {
+              const next = new URLSearchParams(previous);
+              next.delete('fil');
+              next.delete('analyse');
+              next.set('rapports', '1');
+              return next;
+            });
+          }}
           onClose={() => {
             setAnalysesOpen(false);
             if (initialAnalysis)
@@ -406,6 +425,7 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
           }}
         />
       )}
+      {reportsOpen && <ScheduledReports tenantId={tenantId} onClose={() => setReportsOpen(false)} />}
       {(sharesOpen || sharedId) && (
         <AnalysisShares
           key={sharedId ?? ''}
@@ -443,16 +463,21 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
         aria-label={t('Conversation')}
         style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <div
+          style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}
+        >
           <Typography.Title level={4} style={{ margin: 0 }}>
             {t('Assistant')}
           </Typography.Title>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4 }}>
             <Button type="text" onClick={() => setAnalysesOpen(true)}>
               {t('Mes analyses')}
             </Button>
             <Button type="text" onClick={() => setSharesOpen(true)}>
               {t('Partages')}
+            </Button>
+            <Button type="text" onClick={() => setReportsOpen(true)}>
+              {t('Rapports')}
             </Button>
             {conversationId && activeId === conversationId && !streaming && (
               <Button type="text" onClick={() => setSharedConversation(conversationId)}>

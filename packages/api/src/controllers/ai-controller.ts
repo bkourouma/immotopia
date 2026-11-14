@@ -366,9 +366,10 @@ export const listAnalysisSharesHandler = asyncHandler(async (req, res) => {
 
 export const listAnalysisRecipientsHandler = asyncHandler(async (req, res) => {
   const { owner } = await conversationScope(req);
+  const includeSelf = req.query.includeSelf === 'true';
   const members = await listAssignableMembers(owner.tenantId);
   const data = members
-    .filter(member => member.userId !== owner.ownerId && member.roles.length > 0)
+    .filter(member => (includeSelf || member.userId !== owner.ownerId) && member.roles.length > 0)
     .map(({ userId, displayName }) => ({ userId, displayName }));
   res.set('Cache-Control', 'private, no-store').json({ success: true, data });
 });
