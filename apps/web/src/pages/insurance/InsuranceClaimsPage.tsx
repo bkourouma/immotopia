@@ -137,6 +137,7 @@ export const InsuranceClaimsPage: React.FC = () => {
       <PageHeader title={t('Sinistres')} subtitle={sousTitre(total)} />
 
       <DataView<InsuranceClaimDto>
+        helpId="patrimoine.sinistres.liste"
         export={{
           filename: t('Sinistres'),
           columns: colonnesExport(agence),

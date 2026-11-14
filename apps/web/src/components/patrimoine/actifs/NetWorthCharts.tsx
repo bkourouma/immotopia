@@ -4,6 +4,7 @@ import { Table } from '../../primitives';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { NetWorthHistoryPoint, NetWorthResult } from '../../../services/patrimoine-assets-service';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 import { activeLocale } from '../../../i18n/format';
 import { ASSET_CLASS_COLORS, assetClassLabel } from './asset-classes';
 import { formatAmount, formatShare } from './asset-format';
@@ -19,7 +20,7 @@ import { computeClassBreakdown, type ClassBreakdownRow } from './net-worth-helpe
 export const ClassBreakdownCard: React.FC<{ result: NetWorthResult }> = ({ result }) => {
   const rows = computeClassBreakdown(result);
   return (
-    <Card title={t('Répartition par classe')}>
+    <Card title={<HelpSectionTitle title={t('Répartition par classe')} helpId="patrimoine.valeur-nette.repartition" />}>
       <div
         role="img"
         aria-label={t('Répartition par classe')}
@@ -41,6 +42,7 @@ export const ClassBreakdownCard: React.FC<{ result: NetWorthResult }> = ({ resul
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-4)', alignItems: 'center' }}>
         <Table<ClassBreakdownRow>
+          helpId="patrimoine.valeur-nette.repartition.tableau"
           exportFilename={t('Répartition par classe')}
           style={{ flex: '1 1 320px', minWidth: 0 }}
           size="small"
@@ -105,7 +107,9 @@ export const NetWorthHistoryCard: React.FC<{ points: NetWorthHistoryPoint[] }> =
     new Intl.NumberFormat(activeLocale(), { notation: 'compact', maximumFractionDigits: 1 }).format(Number(value ?? 0));
   const full = (value: unknown) => formatAmount(Number(Array.isArray(value) ? value[0] : (value ?? 0)), 'XOF');
   return (
-    <Card title={t('Évolution de la valeur nette')}>
+    <Card
+      title={<HelpSectionTitle title={t('Évolution de la valeur nette')} helpId="patrimoine.valeur-nette.evolution" />}
+    >
       <div style={{ width: '100%', height: 300 }}>
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={points} margin={{ top: 8, right: 20, left: 12, bottom: 8 }}>

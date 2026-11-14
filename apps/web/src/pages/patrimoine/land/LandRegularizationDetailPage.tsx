@@ -10,6 +10,7 @@ import { PatrimoineForbidden } from '../../../components/patrimoine/PatrimoineFo
 import { LandValidationAlert } from './LandValidationAlert';
 import { PageHeader, SkeletonDetail, StateBlock } from '../../../components/primitives';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 import { LandStepDrawer } from './LandStepDrawer';
 import { LandStepTimeline } from './LandStepTimeline';
 import {
@@ -216,7 +217,7 @@ export const LandRegularizationDetailPage: React.FC = () => {
           </Space>
         </Card>
 
-        <Card title={t('Étapes')}>
+        <Card title={<HelpSectionTitle title={t('Étapes')} helpId="patrimoine.terrain.etapes" />}>
           <LandStepTimeline steps={dossier.steps} onOpenStep={setOpenStepId} />
           {editable && custom && (
             <Space.Compact style={{ width: '100%', maxWidth: 480 }}>
@@ -235,7 +236,7 @@ export const LandRegularizationDetailPage: React.FC = () => {
           )}
         </Card>
 
-        <Card title={t('Notes du dossier')}>
+        <Card title={<HelpSectionTitle title={t('Notes du dossier')} helpId="patrimoine.terrain.notes" />}>
           <TextArea
             rows={3}
             maxLength={5000}

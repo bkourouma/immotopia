@@ -4,6 +4,7 @@ import { InfoCircleOutlined } from '@ant-design/icons';
 import type { BankRatio, BankRatioReason, BankRatios } from '../../types/patrimoine-types';
 import { t } from '../../i18n/t';
 import { formatDscr, formatYieldPercent } from './patrimoine-format';
+import { HelpSectionTitle } from '../../help';
 
 interface Props {
   ratios: BankRatios;
@@ -88,7 +89,7 @@ const RatioStat: React.FC<{
 };
 
 export const BankRatiosCard: React.FC<Props> = ({ ratios, loading }) => (
-  <Card title={t('Ratios bancaires')}>
+  <Card title={<HelpSectionTitle title={t('Ratios bancaires')} helpId="patrimoine.performance.ratios" />}>
     <Row gutter={[16, 16]}>
       <Col xs={24} md={6}>
         <RatioStat

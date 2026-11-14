@@ -198,6 +198,7 @@ export const LandRegularizationListPage: React.FC = () => {
       />
 
       <DataView<LandRegularizationSummary>
+        helpId="patrimoine.terrains.liste"
         // L'API ne pagine pas : toute la liste est déjà chargée, la recherche la filtre ici.
         {...local.dataViewProps}
         export={{ filename: t('Dossiers de régularisation foncière'), fetchAll: local.exportAll }}

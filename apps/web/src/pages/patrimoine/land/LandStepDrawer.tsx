@@ -26,6 +26,7 @@ import { documentTypeLabel } from '../../../components/patrimoine/patrimoine-lab
 import { queryKey, STALE_TIME } from '../../../lib/query-keys';
 import { saveBlob } from '../../../utils/save-blob';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 import { landErrorMessage } from './land-errors';
 import { changeLandStepStatus, deleteLandStep, updateLandStep } from './land-regularization-service';
 import { formatLandDate, stepStatusColor, stepStatusLabel, stepTransitionLabel, toDateInput } from './land-labels';
@@ -196,7 +197,7 @@ export const LandStepDrawer: React.FC<LandStepDrawerProps> = ({
       open
       onClose={onClose}
       width={520}
-      title={step.label}
+      title={<HelpSectionTitle title={step.label} helpId="patrimoine.terrain.etape" />}
       extra={<Tag color={stepStatusColor(step.status)}>{stepStatusLabel(step.status)}</Tag>}
     >
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>

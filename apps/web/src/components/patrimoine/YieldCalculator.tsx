@@ -6,6 +6,7 @@ import { formatMoney } from '../primitives';
 import { DEVISE_PATRIMOINE } from './patrimoine-labels';
 import { formatYieldPercent } from './patrimoine-format';
 import { BankRatiosCard } from './BankRatiosCard';
+import { HelpSectionTitle } from '../../help';
 
 export interface YieldAssumptionsInput {
   years: number;
@@ -105,7 +106,7 @@ export const YieldCalculator: React.FC<Props> = ({
 
   return (
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-      <Card title={t('Rendement')}>
+      <Card title={<HelpSectionTitle title={t('Rendement')} helpId="patrimoine.performance.rendement" />}>
         <Row gutter={[16, 16]}>
           <Col xs={24} md={6}>
             <Statistic title={t('Brut')} value={formatYieldPercent(data?.grossYield ?? 0)} loading={loading} />
@@ -135,9 +136,14 @@ export const YieldCalculator: React.FC<Props> = ({
       </Card>
 
       <Card
-        title={t('Rendement projeté ({{value}} ans)', {
-          value: data?.projectedAtHorizon?.year ?? assumptions?.years ?? defaultAssumptions.years
-        })}
+        title={
+          <HelpSectionTitle
+            title={t('Rendement projeté ({{value}} ans)', {
+              value: data?.projectedAtHorizon?.year ?? assumptions?.years ?? defaultAssumptions.years
+            })}
+            helpId="patrimoine.performance.projete"
+          />
+        }
       >
         <Row gutter={[16, 16]}>
           <Col xs={24} md={6}>
@@ -177,7 +183,9 @@ export const YieldCalculator: React.FC<Props> = ({
 
       {data?.ratios ? <BankRatiosCard ratios={data.ratios} loading={loading} /> : null}
 
-      <Card title={t('Hypothèses de projection')}>
+      <Card
+        title={<HelpSectionTitle title={t('Hypothèses de projection')} helpId="patrimoine.performance.hypotheses" />}
+      >
         <SyncAlert status={syncStatus} />
         <Form layout="vertical" form={form} onFinish={values => onRecalculate?.(values)}>
           <Row gutter={[16, 8]}>

@@ -74,6 +74,7 @@ export const WorksSection: React.FC<Props> = ({ workPrograms, error, busyActionI
         <Alert type="error" showIcon message={error} />
       ) : (
         <Table<WorkProgram>
+          helpId="patrimoine.bien.travaux"
           {...local.tableProps}
           exportFilename={t('Gérer les programmes de travaux')}
           exportFetchAll={local.exportAll}

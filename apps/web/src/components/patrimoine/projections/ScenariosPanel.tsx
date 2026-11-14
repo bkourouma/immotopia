@@ -13,6 +13,7 @@ import { apiErrorMessage } from '../actifs/asset-format';
 import { ConfirmAction, StateBlock } from '../../primitives';
 import { queryKey, STALE_TIME } from '../../../lib/query-keys';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 import { scenarioLabel } from './projection-helpers';
 
 const NAME_MAX = 120;
@@ -98,7 +99,7 @@ export const ScenariosPanel: React.FC<{
   };
 
   return (
-    <Card title={t('Scénarios enregistrés')}>
+    <Card title={<HelpSectionTitle title={t('Scénarios enregistrés')} helpId="patrimoine.projections.scenarios" />}>
       {!denied && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)', alignItems: 'flex-end' }}>
           <div style={{ flex: '1 1 240px' }}>

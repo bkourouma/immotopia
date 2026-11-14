@@ -19,6 +19,7 @@ import type { SearchCriterion } from '../../../utils/list-search';
 import { apiErrorMessage, formatAmount, formatDay } from './asset-format';
 import { loanStatusLabel } from '../patrimoine-labels';
 import { DebtFormModal } from './DebtFormModal';
+import { HelpSectionTitle } from '../../../help';
 
 const OPTIONS_STATUT = localizedList(() =>
   (['ACTIVE', 'CLOSED', 'DEFAULTED'] as const).map(status => ({ value: status, label: loanStatusLabel(status) }))
@@ -106,7 +107,7 @@ export const DebtsPanel: React.FC<DebtsPanelProps> = ({ tenantId, assetId, title
 
   return (
     <Card
-      title={cardTitle}
+      title={<HelpSectionTitle title={cardTitle} helpId="patrimoine.valeur-nette.dettes" />}
       extra={
         <Button icon={<PlusOutlined />} onClick={() => openForm(null)}>
           {t('Ajouter une dette')}
@@ -122,6 +123,7 @@ export const DebtsPanel: React.FC<DebtsPanelProps> = ({ tenantId, assetId, title
       ) : (
         <Table<DebtDto>
           {...local.tableProps}
+          helpId="patrimoine.valeur-nette.dettes.tableau"
           exportFilename={cardTitle}
           exportFetchAll={local.exportAll}
           rowKey="id"

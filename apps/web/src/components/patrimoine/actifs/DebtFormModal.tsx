@@ -4,6 +4,7 @@ import type { DebtDto, DebtInput } from '../../../services/patrimoine-assets-ser
 import { t } from '../../../i18n/t';
 import { apiErrorMessage, serverFieldErrors, todayIso } from './asset-format';
 import { loanStatusLabel } from '../patrimoine-labels';
+import { HelpSectionTitle } from '../../../help';
 
 interface FormValues {
   lender: string;
@@ -105,7 +106,12 @@ export const DebtFormModal: React.FC<DebtFormModalProps> = ({ open, assetId, deb
   return (
     <Modal
       open={open}
-      title={debt ? t('Modifier une dette') : t('Ajouter une dette')}
+      title={
+        <HelpSectionTitle
+          title={debt ? t('Modifier une dette') : t('Ajouter une dette')}
+          helpId="patrimoine.valeur-nette.dette-formulaire"
+        />
+      }
       onCancel={onClose}
       onOk={handleOk}
       confirmLoading={submitting}

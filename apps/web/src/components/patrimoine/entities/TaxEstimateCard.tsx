@@ -118,6 +118,7 @@ export const TaxEstimateCard: React.FC<TaxEstimateCardProps> = ({ computations, 
                 </Text>
               )}
               <Table
+                helpId="patrimoine.entites.calcul-fiscal"
                 exportFilename={taxKindLabel(computation.taxKind)}
                 rowKey={(line, index) => `${computation.taxKind}-${line.code}-${index}`}
                 columns={buildLineColumns()}

@@ -27,6 +27,7 @@ import { useListSearch } from '../../hooks/useListSearch';
 import type { ApiParams, SearchCriterion } from '../../utils/list-search';
 import { t } from '../../i18n/t';
 import { collectAllPages } from '../../utils/table-export/collect';
+import { helpAnchor } from '../../help';
 
 const { Text } = Typography;
 
@@ -104,7 +105,12 @@ export const AssetsPage: React.FC = () => {
       <PageHeader
         title={t('Mes actifs')}
         subtitle={t('Tout ce qui compose votre patrimoine, toutes classes confondues')}
-        primaryAction={{ label: t('Ajouter un actif'), icon: <PlusOutlined />, onClick: openDrawer }}
+        primaryAction={{
+          label: t('Ajouter un actif'),
+          icon: <PlusOutlined />,
+          onClick: openDrawer,
+          helpAnchor: 'actifs-ajouter'
+        }}
       />
 
       <AssetUsageBanner tenantId={agence} />
@@ -123,64 +129,67 @@ export const AssetsPage: React.FC = () => {
           actions={[{ label: t('Ajouter un actif'), onClick: openDrawer, primary: true }]}
         />
       ) : (
-        <Table<AssetDto>
-          dataSource={items}
-          search={search.searchProps}
-          pagination={search.tablePagination(total)}
-          aria-label={t('Mes actifs')}
-          exportFilename={t('Mes actifs')}
-          exportFetchAll={() =>
-            collectAllPages((page, limit) => listAssetsPage(agence, { ...search.filterParams, page, limit }))
-          }
-          rowKey="id"
-          scroll={{ x: 'max-content' }}
-          columns={[
-            {
-              title: t('Nom'),
-              dataIndex: 'name',
-              render: (name: string, asset) => (
-                <Link to={`/tenant/${agence}/patrimoine/actifs/${asset.id}`}>{name}</Link>
-              )
-            },
-            { title: t('Classe'), dataIndex: 'assetClass', render: (value: AssetClass) => assetClassLabel(value) },
-            {
-              title: t('Statut'),
-              dataIndex: 'status',
-              render: (value: AssetStatus) => <Tag>{assetStatusLabel(value)}</Tag>
-            },
-            {
-              title: t('Valeur courante'),
-              key: 'currentValue',
-              align: 'end',
-              exportValue: asset => asset.currentValue?.amount ?? null,
-              render: (_: unknown, asset) =>
-                asset.currentValue ? (
-                  <Space size={8} wrap style={{ justifyContent: 'flex-end' }}>
-                    <span>{formatAmount(asset.currentValue.amount, asset.currentValue.currency)}</span>
-                    <ReliabilityBadge reliability={asset.currentValue.reliability} />
-                    {asset.stale && <StaleTag status={asset.status} />}
-                  </Space>
-                ) : (
-                  <Text type="secondary">{t('Sans valeur')}</Text>
-                )
-            },
-            {
-              title: t('Date de valorisation'),
-              key: 'valuatedAt',
-              render: (_: unknown, asset) =>
-                asset.currentValue ? <span>{formatDay(asset.currentValue.valuatedAt)}</span> : '—'
-            },
-            {
-              title: t('Dette restante'),
-              dataIndex: 'outstandingDebtXof',
-              align: 'end',
-              render: (value: number) => (value > 0 ? formatAmount(value, 'XOF') : '—')
+        <div {...helpAnchor('actifs-tableau')}>
+          <Table<AssetDto>
+            helpId="patrimoine.actifs.tableau"
+            dataSource={items}
+            search={search.searchProps}
+            pagination={search.tablePagination(total)}
+            aria-label={t('Mes actifs')}
+            exportFilename={t('Mes actifs')}
+            exportFetchAll={() =>
+              collectAllPages((page, limit) => listAssetsPage(agence, { ...search.filterParams, page, limit }))
             }
-          ]}
-          onRow={asset => ({
-            onDoubleClick: () => navigate(`/tenant/${agence}/patrimoine/actifs/${asset.id}`)
-          })}
-        />
+            rowKey="id"
+            scroll={{ x: 'max-content' }}
+            columns={[
+              {
+                title: t('Nom'),
+                dataIndex: 'name',
+                render: (name: string, asset) => (
+                  <Link to={`/tenant/${agence}/patrimoine/actifs/${asset.id}`}>{name}</Link>
+                )
+              },
+              { title: t('Classe'), dataIndex: 'assetClass', render: (value: AssetClass) => assetClassLabel(value) },
+              {
+                title: t('Statut'),
+                dataIndex: 'status',
+                render: (value: AssetStatus) => <Tag>{assetStatusLabel(value)}</Tag>
+              },
+              {
+                title: t('Valeur courante'),
+                key: 'currentValue',
+                align: 'end',
+                exportValue: asset => asset.currentValue?.amount ?? null,
+                render: (_: unknown, asset) =>
+                  asset.currentValue ? (
+                    <Space size={8} wrap style={{ justifyContent: 'flex-end' }}>
+                      <span>{formatAmount(asset.currentValue.amount, asset.currentValue.currency)}</span>
+                      <ReliabilityBadge reliability={asset.currentValue.reliability} />
+                      {asset.stale && <StaleTag status={asset.status} />}
+                    </Space>
+                  ) : (
+                    <Text type="secondary">{t('Sans valeur')}</Text>
+                  )
+              },
+              {
+                title: t('Date de valorisation'),
+                key: 'valuatedAt',
+                render: (_: unknown, asset) =>
+                  asset.currentValue ? <span>{formatDay(asset.currentValue.valuatedAt)}</span> : '—'
+              },
+              {
+                title: t('Dette restante'),
+                dataIndex: 'outstandingDebtXof',
+                align: 'end',
+                render: (value: number) => (value > 0 ? formatAmount(value, 'XOF') : '—')
+              }
+            ]}
+            onRow={asset => ({
+              onDoubleClick: () => navigate(`/tenant/${agence}/patrimoine/actifs/${asset.id}`)
+            })}
+          />
+        </div>
       )}
 
       <AssetFormDrawer

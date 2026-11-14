@@ -148,6 +148,7 @@ const DocumentVaultCard: React.FC<Props & { tableProps: VaultTableProps }> = ({
   return (
     <Card title={t('Coffre-fort documentaire')} extra={extra}>
       <Table<PropertyDocument>
+        helpId="patrimoine.bien.coffre-fort"
         exportFilename={t('Coffre-fort documentaire')}
         scroll={{ x: 'max-content' }}
         rowKey="id"

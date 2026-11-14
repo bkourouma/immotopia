@@ -113,6 +113,7 @@ export const CashPlanTable: React.FC<Props> = ({ periods }) => {
 
   return (
     <Table<CashPlanMonth>
+      helpId="patrimoine.tresorerie.tableau"
       exportFilename={t('Plan de trésorerie mensuel')}
       rowKey="month"
       size="middle"
