@@ -127,20 +127,22 @@ describe('AssistantPage — artefacts', () => {
 });
 
 describe('AssistantPage', () => {
-  it('joint un fichier et peut envoyer le message sans saisie', async () => {
+  it('joint un classeur et peut envoyer le message sans saisie', async () => {
     getStatus.mockResolvedValue(ENABLED);
     const { container } = renderPage();
     const attach = await screen.findByRole('button', { name: 'Joindre des fichiers' });
     expect(attach).toBeEnabled();
     const picker = container.querySelector('input[type=file]')!;
-    const file = new File(['Bien;Loyer'], 'loyers.csv', { type: 'text/csv' });
+    const file = new File(['workbook'], 'loyers.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    });
     fireEvent.change(picker, { target: { files: [file] } });
-    expect(screen.getByRole('button', { name: 'Retirer loyers.csv' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Retirer loyers.xlsx' })).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Envoyer' }));
     await waitFor(() => expect(streamChat).toHaveBeenCalledTimes(1));
     expect(streamChat.mock.calls[0][1].messages).toEqual([{ role: 'user', content: 'Analyse les fichiers joints.' }]);
     expect(streamChat.mock.calls[0][2].files).toEqual([file]);
-    expect(await screen.findByText('loyers.csv')).toBeVisible();
+    expect(await screen.findByText('loyers.xlsx')).toBeVisible();
   });
 
   it('affiche le fil, la saisie et l’emplacement de l’artefact', async () => {

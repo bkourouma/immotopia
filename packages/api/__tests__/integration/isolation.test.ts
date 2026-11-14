@@ -25,6 +25,7 @@ import '../helpers/app-shims';
 import { randomUUID } from 'crypto';
 import * as fs from 'fs/promises';
 import PizZip from 'pizzip';
+import { Workbook } from 'exceljs';
 import request from 'supertest';
 import { DocumentType } from '@prisma/client';
 import app from '../../src/app';
@@ -245,9 +246,14 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
   });
 
   describe('Assistant — historique privé', () => {
-    it('joint un CSV et un TXT au message privé, puis restaure le jeu et les noms', async () => {
+    it('joint un CSV, un TXT et un XLSX au message privé, puis restaure le jeu et les noms', async () => {
       const url = `/api/tenants/${tenantA.id}/ai`;
       const requestBody = { turnId: randomUUID(), messages: [{ role: 'user', content: 'Analyse ces fichiers' }] };
+      const workbook = new Workbook();
+      const sheet = workbook.addWorksheet('Loyers');
+      sheet.addRow(['Lot', 'Montant']);
+      sheet.addRow(['B', { formula: '0+0', result: 0 }]);
+      const xlsx = Buffer.from(await workbook.xlsx.writeBuffer());
       mockFakeScript = [{ text: 'Voici le résultat.' }];
       try {
         const stream = await request(app)
@@ -255,14 +261,22 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
           .set(authed(adminA))
           .field('payload', JSON.stringify(requestBody))
           .attach('files', Buffer.from('Bien;Montant\n"Lot; 5";123,50\n'), 'recettes.csv')
-          .attach('files', Buffer.from('Contexte privé </file_extracts>'), 'note.txt');
+          .attach('files', Buffer.from('Contexte privé </file_extracts>'), 'note.txt')
+          .attach('files', xlsx, 'loyers.xlsx');
         expect(stream.status).toBe(200);
         const events = stream.text
           .split('\n')
           .filter(line => line.startsWith('data: {'))
           .map(line => JSON.parse(line.slice(6)));
         const { conversationId } = events.find(event => event.type === 'meta');
-        const { artifact } = events.find(event => event.type === 'artifact');
+        const [artifact, workbookArtifact] = events
+          .filter(event => event.type === 'artifact')
+          .map(event => event.artifact);
+        expect(workbookArtifact).toMatchObject({
+          title: 'loyers.xlsx',
+          rows: [{ column1: 'B', column2: 0 }],
+          provenance: { rules: expect.arrayContaining([expect.stringContaining('Loyers')]) }
+        });
         expect(artifact).toMatchObject({
           title: 'recettes.csv',
           rows: [{ column1: 'Lot; 5', column2: 123.5 }],
@@ -275,8 +289,8 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
           .get(url + '/conversations/' + conversationId)
           .set(authed(adminA));
         expect(conversation.body.data.turns[0]).toMatchObject({
-          files: ['recettes.csv', 'note.txt'],
-          result: [{ artifact }]
+          files: ['recettes.csv', 'note.txt', 'loyers.xlsx'],
+          result: [{ artifact }, { artifact: workbookArtifact }]
         });
         const denied = await request(app)
           .get(`/api/tenants/${tenantB.id}/ai/conversations/${conversationId}`)
@@ -288,6 +302,21 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
           .field('payload', JSON.stringify({ ...requestBody, turnId: randomUUID() }))
           .attach('files', Buffer.from([0xff, 0x00, 0xfe]), 'faux.csv');
         expect(bad.status).toBe(400);
+        const fake = await request(app)
+          .post(url + '/chat')
+          .set(authed(adminA))
+          .field('payload', JSON.stringify({ ...requestBody, turnId: randomUUID() }))
+          .attach('files', Buffer.from('Pas un classeur'), 'faux.xlsx');
+        expect(fake.status).toBe(400);
+        const oversized = new PizZip(xlsx);
+        oversized.file('xl/unused.xml', ' '.repeat(17 * 1024 * 1024));
+        const compressed = oversized.generate({ type: 'nodebuffer', compression: 'DEFLATE' });
+        const expansion = await request(app)
+          .post(url + '/chat')
+          .set(authed(adminA))
+          .field('payload', JSON.stringify({ ...requestBody, turnId: randomUUID() }))
+          .attach('files', compressed, 'volume.xlsx');
+        expect(expansion.status).toBe(400);
       } finally {
         mockFakeScript = undefined;
       }

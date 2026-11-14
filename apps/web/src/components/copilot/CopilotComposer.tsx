@@ -45,9 +45,9 @@ export const CopilotComposer: React.FC<CopilotComposerProps> = ({
     const pending = [...files, ...Array.from(selection)];
     if (
       pending.length > 5 ||
-      pending.some(file => file.size === 0 || file.size > 10 * 1024 * 1024 || !/\.(csv|txt)$/i.test(file.name))
+      pending.some(file => file.size === 0 || file.size > 10 * 1024 * 1024 || !/\.(csv|txt|xlsx)$/i.test(file.name))
     ) {
-      setFileError(t('Ajoutez jusqu’à cinq fichiers CSV ou TXT de 10 Mo chacun.'));
+      setFileError(t('Ajoutez jusqu’à cinq fichiers CSV, TXT ou XLSX de 10 Mo chacun.'));
       return;
     }
     setFileError('');
@@ -94,7 +94,7 @@ export const CopilotComposer: React.FC<CopilotComposerProps> = ({
           <input
             ref={fileInput}
             type="file"
-            accept=".csv,.txt"
+            accept=".csv,.txt,.xlsx"
             multiple
             hidden
             onChange={event => {
