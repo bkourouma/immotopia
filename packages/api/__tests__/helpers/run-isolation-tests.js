@@ -38,7 +38,9 @@ if (!testDatabaseUrl) {
 const env = {
   ...process.env,
   DATABASE_URL: testDatabaseUrl,
-  TEST_DATABASE_URL: testDatabaseUrl
+  TEST_DATABASE_URL: testDatabaseUrl,
+  // PptxGenJS charge les modules natifs via import() dans son entrée CommonJS.
+  NODE_OPTIONS: [process.env.NODE_OPTIONS, '--experimental-vm-modules'].filter(Boolean).join(' ')
 };
 
 console.log('Application des migrations sur la base de test isolation...');
