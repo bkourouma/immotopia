@@ -13,6 +13,7 @@ import { AccessDenied } from './AccessDenied';
 import { isPermissionDenied } from '../../utils/error-handler';
 import type { ListSearchBinding } from '../../utils/list-search/types';
 import { ListSearch } from './ListSearch';
+import { useTableHelp, withColumnHelp } from '../../help/column-help';
 
 /**
  * `<DataView>` — une liste, dans les deux représentations (§5.1, §6, §10.1).
@@ -149,6 +150,9 @@ interface DataViewBase<T> {
    */
   search?: ListSearchBinding;
 
+  /** Fiche d'aide de la liste : « ? » en tête de bloc et infobulles de colonnes (`howToRead.columns`). */
+  helpId?: string;
+
   /** Nom accessible de la liste. */
   'aria-label': string;
 }
@@ -202,8 +206,10 @@ export function DataView<T>(props: DataViewProps<T>) {
     onSortChange,
     scrollX,
     export: exportOption,
+    helpId,
     'aria-label': ariaLabel
   } = props;
+  const { node: helpNode, entry: helpEntry } = useTableHelp(helpId);
   const layout = props.layout ?? 'table';
   const columns = (props as { columns?: import('antd/es/table').ColumnsType<T> }).columns ?? [];
   const { isDesktop } = useBreakpoint();
@@ -245,9 +251,20 @@ export function DataView<T>(props: DataViewProps<T>) {
    * les états où un compteur mentirait (premier chargement, erreur). Rien du
    * tout sans `search` : l'arbre DOM reste celui d'avant.
    */
+  const withHelpExtra = (extra: React.ReactNode): React.ReactNode =>
+    helpNode ? (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+        {helpNode}
+        {extra}
+      </span>
+    ) : (
+      extra
+    );
+
   const withSearch = (body: React.ReactNode, options: { extra?: React.ReactNode; counted?: boolean } = {}) => {
     if (!search) return body;
-    const { extra, counted = true } = options;
+    const { extra: extraProp, counted = true } = options;
+    const extra = withHelpExtra(extraProp);
     const resultCount = counted ? (search.resultCount ?? (paginated ? total : items.length)) : undefined;
     return (
       <>
@@ -363,6 +380,9 @@ export function DataView<T>(props: DataViewProps<T>) {
     </Row>
   );
 
+  // Les colonnes décorées ne servent qu'à l'affichage : l'export garde les titres d'origine.
+  const displayColumns = helpNode ? (withColumnHelp(columns, helpEntry?.howToRead?.columns) ?? columns) : columns;
+
   const content =
     layout === 'grid' ? (
       cardGrid
@@ -370,7 +390,7 @@ export function DataView<T>(props: DataViewProps<T>) {
       <ContexteMontants.Provider value={contexteMontants}>
         <Table<T>
           dataSource={items}
-          columns={columns}
+          columns={displayColumns}
           rowKey={rowKey}
           // La pagination est rendue séparément : identique en tableau et en
           // cartes, elle ne doit pas changer de forme avec le palier.
@@ -419,8 +439,18 @@ export function DataView<T>(props: DataViewProps<T>) {
     <div>
       {/* Sans barre de recherche, le bouton a sa propre ligne ; avec, il se
           loge à l'extrémité de fin de la barre. */}
-      {!search && exportMenu && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 'var(--space-3)' }}>{exportMenu}</div>
+      {!search && (exportMenu || helpNode) && (
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'flex-end',
+            marginBottom: 'var(--space-3)',
+            ...(helpNode ? { alignItems: 'center', gap: 'var(--space-2)' } : null)
+          }}
+        >
+          {helpNode}
+          {exportMenu}
+        </div>
       )}
 
       {/* Rechargement : le contenu reste lisible, l'indicateur dit qu'il

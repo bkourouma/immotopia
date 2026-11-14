@@ -27,6 +27,7 @@ import {
 } from '../../navigation/resolve';
 import type { NavContext } from '../../navigation/resolve';
 import { ownerPortalPatrimoineService } from '../../services/owner-portal-patrimoine-service';
+import { HelpProvider } from '../../help/components/HelpProvider';
 import { AccountNotLinked } from '../primitives/AccountNotLinked';
 import { ModuleNotIncluded } from '../primitives/ModuleNotIncluded';
 import { SkeletonDetail } from '../primitives/Skeleton';
@@ -42,6 +43,13 @@ import { installSubscriptionDenialInterceptor } from '../../utils/subscription-d
 const CopilotRoot = lazy(() => import('../copilot/CopilotRoot'));
 // Cloche de notifications et icône Messagerie : chargées à part, hors du bundle d'entrée.
 const HeaderActions = lazy(() => import('../notifications/HeaderActions'));
+
+/**
+ * Page plein écran de l'assistant. Même motif que `isAssistantPagePath` de
+ * `copilot/CopilotRoot.tsx`, recopié ici : importer ce module statiquement
+ * tirerait CopilotRoot dans le bundle d'entrée, alors qu'il est chargé à part.
+ */
+const isAssistantPage = (pathname: string): boolean => /\/assistant\/?$/.test(pathname);
 
 /**
  * `<AppShell>` — coquille unique, montée AU NIVEAU ROUTE (REFONTE_UI_UX.md §4.1).
@@ -286,141 +294,147 @@ export const AppShell: React.FC = () => {
   if (persona === 'non-rattache') return <AccountNotLinked />;
 
   return (
-    <Layout style={{ minHeight: '100vh', background: 'var(--surface-page)' }}>
-      {(showSidebar || showRail) && nav && (
-        <AppNavigation persona={nav} context={navContext} variant={showRail ? 'rail' : 'sidebar'} />
-      )}
+    <HelpProvider
+      tenantId={navContext.tenantId}
+      featureAccess={featureAccess}
+      copilotAvailable={showCopilot && Boolean(copilotStatus?.enabled) && !isAssistantPage(location.pathname)}
+    >
+      <Layout style={{ minHeight: '100vh', background: 'var(--surface-page)' }}>
+        {(showSidebar || showRail) && nav && (
+          <AppNavigation persona={nav} context={navContext} variant={showRail ? 'rail' : 'sidebar'} />
+        )}
 
-      <Layout
-        style={{
-          marginInlineStart: sidebarWidth,
-          background: 'var(--surface-page)',
-          transitionProperty: 'margin-inline-start',
-          transitionDuration: 'var(--duration-base)',
-          transitionTimingFunction: 'var(--ease-standard)'
-        }}
-      >
-        <TenantSuspendedBanner />
-        <AppHeader
-          actions={
-            (persona === 'collaborateur' && navContext.tenantId) ||
-            persona === 'proprietaire' ||
-            persona === 'locataire' ||
-            persona === 'coproprietaire' ? (
-              <Suspense fallback={null}>
-                <HeaderActions />
-              </Suspense>
-            ) : null
-          }
-          onOpenNavigation={
-            canOpenDrawer
-              ? () => {
-                  setDrawerOnlyMore(false);
-                  setDrawerOpen(true);
-                }
-              : undefined
-          }
-        />
-
-        <Layout.Content
-          id="main"
-          role="main"
+        <Layout
           style={{
-            padding: 'var(--page-padding)',
-            // Réserve la hauteur de la barre d'onglets, sinon le dernier
-            // élément d'une liste passe dessous.
-            paddingBottom: showTabs
-              ? 'calc(var(--control-h-lg) + var(--space-6) + env(safe-area-inset-bottom, 0px))'
-              : 'var(--page-padding)'
+            marginInlineStart: sidebarWidth,
+            background: 'var(--surface-page)',
+            transitionProperty: 'margin-inline-start',
+            transitionDuration: 'var(--duration-base)',
+            transitionTimingFunction: 'var(--ease-standard)'
           }}
         >
-          {/* Le squelette remplace le `Spin` plein écran : la coquille est
+          <TenantSuspendedBanner />
+          <AppHeader
+            actions={
+              (persona === 'collaborateur' && navContext.tenantId) ||
+              persona === 'proprietaire' ||
+              persona === 'locataire' ||
+              persona === 'coproprietaire' ? (
+                <Suspense fallback={null}>
+                  <HeaderActions />
+                </Suspense>
+              ) : null
+            }
+            onOpenNavigation={
+              canOpenDrawer
+                ? () => {
+                    setDrawerOnlyMore(false);
+                    setDrawerOpen(true);
+                  }
+                : undefined
+            }
+          />
+
+          <Layout.Content
+            id="main"
+            role="main"
+            style={{
+              padding: 'var(--page-padding)',
+              // Réserve la hauteur de la barre d'onglets, sinon le dernier
+              // élément d'une liste passe dessous.
+              paddingBottom: showTabs
+                ? 'calc(var(--control-h-lg) + var(--space-6) + env(safe-area-inset-bottom, 0px))'
+                : 'var(--page-padding)'
+            }}
+          >
+            {/* Le squelette remplace le `Spin` plein écran : la coquille est
               déjà peinte, seul le contenu manque (§5.6). */}
-          <Suspense fallback={<SkeletonDetail aria-label={t("Chargement de l'écran")} />}>
-            {awaitingModuleAccess ? (
-              <SkeletonDetail aria-label={t("Chargement de l'écran")} />
-            ) : moduleNotIncluded ? (
-              <ModuleNotIncluded
-                settingsPath={navContext.tenantId ? `/tenant/${navContext.tenantId}/settings/abonnement` : undefined}
-              />
-            ) : (
-              <Outlet />
-            )}
+            <Suspense fallback={<SkeletonDetail aria-label={t("Chargement de l'écran")} />}>
+              {awaitingModuleAccess ? (
+                <SkeletonDetail aria-label={t("Chargement de l'écran")} />
+              ) : moduleNotIncluded ? (
+                <ModuleNotIncluded
+                  settingsPath={navContext.tenantId ? `/tenant/${navContext.tenantId}/settings/abonnement` : undefined}
+                />
+              ) : (
+                <Outlet />
+              )}
+            </Suspense>
+          </Layout.Content>
+        </Layout>
+
+        {!isDesktop && action && (
+          <Button
+            type="primary"
+            shape="circle"
+            size="large"
+            icon={action.icon}
+            aria-label={action.label}
+            onClick={() => navigate(action.href)}
+            style={{
+              position: 'fixed',
+              insetInlineEnd: 'var(--space-4)',
+              // Au-dessus de la barre d'onglets, jamais dessus.
+              bottom: showTabs
+                ? 'calc(var(--control-h-lg) + var(--space-4) + env(safe-area-inset-bottom, 0px))'
+                : 'calc(var(--space-4) + env(safe-area-inset-bottom, 0px))',
+              zIndex: 'var(--z-bottom-bar)' as unknown as number,
+              width: 56,
+              height: 56,
+              boxShadow: 'var(--shadow-lg)'
+            }}
+          />
+        )}
+
+        {showCopilot && navContext.tenantId && (
+          <Suspense fallback={null}>
+            <CopilotRoot
+              tenantId={navContext.tenantId}
+              status={copilotStatus}
+              hasTabs={showTabs}
+              hasAction={Boolean(action)}
+              isDesktop={isDesktop}
+            />
           </Suspense>
-        </Layout.Content>
-      </Layout>
+        )}
 
-      {!isDesktop && action && (
-        <Button
-          type="primary"
-          shape="circle"
-          size="large"
-          icon={action.icon}
-          aria-label={action.label}
-          onClick={() => navigate(action.href)}
-          style={{
-            position: 'fixed',
-            insetInlineEnd: 'var(--space-4)',
-            // Au-dessus de la barre d'onglets, jamais dessus.
-            bottom: showTabs
-              ? 'calc(var(--control-h-lg) + var(--space-4) + env(safe-area-inset-bottom, 0px))'
-              : 'calc(var(--space-4) + env(safe-area-inset-bottom, 0px))',
-            zIndex: 'var(--z-bottom-bar)' as unknown as number,
-            width: 56,
-            height: 56,
-            boxShadow: 'var(--shadow-lg)'
-          }}
-        />
-      )}
-
-      {showCopilot && navContext.tenantId && (
-        <Suspense fallback={null}>
-          <CopilotRoot
-            tenantId={navContext.tenantId}
-            status={copilotStatus}
-            hasTabs={showTabs}
-            hasAction={Boolean(action)}
-            isDesktop={isDesktop}
-          />
-        </Suspense>
-      )}
-
-      {showTabs && nav && (
-        <BottomTabBar
-          tabs={nav.tabs}
-          context={navContext}
-          onOpenMore={() => {
-            setDrawerOnlyMore(true);
-            setDrawerOpen(true);
-          }}
-        />
-      )}
-
-      {nav && (
-        <Drawer
-          placement="left"
-          open={drawerOpen}
-          onClose={() => setDrawerOpen(false)}
-          // Bouton de fermeture VISIBLE : `closable={false}` obligeait à taper
-          // le masque, geste ni découvrable ni accessible au clavier (§4.2).
-          closable
-          title={t('Navigation')}
-          width={288}
-          styles={{
-            body: { padding: 0, background: 'var(--surface-nav)' },
-            header: { background: 'var(--surface-nav)', borderBottom: 'none' }
-          }}
-          classNames={{ header: 'app-drawer-header' }}
-        >
-          <AppNavigation
-            persona={nav}
+        {showTabs && nav && (
+          <BottomTabBar
+            tabs={nav.tabs}
             context={navContext}
-            variant="drawer"
-            onlyMore={drawerOnlyMore}
-            onNavigate={() => setDrawerOpen(false)}
+            onOpenMore={() => {
+              setDrawerOnlyMore(true);
+              setDrawerOpen(true);
+            }}
           />
-        </Drawer>
-      )}
-    </Layout>
+        )}
+
+        {nav && (
+          <Drawer
+            placement="left"
+            open={drawerOpen}
+            onClose={() => setDrawerOpen(false)}
+            // Bouton de fermeture VISIBLE : `closable={false}` obligeait à taper
+            // le masque, geste ni découvrable ni accessible au clavier (§4.2).
+            closable
+            title={t('Navigation')}
+            width={288}
+            styles={{
+              body: { padding: 0, background: 'var(--surface-nav)' },
+              header: { background: 'var(--surface-nav)', borderBottom: 'none' }
+            }}
+            classNames={{ header: 'app-drawer-header' }}
+          >
+            <AppNavigation
+              persona={nav}
+              context={navContext}
+              variant="drawer"
+              onlyMore={drawerOnlyMore}
+              onNavigate={() => setDrawerOpen(false)}
+            />
+          </Drawer>
+        )}
+      </Layout>
+    </HelpProvider>
   );
 };

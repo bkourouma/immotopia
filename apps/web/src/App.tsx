@@ -715,6 +715,12 @@ const PlatformNotificationJournalPage = lazy(
   () => import(/* webpackChunkName: "notifications" */ './pages/notifications/PlatformNotificationJournalPage')
 );
 const MessagesRoute = lazy(() => import(/* webpackChunkName: "messages" */ './pages/messages/MessagesRoute'));
+// Centre d'aide interne (route unique /aide, ouverte aux portails).
+const HelpCenterPage = lazy(() =>
+  import(/* webpackChunkName: "pages-help" */ './pages/help/HelpCenterPage').then(m => ({
+    default: m.HelpCenterPage
+  }))
+);
 // Transactions page
 // Reports page
 // Tenant Portal pages
@@ -950,6 +956,7 @@ function App() {
                           <Route path="/notifications" element={<NotificationsPage />} />
                           <Route path="/messages" element={<MessagesRoute />} />
                           <Route path="/messages/:conversationId" element={<MessagesRoute />} />
+                          <Route path="/aide" element={<HelpCenterPage />} />
                           <Route path="/properties" element={<Properties />} />
                           {/* Fusions du §4.3. Les ecrans disparaissent, les URL en
                         circulation sont redirigees et non cassees.

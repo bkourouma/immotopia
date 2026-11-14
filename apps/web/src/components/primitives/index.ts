@@ -3,7 +3,11 @@
  *
  * Ecrites au Lot 0, volontairement NON cablees dans les ecrans : le Lot 0 ne
  * refond aucun ecran. Leur adoption est le travail des lots 1 a 4.
+ *
+ * Aide interne : `PageHeader`, `Table`, `DataView`, `DataCard` et `StatCard`
+ * acceptent `helpId`, et `HelpButton` / `HelpSectionTitle` sont re-exportes ici.
  */
+export { HelpButton, HelpSectionTitle } from '../../help/index';
 export { PageHeader } from './PageHeader';
 export type { PageHeaderProps, Crumb } from './PageHeader';
 

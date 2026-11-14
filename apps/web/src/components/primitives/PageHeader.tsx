@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Breadcrumb, Button, Dropdown, Space, Tooltip, Typography } from 'antd';
 import type { MenuProps } from 'antd';
 import { MoreOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { t } from '../../i18n/t';
+import { HelpButton } from '../../help/components/HelpButton';
+import { useHelp } from '../../help/help-context';
 
 const { Title, Text } = Typography;
 
@@ -48,11 +50,15 @@ export interface PageHeaderProps {
     disabled?: boolean;
     /** Raison affichee en infobulle quand `disabled` est vrai. */
     disabledReason?: string;
+    /** Ancre de visite guidee (`data-help-anchor`) posee sur le bouton. */
+    helpAnchor?: string;
   };
   /** Actions secondaires, regroupees derriere « … ». */
   secondaryActions?: MenuProps['items'];
   /** Contenu libre aligne a droite (filtres, bascule de vue). */
   extra?: React.ReactNode;
+  /** Fiche d'aide de la page ; par défaut celle de la route (`useHelp().pageHelpId`). */
+  helpId?: string;
 }
 
 export const PageHeader: React.FC<PageHeaderProps> = ({
@@ -61,9 +67,31 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   breadcrumbs,
   primaryAction,
   secondaryActions,
-  extra
+  extra,
+  helpId
 }) => {
   const { isDesktop } = useBreakpoint();
+  const { available, pageHelpId, claimPageHelp } = useHelp();
+  const effectiveHelpId = helpId ?? pageHelpId;
+  const showHelp = Boolean(effectiveHelpId) && available;
+  useEffect(() => {
+    if (!effectiveHelpId || !available) return undefined;
+    return claimPageHelp();
+  }, [effectiveHelpId, available, claimPageHelp]);
+
+  const titleNode = (
+    <Title
+      level={1}
+      style={{
+        margin: 0,
+        fontSize: 'var(--font-size-h1)',
+        lineHeight: 'var(--line-height-h1)',
+        fontWeight: 'var(--font-weight-h1)' as unknown as number
+      }}
+    >
+      {title}
+    </Title>
+  );
 
   return (
     <header
@@ -94,17 +122,14 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
         }}
       >
         <div style={{ minWidth: 0 }}>
-          <Title
-            level={1}
-            style={{
-              margin: 0,
-              fontSize: 'var(--font-size-h1)',
-              lineHeight: 'var(--line-height-h1)',
-              fontWeight: 'var(--font-weight-h1)' as unknown as number
-            }}
-          >
-            {title}
-          </Title>
+          {showHelp && effectiveHelpId ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+              {titleNode}
+              <HelpButton helpId={effectiveHelpId} />
+            </div>
+          ) : (
+            titleNode
+          )}
           {subtitle && (
             <Text type="secondary" style={{ fontSize: 'var(--font-size-small)' }}>
               {subtitle}
@@ -126,6 +151,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
                     icon={primaryAction.icon}
                     loading={primaryAction.loading}
                     disabled
+                    data-help-anchor={primaryAction.helpAnchor}
                     block={!isDesktop}
                   >
                     {primaryAction.label}
@@ -139,6 +165,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
                 loading={primaryAction.loading}
                 onClick={primaryAction.onClick}
                 disabled={primaryAction.disabled}
+                data-help-anchor={primaryAction.helpAnchor}
                 block={!isDesktop}
               >
                 {primaryAction.label}

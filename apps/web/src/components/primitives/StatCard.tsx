@@ -1,5 +1,6 @@
 import React from 'react';
 import { Card } from 'antd';
+import { HelpButton } from '../../help/components/HelpButton';
 
 /**
  * `<StatCard>` — un indicateur chiffré (§5.1, §6.2).
@@ -34,6 +35,8 @@ export interface StatCardProps {
    * pas orange, l'orange ne portant jamais un statut).
    */
   highlight?: boolean;
+  /** Fiche d'aide : « ? » en fin de ligne d'en-tête (sans déclencher `onClick`). */
+  helpId?: string;
 }
 
 const TONE_COLOR: Record<NonNullable<StatCardProps['tone']>, string> = {
@@ -50,7 +53,8 @@ export const StatCard: React.FC<StatCardProps> = ({
   icon,
   onClick,
   tone = 'neutral',
-  highlight = false
+  highlight = false,
+  helpId
 }) => {
   const interactive = Boolean(onClick);
 
@@ -115,6 +119,15 @@ export const StatCard: React.FC<StatCardProps> = ({
         {icon && (
           <span aria-hidden="true" style={{ color: 'var(--text-tertiary)', fontSize: 20, flexShrink: 0 }}>
             {icon}
+          </span>
+        )}
+        {helpId && (
+          <span
+            style={{ flexShrink: 0 }}
+            onClick={event => event.stopPropagation()}
+            onKeyDown={event => event.stopPropagation()}
+          >
+            <HelpButton helpId={helpId} size="small" />
           </span>
         )}
       </div>
