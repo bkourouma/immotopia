@@ -2,13 +2,16 @@
 /**
  * Controle de couverture de l'aide interne (`npm run help:check`).
  *
- * Lit le contenu de `src/help/content/<module>/{routes,fr,en,ar}.ts` (transpile
- * avec TypeScript puis importe : ces fichiers n'ont que des imports de types) et
+ * Lit le contenu de `src/help/content/<module>/{routes,fr,en,ar}.ts` (regroupe
+ * avec esbuild puis importe, ce qui suit les fichiers de zone
+ * `<module>/<lang>/<zone>.ts` importes par `fr.ts`, `en.ts`, `ar.ts`) et
  * verifie :
  *   A. chaque `helpId` litteral du code existe dans le fr.ts de son module ;
  *   B. chaque identifiant fr existe en en et en ar (et inversement) ;
  *   C. chaque `helpId` des routes existe en fr ; chaque motif commence par `/` ;
  *   D. identifiants uniques, bien formes, premier segment = dossier du module ;
+ *      fichiers de contenu limites aux imports de types et aux imports
+ *      relatifs de zone (`./<lang>/<zone>`) ;
  *   E. routes de l'application (src/App.tsx) sans fiche de page (avertissement).
  *
  * Usage :
@@ -20,6 +23,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
+import { build } from 'esbuild';
 
 /* ---------------------------------------------------------------- options */
 
@@ -89,14 +93,99 @@ function info(message) {
 
 /* ---------------------------------------------------------------- lecture */
 
+/**
+ * Regroupe un fichier de contenu avec ses imports relatifs (fichiers de zone)
+ * et l'importe. Les imports de types disparaissent a la compilation ; tout autre
+ * paquet est laisse externe (donc refuse a l'import, et signale en D).
+ */
 async function loadTsModule(file) {
-  const source = fs.readFileSync(file, 'utf8');
-  const { outputText } = ts.transpileModule(source, {
-    compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
-    fileName: file
+  const result = await build({
+    entryPoints: [file],
+    bundle: true,
+    write: false,
+    format: 'esm',
+    platform: 'node',
+    target: 'es2022',
+    packages: 'external',
+    metafile: true,
+    logLevel: 'silent'
   });
-  const url = `data:text/javascript;base64,${Buffer.from(outputText, 'utf8').toString('base64')}`;
-  return import(url);
+  const code = result.outputFiles[0].text;
+  const url = `data:text/javascript;base64,${Buffer.from(code, 'utf8').toString('base64')}`;
+  const inputs = Object.keys(result.metafile.inputs).map(input => path.resolve(ROOT, input));
+  return { mod: await import(url), inputs };
+}
+
+/** Fichiers `.ts` d'un dossier, en descendant dans les sous-dossiers. */
+function walkTs(dir, out = []) {
+  if (!fs.existsSync(dir)) return out;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) walkTs(full, out);
+    else if (/\.ts$/.test(entry.name)) out.push(full);
+  }
+  return out;
+}
+
+function isInside(dir, file) {
+  const relative = path.relative(dir, file);
+  return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
+}
+
+/**
+ * Imports interdits d'un fichier de contenu : tout import de valeur qui n'est
+ * pas un import relatif vers le dossier de zones `<module>/<lang>/` de sa langue.
+ * Les imports de types (`import type`, ou specificateurs tous `type`) sont libres.
+ */
+function forbiddenImports(file, zoneDir) {
+  const source = ts.createSourceFile(
+    file,
+    fs.readFileSync(file, 'utf8'),
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS
+  );
+  const problems = [];
+  const check = (specifier, node) => {
+    let allowed = false;
+    if (specifier.startsWith('.') && zoneDir) {
+      const target = path.resolve(path.dirname(file), specifier);
+      allowed = isInside(zoneDir, target) || target === zoneDir;
+    }
+    if (!allowed) {
+      const line = source.getLineAndCharacterOfPosition(node.getStart()).line + 1;
+      problems.push(
+        `${rel(file)}:${line} : import « ${specifier} » interdit (types ou zones de la meme langue seulement)`
+      );
+    }
+  };
+  const visit = node => {
+    if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
+      const clause = node.importClause;
+      const bindings = clause?.namedBindings;
+      const typeOnly =
+        clause &&
+        (clause.isTypeOnly ||
+          (!clause.name &&
+            bindings &&
+            ts.isNamedImports(bindings) &&
+            bindings.elements.length > 0 &&
+            bindings.elements.every(el => el.isTypeOnly)));
+      if (!typeOnly) check(node.moduleSpecifier.text, node);
+    } else if (ts.isExportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+      if (!node.isTypeOnly) check(node.moduleSpecifier.text, node);
+    } else if (
+      ts.isCallExpression(node) &&
+      node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+      node.arguments[0] &&
+      ts.isStringLiteralLike(node.arguments[0])
+    ) {
+      check(node.arguments[0].text, node);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return problems;
 }
 
 function listModules() {
@@ -117,13 +206,14 @@ function listModules() {
 
 /** Charge routes + fr/en/ar d'un module ; les problemes de lecture sont des erreurs. */
 async function loadModule(name) {
-  const result = { name, routes: [], entries: { fr: [], en: [], ar: [] } };
+  const result = { name, routes: [], entries: { fr: [], en: [], ar: [] }, importProblems: [] };
   const routesFile = path.join(CONTENT, name, 'routes.ts');
   if (!fs.existsSync(routesFile)) {
     error(`${name} : fichier absent : ${rel(routesFile)}`);
   } else {
     try {
-      const mod = await loadTsModule(routesFile);
+      result.importProblems.push(...forbiddenImports(routesFile, null));
+      const { mod } = await loadTsModule(routesFile);
       if (Array.isArray(mod.routes)) result.routes = mod.routes;
       else error(`${rel(routesFile)} : l'export \`routes\` doit etre un tableau`);
     } catch (e) {
@@ -136,10 +226,18 @@ async function loadModule(name) {
       error(`${name} : fichier absent : ${rel(file)}`);
       continue;
     }
+    const zoneDir = path.join(CONTENT, name, lang);
+    result.importProblems.push(...forbiddenImports(file, zoneDir));
+    for (const zoneFile of walkTs(zoneDir)) result.importProblems.push(...forbiddenImports(zoneFile, zoneDir));
     try {
-      const mod = await loadTsModule(file);
+      const { mod, inputs } = await loadTsModule(file);
       if (Array.isArray(mod.default)) result.entries[lang] = mod.default;
       else error(`${rel(file)} : l'export par defaut doit etre un tableau`);
+      const reached = new Set(inputs.map(input => path.normalize(input)));
+      for (const zoneFile of walkTs(zoneDir)) {
+        if (!reached.has(path.normalize(zoneFile)))
+          warn(`${rel(zoneFile)} : fichier de zone non importe par ${lang}.ts`);
+      }
     } catch (e) {
       error(`${rel(file)} : lecture impossible (${e.message})`);
     }
@@ -356,6 +454,7 @@ section('D. Identifiants : unicite et forme');
   const before = errorCount;
   const seenAll = new Map();
   for (const mod of loaded) {
+    for (const problem of mod.importProblems) error(problem);
     for (const lang of LANGS) {
       const seen = new Set();
       mod.entries[lang].forEach((entry, index) => {
@@ -378,7 +477,7 @@ section('D. Identifiants : unicite et forme');
       });
     }
   }
-  if (errorCount === before) ok(`${totalFr} identifiants uniques et bien formes`);
+  if (errorCount === before) ok(`${totalFr} identifiants uniques et bien formes, imports de contenu conformes`);
 }
 
 // --- E. couverture des routes

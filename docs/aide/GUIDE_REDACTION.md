@@ -82,10 +82,52 @@ ar.ts       mêmes fiches en arabe
 - N'éditez jamais `content/index.ts` ni `types.ts`.
 - `fr.ts`, `en.ts`, `ar.ts` exportent un tableau `HelpEntry[]` par défaut ; `routes.ts` exporte `routes: HelpRoute[]`.
 - Triez les tableaux par écran, une fiche de page suivie de ses blocs, dans le même ordre dans les trois langues.
-- Les fichiers de contenu n'importent que des **types** (`import type { HelpEntry } from '../../types'`).
+- Les fichiers de contenu n'importent que des **types** (`import type { HelpEntry } from '../../types'`) ; seuls
+  `fr.ts`, `en.ts` et `ar.ts` importent aussi leurs zones (voir « Découpage par zone »).
 - Les motifs de route commencent par `/` et utilisent les paramètres de react-router, par exemple
   `/tenant/:tenantId/rental/leases`. Le nom du paramètre n'a pas d'importance pour la couverture.
 - Le contenu d'aide n'est pas extrait par `npm run i18n:extract` : ne l'enveloppez pas dans `t()`.
+
+### Découpage par zone
+
+Dès qu'un module a plusieurs rédacteurs ou dépasse quelques dizaines de fiches, `fr.ts`, `en.ts` et `ar.ts` ne
+contiennent plus les fiches : ils concatènent des **fichiers de zone**.
+
+```text
+content/<module>/
+  routes.ts
+  fr.ts   en.ts   ar.ts            concatènent les zones, rien d'autre
+  fr/<zone>.ts                     une zone = un fichier par langue
+  en/<zone>.ts
+  ar/<zone>.ts
+```
+
+- Une zone regroupe un ensemble cohérent d'écrans (ex. `baux`, `fournisseurs`). **Un rédacteur par zone** : deux
+  rédacteurs ne touchent jamais le même fichier.
+- Les **mêmes noms de zone** existent en fr, en et ar (`fr/baux.ts`, `en/baux.ts`, `ar/baux.ts`).
+- Un fichier de zone exporte par défaut un `HelpEntry[]` et n'importe que des types
+  (`import type { HelpEntry } from '../../../types'`) :
+
+  ```ts
+  import type { HelpEntry } from "../../../types";
+  const entries: HelpEntry[] = [/* fiches de la zone */];
+  export default entries;
+  ```
+
+- `fr.ts` ne fait que concaténer, et le même schéma vaut pour `en.ts` et `ar.ts` :
+
+  ```ts
+  import baux from "./fr/baux";
+  import fournisseurs from "./fr/fournisseurs";
+  export default [...baux, ...fournisseurs];
+  ```
+
+  Ajouter une zone = un fichier par langue + une ligne d'import dans chaque `<lang>.ts`. Exemple vivant : `content/locatif/`.
+
+- Le chargement reste paresseux, un `import()` par module et par langue (déclaré dans `content/index.ts`, qu'on ne
+  modifie pas) : les zones sont regroupées dans le même chunk que leur `<lang>.ts`.
+- `npm run help:check` suit ces imports. Les contrôles A à E sont inchangés ; D refuse en plus tout import qui n'est
+  ni un type ni une zone de la même langue, et un avertissement signale un fichier de zone que `<lang>.ts` n'importe pas.
 
 ## 6. Traduction en anglais et en arabe
 
