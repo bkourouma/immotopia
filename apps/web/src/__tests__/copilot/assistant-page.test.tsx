@@ -1,4 +1,5 @@
 import React from 'react';
+import { AxiosHeaders } from 'axios';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -298,8 +299,11 @@ it('rouvre le fil et ses artefacts depuis le lien de conversation', async () => 
   const file = new Blob(['bilan']);
   vi.mocked(copilotService.downloadAttachment).mockResolvedValue({
     data: file,
-    headers: { 'content-disposition': 'attachment; filename="bilan.pdf"' }
-  } as Awaited<ReturnType<typeof copilotService.downloadAttachment>>);
+    headers: { 'content-disposition': 'attachment; filename="bilan.pdf"' },
+    status: 200,
+    statusText: 'OK',
+    config: { headers: new AxiosHeaders() }
+  });
   fireEvent.click(screen.getByRole('button', { name: 'bilan.pdf' }));
   await waitFor(() => expect(saveBlob).toHaveBeenCalledWith(file, 'bilan.pdf'));
   expect(copilotService.downloadAttachment).toHaveBeenCalledWith('t1', id, 'tour-1', 0);

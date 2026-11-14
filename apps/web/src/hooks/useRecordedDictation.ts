@@ -31,7 +31,7 @@ export function useRecordedDictation(
   );
 
   const mime =
-    transcribe && navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== 'undefined'
+    transcribe && typeof navigator.mediaDevices?.getUserMedia === 'function' && typeof MediaRecorder !== 'undefined'
       ? audioTypes.find(type => MediaRecorder.isTypeSupported(type))
       : undefined;
 
@@ -42,8 +42,8 @@ export function useRecordedDictation(
       return;
     }
     if (active.current) return;
-    const session: NonNullable<typeof active.current> = { abort: new AbortController() };
-    active.current = session;
+    active.current = { abort: new AbortController() };
+    const session = active.current;
     setError('');
     setPhase('starting');
     function finish() {
