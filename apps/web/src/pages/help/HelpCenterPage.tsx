@@ -273,7 +273,7 @@ export const HelpCenterPage: React.FC = () => {
           type="warning"
           showIcon
           style={{ marginBottom: 'var(--space-4)' }}
-          message={t("Une partie du contenu d'aide n'a pas pu être chargée. Réessayez dans un instant.")}
+          title={t("Une partie du contenu d'aide n'a pas pu être chargée. Réessayez dans un instant.")}
         />
       )}
 

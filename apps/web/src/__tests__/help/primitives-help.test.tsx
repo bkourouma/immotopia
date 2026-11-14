@@ -107,6 +107,16 @@ describe('PageHeader et aide', () => {
     expect(screen.getByRole('button', { name: /Aide/ })).toHaveAttribute('data-help-id', 'locatif.baux.detail');
   });
 
+  it("ne revendique pas la fiche de page quand son helpId n'est pas celui de la route", () => {
+    withHelp(<PageHeader title="Baux" helpId="locatif.baux.detail" />);
+    expect(claimPageHelp).not.toHaveBeenCalled();
+  });
+
+  it('revendique la fiche de page quand son helpId est celui de la route', () => {
+    withHelp(<PageHeader title="Baux" helpId="locatif.baux.liste" />);
+    expect(claimPageHelp).toHaveBeenCalledTimes(1);
+  });
+
   it("n'affiche rien et ne revendique rien hors provider", () => {
     render(<PageHeader title="Baux" helpId="locatif.baux.detail" />);
     expect(screen.queryByRole('button', { name: /Aide/ })).toBeNull();

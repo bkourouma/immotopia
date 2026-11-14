@@ -74,10 +74,13 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   const { available, pageHelpId, claimPageHelp } = useHelp();
   const effectiveHelpId = helpId ?? pageHelpId;
   const showHelp = Boolean(effectiveHelpId) && available;
+  // Ne revendique la fiche de page que si l'en-tete affiche bien celle de la route :
+  // avec un `helpId` different, l'en-tete de coquille garde son « ? » de page.
+  const claimsPage = Boolean(effectiveHelpId) && effectiveHelpId === pageHelpId;
   useEffect(() => {
-    if (!effectiveHelpId || !available) return undefined;
+    if (!claimsPage || !available) return undefined;
     return claimPageHelp();
-  }, [effectiveHelpId, available, claimPageHelp]);
+  }, [claimsPage, available, claimPageHelp]);
 
   const titleNode = (
     <Title

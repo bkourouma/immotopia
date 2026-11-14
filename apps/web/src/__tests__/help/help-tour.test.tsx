@@ -74,8 +74,8 @@ describe('HelpTour', () => {
     renderTour();
     await screen.findByText('Le tableau');
     const close = document.querySelector<HTMLElement>('.ant-tour-close');
-    expect(close).not.toBeNull();
-    await act(async () => close!.click());
+    if (!close) throw new Error('bouton de fermeture introuvable');
+    await act(async () => close.click());
     expect(stopTour).toHaveBeenCalled();
   });
 
@@ -85,11 +85,13 @@ describe('HelpTour', () => {
     renderTour();
     await screen.findByText('Le tableau');
     const primary = () =>
-      document.querySelector<HTMLElement>('.ant-tour-footer .ant-btn-primary, .ant-tour-buttons .ant-btn-primary');
-    await act(async () => primary()!.click());
+      document.querySelector<HTMLElement>(
+        '.ant-tour-footer .ant-btn-primary, .ant-tour-buttons .ant-btn-primary'
+      ) as HTMLElement;
+    await act(async () => primary().click());
     await screen.findByText('Les filtres');
     expect(stopTour).not.toHaveBeenCalled();
-    await act(async () => primary()!.click());
+    await act(async () => primary().click());
     expect(stopTour).toHaveBeenCalled();
   });
 
