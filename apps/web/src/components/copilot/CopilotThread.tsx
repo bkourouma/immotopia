@@ -9,6 +9,7 @@ export interface CopilotThreadProps {
   tenantId: string;
   status: CopilotStatus;
   pathname: string;
+  visible?: boolean;
   propertyId?: string;
   /** Envoie le texte d'une suggestion. */
   onSuggestion(text: string): void;
@@ -27,6 +28,7 @@ export const CopilotThread: React.FC<CopilotThreadProps> = ({
   tenantId,
   status,
   pathname,
+  visible,
   propertyId,
   onSuggestion,
   maxWidth,
@@ -64,6 +66,8 @@ export const CopilotThread: React.FC<CopilotThreadProps> = ({
         )}
         <CopilotMessageList
           messages={chat.messages}
+          streaming={streaming}
+          visible={visible}
           tenantId={tenantId}
           propertyId={propertyId}
           onConfirm={id => void chat.confirmProposal(id)}

@@ -31,7 +31,11 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 **Versions d’artefacts (d4646282)** — Le résultat d’origine est la version 1. Un recalcul ajoute une version immuable avec contrôle de concurrence. Le panneau peut rouvrir et télécharger les versions et l’API applique le périmètre de la conversation.
 
-artefacts’artefacts par l’utilisateur et par le modèle. Généraliser le rejeu à un catalogue métier. Enrichir les exports avec des graphiques natifs, puis ajouter les pièces jointes et la transcription. Poursuivre le partage, les épingles, les actions de suivi, les envois, l’administration et les six langues. Recetter avec un fournisseur réel et un navigateur.
+**Dernier commit de référence** — `f18ed131` ajoute le renommage et la restauration avec création d’une nouvelle version.
+
+**Chat** — Les réponses terminées peuvent être copiées et lues à voix haute si le navigateur le permet. La lecture s’arrête quand le fil affiché change.
+
+**À poursuivre** — Ajouter l’édition du contenu des artefacts par l’utilisateur et par le modèle. Généraliser le rejeu à un catalogue métier. Enrichir les exports avec des graphiques natifs, puis ajouter les pièces jointes et la transcription. Poursuivre le partage, les épingles, les actions de suivi, les envois, l’administration et les six langues. Recetter avec un fournisseur réel et un navigateur.
 
 ## chore/deps-patch-minor — 2026-11-11
 

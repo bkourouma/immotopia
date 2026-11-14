@@ -1,4 +1,9 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { Button, Space, message as antMessage } from 'antd';
+import { CopyOutlined, SoundOutlined, StopOutlined } from '@ant-design/icons';
+import { useCopilotSpeech } from '../../hooks/useCopilotSpeech';
+import i18next from '../../i18n';
+import { t } from '../../i18n/t';
 import type { CopilotAttachment, CopilotUiMessage } from '../../types/copilot';
 import { ActionProposalCard } from './ActionProposalCard';
 import { ArtifactChip } from './artifact/ArtifactChip';
@@ -10,6 +15,8 @@ import { WritePlanCard } from './WritePlanCard';
 
 export interface CopilotMessageListProps {
   messages: CopilotUiMessage[];
+  streaming?: boolean;
+  visible?: boolean;
   tenantId: string;
   onConfirm(proposalId: string): void;
   onCancel(proposalId: string): void;
@@ -95,6 +102,8 @@ function Attachment({
 
 export function CopilotMessageList({
   messages,
+  streaming,
+  visible = true,
   tenantId,
   onConfirm,
   onCancel,
@@ -103,9 +112,26 @@ export function CopilotMessageList({
   propertyId,
   onOpenArtifact
 }: CopilotMessageListProps): React.ReactElement {
+  const [notifications, notificationContext] = antMessage.useMessage();
+  const { supported, activeId, read, stop } = useCopilotSpeech(i18next.language || 'fr', tenantId);
+
+  useEffect(() => {
+    if (activeId && (!visible || !messages.some(message => message.id === activeId))) stop();
+  }, [activeId, messages, stop, visible]);
+
+  async function copy(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      void notifications.success(t('Réponse copiée'));
+    } catch {
+      void notifications.error(t('Impossible de copier la réponse'));
+    }
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {messages.map(message => {
+      {notificationContext}
+      {messages.map((message, index) => {
         const isUser = message.role === 'user';
         return (
           <div
@@ -115,6 +141,7 @@ export function CopilotMessageList({
           >
             {message.text ? (
               <div
+                data-copilot-answer
                 style={{
                   padding: '8px 12px',
                   borderRadius: 8,
@@ -148,6 +175,47 @@ export function CopilotMessageList({
                 />
               </div>
             ))}
+            {!isUser && message.text.trim() && !(streaming && index === messages.length - 1) && (
+              <Space wrap style={{ marginBlockStart: 4 }}>
+                {typeof navigator.clipboard?.writeText === 'function' && (
+                  <Button
+                    size="small"
+                    type="text"
+                    icon={<CopyOutlined aria-hidden="true" />}
+                    onClick={() => void copy(message.text)}
+                  >
+                    {t('Copier la réponse')}
+                  </Button>
+                )}
+                {supported && (
+                  <Button
+                    size="small"
+                    type="text"
+                    icon={
+                      activeId === message.id ? (
+                        <StopOutlined aria-hidden="true" />
+                      ) : (
+                        <SoundOutlined aria-hidden="true" />
+                      )
+                    }
+                    onClick={event => {
+                      if (activeId === message.id) {
+                        stop();
+                        return;
+                      }
+                      const answer = event.currentTarget
+                        .closest('[data-role]')
+                        ?.querySelector<HTMLElement>('[data-copilot-answer]');
+                      read(message.id, answer?.innerText || message.text, () => {
+                        void notifications.error(t('La lecture à voix haute a échoué'));
+                      });
+                    }}
+                  >
+                    {activeId === message.id ? t('Arrêter la lecture') : t('Lire à voix haute')}
+                  </Button>
+                )}
+              </Space>
+            )}
           </div>
         );
       })}

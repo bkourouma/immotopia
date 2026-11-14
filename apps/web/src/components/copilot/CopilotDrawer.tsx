@@ -105,6 +105,7 @@ const CopilotDrawer: React.FC<CopilotDrawerProps> = ({ tenantId, status, open, o
         tenantId={tenantId}
         status={status}
         pathname={pathname}
+        visible={open}
         propertyId={propertyId}
         onSuggestion={submit}
       />

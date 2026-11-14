@@ -9,11 +9,11 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Finance | 196 |
 | CRM et Ventes | 70 |
 | Maintenance | 32 |
-| Communication et Documents | 83 |
+| Communication et Documents | 85 |
 | Syndic copropriete | 245 |
 | Administration plateforme | 141 |
 | Portails externes | 84 |
-| **Total** | **1226** |
+| **Total** | **1228** |
 
 ## Sous-fonctionnalités
 
@@ -802,6 +802,8 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Consulter et exporter une version d’analyse | Rouvrir une version enregistrée et télécharger les valeurs affichées. | Conversation, artefact et version | Version d’origine ou recalcul enregistré | Artefact enregistré | Propriétaire du fil avec les droits correspondants | Agence (collaborateur) | GET /api/tenants/:tenantId/ai/conversations/:id/artifacts/:artifactId | Accès à l’assistant, droits et module de l’analyse | Disponible | Assistant > Résultats et documents > Version du résultat |
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Renommer un résultat enregistré | Enregistrer le nouveau titre dans une version et conserver l’historique. | Artefact, titre et version attendue | Nouvelle version | Artefact enregistré | Propriétaire du fil avec les droits correspondants | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/conversations/:id/artifacts/:artifactId | Accès à l’assistant et périmètre du fil | Disponible | Assistant > Résultats et documents |
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Restaurer une version antérieure | Copier une version antérieure dans une nouvelle version courante, avec contrôle de concurrence. | Artefact, version source et version attendue | Nouvelle version | Artefact enregistré | Propriétaire du fil avec les droits correspondants | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/conversations/:id/artifacts/:artifactId | Accès à l’assistant et périmètre du fil | Disponible | Assistant > Résultats et documents |
+| Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Lire une réponse à voix haute | Utiliser la synthèse vocale disponible dans le navigateur. Arrêter la lecture avec le bouton ou en quittant le fil. | Réponse de l’assistant | Lecture vocale du texte | Réponse affichée et fonction disponible dans le navigateur | Collaborateur agence éligible | Agence (collaborateur) | — | Accès à l’assistant | Disponible | Assistant > Conversation |
+| Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Copier une réponse | Copier le texte de la réponse dans le presse-papiers du navigateur. | Réponse de l’assistant | Texte réutilisable | Réponse affichée et fonction disponible dans le navigateur | Collaborateur agence éligible | Agence (collaborateur) | — | Accès à l’assistant | Disponible | Assistant > Conversation |
 
 ### Syndic copropriete
 
