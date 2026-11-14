@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import multer from 'multer';
+import { MAX_ASSISTANT_FILES, MAX_ASSISTANT_FILE_BYTES } from '../lib/ai/assistant-files';
 import { authenticate } from '../middleware/auth-middleware';
 import { requireTenantAccess, requireTenantCollaborator } from '../middleware/tenant-middleware';
 import { requireAiAssistantAccess, requireAiStatusAccess } from '../middleware/ai-access-middleware';
@@ -32,6 +34,10 @@ import {
  * refusé ; 503 `AI_DISABLED` sauf pour le statut).
  */
 const router = Router({ mergeParams: true });
+const chatFiles = multer({
+  storage: multer.memoryStorage(),
+  limits: { files: MAX_ASSISTANT_FILES, fileSize: MAX_ASSISTANT_FILE_BYTES, fields: 1, fieldSize: 32_768 }
+}).array('files', MAX_ASSISTANT_FILES);
 
 router.use(authenticate);
 router.use(requireTenantAccess);
@@ -60,6 +66,7 @@ router.post(
   aiChatDailyLimiter,
   aiTenantChatRateLimiter,
   aiTenantDailyLimiter,
+  chatFiles,
   chatHandler
 );
 

@@ -52,6 +52,7 @@ export interface AssistantConversation extends AssistantConversationSummary {
   turns: Array<{
     id: string;
     question: string;
+    files?: string[];
     response: string;
     result: Array<Extract<CopilotSseEvent, { type: 'artifact' }>> | null;
     outcome: string | null;
@@ -377,6 +378,7 @@ export interface CopilotUiMessage {
   id: string;
   role: 'user' | 'assistant';
   text: string;
+  files?: string[];
   attachments: CopilotAttachment[];
 }
 
@@ -391,7 +393,7 @@ export interface UseCopilotChatResult {
   selectArtifact(id: string): void;
   status: CopilotChatStatus;
   error?: { code: string; message: string };
-  send(text: string, ctx: CopilotPageContext, deep?: boolean): Promise<void>;
+  send(text: string, ctx: CopilotPageContext, deep?: boolean, files?: readonly File[]): Promise<void>;
   stop(): void;
   confirmProposal(proposalId: string): Promise<void>;
   cancelProposal(proposalId: string): void;

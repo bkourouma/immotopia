@@ -158,6 +158,15 @@ export function CopilotMessageList({
                 )}
               </div>
             ) : null}
+            {!!message.files?.length && (
+              <ul style={{ marginBlock: 4, paddingInlineStart: 20 }}>
+                {message.files.map((name, index) => (
+                  <li key={index} dir="auto">
+                    {name}
+                  </li>
+                ))}
+              </ul>
+            )}
             {message.attachments.map((attachment, index) => (
               <div
                 key={`${message.id}-a${index}`}

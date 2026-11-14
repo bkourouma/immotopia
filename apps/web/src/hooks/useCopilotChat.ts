@@ -214,7 +214,7 @@ export function useCopilotChat(tenantId: string, persistent = false): UseCopilot
             artifactKind: artifact.kind
           });
         }
-        restoredMessages.push({ id: turn.id, role: 'user', text: turn.question, attachments: [] });
+        restoredMessages.push({ id: turn.id, role: 'user', text: turn.question, files: turn.files, attachments: [] });
         if (turn.response || attachments.length || turn.outcome === 'aborted') {
           const text =
             turn.outcome === 'aborted'
@@ -232,11 +232,17 @@ export function useCopilotChat(tenantId: string, persistent = false): UseCopilot
   );
 
   const send = useCallback(
-    async (text: string, ctx: CopilotPageContext, deep = false): Promise<void> => {
+    async (text: string, ctx: CopilotPageContext, deep = false, files?: readonly File[]): Promise<void> => {
       const content = text.trim();
       if (!content || streamingRef.current) return;
 
-      const userMessage: CopilotUiMessage = { id: nextId(), role: 'user', text: content, attachments: [] };
+      const userMessage: CopilotUiMessage = {
+        id: nextId(),
+        role: 'user',
+        text: content,
+        files: files?.map(file => file.name),
+        attachments: []
+      };
       const assistantId = nextId();
       const assistantMessage: CopilotUiMessage = { id: assistantId, role: 'assistant', text: '', attachments: [] };
 
@@ -329,7 +335,7 @@ export function useCopilotChat(tenantId: string, persistent = false): UseCopilot
             ...(persistent && deep ? { deep } : {}),
             context: ctx
           },
-          { signal: controller.signal, onEvent }
+          { signal: controller.signal, ...(persistent && files?.length ? { files } : {}), onEvent }
         );
       } catch (err) {
         if (!isAbort(err, controller.signal)) failed = toChatError(err);

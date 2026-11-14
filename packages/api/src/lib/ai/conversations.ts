@@ -104,7 +104,7 @@ export async function getConversation(owner: AssistantOwner, id: string, scopeKe
     where: { ...owner, conversationId: id, conversation: { scopeKey } },
     orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
     take: 100,
-    select: { id: true, question: true, response: true, result: true, outcome: true }
+    select: { id: true, question: true, files: true, response: true, result: true, outcome: true }
   });
   return { ...conversation, turns: turns.reverse() };
 }
@@ -148,7 +148,7 @@ export async function deleteConversation(owner: AssistantOwner, id: string) {
 export async function beginAssistantTurn(
   owner: AssistantOwner,
   scopeKey: string,
-  input: { conversationId?: string; turnId: string; question: string }
+  input: { conversationId?: string; turnId: string; question: string; files?: string[] }
 ): Promise<{ conversationId: string; messages: ChatRequest['messages']; analysisTables: AnalysisTable[] }> {
   return prisma.$transaction(async tx => {
     let conversationId = input.conversationId;
@@ -180,7 +180,7 @@ export async function beginAssistantTurn(
     }
 
     const inserted = await tx.assistantTurn.createMany({
-      data: { ...owner, conversationId, id: input.turnId, question: input.question },
+      data: { ...owner, conversationId, id: input.turnId, question: input.question, files: input.files },
       skipDuplicates: true
     });
     if (inserted.count === 0) throw new ConflictError(t('Ce message a déjà été envoyé.'));

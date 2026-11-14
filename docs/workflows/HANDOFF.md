@@ -35,9 +35,11 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 **Chat (`9a1b87d4`)** — Les réponses terminées peuvent être copiées et lues à voix haute si le navigateur le permet. La lecture s’arrête quand le fil affiché change.
 
-**Catalogue métier** — Première extension aux baux actifs et à leur date de fin, ainsi qu’à l’occupation actuelle du parc par type ou zone. Les tableaux sont versionnables et rejouables. Le taux d’occupation partage sa définition avec le tableau de bord. Un recalcul du parc observe les statuts actuels.
+**Catalogue métier (`a35f56d3`)** — Première extension aux baux actifs et à leur date de fin, ainsi qu’à l’occupation actuelle du parc par type ou zone. Les tableaux sont versionnables et rejouables. Le taux d’occupation partage sa définition avec le tableau de bord. Un recalcul du parc observe les statuts actuels.
 
-**À poursuivre** — Ajouter l’édition du contenu des artefacts par l’utilisateur et par le modèle. Étendre le catalogue aux lots, au syndic, au patrimoine, à la maintenance, au CRM et à la promotion. Enrichir les exports avec des graphiques natifs, puis ajouter les pièces jointes et la transcription. Poursuivre le partage, les épingles, les actions de suivi, les envois, l’administration et les six langues. Recetter avec un fournisseur réel et un navigateur.
+**Pièces jointes** — Le chat plein écran accepte les CSV et TXT UTF-8 en multipart. Le tour conserve les noms et les tableaux bornés avec provenance. L’extrait TXT est transmis au modèle lors de l’envoi. Les originaux ne sont pas conservés.
+
+**À poursuivre** — Ajouter l’édition du contenu des artefacts par l’utilisateur et par le modèle. Étendre le catalogue aux lots, au syndic, au patrimoine, à la maintenance, au CRM et à la promotion. Enrichir les exports avec des graphiques natifs, puis compléter les pièces jointes avec XLSX et PDF texte, le stockage privé des originaux, la réutilisation des extraits et la transcription. Poursuivre le partage, les épingles, les actions de suivi, les envois, l’administration et les six langues. Recetter avec un fournisseur réel et un navigateur.
 
 ## chore/deps-patch-minor — 2026-11-11
 

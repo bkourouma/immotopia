@@ -87,6 +87,7 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
     reset();
     setArchivedThread(false);
     setDraft('');
+    setFiles([]);
     setHistoryOpen(false);
     setParams(previous => {
       const next = new URLSearchParams(previous);
@@ -146,6 +147,7 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
   }, [isNewConversation, tenantId]);
   const { stop } = chat;
   const [draft, setDraft] = useState('');
+  const [files, setFiles] = useState<File[]>([]);
   const inputRef = useRef<TextAreaRef>(null);
   const streaming = chat.status === 'streaming';
   const context = getCopilotPageContext(pathname);
@@ -245,6 +247,7 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
       reset();
       setArchivedThread(false);
       setDraft('');
+      setFiles([]);
       navigate(pathname);
     };
     window.addEventListener('keydown', onKeyDown);
@@ -252,10 +255,12 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
   }, [navigate, pathname, reset]);
 
   const submit = (text: string) => {
-    const value = text.trim();
+    const value = text.trim() || (files.length ? t('Analyse les fichiers joints.') : '');
     if (!value || streaming || loadingHistory || archivedThread || (activeId && activeId !== conversationId)) return;
     setDraft('');
-    void chat.send(value, context, deep).finally(() => {
+    setFiles([]);
+    const request = files.length ? chat.send(value, context, deep, files) : chat.send(value, context, deep);
+    void request.finally(() => {
       setHistoryRefresh(value => value + 1);
     });
   };
@@ -374,6 +379,8 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
                 inputRef={inputRef}
                 value={draft}
                 onChange={setDraft}
+                files={files}
+                onFilesChange={setFiles}
                 onSubmit={submit}
                 onStop={() => stop()}
                 streaming={streaming}

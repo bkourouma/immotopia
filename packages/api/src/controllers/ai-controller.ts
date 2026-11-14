@@ -1,3 +1,4 @@
+import { extractAssistantFile } from '../lib/ai/assistant-files';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { buildArtifactPdf } from '../lib/ai/artifact-pdf';
@@ -279,7 +280,18 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
   const provider = await getLlmProvider();
   if (!provider) throw new AiDisabledError();
 
-  const body = chatRequestSchema.parse(req.body ?? {});
+  let raw: unknown = req.body ?? {};
+  if (req.is('multipart/form-data')) {
+    try {
+      raw = JSON.parse(req.body.payload);
+    } catch {
+      throw new AppError(t('Le message joint aux fichiers est invalide.'), 400);
+    }
+  }
+  const body = chatRequestSchema.parse(raw);
+  const files = Array.isArray(req.files) ? req.files : [];
+  if (files.length && !body.turnId)
+    throw new AppError(t('Joignez les fichiers dans une conversation enregistrée.'), 400);
 
   const { permissions, tools, unavailableFeatures } = await resolveAvailableTools(
     userId,
@@ -291,6 +303,9 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
   }
   const pageContext = await resolvePageContext(body.context, tenantId, permissions);
 
+  const extracts = [];
+  for (const file of files) extracts.push(await extractAssistantFile(file, tenantId));
+  const importedTables = extracts.flatMap(file => (file.table ? [file.table] : []));
   const owner = { tenantId, ownerId: userId };
   const saved = body.turnId
     ? await beginAssistantTurn(
@@ -302,7 +317,8 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
         {
           conversationId: body.conversationId,
           turnId: body.turnId,
-          question: body.messages[0].content
+          question: body.messages[0].content,
+          files: extracts.map(file => file.name)
         }
       )
     : undefined;
@@ -320,6 +336,8 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
       provider,
       deep: body.deep,
       analysisTables: saved?.analysisTables,
+      fileExtracts: extracts.map(({ name, excerpt, table }) => ({ name, excerpt, artifactId: table?.id })),
+      importedTables,
       tenantId,
       userId,
       permissions,

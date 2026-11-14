@@ -69,9 +69,16 @@ const KNOWN_EVENTS = new Set([
 async function streamChat(
   tenantId: string,
   request: ChatRequest,
-  opts: { signal?: AbortSignal; onEvent(e: CopilotSseEvent): void }
+  opts: { signal?: AbortSignal; files?: readonly File[]; onEvent(e: CopilotSseEvent): void }
 ): Promise<void> {
-  await postEventStream(`/tenants/${tenantId}/ai/chat`, request, {
+  let body: ChatRequest | FormData = request;
+  if (opts.files?.length) {
+    const data = new FormData();
+    data.append('payload', JSON.stringify(request));
+    for (const file of opts.files) data.append('files', file);
+    body = data;
+  }
+  await postEventStream(`/tenants/${tenantId}/ai/chat`, body, {
     signal: opts.signal,
     onEvent: ({ event, data }) => {
       if (!KNOWN_EVENTS.has(event)) return;

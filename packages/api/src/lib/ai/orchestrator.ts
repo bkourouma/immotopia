@@ -44,6 +44,8 @@ export type ChatDoneReason = Extract<CopilotSseEvent, { type: 'done' }>['reason'
 
 export interface RunChatInput {
   deep?: boolean;
+  fileExtracts?: Array<{ name: string; excerpt: string; artifactId?: string }>;
+  importedTables?: Array<Extract<CopilotArtifact, { kind: 'table' }>>;
   analysisTables?: Array<Extract<CopilotArtifact, { kind: 'table' }>>;
   provider: LlmProvider;
   tenantId: string;
@@ -138,19 +140,22 @@ export async function runChat(input: RunChatInput): Promise<ChatDoneReason> {
   const maxRounds = input.deep ? 30 : env.AI_MAX_TOOL_ROUNDS;
 
   const system = buildSystemPrompt(currentLanguage(), input.tools);
-  const analysisTables = new Map(input.analysisTables?.map(table => [table.id, table]));
+  const analysisTables = new Map(
+    [...(input.analysisTables ?? []), ...(input.importedTables ?? [])].map(table => [table.id, table])
+  );
   const sourceRefs = [...analysisTables.values()].map(table => ({
     id: table.id,
     period: table.provenance?.period,
     columns: table.columns.map(column => column.key)
   }));
   const screenContext = formatContextBlock(input.pageContext, input.now?.());
-  const messages = toLlmMessages(
-    input.messages,
-    sourceRefs.length
-      ? `${screenContext}\n<analysis_sources>${JSON.stringify(sourceRefs)}</analysis_sources>`
-      : screenContext
-  );
+  const contextBlocks = [screenContext];
+  if (sourceRefs.length) contextBlocks.push('<analysis_sources>' + JSON.stringify(sourceRefs) + '</analysis_sources>');
+  if (input.fileExtracts?.length) {
+    const excerpts = JSON.stringify(input.fileExtracts).replace(/</g, '\\u003c');
+    contextBlocks.push('<file_extracts>' + excerpts + '</file_extracts>');
+  }
+  const messages = toLlmMessages(input.messages, contextBlocks.join('\n'));
   const toolSpecs = toLlmToolSpecs(input.tools);
   const ctx: CopilotToolContext = {
     tenantId,
@@ -177,6 +182,7 @@ export async function runChat(input: RunChatInput): Promise<ChatDoneReason> {
   };
 
   emit({ type: 'meta', conversationId: input.conversationId, requestId: input.requestId });
+  for (const artifact of input.importedTables ?? []) emit({ type: 'artifact', artifact });
 
   try {
     for (;;) {

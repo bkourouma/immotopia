@@ -1,6 +1,6 @@
-import React from 'react';
-import { AudioOutlined, SendOutlined, StopOutlined } from '@ant-design/icons';
-import { Button, Input } from 'antd';
+import React, { useRef, useState } from 'react';
+import { AudioOutlined, PaperClipOutlined, SendOutlined, StopOutlined } from '@ant-design/icons';
+import { Button, Input, Space } from 'antd';
 import type { TextAreaRef } from 'antd/es/input/TextArea';
 import { appendDictation, useSpeechDictation } from '../../hooks/useSpeechDictation';
 import { t } from '../../i18n/t';
@@ -13,6 +13,8 @@ export interface CopilotComposerProps {
   onSubmit(value: string): void;
   onStop(): void;
   streaming: boolean;
+  files?: File[];
+  onFilesChange?(files: File[]): void;
   maxChars?: number;
   maxRows?: number;
   inputRef?: React.Ref<TextAreaRef>;
@@ -29,11 +31,28 @@ export const CopilotComposer: React.FC<CopilotComposerProps> = ({
   onSubmit,
   onStop,
   streaming,
+  files = [],
+  onFilesChange,
   maxChars,
   maxRows = 8,
   inputRef
 }) => {
   const { language } = useLanguage();
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [fileError, setFileError] = useState('');
+  function addFiles(selection: FileList | null) {
+    if (!selection?.length) return;
+    const pending = [...files, ...Array.from(selection)];
+    if (
+      pending.length > 5 ||
+      pending.some(file => file.size === 0 || file.size > 10 * 1024 * 1024 || !/\.(csv|txt)$/i.test(file.name))
+    ) {
+      setFileError(t('Ajoutez jusqu’à cinq fichiers CSV ou TXT de 10 Mo chacun.'));
+      return;
+    }
+    setFileError('');
+    onFilesChange?.(pending);
+  }
   const dictation = useSpeechDictation({
     language,
     onFinal: text => onChange(appendDictation(value, text))
@@ -61,7 +80,7 @@ export const CopilotComposer: React.FC<CopilotComposerProps> = ({
         onKeyDown={e => {
           if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
             e.preventDefault();
-            if (!streaming) onSubmit(value);
+            if (!streaming && (value.trim() || files.length)) onSubmit(value);
           }
         }}
         maxLength={maxChars}
@@ -70,6 +89,40 @@ export const CopilotComposer: React.FC<CopilotComposerProps> = ({
         aria-label={t('Votre message')}
         style={{ resize: 'none', padding: 'var(--space-1) 0' }}
       />
+      {onFilesChange && (
+        <>
+          <input
+            ref={fileInput}
+            type="file"
+            accept=".csv,.txt"
+            multiple
+            hidden
+            onChange={event => {
+              addFiles(event.currentTarget.files);
+              event.currentTarget.value = '';
+            }}
+          />
+          {fileError && <div role="alert">{fileError}</div>}
+          {files.length > 0 && (
+            <Space wrap style={{ marginBlockEnd: 8 }}>
+              {files.map((file, index) => (
+                <Button
+                  key={index}
+                  size="small"
+                  disabled={streaming}
+                  onClick={() => {
+                    setFileError('');
+                    onFilesChange(files.filter((_, i) => i !== index));
+                  }}
+                  aria-label={t('Retirer {{name}}', { name: file.name })}
+                >
+                  <span dir="auto">{file.name}</span> ×
+                </Button>
+              ))}
+            </Space>
+          )}
+        </>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           {dictation.listening && (
@@ -83,6 +136,17 @@ export const CopilotComposer: React.FC<CopilotComposerProps> = ({
             </span>
           )}
         </div>
+        {onFilesChange && (
+          <Button
+            type="text"
+            shape="circle"
+            icon={<PaperClipOutlined aria-hidden />}
+            onClick={() => fileInput.current?.click()}
+            disabled={streaming || files.length >= 5}
+            aria-label={t('Joindre des fichiers')}
+            title={t('Joindre des fichiers')}
+          />
+        )}
         {dictation.supported && (
           <Button
             type={dictation.listening ? 'primary' : 'text'}
@@ -102,7 +166,7 @@ export const CopilotComposer: React.FC<CopilotComposerProps> = ({
             type="primary"
             shape="circle"
             icon={<SendOutlined />}
-            disabled={!value.trim()}
+            disabled={!value.trim() && files.length === 0}
             onClick={() => onSubmit(value)}
             aria-label={t('Envoyer')}
           />

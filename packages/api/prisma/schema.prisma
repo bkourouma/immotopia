@@ -11544,6 +11544,7 @@ model AssistantTurn {
   ownerId        String   @map("owner_id")
   conversationId String   @map("conversation_id")
   question       String
+  files          String[] @default([])
   response       String   @default("")
   result         Json?
   outcome        String?
