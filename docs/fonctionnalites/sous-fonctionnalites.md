@@ -8,12 +8,12 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Gestion locative | 180 |
 | Finance | 196 |
 | CRM et Ventes | 70 |
-| Maintenance | 33 |
+| Maintenance | 34 |
 | Communication et Documents | 93 |
 | Syndic copropriete | 245 |
 | Administration plateforme | 142 |
 | Portails externes | 84 |
-| **Total** | **1240** |
+| **Total** | **1241** |
 
 ## Sous-fonctionnalités
 
@@ -717,6 +717,7 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Agence | PATRIMOINE (portail propriétaire) | Maintenance (portail propriétaire) | Télécharger une pièce jointe (portail propriétaire) | Ouvrir un fichier joint sur un ticket de son bien | `id`, `attachmentId` | Flux de fichier | Pièce jointe rattachée à un ticket portant sur un bien du propriétaire, dans l'agence résolue par la garde | Propriétaire (portail) | Propriétaire (portail) | `GET /api/portal/owner/maintenance/:id/attachments/:attachmentId` | `requireOwnerPortalAccess` | Disponible | Propriétaire > Incidents |
 | Agence, Syndic, Promoteur, Opérateur intégré | MODULE_AGENCY / MODULE_SYNDIC / MODULE_PROMOTER (CORE) | Maintenance | Recevoir une notification de création/changement de statut de ticket | Notifier par email (et WhatsApp si consenti) l'agence, le locataire et le propriétaire à la création d'un ticket ou à un changement de statut | Déclenché en tâche de fond par `createTicket`/`updateTicketStatus`, pas d'appel HTTP dédié | Emails/WhatsApp envoyés selon la configuration `email_notification_configs` / `whatsapp_notification_configs` (`MAINTENANCE_TICKET_CREATED_*`, `MAINTENANCE_TICKET_STATUS_CHANGED_*`) | Ticket créé, ou statut changé | Système (déclenché automatiquement, pas de rôle) | — (traitement asynchrone serveur) | N/A (appelé en interne par les services ci-dessus) | N/A | Disponible | N/A |
 | Agence, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Analyser les tickets et les délais | Compter les tickets ouverts et urgents et mesurer l’ancienneté et le délai de résolution par statut et priorité. | Filtres de bien, prestataire, statut ou priorité | Tableau avec provenance, recalcul et export | Droits de lecture de la maintenance | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | MAINTENANCE_ADMIN et accès à l’assistant | Disponible | Assistant > Résultats et documents |
+| Syndic, Opérateur intégré | SYNDIC | Assistant IA ImmoCopilot | Analyser la maintenance d’une copropriété | Analyser les tickets liés à une copropriété de l’agence avec les mêmes mesures que le tableau de maintenance. | Copropriété et filtres facultatifs | Tableau avec provenance et recalcul sur la copropriété | Module Syndic et fonction maintenance | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | MAINTENANCE_ADMIN et SYNDIC_VIEW | Disponible | Assistant > Résultats et documents |
 
 ### Communication et Documents
 

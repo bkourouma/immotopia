@@ -852,6 +852,7 @@
   "Copropriété introuvable ou inaccessible.": "لم يُعثر على الملكية المشتركة أو يتعذّر الوصول إليها.",
   "Copropriete introuvable pour ce tenant": "لم يُعثر على الملكية المشتركة لهذه الوكالة",
   "Copropriété introuvable.": "الملكية المشتركة غير موجودة.",
+  "Copropriété retenue : {{name}}": "الملكية المشتركة المحددة: {{name}}",
   "Copropriété supplémentaire": "ملكية مشتركة إضافية",
   "Copropriété supprimée": "تم حذف الملكية المشتركة",
   "copropriétés": "الملكيات المشتركة",

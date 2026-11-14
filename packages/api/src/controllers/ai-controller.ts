@@ -31,7 +31,7 @@ import { loopbackHeadersFor } from '../lib/ai/gateway/loopback-auth';
 import { openSseStream } from '../lib/ai/sse';
 import type { CopilotSseEvent } from '../lib/ai/contracts';
 import {
-  assistantScope,
+  resolveSavedAssistantScope,
   beginAssistantTurn,
   conversationParams,
   conversationPatch,
@@ -70,7 +70,7 @@ function requireContext(req: Request): { tenantId: string; userId: string } {
   return { tenantId, userId };
 }
 
-const TOOL_FEATURES: readonly ToolFeature[] = ['CORE', 'RENTAL'];
+const TOOL_FEATURES: readonly ToolFeature[] = ['CORE', 'RENTAL', 'SYNDIC'];
 
 /**
  * Modules de l'abonnement ouvrant chaque fonctionnalité d'outil. `undefined`
@@ -117,11 +117,13 @@ async function conversationScope(req: Request) {
   const { tenantId, userId } = requireContext(req);
   const { permissions, tools } = await resolveAvailableTools(userId, tenantId, true);
   if (tools.length === 0) throw new ForbiddenError();
+  const owner = { tenantId, ownerId: userId };
   return {
-    owner: { tenantId, ownerId: userId },
+    owner,
     permissions,
     tools,
-    scopeKey: assistantScope(
+    scopeKey: await resolveSavedAssistantScope(
+      owner,
       permissions,
       tools.map(tool => tool.name)
     )
@@ -423,7 +425,7 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
   const { permissions, tools, unavailableFeatures } = await resolveAvailableTools(
     userId,
     tenantId,
-    Boolean(body.turnId || body.regenerateTurnId)
+    Boolean(body.turnId || body.regenerateTurnId || body.focus)
   );
   if (tools.length === 0) {
     throw new ForbiddenError("Aucun outil de l'assistant n'est disponible avec vos droits.");
@@ -434,10 +436,14 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
   for (const file of files) extracts.push(await extractAssistantFile(file, tenantId));
   const importedTables = extracts.flatMap(file => (file.table ? [file.table] : []));
   const owner = { tenantId, ownerId: userId };
-  const scopeKey = assistantScope(
-    permissions,
-    tools.map(tool => tool.name)
-  );
+  const scopeKey =
+    body.turnId || body.regenerateTurnId || body.focus
+      ? await resolveSavedAssistantScope(
+          owner,
+          permissions,
+          tools.map(tool => tool.name)
+        )
+      : '';
   const regenerated =
     body.regenerateTurnId && body.conversationId
       ? await prepareRegeneration(owner, body.conversationId, body.regenerateTurnId, scopeKey)

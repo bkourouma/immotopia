@@ -89,6 +89,28 @@ export function assistantScope(permissions: Set<string>, toolNames: string[]): s
     .digest('hex');
 }
 
+export async function resolveSavedAssistantScope(
+  owner: AssistantOwner,
+  permissions: Set<string>,
+  toolNames: string[]
+): Promise<string> {
+  const scopeKey = assistantScope(permissions, toolNames);
+  if (!toolNames.includes('syndicate_maintenance')) return scopeKey;
+
+  // Migrate earlier threads without moving them to the top of the history.
+  // Threads written with Syndic access cannot be read under the old scope.
+  const legacyScope = assistantScope(
+    permissions,
+    toolNames.filter(name => name !== 'syndicate_maintenance')
+  );
+  await prisma.$executeRaw`
+    UPDATE assistant_conversations
+    SET scope_key = ${scopeKey}
+    WHERE tenant_id = ${owner.tenantId} AND owner_id = ${owner.ownerId} AND scope_key = ${legacyScope}
+  `;
+  return scopeKey;
+}
+
 export async function assertConversation(owner: AssistantOwner, id: string, scopeKey: string) {
   const where = { ...owner, id, scopeKey };
   const conversation = await prisma.assistantConversation.findFirst({ where, select: summary });

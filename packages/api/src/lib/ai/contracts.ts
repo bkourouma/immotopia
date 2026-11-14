@@ -30,6 +30,7 @@ export type CopilotToolName =
   | 'rental_arrears'
   | 'rental_receipts'
   | 'maintenance_overview'
+  | 'syndicate_maintenance'
   | 'property_portfolio'
   | 'lease_portfolio'
   | 'chart_analysis'
@@ -306,15 +307,17 @@ export interface CopilotStatus {
 /** Données d'affichage seulement : jamais de HTML, jamais d'écriture. L'`id` est généré par le serveur. */
 export type ArtifactCell = string | number | null;
 
+type MaintenanceQueryFilters = {
+  propertyId?: string;
+  vendorId?: string;
+  priority?: MaintenanceTicketPriority;
+  status?: MaintenanceTicketStatus;
+};
+
 export type AnalysisQuery =
   | { tool: 'rental_arrears' | 'rental_receipts'; month: string }
-  | {
-      tool: 'maintenance_overview';
-      propertyId?: string;
-      vendorId?: string;
-      priority?: MaintenanceTicketPriority;
-      status?: MaintenanceTicketStatus;
-    }
+  | (MaintenanceQueryFilters &
+      ({ tool: 'maintenance_overview' } | { tool: 'syndicate_maintenance'; syndicateId: string }))
   | { tool: 'property_portfolio'; groupBy: 'propertyType' | 'zone'; propertyType?: PropertyType; zone?: string }
   | { tool: 'lease_portfolio'; start: string; end: string; propertyId?: string };
 
@@ -556,7 +559,7 @@ export interface CopilotToolDefinition<S extends z.ZodTypeAny = z.ZodTypeAny> {
   requiredPermission: string;
   /** Permissions supplémentaires, toutes exigées (ex. voir le document généré pour le télécharger). */
   additionalPermissions?: readonly string[];
-  feature: 'CORE' | 'RENTAL';
+  feature: 'CORE' | 'RENTAL' | 'SYNDIC';
   kind: 'read' | 'proposal';
   execute(input: z.infer<S>, ctx: CopilotToolContext): Promise<CopilotToolOutcome>;
 }

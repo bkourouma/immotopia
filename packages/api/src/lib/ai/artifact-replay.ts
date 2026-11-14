@@ -10,7 +10,7 @@ import type {
   CopilotToolDefinition
 } from './contracts';
 import { rentalArrearsTool, monthPattern } from './tools/rental-arrears';
-import { maintenanceOverviewTool } from './tools/maintenance-overview';
+import { maintenanceOverviewTool, syndicateMaintenanceTool } from './tools/maintenance-overview';
 import { rentalReceiptsTool } from './tools/rental-receipts';
 import { chartAnalysisTool } from './tools/chart-analysis';
 import { showIndicatorsTool } from './tools/show-indicators';
@@ -20,6 +20,7 @@ const querySchema = z.discriminatedUnion('tool', [
   z.object({ tool: z.literal('rental_arrears'), month: z.string().regex(monthPattern) }).strict(),
   z.object({ tool: z.literal('rental_receipts'), month: z.string().regex(monthPattern) }).strict(),
   maintenanceOverviewTool.inputSchema.extend({ tool: z.literal('maintenance_overview') }),
+  syndicateMaintenanceTool.inputSchema.extend({ tool: z.literal('syndicate_maintenance') }),
   propertyPortfolioTool.inputSchema.required({ groupBy: true }).extend({ tool: z.literal('property_portfolio') }),
   leasePortfolioTool.inputSchema.required({ start: true, end: true }).extend({ tool: z.literal('lease_portfolio') })
 ]);
@@ -28,6 +29,7 @@ const analysisTools: Record<AnalysisQuery['tool'], CopilotToolDefinition> = {
   rental_arrears: rentalArrearsTool,
   rental_receipts: rentalReceiptsTool,
   maintenance_overview: maintenanceOverviewTool,
+  syndicate_maintenance: syndicateMaintenanceTool,
   property_portfolio: propertyPortfolioTool,
   lease_portfolio: leasePortfolioTool
 };

@@ -32,6 +32,9 @@ import { DocumentType } from '@prisma/client';
 import app from '../../src/app';
 import { prisma } from '../../src/utils/database';
 import { signProposal } from '../../src/lib/ai/proposal-token';
+import { assistantScope, getConversation } from '../../src/lib/ai/conversations';
+import { toolsForUser } from '../../src/lib/ai/tools/registry';
+import { getUserPermissions } from '../../src/services/permission-service';
 import { flushAuditEvents } from '../../src/services/audit-service';
 import { encodeAuditCursor } from '../../src/services/audit-read-service';
 import { updateMemberRoles } from '../../src/services/membership-service';
@@ -264,9 +267,36 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         where: { id: closed, tenant_id: agency.id },
         data: { status: 'RESOLVED', declared_at: new Date('2025-01-01'), resolved_at: new Date('2025-01-04') }
       });
+      const syndicate = await prisma.syndicate.create({
+        data: { tenantId: agency.id, name: 'Résidence du test', address: 'Cocody' }
+      });
+      createdSyndicateIds.push(syndicate.id);
+      const foreignSyndicate = await prisma.syndicate.create({
+        data: { tenantId: tenantB.id, name: 'Copropriété privée', address: 'Abidjan' }
+      });
+      createdSyndicateIds.push(foreignSyndicate.id);
+      await prisma.syndicateMaintenanceLink.create({
+        data: { syndicateId: syndicate.id, maintenanceRequestId: own }
+      });
       const base = `/api/tenants/${agency.id}`;
+      const owner = { tenantId: agency.id, ownerId: admin.id };
+      const permissions = new Set(await getUserPermissions(admin.id, agency.id, { fresh: true }));
+      const legacyScope = assistantScope(
+        permissions,
+        toolsForUser(permissions)
+          .map(tool => tool.name)
+          .filter(name => name !== 'syndicate_maintenance')
+      );
+      const older = await prisma.assistantConversation.create({
+        data: { ...owner, title: 'Historique avant le filtre Syndic', scopeKey: legacyScope }
+      });
       mockFakeScript = [{ toolCalls: [{ name: 'maintenance_overview', input: {} }] }, { text: 'Bilan.' }];
       try {
+        const previous = await request(app)
+          .get(base + '/ai/conversations/' + older.id)
+          .set(authed(admin));
+        expect(previous.status).toBe(200);
+        expect(new Date(previous.body.data.updatedAt)).toEqual(older.updatedAt);
         const result = await request(app)
           .post(base + '/ai/chat')
           .set(authed(admin))
@@ -282,6 +312,47 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
           .set(authed(admin));
         expect(dashboard.status).toBe(200);
         expect(artifact.rows).toHaveLength(2);
+        mockFakeScript = [
+          { toolCalls: [{ name: 'syndicate_maintenance', input: { syndicateId: syndicate.id } }] },
+          { text: 'Bilan ciblé.' }
+        ];
+        const targeted = await request(app)
+          .post(base + '/ai/chat')
+          .set(authed(admin))
+          .send({
+            turnId: randomUUID(),
+            messages: [{ role: 'user', content: 'Analyse la copropriété' }]
+          });
+        expect(targeted.status).toBe(200);
+        const events = targeted.text
+          .split('\n')
+          .filter(line => line.startsWith('data: {'))
+          .map(line => JSON.parse(line.slice(6)));
+        const scoped = events.find(event => event.type === 'artifact').artifact;
+        expect(scoped.rows).toEqual([expect.objectContaining({ status: 'DECLARED', count: 1 })]);
+        const { conversationId } = events.find(event => event.type === 'meta');
+        await expect(getConversation(owner, conversationId, legacyScope)).rejects.toMatchObject({ statusCode: 404 });
+        const replay = await request(app)
+          .post(base + '/ai/conversations/' + conversationId + '/artifacts/' + scoped.id)
+          .set(authed(admin))
+          .send({ expectedVersion: 1 });
+        expect(replay.status).toBe(201);
+        expect(replay.body.data.artifact.rows).toEqual(scoped.rows);
+        mockFakeScript = [
+          { toolCalls: [{ name: 'syndicate_maintenance', input: { syndicateId: foreignSyndicate.id } }] },
+          { text: 'Aucun résultat.' }
+        ];
+        const foreign = await request(app)
+          .post(base + '/ai/chat')
+          .set(authed(admin))
+          .send({
+            turnId: randomUUID(),
+            messages: [{ role: 'user', content: 'Analyse la copropriété' }]
+          });
+        expect(foreign.status).toBe(200);
+        expect(foreign.text).not.toContain('"type":"artifact"');
+        expect(JSON.stringify(mockProviderRequests.at(-1)?.messages)).not.toContain('Copropriété privée');
+
         expect(artifact.rows).toEqual(
           expect.arrayContaining([
             expect.objectContaining({
