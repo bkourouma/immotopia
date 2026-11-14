@@ -7,6 +7,7 @@ import type { Property } from '../../types/property-types';
 import { t as translate } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
+import { HelpSectionTitle } from '../../help';
 const UNSUBSCRIBE_PLACEHOLDER = '{{lien_desinscription}}';
 
 const propertyTypeLabels: Record<string, string> = {
@@ -170,7 +171,12 @@ export function PropertyNewsletterCampaignModal({
 
   return (
     <Modal
-      title={translate('Créer une campagne newsletter pour cette propriété')}
+      title={
+        <HelpSectionTitle
+          title={translate('Créer une campagne newsletter pour cette propriété')}
+          helpId="communication.newsletter.campagnes.depuis-bien"
+        />
+      }
       open={open}
       onCancel={onClose}
       footer={null}

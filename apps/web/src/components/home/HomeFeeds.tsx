@@ -15,6 +15,7 @@ import { formatRelativeDate, safeFormatDate } from '../../utils/date-utils';
 import type { DashboardActivity, DashboardTask, DashboardTaskKind } from '../../services/dashboard-service';
 import { t } from '../../i18n/t';
 import { bucketLabel } from './dashboard-viz';
+import { HelpSectionTitle } from '../../help';
 
 import { localizedRecord } from '../../i18n/localized';
 const { Text } = Typography;
@@ -70,7 +71,7 @@ export const WorkQueue: React.FC<WorkQueueProps> = ({ tasks, loading, link }) =>
     loading={loading}
     title={
       <span>
-        {t("À traiter aujourd'hui")}{' '}
+        <HelpSectionTitle title={t("À traiter aujourd'hui")} helpId="communication.accueil.tableau-de-bord.a-traiter" />{' '}
         <Text type="secondary" style={{ fontWeight: 400 }}>
           ({tasks.length})
         </Text>
@@ -160,7 +161,7 @@ export interface ActivityFeedProps {
 export const ActivityFeed: React.FC<ActivityFeedProps> = ({ activities, loading }) => (
   <Card
     loading={loading}
-    title={t('Activité récente')}
+    title={<HelpSectionTitle title={t('Activité récente')} helpId="communication.accueil.tableau-de-bord.activite" />}
     style={{ height: '100%', borderColor: 'var(--border-default)' }}
     styles={{ body: { padding: activities.length ? 0 : 'var(--space-4)' } }}
   >

@@ -20,6 +20,7 @@ import { getTenantAdmin, listTenants } from '../../services/tenant-service';
 import { useListSearch } from '../../hooks/useListSearch';
 import { channelLabel, formatDateTime, statusColor, statusLabel } from './notification-labels';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 const OPTIONS_LIMIT = 20;
 
@@ -229,6 +230,7 @@ export const NotificationJournal: React.FC<NotificationJournalProps> = ({ mode }
 
       <Table<JournalRow>
         aria-label={t('Journal des notifications')}
+        helpId="communication.messagerie.journal.tableau"
         search={search.searchProps}
         rowKey="id"
         columns={columns}
@@ -244,7 +246,9 @@ export const NotificationJournal: React.FC<NotificationJournalProps> = ({ mode }
         open={selected !== null}
         onClose={() => setSelected(null)}
         width={520}
-        title={selected?.title ?? t('Détail')}
+        title={
+          <HelpSectionTitle title={selected?.title ?? t('Détail')} helpId="communication.messagerie.journal.detail" />
+        }
         extra={selected ? resendButton(selected) : null}
       >
         {selected && (
