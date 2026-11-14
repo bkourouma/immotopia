@@ -26,6 +26,8 @@ import {
   listConversationsHandler,
   listSavedAnalysesHandler,
   listAnalysisSharesHandler,
+  listAnalysisSharePinsHandler,
+  setAnalysisSharePinHandler,
   listAnalysisRecipientsHandler,
   createAnalysisShareHandler,
   getSharedAnalysisHandler,
@@ -60,6 +62,8 @@ router.use(requireTenantCollaborator);
 // Ce que l'interface peut proposer ; répond `enabled: false` quand l'assistant est désactivé.
 router.get('/status', requireAiStatusAccess, getStatusHandler);
 router.get('/shares', requireAiStatusAccess, listAnalysisSharesHandler);
+router.get('/shares/pins', requireAiStatusAccess, listAnalysisSharePinsHandler);
+router.put('/shares/:id/pin', requireAiStatusAccess, aiActionRateLimiter, setAnalysisSharePinHandler);
 router.get('/shares/recipients', requireAiStatusAccess, listAnalysisRecipientsHandler);
 router.post('/shares', requireAiStatusAccess, aiActionRateLimiter, createAnalysisShareHandler);
 router.get('/shares/:id', requireAiStatusAccess, getSharedAnalysisHandler);

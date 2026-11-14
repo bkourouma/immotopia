@@ -78,6 +78,7 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
   const { conversationId, restoreConversation, reset } = chat;
   const [params, setParams] = useSearchParams();
   const activeId = params.get('c');
+  const sharedId = params.get('partage');
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [analysesOpen, setAnalysesOpen] = useState(false);
@@ -371,7 +372,25 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
   return (
     <div style={{ display: 'flex', height: pageHeight(hasTabs), minHeight: 320, gap: 'var(--space-4)' }}>
       {analysesOpen && <SavedAnalyses tenantId={tenantId} onClose={() => setAnalysesOpen(false)} />}
-      {sharesOpen && <AnalysisShares tenantId={tenantId} onClose={() => setSharesOpen(false)} />}
+      {(sharesOpen || sharedId) && (
+        <AnalysisShares
+          key={sharedId ?? ''}
+          tenantId={tenantId}
+          initialShareId={sharedId ?? undefined}
+          onClose={() => {
+            setSharesOpen(false);
+            if (sharedId)
+              setParams(
+                previous => {
+                  const next = new URLSearchParams(previous);
+                  next.delete('partage');
+                  return next;
+                },
+                { replace: true }
+              );
+          }}
+        />
+      )}
       {showArtifact ? (
         <nav aria-label={t('Historique des conversations')} style={{ flex: '0 0 230px', minWidth: 0 }}>
           {history}

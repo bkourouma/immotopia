@@ -647,6 +647,49 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
           expect(
             (
               await request(app)
+                .put(link + '/pin')
+                .set(authed(adminA))
+                .send({ pinned: true })
+            ).status
+          ).toBe(404);
+          expect(
+            (
+              await request(app)
+                .put(link + '/pin')
+                .set(authed(recipient))
+                .send({ pinned: true })
+            ).status
+          ).toBe(204);
+          const pins = await request(app)
+            .get(base + '/shares/pins')
+            .set(authed(recipient));
+          expect(pins.body.data).toEqual([{ id: sent.body.data.id }]);
+          expect(
+            (
+              await request(app)
+                .put(link + '/pin')
+                .set(authed(recipient))
+                .send({ pinned: false })
+            ).status
+          ).toBe(204);
+          expect(
+            (
+              await request(app)
+                .get(base + '/shares/pins')
+                .set(authed(recipient))
+            ).body.data
+          ).toEqual([]);
+          expect(
+            (
+              await request(app)
+                .put(link + '/pin')
+                .set(authed(recipient))
+                .send({ pinned: true })
+            ).status
+          ).toBe(204);
+          expect(
+            (
+              await request(app)
                 .get(link + '/csv')
                 .set(authed(recipient))
             ).status
@@ -669,6 +712,13 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
             data: { status: 'ACTIVE' }
           });
           expect((await request(app).delete(link).set(authed(owner))).status).toBe(204);
+          expect(
+            (
+              await request(app)
+                .get(base + '/shares/pins')
+                .set(authed(recipient))
+            ).body.data
+          ).toEqual([]);
           expect((await request(app).get(link).set(authed(recipient))).status).toBe(404);
           expect(
             (

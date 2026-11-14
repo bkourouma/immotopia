@@ -17,6 +17,7 @@ vi.mock('../../services/copilot-service', () => {
     getArtifactVersion: vi.fn(),
     listSavedAnalyses: vi.fn(),
     listAnalysisShares: vi.fn(),
+    setAnalysisPin: vi.fn(),
     getSharedAnalysis: vi.fn(),
     removeSavedAnalysis: vi.fn(),
     downloadAttachment: vi.fn(),
@@ -121,6 +122,9 @@ describe('AssistantPage — artefacts', () => {
     renderPage();
     fireEvent.click(await screen.findByRole('button', { name: 'Partages' }));
     const drawer = await screen.findByRole('dialog', { name: 'Partages' });
+    fireEvent.click(await within(drawer).findByRole('button', { name: 'Épingler au tableau de bord' }));
+    expect(await within(drawer).findByRole('button', { name: 'Désépingler' })).toBeEnabled();
+    expect(copilotService.setAnalysisPin).toHaveBeenCalledWith('t1', 'p1', true);
     fireEvent.click(await within(drawer).findByRole('button', { name: 'Ouvrir' }));
     expect(await within(drawer).findByText('A01')).toBeInTheDocument();
     expect(within(drawer).getByRole('button', { name: 'Télécharger' })).toBeEnabled();

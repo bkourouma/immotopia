@@ -189,13 +189,20 @@ async function updateArtifactVersion(
 
 export type SavedAnalysisReference = { conversationId: string; artifactId: string };
 export type SavedAnalysis = SavedAnalysisReference & { title: string; createdAt: string };
-export type AnalysisShare = { id: string; colleague: string; createdAt: string; title?: string };
+export type AnalysisShare = { id: string; colleague: string; createdAt: string; title?: string; pinned?: boolean };
 
 function savedAnalysisPath(tenantId: string, { conversationId, artifactId }: SavedAnalysisReference) {
   return `/tenants/${tenantId}/ai/analyses/${conversationId}/${artifactId}`;
 }
 
 export const copilotService = {
+  async listAnalysisPins(tenantId: string, signal?: AbortSignal) {
+    const response = await apiClient.get(`/tenants/${tenantId}/ai/shares/pins`, { signal });
+    return unwrap<Array<{ id: string }>>(response.data);
+  },
+  async setAnalysisPin(tenantId: string, id: string, pinned: boolean) {
+    await apiClient.put(`/tenants/${tenantId}/ai/shares/${id}/pin`, { pinned });
+  },
   async listAnalysisRecipients(tenantId: string) {
     const response = await apiClient.get(`/tenants/${tenantId}/ai/shares/recipients`);
     return unwrap<Array<{ userId: string; displayName: string }>>(response.data);
@@ -210,8 +217,8 @@ export const copilotService = {
   async revokeAnalysisShare(tenantId: string, id: string) {
     await apiClient.delete(`/tenants/${tenantId}/ai/shares/${id}`);
   },
-  async getSharedAnalysis(tenantId: string, id: string) {
-    const response = await apiClient.get(`/tenants/${tenantId}/ai/shares/${id}`);
+  async getSharedAnalysis(tenantId: string, id: string, signal?: AbortSignal) {
+    const response = await apiClient.get(`/tenants/${tenantId}/ai/shares/${id}`, { signal });
     return unwrap<{ artifact: unknown }>(response.data).artifact;
   },
   downloadSharedAnalysis(tenantId: string, id: string, format: ArtifactDownloadFormat) {

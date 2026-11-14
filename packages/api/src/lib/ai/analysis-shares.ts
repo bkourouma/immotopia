@@ -4,6 +4,7 @@ import { prisma } from '../../utils/database';
 import type { AssistantOwner } from './conversations';
 
 const metadata = {
+  pinnedAt: true,
   id: true,
   ownerId: true,
   recipientId: true,
@@ -62,6 +63,7 @@ export async function listAnalysisShares(owner: AssistantOwner, incoming: boolea
   return {
     items: rows.slice(0, 50).map(row => ({
       id: row.id,
+      pinned: incoming && row.pinnedAt !== null,
       createdAt: row.createdAt,
       colleague: incoming ? row.analysis.conversation.owner.fullName : row.recipient.fullName,
       ...(incoming ? {} : { title: row.analysis.title })
@@ -100,4 +102,20 @@ export async function createAnalysisShare(
 
 export async function revokeAnalysisShare(owner: AssistantOwner, id: string) {
   await prisma.assistantAnalysisShare.deleteMany({ where: { ...owner, id } });
+}
+
+export async function setAnalysisSharePin(tenantId: string, recipientId: string, id: string, pinned: boolean) {
+  const result = await prisma.assistantAnalysisShare.updateMany({
+    where: { tenantId, recipientId, id },
+    data: { pinnedAt: pinned ? new Date() : null }
+  });
+  if (pinned && !result.count) throw new NotFoundError();
+}
+
+export function listAnalysisSharePins(tenantId: string, recipientId: string) {
+  return prisma.assistantAnalysisShare.findMany({
+    where: { tenantId, recipientId, pinnedAt: { not: null } },
+    select: { id: true },
+    orderBy: [{ pinnedAt: 'desc' }, { id: 'asc' }]
+  });
 }

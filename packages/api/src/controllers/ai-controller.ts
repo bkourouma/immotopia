@@ -10,8 +10,10 @@ import {
   assertAnalysisCollaborator,
   createAnalysisShare,
   listAnalysisShares,
+  listAnalysisSharePins,
   readAnalysisShare,
-  revokeAnalysisShare
+  revokeAnalysisShare,
+  setAnalysisSharePin
 } from '../lib/ai/analysis-shares';
 import { buildArtifactCsv, buildArtifactXlsx } from '../lib/ai/artifact-spreadsheet';
 import type { Request, Response } from 'express';
@@ -338,9 +340,7 @@ export const createAnalysisShareHandler = asyncHandler(async (req, res) => {
   res.set('Cache-Control', 'private, no-store').json({ success: true, data });
 });
 
-async function getSharedAnalysis(req: Request) {
-  const { tenantId, userId } = requireContext(req);
-  const { id } = conversationParams.parse(req.params);
+async function getSharedAnalysis(tenantId: string, userId: string, id: string) {
   const share = await readAnalysisShare(tenantId, userId, id);
   if (!share) throw new NotFoundError();
   await Promise.all([
@@ -371,7 +371,9 @@ async function getSharedAnalysis(req: Request) {
 }
 
 export const getSharedAnalysisHandler = asyncHandler(async (req, res) => {
-  const artifact = await getSharedAnalysis(req);
+  const { tenantId, userId } = requireContext(req);
+  const { id } = conversationParams.parse(req.params);
+  const artifact = await getSharedAnalysis(tenantId, userId, id);
   res.set('Cache-Control', 'private, no-store').json({ success: true, data: { artifact } });
 });
 
@@ -383,8 +385,25 @@ export const revokeAnalysisShareHandler = asyncHandler(async (req, res) => {
 });
 
 export const downloadSharedAnalysisHandler = asyncHandler(async (req, res) => {
+  const { tenantId, userId } = requireContext(req);
+  const { id } = conversationParams.parse(req.params);
   const format = artifactExportFormat.parse(req.params.format);
-  await sendArtifactExport(res, await getSharedAnalysis(req), format);
+  await sendArtifactExport(res, await getSharedAnalysis(tenantId, userId, id), format);
+});
+
+export const listAnalysisSharePinsHandler = asyncHandler(async (req, res) => {
+  const { tenantId, userId } = requireContext(req);
+  const data = await listAnalysisSharePins(tenantId, userId);
+  res.set('Cache-Control', 'private, no-store').json({ success: true, data });
+});
+
+export const setAnalysisSharePinHandler = asyncHandler(async (req, res) => {
+  const { tenantId, userId } = requireContext(req);
+  const { id } = conversationParams.parse(req.params);
+  const { pinned } = z.object({ pinned: z.boolean() }).strict().parse(req.body);
+  if (pinned) await getSharedAnalysis(tenantId, userId, id);
+  await setAnalysisSharePin(tenantId, userId, id, pinned);
+  res.sendStatus(204);
 });
 
 export const downloadArtifactHandler = asyncHandler(async (req: Request, res: Response) => {

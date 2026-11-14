@@ -8,7 +8,15 @@ import { sanitizeArtifact } from '../../utils/copilot-artifact';
 import { filenameFromDisposition, saveBlob } from '../../utils/save-blob';
 import { ArtifactPanel } from './artifact/ArtifactPanel';
 
-export function AnalysisShares({ tenantId, onClose }: { tenantId: string; onClose(): void }) {
+export function AnalysisShares({
+  tenantId,
+  onClose,
+  initialShareId
+}: {
+  tenantId: string;
+  onClose(): void;
+  initialShareId?: string;
+}) {
   const [direction, setDirection] = useState<'incoming' | 'outgoing'>('incoming');
   const [items, setItems] = useState<AnalysisShare[]>([]);
   const [cursor, setCursor] = useState<string>();
@@ -16,7 +24,7 @@ export function AnalysisShares({ tenantId, onClose }: { tenantId: string; onClos
   const [revision, setRevision] = useState(0);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
-  const [selection, setSelection] = useState<string>();
+  const [selection, setSelection] = useState<string | undefined>(initialShareId);
   const [artifact, setArtifact] = useState<CopilotArtifact>();
   const [unavailable, setUnavailable] = useState(false);
 
@@ -117,7 +125,10 @@ export function AnalysisShares({ tenantId, onClose }: { tenantId: string; onClos
           {!loading && !failed && !items.length && <Empty description={t('Aucun partage.')} />}
           <ul style={{ listStyle: 'none', padding: 0 }}>
             {items.map(row => (
-              <li key={row.id} style={{ display: 'flex', alignItems: 'center', gap: 8, paddingBlock: 8 }}>
+              <li
+                key={row.id}
+                style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, paddingBlock: 8 }}
+              >
                 <span>
                   {row.title && (
                     <>
@@ -127,15 +138,31 @@ export function AnalysisShares({ tenantId, onClose }: { tenantId: string; onClos
                   {row.colleague || t('Collaborateur')} · {new Date(row.createdAt).toLocaleDateString()}
                 </span>
                 {direction === 'incoming' ? (
-                  <Button
-                    onClick={() => {
-                      setArtifact(undefined);
-                      setUnavailable(false);
-                      setSelection(row.id);
-                    }}
-                  >
-                    {t('Ouvrir')}
-                  </Button>
+                  <>
+                    <Button
+                      onClick={() => {
+                        setArtifact(undefined);
+                        setUnavailable(false);
+                        setSelection(row.id);
+                      }}
+                    >
+                      {t('Ouvrir')}
+                    </Button>
+                    <Button
+                      onClick={async () => {
+                        try {
+                          await copilotService.setAnalysisPin(tenantId, row.id, !row.pinned);
+                          setItems(previous =>
+                            previous.map(item => (item.id === row.id ? { ...item, pinned: !row.pinned } : item))
+                          );
+                        } catch {
+                          feedback.error(t('Impossible de modifier l’épingle.'));
+                        }
+                      }}
+                    >
+                      {row.pinned ? t('Désépingler') : t('Épingler au tableau de bord')}
+                    </Button>
+                  </>
                 ) : (
                   <Popconfirm title={t('Révoquer ce partage ?')} onConfirm={() => revoke(row.id)}>
                     <Button danger>{t('Révoquer')}</Button>
