@@ -261,6 +261,13 @@ export interface ArtifactIndicator {
 
 export type ArtifactDocumentBlock = { kind: 'text'; content: string } | { kind: 'table'; table: AnalysisTable };
 
+export interface ArtifactVersionChange {
+  expectedVersion: number;
+  restoreVersion?: number;
+  title?: string;
+  textSections?: string[];
+}
+
 export interface ArtifactVersionInfo {
   version: number;
   createdAt: string | null;

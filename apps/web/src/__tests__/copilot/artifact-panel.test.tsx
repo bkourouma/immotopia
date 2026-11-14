@@ -209,6 +209,38 @@ describe('ArtifactPanel — rapports et indicateurs', () => {
 });
 
 describe('ArtifactPanel — recalcul', () => {
+  it('édite uniquement les sections de texte et garde le tableau lié', async () => {
+    const artifact = {
+      kind: 'document' as const,
+      id: 'd1',
+      title: 'Bilan',
+      blocks: [
+        { kind: 'text' as const, content: 'Introduction.' },
+        { kind: 'table' as const, table },
+        { kind: 'text' as const, content: 'Conclusion.' }
+      ]
+    };
+    const onReadVersion = vi.fn().mockResolvedValue({
+      artifact,
+      version: 2,
+      latest: 2,
+      versions: [{ version: 2, createdAt: null }]
+    });
+    const onEditVersion = vi.fn().mockResolvedValue(undefined);
+    renderPanel([artifact], undefined, { onReadVersion, onEditVersion });
+    fireEvent.click(await screen.findByRole('button', { name: 'Modifier le texte' }));
+    const first = await screen.findByRole('textbox', { name: 'Section de texte 1' });
+    fireEvent.change(first, { target: { value: 'Introduction corrigée.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+    await waitFor(() =>
+      expect(onEditVersion).toHaveBeenCalledWith('d1', {
+        expectedVersion: 2,
+        textSections: ['Introduction corrigée.', 'Conclusion.']
+      })
+    );
+    expect(screen.getByText('Zoé')).toBeInTheDocument();
+  });
+
   it('crée une version nommée avec la révision affichée', async () => {
     const onReadVersion = vi.fn().mockResolvedValue({
       artifact: table,

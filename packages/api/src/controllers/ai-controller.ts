@@ -227,20 +227,42 @@ export const updateArtifactVersionHandler = asyncHandler(async (req: Request, re
   const { owner, scopeKey, permissions, tools } = await conversationScope(req);
   const location = { ...owner, conversationId: id, artifactId };
   const { artifact: stored, latest } = await readArtifactVersions(location, scopeKey);
-  const { expectedVersion, restoreVersion, title } = z
+  const { expectedVersion, restoreVersion, title, textSections } = z
     .object({
       expectedVersion: versionNumber,
       restoreVersion: versionNumber.optional(),
-      title: z.string().trim().min(1).max(120).optional()
+      title: z.string().trim().min(1).max(120).optional(),
+      textSections: z.array(z.string().trim().min(1).max(20_000)).min(1).max(20).optional()
     })
     .strict()
-    .refine(value => value.restoreVersion === undefined || value.title === undefined)
+    .refine(
+      value => [value.restoreVersion, value.title, value.textSections].filter(item => item !== undefined).length <= 1
+    )
     .parse(req.body);
   if (expectedVersion !== latest) throw new ConflictError(t('Une version plus récente est déjà disponible.'));
   let artifact = stored;
   if (restoreVersion !== undefined) {
     if (restoreVersion >= latest) throw new AppError(t('Sélectionnez une version antérieure.'), 422);
     artifact = (await readArtifactVersions(location, scopeKey, restoreVersion)).artifact;
+  } else if (textSections) {
+    const invalid = () => new AppError(t('Les sections de texte ne correspondent pas au résultat.'), 422);
+    if (stored.kind === 'markdown' && textSections.length === 1) {
+      artifact = { ...stored, content: textSections[0] };
+    } else if (
+      stored.kind === 'document' &&
+      stored.blocks.filter(block => block.kind === 'text').length === textSections.length &&
+      textSections.every(text => text.length <= 4000)
+    ) {
+      let section = 0;
+      artifact = {
+        ...stored,
+        blocks: stored.blocks.map(block =>
+          block.kind === 'text' ? { ...block, content: textSections[section++] } : block
+        )
+      };
+    } else {
+      throw invalid();
+    }
   } else if (title !== undefined) {
     artifact = { ...stored, title };
   } else {

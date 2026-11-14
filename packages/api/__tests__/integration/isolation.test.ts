@@ -625,6 +625,32 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       expect(download.status).toBe(200);
       expect(download.headers['content-type']).toMatch(/^application\/pdf/);
       expect(download.headers['cache-control']).toBe('private, no-store');
+      const draftPath = `${baseA}/conversations/${conversationId}/artifacts/${artifactId}`;
+      const updated = await request(app)
+        .post(draftPath)
+        .set(authed(adminA))
+        .send({ expectedVersion: 1, textSections: ['Texte corrigé.'] });
+      expect(updated.status).toBe(201);
+      expect(updated.body.data).toMatchObject({ version: 2, artifact: { content: 'Texte corrigé.' } });
+      const superseded = await request(app).get(draftPath).query({ version: 1 }).set(authed(adminA));
+      expect(superseded.body.data.artifact.content).toBe('Résultat synthétique.');
+      expect(
+        (
+          await request(app)
+            .post(draftPath)
+            .set(authed(adminA))
+            .send({ expectedVersion: 1, textSections: ['Ancien brouillon.'] })
+        ).status
+      ).toBe(409);
+      expect(
+        (
+          await request(app)
+            .post(draftPath)
+            .set(authed(colleague))
+            .send({ expectedVersion: 2, textSections: ['Autre compte.'] })
+        ).status
+      ).toBe(404);
+
       const powerpoint = await request(app)
         .get(baseA + suffix.replace(/pdf$/, 'pptx'))
         .set(authed(adminA));
@@ -645,7 +671,39 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         ).status
       ).toBe(404);
 
-      const receiptsId = persisted.body.data.turns[0].result[1].artifact.id;
+      const receiptTable = persisted.body.data.turns[0].result[1].artifact;
+      const report = {
+        kind: 'document',
+        id: randomUUID(),
+        title: 'Rapport avec provenance',
+        blocks: [
+          { kind: 'text', content: 'Première rédaction.' },
+          { kind: 'table', table: receiptTable }
+        ]
+      };
+      await prisma.assistantTurn.updateMany({
+        where: { tenantId: tenantA.id, ownerId: adminA.id, id: turnId },
+        data: { result: [...persisted.body.data.turns[0].result, { type: 'artifact', artifact: report }] }
+      });
+      const reportPath = `${baseA}/conversations/${conversationId}/artifacts/${report.id}`;
+      const revisedReport = await request(app)
+        .post(reportPath)
+        .set(authed(adminA))
+        .send({ expectedVersion: 1, textSections: ['Rapport corrigé.'] });
+      expect(revisedReport.status).toBe(201);
+      expect(revisedReport.body.data.artifact.blocks).toEqual([
+        { kind: 'text', content: 'Rapport corrigé.' },
+        { kind: 'table', table: receiptTable }
+      ]);
+      expect(
+        (
+          await request(app)
+            .post(reportPath)
+            .set(authed(adminA))
+            .send({ expectedVersion: 2, textSections: ['Introduction.', 'Section ajoutée.'] })
+        ).status
+      ).toBe(422);
+      const receiptsId = receiptTable.id;
       const versionPath = `${baseA}/conversations/${conversationId}/artifacts/${receiptsId}`;
       const original = await request(app).get(versionPath).set(authed(adminA));
       expect(original.body.data.version).toBe(1);

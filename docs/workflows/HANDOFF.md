@@ -43,9 +43,11 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 **Régénération (`0036f408`)** — La page Assistant relance la dernière question sauvegardée, ses fichiers importés et le contexte des tours précédents. L’ancienne réponse reste affichée et stockée jusqu’au succès. L’écriture verrouille le fil puis vérifie le dernier tour et la révision.
 
-**Relances** — Depuis le panneau des résultats, un bouton cible la version affichée et prépare un brouillon modifiable. Le serveur vérifie le périmètre et transmet un aperçu borné. La référence est conservée pour la régénération.
+**Relances (`528dda29`)** — Depuis le panneau des résultats, un bouton cible la version affichée et prépare un brouillon modifiable. Le serveur vérifie le périmètre et transmet un aperçu borné. La référence est conservée pour la régénération.
 
-**À poursuivre** — Ajouter l’édition du contenu des artefacts par l’utilisateur et par le modèle. Étendre le catalogue aux lots, au syndic, au patrimoine, à la maintenance, au CRM et à la promotion. Enrichir les exports avec des graphiques natifs. Poursuivre le partage, les épingles, les actions de suivi, les envois, l’administration et les six langues. Recetter avec un fournisseur réel et un navigateur.
+**Édition des rapports** — Les sections de texte et les réponses Markdown peuvent être modifiées dans le panneau, avec création de version et contrôle de concurrence. Les tableaux restent liés à leurs données.
+
+**À poursuivre** — Ajouter l’édition des artefacts assistée par le modèle. Étendre le catalogue aux lots, au syndic, au patrimoine, à la maintenance, au CRM et à la promotion. Enrichir les exports avec des graphiques natifs. Poursuivre le partage, les épingles, les actions de suivi, les envois, l’administration et les six langues. Recetter avec un fournisseur réel et un navigateur.
 
 ## chore/deps-patch-minor — 2026-11-11
 

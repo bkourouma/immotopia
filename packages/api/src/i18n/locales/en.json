@@ -1893,6 +1893,7 @@
   "Les parts du lot {{lot}} dépassent 100 % ({{existing}} % déjà attribués, {{requested}} % demandés).": "Shares of lot {{lot}} exceed 100% ({{existing}}% already allocated, {{requested}}% requested).",
   "Les pénalités ne se calculent que pour un bail actif": "Penalties are only calculated for an active lease",
   "Les résultats de l'intersection n'ont pas pu être fusionnés.": "The intersection results could not be merged.",
+  "Les sections de texte ne correspondent pas au résultat.": "The text sections do not match the result.",
   "Les sessions d'un super-administrateur ne peuvent pas être révoquées depuis une agence.": "A super administrator's sessions cannot be revoked from an agency.",
   "Les sessions ne sont pas révoquées : le compte est utilisé dans d'autres agences ou sur la plateforme.": "Sessions were not revoked: the account is used in other agencies or on the platform.",
   "Les soldes positifs sont regroupés par bien et par devise.": "Positive balances are grouped by property and currency.",

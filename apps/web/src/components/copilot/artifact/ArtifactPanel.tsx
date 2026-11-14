@@ -3,6 +3,7 @@ import { CloseOutlined, DownloadOutlined } from '@ant-design/icons';
 import { Button, Dropdown, Input, Modal, Select, Skeleton, Typography } from 'antd';
 import { feedback } from '../../../lib/feedback';
 import { t } from '../../../i18n/t';
+import type { ArtifactVersionChange } from '../../../types/copilot';
 import type {
   ArtifactDownloadFormat,
   ArtifactProvenance,
@@ -35,10 +36,7 @@ export interface ArtifactPanelProps {
     versions: ArtifactVersionInfo[];
   }>;
   onRefresh?(artifactId: string, expectedVersion?: number): Promise<void>;
-  onEditVersion?(
-    artifactId: string,
-    change: { expectedVersion: number; restoreVersion?: number; title?: string }
-  ): Promise<void>;
+  onEditVersion?(artifactId: string, change: ArtifactVersionChange): Promise<void>;
 }
 
 function ArtifactSource({ provenance }: { provenance: ArtifactProvenance }) {
@@ -158,12 +156,7 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
   const [requested, setRequested] = useState<{ id: string; version: number }>();
   const [loaded, setLoaded] = useState<Awaited<ReturnType<NonNullable<ArtifactPanelProps['onReadVersion']>>>>();
   const [revision, setRevision] = useState(0);
-  const [versionEdit, setVersionEdit] = useState<{
-    id: string;
-    expectedVersion: number;
-    title?: string;
-    restoreVersion?: number;
-  }>();
+  const [versionEdit, setVersionEdit] = useState<{ id: string } & ArtifactVersionChange>();
   const viewed = requested?.id === rootId ? requested?.version : undefined;
   useEffect(() => {
     if (!rootId || !onReadVersion) return;
@@ -190,6 +183,12 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
     onReadVersion &&
     (viewed !== undefined ? snapshot?.version !== viewed : snapshot && snapshot.version !== snapshot.latest)
   );
+  const editableSections =
+    artifact.kind === 'markdown'
+      ? [artifact.content]
+      : artifact.kind === 'document'
+        ? artifact.blocks.flatMap(block => (block.kind === 'text' ? [block.content] : []))
+        : [];
   const downloadVersion = snapshot && !versionPending ? snapshot.version : undefined;
   const downloadFile = (format: ArtifactDownloadFormat) =>
     downloadVersion ? onDownloadFile?.(artifact.id, format, downloadVersion) : onDownloadFile?.(artifact.id, format);
@@ -227,10 +226,10 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
     try {
       await onEditVersion(id, change);
       setRequested(undefined);
+      setVersionEdit(undefined);
     } catch {
       feedback.error(t('La modification du résultat a échoué.'));
     } finally {
-      setVersionEdit(undefined);
       setRevision(value => value + 1);
       setRefreshing(false);
     }
@@ -311,6 +310,20 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
         {onEditVersion &&
           snapshot &&
           !versionPending &&
+          downloadVersion === snapshot.latest &&
+          editableSections.length > 0 && (
+            <Button
+              disabled={refreshing}
+              onClick={() =>
+                setVersionEdit({ id: root.id, expectedVersion: snapshot.latest, textSections: editableSections })
+              }
+            >
+              {t('Modifier le texte')}
+            </Button>
+          )}
+        {onEditVersion &&
+          snapshot &&
+          !versionPending &&
           (downloadVersion === snapshot.latest ? (
             <Button
               disabled={refreshing}
@@ -357,17 +370,44 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
       </header>
       <Modal
         open={versionEdit?.id === root.id}
-        title={versionEdit?.restoreVersion === undefined ? t('Renommer le résultat') : t('Restaurer cette version')}
+        title={
+          versionEdit?.textSections
+            ? t('Modifier le texte')
+            : versionEdit?.restoreVersion === undefined
+              ? t('Renommer le résultat')
+              : t('Restaurer cette version')
+        }
         okText={t('Enregistrer')}
         cancelText={t('Annuler')}
         confirmLoading={refreshing}
-        okButtonProps={{ disabled: versionEdit?.title !== undefined && !versionEdit.title.trim() }}
+        okButtonProps={{
+          disabled: Boolean(
+            versionEdit?.textSections?.some(text => !text.trim()) ||
+            (versionEdit?.title !== undefined && !versionEdit.title.trim())
+          )
+        }}
         onCancel={() => {
           if (!refreshing) setVersionEdit(undefined);
         }}
         onOk={() => void saveVersion()}
       >
-        {versionEdit?.title !== undefined ? (
+        {versionEdit?.textSections ? (
+          versionEdit.textSections.map((text, index) => (
+            <Input.TextArea
+              key={index}
+              aria-label={t('Section de texte {{number}}', { number: index + 1 })}
+              value={text}
+              maxLength={artifact.kind === 'markdown' ? 20_000 : 4000}
+              autoSize={{ minRows: 3, maxRows: 8 }}
+              style={{ marginBlockEnd: 8 }}
+              onChange={event => {
+                const textSections = [...(versionEdit.textSections ?? [])];
+                textSections[index] = event.target.value;
+                setVersionEdit({ ...versionEdit, textSections });
+              }}
+            />
+          ))
+        ) : versionEdit?.title !== undefined ? (
           <Input
             aria-label={t('Titre du résultat')}
             value={versionEdit.title}

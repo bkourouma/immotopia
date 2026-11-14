@@ -1,5 +1,6 @@
 import apiClient from '../utils/api-client';
 import { postEventStream } from '../utils/event-stream';
+import type { ArtifactVersionChange } from '../types/copilot';
 import type {
   ActionExecutedPayload,
   ArtifactDownloadFormat,
@@ -179,7 +180,7 @@ async function updateArtifactVersion(
   tenantId: string,
   conversationId: string,
   artifactId: string,
-  change: { expectedVersion: number; restoreVersion?: number; title?: string }
+  change: ArtifactVersionChange
 ) {
   const response = await apiClient.post(artifactPath(tenantId, conversationId, artifactId), change);
   return unwrap<{ artifact: unknown; version: number }>(response.data);
