@@ -290,6 +290,11 @@ export interface CopilotStatus {
 /** Données d'affichage seulement : jamais de HTML, jamais d'écriture. L'`id` est généré par le serveur. */
 export type ArtifactCell = string | number | null;
 
+export interface AnalysisQuery {
+  tool: 'rental_arrears' | 'rental_receipts';
+  month: string;
+}
+
 export interface ArtifactProvenance {
   source: string;
   href: string;
@@ -309,7 +314,14 @@ export type ArtifactDocumentBlock = { kind: 'text'; content: string } | { kind: 
 
 export type CopilotArtifact =
   | { kind: 'document'; id: string; title: string; blocks: ArtifactDocumentBlock[] }
-  | { kind: 'indicators'; id: string; title: string; cards: ArtifactIndicator[]; provenance?: ArtifactProvenance }
+  | {
+      kind: 'indicators';
+      id: string;
+      title: string;
+      cards: ArtifactIndicator[];
+      provenance?: ArtifactProvenance;
+      replay?: DerivedAnalysisQuery;
+    }
   | {
       kind: 'table';
       id: string;
@@ -318,10 +330,12 @@ export type CopilotArtifact =
       provenance?: ArtifactProvenance;
       rows: Record<string, ArtifactCell>[];
       truncated?: boolean;
+      query?: AnalysisQuery;
     }
   | { kind: 'markdown'; id: string; title: string; content: string }
   | {
       kind: 'chart';
+      replay?: DerivedAnalysisQuery;
       provenance?: ArtifactProvenance;
       id: string;
       title: string;
@@ -330,6 +344,12 @@ export type CopilotArtifact =
       series: { key: string; label: string }[];
       data: Record<string, ArtifactCell>[];
     };
+
+export interface DerivedAnalysisQuery {
+  tool: 'chart_analysis' | 'show_indicators';
+  source: AnalysisQuery;
+  input: unknown;
+}
 
 export type AnalysisTable = Extract<CopilotArtifact, { kind: 'table' }>;
 

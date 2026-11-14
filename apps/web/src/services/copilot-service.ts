@@ -141,7 +141,12 @@ async function deleteConversation(tenantId: string, id: string) {
   await apiClient.delete(`/tenants/${tenantId}/ai/conversations/${id}`);
 }
 
-async function downloadArtifact(tenantId: string, conversationId: string, artifactId: string, format: 'pdf' | 'pptx') {
+async function downloadArtifact(
+  tenantId: string,
+  conversationId: string,
+  artifactId: string,
+  format: 'pdf' | 'pptx' | 'csv' | 'xlsx'
+) {
   return apiClient.get<Blob>(
     `/tenants/${tenantId}/ai/conversations/${conversationId}/artifacts/${artifactId}/${format}`,
     {
@@ -150,7 +155,15 @@ async function downloadArtifact(tenantId: string, conversationId: string, artifa
   );
 }
 
+async function refreshArtifact(tenantId: string, conversationId: string, artifactId: string) {
+  const { data } = await apiClient.get(
+    `/tenants/${tenantId}/ai/conversations/${conversationId}/artifacts/${artifactId}`
+  );
+  return data.data;
+}
+
 export const copilotService = {
+  refreshArtifact,
   downloadArtifact,
   getStatus,
   streamChat,

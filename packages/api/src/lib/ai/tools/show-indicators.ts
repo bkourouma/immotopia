@@ -129,7 +129,14 @@ export const showIndicatorsTool: CopilotToolDefinition<typeof schema> = {
       { artifactId: id, cards },
       {
         type: 'artifact',
-        artifact: { id, kind: 'indicators', title: input.title, cards, provenance: source.provenance }
+        artifact: {
+          id,
+          kind: 'indicators',
+          title: input.title,
+          cards,
+          provenance: source.provenance,
+          ...(source.query ? { replay: { tool: 'show_indicators' as const, source: source.query, input } } : {})
+        }
       }
     );
   }

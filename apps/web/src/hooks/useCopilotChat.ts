@@ -473,6 +473,11 @@ export function useCopilotChat(tenantId: string, persistent = false): UseCopilot
     [tenantId, setPlanState]
   );
 
+  const replaceArtifact = useCallback((artifact: CopilotArtifact, conversationId: string) => {
+    if (conversationIdRef.current !== conversationId) return;
+    setArtifacts(items => items.map(item => (item.id === artifact.id ? artifact : item)));
+  }, []);
+
   const selectArtifact = useCallback((id: string) => {
     setSelectedArtifactId(prev => (artifactsRef.current.some(a => a.id === id) ? id : prev));
   }, []);
@@ -492,6 +497,7 @@ export function useCopilotChat(tenantId: string, persistent = false): UseCopilot
     refuseWritePlan,
     reset,
     restoreConversation,
+    replaceArtifact,
     conversationId
   };
 }

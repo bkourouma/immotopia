@@ -208,6 +208,20 @@ describe('ArtifactPanel — rapports et indicateurs', () => {
   });
 });
 
+describe('ArtifactPanel — recalcul', () => {
+  it('recalcule un résultat enregistré et demande son export au serveur', async () => {
+    const onRefresh = vi.fn().mockResolvedValue(undefined);
+    const onDownloadFile = vi.fn().mockResolvedValue(undefined);
+    renderPanel([{ ...table, canRefresh: true }], undefined, { onRefresh, onDownloadFile });
+    fireEvent.click(screen.getByRole('button', { name: 'Recalculer' }));
+    await waitFor(() => expect(onRefresh).toHaveBeenCalledWith('t1'));
+    fireEvent.click(screen.getByRole('button', { name: 'Télécharger' }));
+    fireEvent.click(await screen.findByText('CSV'));
+    await waitFor(() => expect(onDownloadFile).toHaveBeenCalledWith('t1', 'csv'));
+    expect(save).not.toHaveBeenCalled();
+  });
+});
+
 describe('ArtifactPanel — téléchargements', () => {
   it('télécharge un CSV UTF-8 avec BOM, « ; » en français et neutralise les formules', async () => {
     renderPanel([table]);

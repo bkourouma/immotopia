@@ -10,6 +10,7 @@ import { copilotService } from '../../services/copilot-service';
 import { feedback } from '../../lib/feedback';
 import { ArtifactPanel } from '../../components/copilot/artifact/ArtifactPanel';
 import { filenameFromDisposition, saveBlob } from '../../utils/save-blob';
+import { sanitizeArtifact } from '../../utils/copilot-artifact';
 import { CopilotComposer } from '../../components/copilot/CopilotComposer';
 import { CopilotThread } from '../../components/copilot/CopilotThread';
 import { getCopilotPageContext } from '../../components/copilot/copilot-page-context';
@@ -185,6 +186,18 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
       selectedId={chat.selectedArtifactId}
       onSelect={chat.selectArtifact}
       onClose={closePanel}
+      onRefresh={
+        conversationId && !streaming && chat.replaceArtifact
+          ? async artifactId => {
+              const artifact = sanitizeArtifact(
+                await copilotService.refreshArtifact(tenantId, conversationId, artifactId)
+              );
+              if (!artifact || artifact.id !== artifactId)
+                throw new Error(t('Cette analyse ne peut pas être recalculée.'));
+              chat.replaceArtifact?.(artifact, conversationId);
+            }
+          : undefined
+      }
       onDownloadFile={
         conversationId && !streaming
           ? async (artifactId, format) => {

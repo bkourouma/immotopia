@@ -95,7 +95,8 @@ export const chartAnalysisTool: CopilotToolDefinition<typeof schema> = {
             label: [measure.label, currency].filter(Boolean).join(' · ')
           })),
           data,
-          provenance: source.provenance
+          provenance: source.provenance,
+          ...(source.query ? { replay: { tool: 'chart_analysis' as const, source: source.query, input } } : {})
         }
       }
     );

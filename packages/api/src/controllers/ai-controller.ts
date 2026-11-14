@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { buildArtifactPdf } from '../lib/ai/artifact-pdf';
+import { canReplayArtifact, replayArtifact } from '../lib/ai/artifact-replay';
 import { buildArtifactPowerPoint } from '../lib/ai/artifact-pptx';
+import { buildArtifactCsv, buildArtifactXlsx } from '../lib/ai/artifact-spreadsheet';
 import type { Request, Response } from 'express';
 import { AiDisabledError } from '../middleware/ai-access-middleware';
 import { AppError, asyncHandler, ForbiddenError } from '../middleware/error-middleware';
@@ -75,7 +77,7 @@ async function entitledFeatures(
 ): Promise<{ read: Set<ToolFeature>; write: Set<ToolFeature> } | undefined> {
   if (getSubscriptionEnforcement() !== 'enforce') return undefined;
   try {
-    const entitlements = await getEntitlements(tenantId);
+    const entitlements = await getEntitlements(tenantId, { fresh: requireFreshScope });
     const allowed = (write: boolean) =>
       new Set(TOOL_FEATURES.filter(feature => evaluateFeatureAccess(entitlements, feature, write).allowed));
     return { read: allowed(false), write: allowed(true) };
@@ -92,7 +94,7 @@ async function resolveAvailableTools(
   tenantId: string,
   requireFreshScope = false
 ): Promise<{ permissions: Set<string>; tools: CopilotToolDefinition[]; unavailableFeatures: Set<ToolFeature> }> {
-  const permissions = new Set(await getUserPermissions(userId, tenantId));
+  const permissions = new Set(await getUserPermissions(userId, tenantId, { fresh: requireFreshScope }));
   const features = await entitledFeatures(tenantId, requireFreshScope);
   // Une proposition prépare une écriture : elle exige l'accès en écriture au module.
   const tools = toolsForUser(permissions, features?.read).filter(
@@ -111,6 +113,8 @@ async function conversationScope(req: Request) {
   if (tools.length === 0) throw new ForbiddenError();
   return {
     owner: { tenantId, ownerId: userId },
+    permissions,
+    tools,
     scopeKey: assistantScope(
       permissions,
       tools.map(tool => tool.name)
@@ -136,14 +140,31 @@ export const getConversationHandler = asyncHandler(async (req: Request, res: Res
 
 const artifactExportParams = z.object({ id: z.string().uuid(), artifactId: z.string().uuid() });
 
-const artifactExportFormat = z.enum(['pdf', 'pptx']);
+const artifactExportFormat = z.enum(['pdf', 'pptx', 'csv', 'xlsx']);
+const artifactExporters = {
+  pdf: { build: buildArtifactPdf, type: 'application/pdf' },
+  pptx: {
+    build: buildArtifactPowerPoint,
+    type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+  },
+  xlsx: { build: buildArtifactXlsx, type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+  csv: { build: buildArtifactCsv, type: 'text/csv; charset=utf-8' }
+};
 
 export const downloadArtifactHandler = asyncHandler(async (req: Request, res: Response) => {
   const { id, artifactId } = artifactExportParams.parse(req.params);
-  const { owner, scopeKey } = await conversationScope(req);
-  const artifact = await getStoredArtifact(owner, id, artifactId, scopeKey);
   const format = artifactExportFormat.parse(req.params.format);
-  const file = format === 'pdf' ? await buildArtifactPdf(artifact) : await buildArtifactPowerPoint(artifact);
+  const { owner, scopeKey, permissions, tools } = await conversationScope(req);
+  const stored = await getStoredArtifact(owner, id, artifactId, scopeKey);
+  const artifact = await replayArtifact(stored, {
+    tenantId: owner.tenantId,
+    userId: owner.ownerId,
+    conversationId: id,
+    permissions,
+    tools
+  });
+  const exporter = artifactExporters[format];
+  const file = await exporter.build(artifact);
   const filename =
     artifact.title
       .replace(/[^\p{L}\p{N} ._-]+/gu, ' ')
@@ -155,11 +176,22 @@ export const downloadArtifactHandler = asyncHandler(async (req: Request, res: Re
     'Content-Disposition',
     `attachment; filename="ImmoTopia.${format}"; filename*=UTF-8''${encodeURIComponent(filename)}.${format}`
   );
-  res
-    .type(
-      format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
-    )
-    .send(file);
+  res.type(exporter.type).send(file);
+});
+
+export const refreshArtifactHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { id, artifactId } = artifactExportParams.parse(req.params);
+  const { owner, scopeKey, permissions, tools } = await conversationScope(req);
+  const stored = await getStoredArtifact(owner, id, artifactId, scopeKey);
+  if (!canReplayArtifact(stored)) throw new AppError(t('Cette analyse ne peut pas être recalculée.'), 422);
+  const artifact = await replayArtifact(stored, {
+    tenantId: owner.tenantId,
+    userId: owner.ownerId,
+    conversationId: id,
+    permissions,
+    tools
+  });
+  res.set('Cache-Control', 'private, no-store').json({ success: true, data: artifact });
 });
 
 export const updateConversationHandler = asyncHandler(async (req: Request, res: Response) => {

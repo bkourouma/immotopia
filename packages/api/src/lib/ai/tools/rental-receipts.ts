@@ -67,6 +67,7 @@ export const rentalReceiptsTool: CopilotToolDefinition<typeof inputSchema> = {
       kind: 'table',
       id: randomUUID(),
       title: t('Encaissements locatifs'),
+      query: { tool: 'rental_receipts', month: period },
       columns: [
         { key: 'period', label: t('Période') },
         { key: 'currency', label: t('Devise') },

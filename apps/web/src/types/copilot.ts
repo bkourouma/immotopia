@@ -254,7 +254,9 @@ export interface ArtifactIndicator {
 
 export type ArtifactDocumentBlock = { kind: 'text'; content: string } | { kind: 'table'; table: AnalysisTable };
 
-export type CopilotArtifact =
+export type ArtifactDownloadFormat = 'pdf' | 'pptx' | 'csv' | 'xlsx';
+
+export type CopilotArtifact = { canRefresh?: boolean } & (
   | { kind: 'document'; id: string; title: string; blocks: ArtifactDocumentBlock[] }
   | { kind: 'indicators'; id: string; title: string; cards: ArtifactIndicator[]; provenance?: ArtifactProvenance }
   | {
@@ -278,7 +280,8 @@ export type CopilotArtifact =
       xLabel?: string;
       series: { key: string; label: string }[];
       data: Record<string, ArtifactCell>[];
-    };
+    }
+);
 
 /** Limites de l'API ; le front les réapplique à l'affichage (défensif). */
 export const ARTIFACT_MAX_ROWS = 500;
@@ -388,5 +391,6 @@ export interface UseCopilotChatResult {
   refuseWritePlan(proposalId: string): void;
   reset(): void;
   restoreConversation?(conversation: AssistantConversation): void;
+  replaceArtifact?(artifact: CopilotArtifact, conversationId: string): void;
   conversationId?: string;
 }

@@ -72,11 +72,32 @@ function sanitizeProvenance(raw: unknown): ArtifactProvenance | undefined {
  * Valide et borne un artefact reçu du flux. Renvoie `null` si l'objet est mal
  * formé (ignoré par l'appelant) ; tronque ce qui dépasse les limites de l'API.
  */
-export function sanitizeArtifact(raw: unknown): CopilotArtifact | null {
+export function canRefreshArtifact(raw: unknown): boolean {
+  if (!isRecord(raw)) return false;
+  switch (raw.kind) {
+    case 'table':
+      return isRecord(raw.query);
+    case 'indicators':
+    case 'chart':
+      return isRecord(raw.replay);
+    case 'document':
+      return (
+        Array.isArray(raw.blocks) &&
+        raw.blocks.some(
+          block => isRecord(block) && block.kind === 'table' && isRecord(block.table) && isRecord(block.table.query)
+        )
+      );
+    default:
+      return false;
+  }
+}
+
+export function sanitizeArtifact(raw: unknown): (CopilotArtifact & { canRefresh?: boolean }) | null {
   if (!isRecord(raw)) return null;
   const id = str(raw.id);
   const title = typeof raw.title === 'string' ? raw.title : '';
   if (!id) return null;
+  const refresh = canRefreshArtifact(raw) ? { canRefresh: true } : {};
 
   if (raw.kind === 'document') {
     if (!Array.isArray(raw.blocks)) return null;
@@ -91,7 +112,7 @@ export function sanitizeArtifact(raw: unknown): CopilotArtifact | null {
         if (table?.kind === 'table') blocks.push({ kind: 'table', table });
       }
     }
-    return blocks.length ? { kind: 'document', id, title, blocks } : null;
+    return blocks.length ? { kind: 'document', id, title, blocks, ...refresh } : null;
   }
 
   if (raw.kind === 'indicators') {
@@ -116,7 +137,7 @@ export function sanitizeArtifact(raw: unknown): CopilotArtifact | null {
     }
     if (cards.length === 0) return null;
     const provenance = sanitizeProvenance(raw.provenance);
-    return { kind: 'indicators', id, title, cards, ...(provenance ? { provenance } : {}) };
+    return { kind: 'indicators', id, title, cards, ...refresh, ...(provenance ? { provenance } : {}) };
   }
 
   if (raw.kind === 'markdown') {
@@ -156,6 +177,7 @@ export function sanitizeArtifact(raw: unknown): CopilotArtifact | null {
         ARTIFACT_MAX_ROWS
       ),
       truncated: raw.truncated === true || total > ARTIFACT_MAX_ROWS || undefined,
+      ...refresh,
       ...(provenance ? { provenance } : {})
     };
   }
@@ -183,6 +205,7 @@ export function sanitizeArtifact(raw: unknown): CopilotArtifact | null {
       ...(str(raw.xLabel) ? { xLabel: str(raw.xLabel) } : {}),
       series,
       data: cleanRows(raw.data, [xKey, ...series.map(s => s.key)], ARTIFACT_MAX_CHART_POINTS),
+      ...refresh,
       ...(provenance ? { provenance } : {})
     };
   }

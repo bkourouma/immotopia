@@ -19,12 +19,16 @@ const CACHE_TTL_MS = 5 * 60 * 1000;
  * @param tenantId - Optional tenant ID (required for tenant-scoped permissions)
  * @returns Array of permission keys
  */
-export async function getUserPermissions(userId: string, tenantId?: string): Promise<string[]> {
+export async function getUserPermissions(
+  userId: string,
+  tenantId?: string,
+  options: { fresh?: boolean } = {}
+): Promise<string[]> {
   const cacheKey = `${userId}:${tenantId || 'platform'}`;
   const cached = permissionCache.get(cacheKey);
 
   // Check if cache is valid
-  if (cached && cached.expiresAt > new Date()) {
+  if (!options.fresh && cached && cached.expiresAt > new Date()) {
     return cached.permissions;
   }
 

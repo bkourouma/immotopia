@@ -96,6 +96,7 @@ export const rentalArrearsTool: CopilotToolDefinition<typeof inputSchema> = {
       kind: 'table',
       id: randomUUID(),
       title: t('Échéances locatives non soldées'),
+      query: { tool: 'rental_arrears', month: period },
       columns: [
         { key: 'property', label: t('Bien'), linkKey: 'href' },
         { key: 'count', label: t('Nombre d’échéances'), type: 'number' },

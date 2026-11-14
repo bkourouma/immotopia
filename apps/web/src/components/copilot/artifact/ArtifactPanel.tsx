@@ -3,7 +3,7 @@ import { CloseOutlined, DownloadOutlined } from '@ant-design/icons';
 import { Button, Dropdown, Select, Skeleton, Typography } from 'antd';
 import { feedback } from '../../../lib/feedback';
 import { t } from '../../../i18n/t';
-import type { ArtifactProvenance, CopilotArtifact } from '../../../types/copilot';
+import type { ArtifactDownloadFormat, ArtifactProvenance, CopilotArtifact } from '../../../types/copilot';
 import { downloadChartPng, downloadCsv, downloadMarkdown, downloadXlsx } from '../../../utils/copilot-artifact-export';
 import { SafeMarkdown } from '../SafeMarkdown';
 import { ArtifactTable } from './ArtifactTable';
@@ -18,7 +18,8 @@ export interface ArtifactPanelProps {
   selectedId?: string;
   onSelect(id: string): void;
   onClose(): void;
-  onDownloadFile?(artifactId: string, format: 'pdf' | 'pptx'): Promise<void>;
+  onDownloadFile?(artifactId: string, format: ArtifactDownloadFormat): Promise<void>;
+  onRefresh?(artifactId: string): Promise<void>;
 }
 
 function ArtifactSource({ provenance }: { provenance: ArtifactProvenance }) {
@@ -124,10 +125,12 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
   selectedId,
   onSelect,
   onClose,
+  onRefresh,
   onDownloadFile
 }) => {
   const bodyRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const artifact = artifacts.find(a => a.id === selectedId) ?? artifacts[artifacts.length - 1];
   if (!artifact) return null;
 
@@ -142,11 +145,24 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
     }
   };
 
+  async function refresh(id: string) {
+    setRefreshing(true);
+    try {
+      await onRefresh?.(id);
+    } catch {
+      feedback.error(t('Cette analyse ne peut pas être recalculée.'));
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  const csv = () => run(() => (onDownloadFile ? onDownloadFile(artifact.id, 'csv') : downloadCsv(artifact)));
+  const xlsx = () => run(() => (onDownloadFile ? onDownloadFile(artifact.id, 'xlsx') : downloadXlsx(artifact)));
   const downloads =
     artifact.kind === 'table' || artifact.kind === 'indicators'
       ? [
-          { key: 'csv', label: t('CSV'), onClick: () => run(() => downloadCsv(artifact)) },
-          { key: 'xlsx', label: t('Excel (.xlsx)'), onClick: () => run(() => downloadXlsx(artifact)) }
+          { key: 'csv', label: t('CSV'), onClick: csv },
+          { key: 'xlsx', label: t('Excel (.xlsx)'), onClick: xlsx }
         ]
       : artifact.kind === 'chart'
         ? [
@@ -155,7 +171,8 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
               label: t('Image (.png)'),
               onClick: () => run(() => downloadChartPng(bodyRef.current, artifact.title))
             },
-            { key: 'csv', label: t('Données (.csv)'), onClick: () => run(() => downloadCsv(artifact)) }
+            { key: 'csv', label: t('Données (.csv)'), onClick: csv },
+            { key: 'xlsx', label: t('Excel (.xlsx)'), onClick: xlsx }
           ]
         : [{ key: 'md', label: t('Markdown (.md)'), onClick: () => run(() => downloadMarkdown(artifact)) }];
   if (onDownloadFile)
@@ -192,6 +209,11 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
             </Typography.Title>
           )}
         </div>
+        {onRefresh && artifact.canRefresh && (
+          <Button loading={refreshing} onClick={() => void refresh(artifact.id)}>
+            {t('Recalculer')}
+          </Button>
+        )}
         {!onDownloadFile && (artifact.kind === 'markdown' || artifact.kind === 'document') ? (
           <Button icon={<DownloadOutlined aria-hidden />} onClick={() => void run(() => downloadMarkdown(artifact))}>
             {t('Télécharger')}
