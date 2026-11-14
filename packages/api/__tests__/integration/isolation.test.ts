@@ -592,6 +592,7 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
     it('partage un tableau recalculé, exclut le titre privé et révoque la lecture et l’export', async () => {
       const owner = await createTenantAdminUser(tenantA, 'share-owner');
       const recipient = await createTenantAdminUser(tenantA, 'share-recipient');
+      const secondRecipient = await createTenantAdminUser(tenantA, 'share-second-recipient');
       await prisma.user.update({ where: { id: recipient.id }, data: { preferredLanguage: 'en' } });
       const base = `/api/tenants/${tenantA.id}/ai`;
       mockFakeScript = [
@@ -624,6 +625,22 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         expect(
           (await request(app).put(`${base}/analyses/${conversationId}/${artifactId}`).set(authed(owner))).status
         ).toBe(200);
+        const invalidBatch = await request(app)
+          .post(base + '/shares')
+          .set(authed(owner))
+          .send({
+            conversationId,
+            artifactId,
+            recipientIds: [secondRecipient.id, adminB.id]
+          });
+        expect(invalidBatch.status).toBe(404);
+        expect(
+          (
+            await request(app)
+              .get(base + '/shares')
+              .set(authed(secondRecipient))
+          ).body.data.items
+        ).toEqual([]);
         for (const [recipientId, status] of [
           [adminB.id, 404],
           [recipient.id, 200]
@@ -640,6 +657,24 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
             .set(authed(owner))
             .send({ conversationId, artifactId, recipientId });
           expect(repeated.body.data).toEqual(sent.body.data);
+          const batch = await request(app)
+            .post(base + '/shares')
+            .set(authed(owner))
+            .send({
+              conversationId,
+              artifactId,
+              recipientIds: [recipientId, secondRecipient.id],
+              message: 'À relire ensemble.'
+            });
+          expect(batch.status).toBe(200);
+          expect(batch.body.data.items.map((item: { recipientId: string }) => item.recipientId)).toEqual([
+            recipientId,
+            secondRecipient.id
+          ]);
+          const secondInbox = await request(app)
+            .get(base + '/shares')
+            .set(authed(secondRecipient));
+          expect(secondInbox.body.data.items).toEqual([expect.objectContaining({ message: 'À relire ensemble.' })]);
           const notifications = `/api/tenants/${tenantA.id}/notifications`;
           const inbox = await request(app).get(notifications).set(authed(recipient));
           const expectedLink = `/tenant/${tenantA.id}/assistant?partage=${sent.body.data.id}`;

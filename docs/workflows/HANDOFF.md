@@ -75,6 +75,8 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 **Retrait côté destinataire** — Après `24ce106c`, le destinataire peut aussi retirer un partage reçu. La suppression de la ligne enlève l’épingle et ferme l’accès au résultat. Un tiers de l’agence ne peut pas retirer un partage auquel il ne participe pas.
 
+**Partage à plusieurs collègues** — Après `aaa892a0`, le formulaire accepte jusqu’à 20 destinataires et un message facultatif de 2 000 caractères. Chaque destinataire est contrôlé avant la transaction. Une erreur d’écriture annule le lot, notifications comprises. Les nouveaux destinataires reçoivent une notification générique et retrouvent le message dans Partages. Un nouveau lot peut inclure un destinataire déjà servi sans modifier son message ni le renotifier. Migration `20261115050000_assistant_share_message`.
+
 ## chore/deps-patch-minor — 2026-11-11
 
 **État** — PR 218 vers `main` (fusion par l'utilisateur), reprend la PR Dependabot 212 (28 mises à jour mineures : antd 6.7, Radix, TanStack Query, aws-sdk, docxtemplater, pizzip…). PR Dependabot 214 (`@vitejs/plugin-react` 6) et 215 (`vitest` 5) fermées le 2026-11-11 : sauts de versions majeures (module introuvable, matchers non typés), à traiter en migration dédiée ; envisager une règle `ignore` des versions majeures dans `.github/dependabot.yml`.

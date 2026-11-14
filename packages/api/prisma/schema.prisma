@@ -11637,6 +11637,7 @@ model AssistantAnalysisShare {
   recipientId    String   @map("recipient_id")
   createdAt      DateTime @default(now()) @map("created_at")
   pinnedAt       DateTime? @map("pinned_at")
+  message        String?   @db.VarChar(2000)
 
   analysis AssistantSavedAnalysis @relation(fields: [tenantId, ownerId, conversationId, artifactId], references: [tenantId, ownerId, conversationId, artifactId], onDelete: Cascade, map: "assistant_analysis_shares_analysis_fkey")
   recipient User @relation("AssistantAnalysisRecipient", fields: [recipientId], references: [id], onDelete: Cascade, map: "assistant_analysis_shares_recipient_fkey")

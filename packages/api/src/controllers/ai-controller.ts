@@ -15,7 +15,7 @@ import {
 } from '../lib/ai/saved-analyses';
 import {
   assertAnalysisCollaborator,
-  createAnalysisShare,
+  createAnalysisShares,
   listAnalysisShares,
   listAnalysisSharePins,
   readAnalysisShare,
@@ -365,15 +365,34 @@ export const listAnalysisRecipientsHandler = asyncHandler(async (req, res) => {
 });
 
 export const createAnalysisShareHandler = asyncHandler(async (req, res) => {
-  const reference = analysisReference.extend({ recipientId: z.string().uuid() }).strict().parse(req.body);
+  const shareInput = analysisReference.extend({ message: z.string().trim().max(2000).optional() });
+  const reference = z
+    .union([
+      shareInput.extend({ recipientId: z.string().uuid() }).strict(),
+      shareInput.extend({ recipientIds: z.array(z.string().uuid()).min(1).max(20) }).strict()
+    ])
+    .parse(req.body);
   const source = await conversationScope(req);
   const { tenantId, ownerId } = source.owner;
-  if (reference.recipientId === ownerId) throw new NotFoundError();
-  await assertAnalysisCollaborator(tenantId, reference.recipientId);
-  const recipient = await resolveAvailableTools(reference.recipientId, tenantId, true);
+  const recipientIds = 'recipientId' in reference ? [reference.recipientId] : [...new Set(reference.recipientIds)];
+  if (recipientIds.includes(ownerId)) throw new NotFoundError();
+  const recipients = await Promise.all(
+    recipientIds.map(async recipientId => {
+      await assertAnalysisCollaborator(tenantId, recipientId);
+      return resolveAvailableTools(recipientId, tenantId, true);
+    })
+  );
   const stored = await getStoredArtifact(source.owner, reference.conversationId, reference.artifactId, source.scopeKey);
-  await recalculateSharedArtifact(stored, tenantId, reference.recipientId, reference.conversationId, source, recipient);
-  const data = await createAnalysisShare(source.owner, source.scopeKey, reference);
+  for (const [index, recipient] of recipients.entries()) {
+    await recalculateSharedArtifact(stored, tenantId, recipientIds[index], reference.conversationId, source, recipient);
+  }
+  const shares = await createAnalysisShares(source.owner, source.scopeKey, {
+    conversationId: reference.conversationId,
+    artifactId: reference.artifactId,
+    recipientIds,
+    message: reference.message || undefined
+  });
+  const data = 'recipientId' in reference ? { id: shares[0].id } : { items: shares };
   res.set('Cache-Control', 'private, no-store').json({ success: true, data });
 });
 

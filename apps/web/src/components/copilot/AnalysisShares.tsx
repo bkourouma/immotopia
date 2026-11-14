@@ -136,6 +136,11 @@ export function AnalysisShares({
                     </>
                   )}
                   {row.colleague || t('Collaborateur')} · {new Date(row.createdAt).toLocaleDateString()}
+                  {row.message && (
+                    <span style={{ display: 'block', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                      {row.message}
+                    </span>
+                  )}
                 </span>
                 {direction === 'incoming' ? (
                   <>

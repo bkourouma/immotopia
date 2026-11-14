@@ -189,7 +189,14 @@ async function updateArtifactVersion(
 
 export type SavedAnalysisReference = { conversationId: string; artifactId: string };
 export type SavedAnalysis = SavedAnalysisReference & { title: string; createdAt: string; pinnedAt?: string | null };
-export type AnalysisShare = { id: string; colleague: string; createdAt: string; title?: string; pinned?: boolean };
+export type AnalysisShare = {
+  id: string;
+  colleague: string;
+  createdAt: string;
+  title?: string;
+  pinned?: boolean;
+  message?: string | null;
+};
 
 function savedAnalysisPath(tenantId: string, { conversationId, artifactId }: SavedAnalysisReference) {
   return `/tenants/${tenantId}/ai/analyses/${conversationId}/${artifactId}`;
@@ -222,8 +229,13 @@ export const copilotService = {
     const response = await apiClient.get(`/tenants/${tenantId}/ai/shares`, { params: { direction, cursor } });
     return unwrap<{ items: AnalysisShare[]; nextCursor?: string }>(response.data);
   },
-  async shareAnalysis(tenantId: string, { conversationId, artifactId }: SavedAnalysisReference, recipientId: string) {
-    await apiClient.post(`/tenants/${tenantId}/ai/shares`, { conversationId, artifactId, recipientId });
+  async shareAnalysis(
+    tenantId: string,
+    { conversationId, artifactId }: SavedAnalysisReference,
+    recipientIds: string[],
+    message?: string
+  ) {
+    await apiClient.post(`/tenants/${tenantId}/ai/shares`, { conversationId, artifactId, recipientIds, message });
   },
   async revokeAnalysisShare(tenantId: string, id: string) {
     await apiClient.delete(`/tenants/${tenantId}/ai/shares/${id}`);

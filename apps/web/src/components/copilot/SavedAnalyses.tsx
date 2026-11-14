@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, Button, Drawer, Empty, Modal, Popconfirm, Select, Spin } from 'antd';
+import { Alert, Button, Drawer, Empty, Input, Modal, Popconfirm, Select, Spin } from 'antd';
 import { t } from '../../i18n/t';
 import { feedback } from '../../lib/feedback';
 import { copilotService, type SavedAnalysis, type SavedAnalysisReference } from '../../services/copilot-service';
@@ -82,7 +82,8 @@ export function SavedAnalyses({
   const [failed, setFailed] = useState(false);
   const [reload, setReload] = useState(0);
   const [shareItem, setShareItem] = useState<SavedAnalysis>();
-  const [recipient, setRecipient] = useState<string>();
+  const [selectedRecipients, setSelectedRecipients] = useState<string[]>([]);
+  const [message, setMessage] = useState('');
   const [sharing, setSharing] = useState(false);
   const [recipients, setRecipients] = useState<Array<{ userId: string; displayName: string }>>([]);
   useEffect(() => {
@@ -102,10 +103,10 @@ export function SavedAnalyses({
   }, [shareItem, tenantId]);
 
   async function share() {
-    if (!shareItem || !recipient || sharing) return;
+    if (!shareItem || !selectedRecipients.length || sharing) return;
     setSharing(true);
     try {
-      await copilotService.shareAnalysis(tenantId, shareItem, recipient);
+      await copilotService.shareAnalysis(tenantId, shareItem, selectedRecipients, message.trim() || undefined);
       setShareItem(undefined);
       feedback.success(t('Analyse partagée.'));
     } catch {
@@ -164,16 +165,27 @@ export function SavedAnalyses({
         }}
         onOk={() => void share()}
         confirmLoading={sharing}
-        okButtonProps={{ disabled: !recipient }}
+        okButtonProps={{ disabled: !selectedRecipients.length }}
       >
         <p>{t('Le collègue voit les résultats recalculés selon vos droits communs.')}</p>
         <Select
-          aria-label={t('Destinataire')}
-          placeholder={t('Destinataire')}
-          value={recipient}
-          onChange={setRecipient}
+          mode="multiple"
+          maxCount={20}
+          aria-label={t('Destinataires')}
+          placeholder={t('Destinataires')}
+          value={selectedRecipients}
+          onChange={setSelectedRecipients}
           options={recipients.map(item => ({ value: item.userId, label: item.displayName }))}
           style={{ width: '100%' }}
+        />
+        <Input.TextArea
+          aria-label={t('Message facultatif')}
+          placeholder={t('Message facultatif')}
+          value={message}
+          onChange={event => setMessage(event.target.value)}
+          maxLength={2000}
+          rows={3}
+          style={{ marginBlockStart: 12 }}
         />
       </Modal>
       {selected ? (
@@ -212,7 +224,8 @@ export function SavedAnalyses({
                   <Button
                     type="text"
                     onClick={() => {
-                      setRecipient(undefined);
+                      setSelectedRecipients([]);
+                      setMessage('');
                       setRecipients([]);
                       setShareItem(item);
                     }}
