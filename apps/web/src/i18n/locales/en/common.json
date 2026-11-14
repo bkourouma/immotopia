@@ -1,4 +1,11 @@
 {
+  "Envoyer par e-mail": "Send by email",
+  "Confirmer l’envoi": "Confirm sending",
+  "Impossible de mettre le rapport en file d’envoi.": "Could not queue the report for delivery.",
+  "Les destinataires recevront une pièce jointe calculée selon leurs droits communs avec le propriétaire de l’analyse.": "Attachments are calculated using the permissions each recipient shares with the analysis owner.",
+  "Envoi ponctuel": "One-time delivery",
+  "En attente d’envoi": "Awaiting delivery",
+  "Aucun rapport à afficher.": "No reports to display.",
   "Rapports programmés": "Scheduled reports",
   "Programmer un rapport": "Schedule a report",
   "Enregistrer le brouillon": "Save draft",

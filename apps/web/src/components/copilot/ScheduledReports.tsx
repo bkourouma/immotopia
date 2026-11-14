@@ -4,7 +4,7 @@ import { activeLocale } from '../../i18n/format';
 import { t } from '../../i18n/t';
 import { copilotService, type ScheduledReport } from '../../services/copilot-service';
 
-function reportDate(value: string, timeZone: string) {
+function reportDate(value: string, timeZone?: string) {
   return new Intl.DateTimeFormat(activeLocale(), { dateStyle: 'medium', timeStyle: 'short', timeZone }).format(
     new Date(value)
   );
@@ -38,14 +38,18 @@ export function ScheduledReports({ tenantId, onClose }: { tenantId: string; onCl
     return () => controller.abort();
   }, [tenantId, cursor, revision]);
 
+  function refresh() {
+    setCursor(undefined);
+    setRevision(value => value + 1);
+  }
+
   async function update(report: ScheduledReport, remove = false) {
     setPending(report.id);
     setError('');
     try {
       if (remove) await copilotService.deleteScheduledReport(tenantId, report.id);
       else await copilotService.setScheduledReportActive(tenantId, report.id, !report.active);
-      setCursor(undefined);
-      setRevision(value => value + 1);
+      refresh();
     } catch {
       setError(t('Impossible de modifier ce rapport.'));
     } finally {
@@ -63,77 +67,77 @@ export function ScheduledReports({ tenantId, onClose }: { tenantId: string; onCl
   };
   const weekdays = [t('Lundi'), t('Mardi'), t('Mercredi'), t('Jeudi'), t('Vendredi'), t('Samedi'), t('Dimanche')];
   return (
-    <Drawer open size="min(780px, 100vw)" title={t('Rapports programmés')} onClose={onClose}>
+    <Drawer open size="min(780px, 100vw)" title={t('Rapports')} onClose={onClose}>
       <div style={{ display: 'grid', gap: 12 }} aria-busy={loading}>
-        {error && (
-          <Alert
-            type="error"
-            message={error}
-            action={
-              <Button
-                onClick={() => {
-                  setCursor(undefined);
-                  setRevision(value => value + 1);
-                }}
-              >
-                {t('Réessayer')}
-              </Button>
-            }
-          />
-        )}
+        {error && <Alert type="error" message={error} action={<Button onClick={refresh}>{t('Réessayer')}</Button>} />}
         {loading && <Spin />}
-        {!loading && !error && !items.length && <Empty description={t('Aucun rapport programmé.')} />}
+        {!loading && !error && !items.length && <Empty description={t('Aucun rapport à afficher.')} />}
         {items.map(report => {
           const { schedule } = report;
           const day =
-            schedule.frequency === 'weekly'
+            schedule?.frequency === 'weekly'
               ? weekdays[schedule.day - 1]
-              : schedule.frequency === 'monthly'
+              : schedule?.frequency === 'monthly'
                 ? t('Jour {{day}} du mois', { day: schedule.day })
                 : '';
           return (
             <Card
               key={report.id}
               title={report.analysis.title}
-              extra={<Tag>{report.active ? t('Actif') : t('En pause')}</Tag>}
+              extra={
+                <Tag>
+                  {schedule
+                    ? report.active
+                      ? t('Actif')
+                      : t('En pause')
+                    : (statuses[report.lastStatus ?? ''] ?? t('En attente d’envoi'))}
+                </Tag>
+              }
             >
               <p>
                 {[
-                  frequencies[schedule.frequency],
+                  schedule ? frequencies[schedule.frequency] : t('Envoi ponctuel'),
                   day,
-                  schedule.time,
-                  schedule.timeZone,
+                  schedule?.time,
+                  schedule?.timeZone,
                   report.formats.map(format => format.toUpperCase()).join(', ')
                 ]
                   .filter(Boolean)
                   .join(' · ')}
               </p>
-              {report.nextRunAt && (
+              {schedule && report.nextRunAt && (
                 <p>
                   {t('Prochaine échéance')} · {reportDate(report.nextRunAt, schedule.timeZone)}
                 </p>
               )}
               {report.lastRunAt && (
                 <p>
-                  {t('Dernière exécution')} · {reportDate(report.lastRunAt, schedule.timeZone)} ·{' '}
-                  {statuses[report.lastStatus ?? ''] ?? '—'}
+                  {t('Dernière exécution')} · {reportDate(report.lastRunAt, schedule?.timeZone)}
+                  {schedule && ` · ${statuses[report.lastStatus ?? ''] ?? '—'}`}
                 </p>
               )}
-              <Space wrap>
-                <Button disabled={loading || !!pending} onClick={() => void update(report)}>
-                  {report.active ? t('Mettre en pause') : report.lastRunAt ? t('Reprendre') : t('Activer')}
-                </Button>
-                <Popconfirm
-                  title={t('Supprimer ce rapport programmé ?')}
-                  okText={t('Supprimer')}
-                  cancelText={t('Annuler')}
-                  onConfirm={() => update(report, true)}
-                >
-                  <Button danger disabled={loading || !!pending}>
-                    {t('Supprimer')}
+              {schedule && (
+                <Space wrap>
+                  <Button disabled={loading || !!pending} onClick={() => void update(report)}>
+                    {report.active ? t('Mettre en pause') : report.lastRunAt ? t('Reprendre') : t('Activer')}
                   </Button>
-                </Popconfirm>
-              </Space>
+                  <Popconfirm
+                    title={t('Supprimer ce rapport programmé ?')}
+                    okText={t('Supprimer')}
+                    cancelText={t('Annuler')}
+                    onConfirm={() => update(report, true)}
+                  >
+                    <Button danger disabled={loading || !!pending}>
+                      {t('Supprimer')}
+                    </Button>
+                  </Popconfirm>
+                </Space>
+              )}
+              {!schedule && report.active && (
+                <Button disabled={loading} onClick={refresh}>
+                  {t('Actualiser')}
+                </Button>
+              )}
             </Card>
           );
         })}

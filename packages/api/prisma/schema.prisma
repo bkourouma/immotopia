@@ -11657,7 +11657,9 @@ model AssistantScheduledReport {
   ownerId        String    @map("owner_id")
   conversationId String    @map("conversation_id")
   artifactId     String    @map("artifact_id")
-  schedule       Json
+  schedule       Json?
+  immediateKey   String?   @map("immediate_key")
+  message        String?
   recipientIds   String[]  @map("recipient_ids")
   formats        String[]
   active         Boolean   @default(false)
@@ -11670,6 +11672,7 @@ model AssistantScheduledReport {
   deliveries AssistantReportDelivery[]
 
   @@unique([tenantId, id])
+  @@unique([tenantId, ownerId, immediateKey], map: "assistant_reports_immediate_key")
   @@index([tenantId, ownerId, createdAt(sort: Desc), id], map: "assistant_scheduled_reports_list_idx")
   @@index([active, nextRunAt], map: "assistant_scheduled_reports_due_idx")
   @@map("assistant_scheduled_reports")

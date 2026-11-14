@@ -1,4 +1,8 @@
 {
+  "Vous trouverez votre rapport en pièce jointe.": "Your report is attached.",
+  "Envoi d’un rapport ImmoTopia": "ImmoTopia report delivery",
+  "Cette confirmation correspond déjà à un autre envoi.": "This confirmation already belongs to a different delivery.",
+  "Le service d’envoi par e-mail est indisponible.": "Email delivery is unavailable.",
   "  - Discussion : non renseignée.": "  - Discussion: not recorded.",
   "  - Votes : pour {{pour}}, contre {{contre}}, abstention {{abstention}}": "  - Votes: for {{pour}}, against {{contre}}, abstentions {{abstention}}",
   "- {{grantor}} est représenté(e) par {{representative}}.": "- {{grantor}} is represented by {{representative}}.",

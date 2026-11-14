@@ -133,7 +133,9 @@ async function deliver(report: AssistantScheduledReport, dueAt: Date, recipientI
         tenantId,
         to: account.email,
         subject: t('Votre rapport ImmoTopia'),
-        text: t('Vous trouverez le rapport programmé en pièce jointe.'),
+        text: report.immediateKey
+          ? [t('Vous trouverez votre rapport en pièce jointe.'), report.message].filter(Boolean).join('\n\n')
+          : t('Vous trouverez le rapport programmé en pièce jointe.'),
         attachments,
         redactRecipient: true
       });
@@ -155,12 +157,12 @@ async function processReport(report: AssistantScheduledReport, now: Date) {
   if (!dueAt) return;
   const current = { tenantId, id, active: true, nextRunAt: dueAt };
   const schedule = reportSchedule.safeParse(report.schedule);
-  let status = 'PAUSED';
+  let status = report.immediateKey ? 'FAILED' : 'PAUSED';
   let nextRunAt: Date | null = null;
   try {
-    if (!schedule.success) throw new NotFoundError();
+    if (!report.immediateKey && !schedule.success) throw new NotFoundError();
     await readReportSource(report, await assertOwner(report));
-    nextRunAt = nextReportRun(schedule.data, now);
+    nextRunAt = schedule.success ? nextReportRun(schedule.data, now) : null;
     const states: DeliveryStatus[] = [];
     for (const recipientId of report.recipientIds) {
       try {
@@ -193,7 +195,9 @@ async function processReport(report: AssistantScheduledReport, now: Date) {
       tenantId,
       recipients: [{ userId: report.ownerId }],
       key: 'ASSISTANT_REPORT_RESULT',
-      title: t('Rapport programmé ImmoTopia', undefined, language),
+      title: report.immediateKey
+        ? t('Envoi d’un rapport ImmoTopia', undefined, language)
+        : t('Rapport programmé ImmoTopia', undefined, language),
       body:
         status === 'SENT'
           ? t('Le rapport a été envoyé.', undefined, language)
@@ -239,7 +243,7 @@ export async function runAssistantReports(now = new Date()) {
 
 export function startAssistantReportJob() {
   cron.schedule(
-    '*/15 * * * *',
+    '* * * * *',
     () => {
       void runAssistantReports().catch(error =>
         logger.error('Assistant report job failed', { errorType: (error as Error)?.name })

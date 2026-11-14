@@ -83,7 +83,9 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 **Envoi des rapports** — Les commits `8a4a30a6` et `f2cf3518` exécutent le job toutes les 15 minutes avec le verrou distribué. À chaque échéance le job recalcule les pièces jointes selon les droits actuels de chaque destinataire et du propriétaire, puis envoie à l’adresse vérifiée. La migration `20261115080000_assistant_report_deliveries` réserve chaque couple échéance/destinataire avant SMTP. Un accusé incertain reste à vérifier et ne déclenche pas un nouvel envoi. Le propriétaire reçoit une notification interne.
 
-**Interface Rapports (commit de cette passation)** — Mes analyses crée un brouillon inactif. Le fuseau proposé vient du navigateur et reste modifiable. Le propriétaire peut se choisir comme destinataire. Rapports permet de consulter les échéances et le résultat du dernier passage, d’activer, suspendre, reprendre et supprimer. Le même écran s’ouvre depuis la notification interne. L’envoi immédiat et les autres actions confirmées restent à intégrer.
+**Interface Rapports (`76785924`)** — Mes analyses crée un brouillon inactif. Le fuseau proposé vient du navigateur et reste modifiable. Le propriétaire peut se choisir comme destinataire. Rapports permet de consulter les échéances et le résultat du dernier passage, d’activer, suspendre, reprendre et supprimer. Le même écran s’ouvre depuis la notification interne.
+
+**Envoi ponctuel (commit de cette passation)** — Mes analyses permet de confirmer un envoi PDF, Excel ou CSV à des membres de l’agence avec un message facultatif. La migration `20261115090000_assistant_immediate_reports` stocke la demande et une clé unique par propriétaire et agence. Le job examine la file chaque minute, applique les contrôles actuels des rapports programmés et conserve l’issue dans Rapports. La recette PostgreSQL avec garde Prisma stricte a validé les confirmations concurrentes, leur rejeu et un seul envoi par destinataire via transport simulé. Les propositions depuis le chat, les tâches et les alertes restent à intégrer.
 
 ## chore/deps-patch-minor — 2026-11-11
 

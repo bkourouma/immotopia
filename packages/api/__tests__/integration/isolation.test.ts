@@ -685,6 +685,58 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
           ).status
         ).toBe(204);
         expect((await request(app).get(reports).set(authed(owner))).body.data.items).toEqual([]);
+
+        const immediate = {
+          requestId: randomUUID(),
+          conversationId,
+          artifactId,
+          recipientIds: [recipient.id],
+          formats: ['csv'],
+          message: 'Pièce demandée.'
+        };
+        const confirm = () => request(app).post(reports).set(authed(owner)).send(immediate);
+        const responses = await Promise.all([confirm(), confirm()]);
+        expect(responses.map(response => response.status)).toEqual([202, 202]);
+        expect(responses[1].body.data).toEqual(responses[0].body.data);
+        expect(send).toHaveBeenCalledTimes(1);
+        const immediateId = responses[0].body.data.id;
+        expect((await request(app).get(reports).set(authed(owner))).body.data.items).toEqual([
+          expect.objectContaining({ id: immediateId, schedule: null, active: true, lastStatus: null })
+        ]);
+        expect(
+          (
+            await request(app)
+              .post(reports)
+              .set(authed(owner))
+              .send({ ...immediate, message: 'Autre texte' })
+          ).status
+        ).toBe(409);
+        await Promise.all([runAssistantReports(), runAssistantReports()]);
+        await runAssistantReports();
+        expect(send).toHaveBeenCalledTimes(2);
+        expect(send).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            to: recipient.email,
+            text: 'Your report is attached.\n\nPièce demandée.'
+          })
+        );
+        expect((await request(app).get(reports).set(authed(owner))).body.data.items).toEqual([
+          expect.objectContaining({
+            id: immediateId,
+            schedule: null,
+            active: false,
+            nextRunAt: null,
+            lastStatus: 'SENT'
+          })
+        ]);
+        expect(
+          (
+            await request(app)
+              .patch(reports + '/' + immediateId)
+              .set(authed(owner))
+              .send({ active: true })
+          ).status
+        ).toBe(404);
       } finally {
         mockFakeScript = undefined;
         configured.mockRestore();

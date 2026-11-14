@@ -194,7 +194,7 @@ export type ReportSchedule = { time: string; timeZone: string } & (
 export type ReportFormat = 'xlsx' | 'pdf' | 'csv';
 export type ScheduledReport = {
   id: string;
-  schedule: ReportSchedule;
+  schedule: ReportSchedule | null;
   formats: ReportFormat[];
   active: boolean;
   nextRunAt: string | null;
@@ -233,6 +233,18 @@ export const copilotService = {
   ) {
     const response = await apiClient.post(`/tenants/${tenantId}/ai/reports`, input);
     return unwrap<{ id: string; previewRunAt: string }>(response.data);
+  },
+  async queueImmediateReport(
+    tenantId: string,
+    input: SavedAnalysisReference & {
+      requestId: string;
+      formats: ReportFormat[];
+      recipientIds: string[];
+      message?: string;
+    }
+  ) {
+    const response = await apiClient.post(`/tenants/${tenantId}/ai/reports`, input);
+    return unwrap<{ id: string }>(response.data);
   },
   async setScheduledReportActive(tenantId: string, id: string, active: boolean) {
     await apiClient.patch(`/tenants/${tenantId}/ai/reports/${id}`, { active });

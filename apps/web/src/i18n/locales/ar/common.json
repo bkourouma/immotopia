@@ -1,4 +1,11 @@
 {
+  "Envoyer par e-mail": "إرسال بالبريد الإلكتروني",
+  "Confirmer l’envoi": "تأكيد الإرسال",
+  "Impossible de mettre le rapport en file d’envoi.": "تعذرت إضافة التقرير إلى قائمة الإرسال.",
+  "Les destinataires recevront une pièce jointe calculée selon leurs droits communs avec le propriétaire de l’analyse.": "تُحسب المرفقات وفق الصلاحيات المشتركة بين كل مستلم ومالك التحليل.",
+  "Envoi ponctuel": "إرسال لمرة واحدة",
+  "En attente d’envoi": "بانتظار الإرسال",
+  "Aucun rapport à afficher.": "لا توجد تقارير لعرضها.",
   "Rapports programmés": "التقارير المجدولة",
   "Programmer un rapport": "جدولة تقرير",
   "Enregistrer le brouillon": "حفظ المسودة",

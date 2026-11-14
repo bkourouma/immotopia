@@ -9,11 +9,11 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Finance | 196 |
 | CRM et Ventes | 70 |
 | Maintenance | 34 |
-| Communication et Documents | 106 |
+| Communication et Documents | 107 |
 | Syndic copropriete | 247 |
 | Administration plateforme | 142 |
 | Portails externes | 84 |
-| **Total** | **1256** |
+| **Total** | **1257** |
 
 ## Sous-fonctionnalités
 
@@ -829,6 +829,7 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Partager une conversation | Donner à des collègues accès aux résultats autorisés d’un fil en lecture seule. | Conversation et destinataires | Artefacts recalculés avec export individuel | Conversation privée | Propriétaire du fil et destinataire habilité | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/shares | Accès à l’assistant et droits sur les données | Disponible | Assistant > Partager la conversation |
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Préparer la programmation d’un rapport | Enregistrer un brouillon de rapport périodique avec son horaire, ses formats et ses destinataires. | Analyse enregistrée, fréquence, heure, fuseau, formats et destinataires | Brouillon inactif | Analyse privée avec des données recalculables | Propriétaire de l’analyse | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/reports | Accès à l’assistant et droits sur les données | Disponible | Assistant > Mes analyses > Programmer un rapport |
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Consulter et piloter les rapports | Consulter les échéances et les résultats, activer, suspendre, reprendre ou supprimer un rapport récurrent. | Rapport privé et état actif | Prochaine échéance, envoi automatique et dernier statut | Rapport programmé et service d’e-mail configuré | Propriétaire de l’analyse | Agence (collaborateur) | GET /api/tenants/:tenantId/ai/reports ; PATCH et DELETE /api/tenants/:tenantId/ai/reports/:id | Accès à l’assistant et droits sur les données | Disponible | Assistant > Rapports |
+| Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Envoyer une analyse par e-mail | Confirmer un envoi ponctuel aux membres actifs. Les pièces jointes sont calculées avec les droits communs à chaque destinataire et au propriétaire. | Analyse, destinataires, formats, message facultatif | Envoi en file et résultat dans Rapports | Analyse recalculable et transport e-mail configuré | Propriétaire de l’analyse | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/reports | Accès à l’assistant et droits sur les données | Disponible | Assistant > Mes analyses > Envoyer par e-mail |
 
 ### Syndic copropriete
 

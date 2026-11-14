@@ -86,7 +86,7 @@ export function SavedAnalyses({
   const [failed, setFailed] = useState(false);
   const [reload, setReload] = useState(0);
   const [shareItem, setShareItem] = useState<SavedAnalysis>();
-  const [reportItem, setReportItem] = useState<SavedAnalysis>();
+  const [report, setReport] = useState<{ item: SavedAnalysis; immediate: boolean }>();
   useEffect(() => {
     const controller = new AbortController();
     setBusy(true);
@@ -130,11 +130,12 @@ export function SavedAnalyses({
       {shareItem && (
         <ShareAnalysisDialog tenantId={tenantId} reference={shareItem} onClose={() => setShareItem(undefined)} />
       )}
-      {reportItem && (
+      {report && (
         <ScheduleReportDialog
           tenantId={tenantId}
-          analysis={reportItem}
-          onClose={() => setReportItem(undefined)}
+          analysis={report.item}
+          immediate={report.immediate}
+          onClose={() => setReport(undefined)}
           onCreated={onReportCreated}
         />
       )}
@@ -210,8 +211,11 @@ export function SavedAnalyses({
                       {t('Retirer')}
                     </Button>
                   </Popconfirm>
-                  <Button type="text" onClick={() => setReportItem(item)}>
+                  <Button type="text" onClick={() => setReport({ item, immediate: false })}>
                     {t('Programmer un rapport')}
+                  </Button>
+                  <Button type="text" onClick={() => setReport({ item, immediate: true })}>
+                    {t('Envoyer par e-mail')}
                   </Button>
                 </li>
               ))}

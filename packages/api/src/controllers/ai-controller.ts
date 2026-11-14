@@ -6,12 +6,14 @@ import { appendArtifactVersion, readArtifactVersions } from '../lib/ai/artifact-
 import { canReplayArtifact, replayArtifact } from '../lib/ai/artifact-replay';
 import { buildArtifactPowerPoint } from '../lib/ai/artifact-pptx';
 import {
+  assistantReportInput,
   createScheduledReportDraft,
   listScheduledReports,
+  queueImmediateReport,
   removeScheduledReport,
-  scheduledReportInput,
   setScheduledReportActive
 } from '../lib/ai/scheduled-reports';
+import { isEmailDeliveryConfigured } from '../services/email-service';
 import {
   assertSavedAnalysisPinned,
   listSavedAnalyses,
@@ -302,8 +304,11 @@ export const listScheduledReportsHandler = asyncHandler(async (req, res) => {
 });
 
 export const createScheduledReportDraftHandler = asyncHandler(async (req, res) => {
-  const input = scheduledReportInput.parse(req.body);
+  const input = assistantReportInput.parse(req.body);
   const source = await conversationScope(req);
+  if ('requestId' in input && !isEmailDeliveryConfigured()) {
+    throw new AppError(t('Le service d’envoi par e-mail est indisponible.'), 503);
+  }
   const { tenantId, ownerId } = source.owner;
   const stored = await getStoredArtifact(source.owner, input.conversationId, input.artifactId, source.scopeKey);
   for (const recipientId of new Set(input.recipientIds)) {
@@ -319,8 +324,14 @@ export const createScheduledReportDraftHandler = asyncHandler(async (req, res) =
     );
     if (input.formats.includes('csv')) buildArtifactCsv(artifact);
   }
-  const data = await createScheduledReportDraft(source.owner, source.scopeKey, input);
-  res.set('Cache-Control', 'private, no-store').status(201).json({ success: true, data });
+  const immediate = 'requestId' in input;
+  const data = immediate
+    ? await queueImmediateReport(source.owner, source.scopeKey, input)
+    : await createScheduledReportDraft(source.owner, source.scopeKey, input);
+  res
+    .set('Cache-Control', 'private, no-store')
+    .status(immediate ? 202 : 201)
+    .json({ success: true, data });
 });
 
 export const deleteScheduledReportHandler = asyncHandler(async (req, res) => {

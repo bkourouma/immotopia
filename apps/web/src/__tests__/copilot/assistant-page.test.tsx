@@ -18,6 +18,8 @@ vi.mock('../../services/copilot-service', () => {
     listSavedAnalyses: vi.fn(),
     listScheduledReports: vi.fn(),
     setScheduledReportActive: vi.fn(),
+    listAnalysisRecipients: vi.fn(),
+    queueImmediateReport: vi.fn(),
     listAnalysisShares: vi.fn(),
     setAnalysisPin: vi.fn(),
     getSharedAnalysis: vi.fn(),
@@ -127,12 +129,61 @@ describe('AssistantPage — artefacts', () => {
     vi.mocked(copilotService.setScheduledReportActive).mockResolvedValue(undefined);
     renderPage('/tenant/t1/assistant?rapports=1');
 
-    const drawer = await screen.findByRole('dialog', { name: 'Rapports programmés' });
+    const drawer = await screen.findByRole('dialog', { name: 'Rapports' });
     expect(await within(drawer).findByText('Situation locative')).toBeInTheDocument();
     fireEvent.click(within(drawer).getByRole('button', { name: 'Activer' }));
     expect(copilotService.setScheduledReportActive).toHaveBeenCalledWith('t1', 'report-1', true);
     expect(await within(drawer).findByRole('button', { name: 'Mettre en pause' })).toBeEnabled();
     expect(within(drawer).getByText(/Prochaine échéance/)).toBeInTheDocument();
+  });
+
+  it('attend la confirmation avant de mettre un envoi ponctuel en file', async () => {
+    getStatus.mockResolvedValue(ENABLED);
+    vi.mocked(copilotService.listSavedAnalyses).mockResolvedValueOnce({
+      items: [{ conversationId: 'c1', artifactId: 'a1', title: 'Situation locative', createdAt: '2026-11-14' }]
+    });
+    vi.mocked(copilotService.listAnalysisRecipients).mockResolvedValueOnce([
+      { userId: 'recipient-1', displayName: 'Camille Destinataire' }
+    ]);
+    vi.mocked(copilotService.queueImmediateReport).mockResolvedValueOnce({ id: 'report-2' });
+    vi.mocked(copilotService.listScheduledReports).mockResolvedValueOnce({
+      items: [
+        {
+          id: 'report-2',
+          schedule: null,
+          formats: ['pdf'],
+          active: true,
+          nextRunAt: '2026-11-16T08:00:00Z',
+          lastRunAt: null,
+          lastStatus: null,
+          analysis: { title: 'Situation locative' }
+        }
+      ]
+    });
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Mes analyses' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Envoyer par e-mail' }));
+    const confirm = await screen.findByRole('button', { name: 'Confirmer l’envoi' });
+    const dialog = confirm.closest<HTMLElement>('[role="dialog"]')!;
+    expect(confirm).toBeDisabled();
+    fireEvent.mouseDown(within(dialog).getByRole('combobox', { name: 'Destinataires' }));
+    fireEvent.click(await screen.findByText('Camille Destinataire', { selector: '.ant-select-item-option-content' }));
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Message facultatif' }), {
+      target: { value: 'Bonjour' }
+    });
+    expect(copilotService.queueImmediateReport).not.toHaveBeenCalled();
+    fireEvent.click(confirm);
+    expect(copilotService.queueImmediateReport).toHaveBeenCalledWith('t1', {
+      conversationId: 'c1',
+      artifactId: 'a1',
+      recipientIds: ['recipient-1'],
+      formats: ['pdf'],
+      message: 'Bonjour',
+      requestId: expect.any(String)
+    });
+    const reports = await screen.findByRole('dialog', { name: 'Rapports' });
+    expect(await within(reports).findByText('En attente d’envoi')).toBeInTheDocument();
   });
 
   it('ouvre les résultats d’une conversation partagée en lecture seule', async () => {

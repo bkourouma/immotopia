@@ -1,4 +1,8 @@
 {
+  "Vous trouverez votre rapport en pièce jointe.": "تقريرك مرفق.",
+  "Envoi d’un rapport ImmoTopia": "إرسال تقرير ImmoTopia",
+  "Cette confirmation correspond déjà à un autre envoi.": "يرتبط هذا التأكيد بعملية إرسال أخرى.",
+  "Le service d’envoi par e-mail est indisponible.": "خدمة الإرسال بالبريد الإلكتروني غير متاحة.",
   "  - Discussion : non renseignée.": "  - النقاش: غير مسجل.",
   "  - Votes : pour {{pour}}, contre {{contre}}, abstention {{abstention}}": "  - التصويت: مع {{pour}}، ضد {{contre}}، امتناع {{abstention}}",
   "- {{grantor}} est représenté(e) par {{representative}}.": "- يمثّل {{grantor}} الموكَّل {{representative}}.",

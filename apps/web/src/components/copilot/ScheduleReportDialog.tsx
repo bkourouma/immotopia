@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Form, Input, Modal, Select } from 'antd';
 import { t } from '../../i18n/t';
 import {
@@ -11,11 +11,13 @@ import {
 export function ScheduleReportDialog({
   tenantId,
   analysis,
+  immediate,
   onClose,
   onCreated
 }: {
   tenantId: string;
   analysis: SavedAnalysis;
+  immediate: boolean;
   onClose(): void;
   onCreated(): void;
 }) {
@@ -28,6 +30,8 @@ export function ScheduleReportDialog({
   const [recipients, setRecipients] = useState<Array<{ userId: string; displayName: string }>>([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  const confirmation = useRef<{ payload: string; key: string }>();
   useEffect(() => {
     let active = true;
     void copilotService
@@ -48,18 +52,36 @@ export function ScheduleReportDialog({
     setBusy(true);
     setError('');
     try {
-      const clock = { time, timeZone: timeZone.trim() };
-      new Intl.DateTimeFormat('en', { timeZone: clock.timeZone });
-      await copilotService.createScheduledReport(tenantId, {
+      const input = {
         conversationId: analysis.conversationId,
         artifactId: analysis.artifactId,
-        schedule: frequency === 'daily' ? { ...clock, frequency } : { ...clock, frequency, day },
         formats,
         recipientIds
-      });
+      };
+      if (immediate) {
+        const email = { ...input, message: message.trim() || undefined };
+        const payload = JSON.stringify(email);
+        if (confirmation.current?.payload !== payload) {
+          confirmation.current = { payload, key: crypto.randomUUID() };
+        }
+        await copilotService.queueImmediateReport(tenantId, { ...email, requestId: confirmation.current.key });
+      } else {
+        const clock = { time, timeZone: timeZone.trim() };
+        new Intl.DateTimeFormat('en', { timeZone: clock.timeZone });
+        await copilotService.createScheduledReport(tenantId, {
+          ...input,
+          schedule: frequency === 'daily' ? { ...clock, frequency } : { ...clock, frequency, day }
+        });
+      }
       onCreated();
     } catch (failure) {
-      setError(failure instanceof RangeError ? t('Fuseau horaire invalide.') : t('Impossible de préparer ce rapport.'));
+      setError(
+        failure instanceof RangeError
+          ? t('Fuseau horaire invalide.')
+          : immediate
+            ? t('Impossible de mettre le rapport en file d’envoi.')
+            : t('Impossible de préparer ce rapport.')
+      );
     } finally {
       setBusy(false);
     }
@@ -69,74 +91,91 @@ export function ScheduleReportDialog({
   return (
     <Modal
       open
-      title={t('Programmer un rapport')}
+      title={immediate ? t('Envoyer par e-mail') : t('Programmer un rapport')}
       onCancel={() => {
         if (!busy) onClose();
       }}
       onOk={() => void submit()}
-      okText={t('Enregistrer le brouillon')}
+      okText={immediate ? t('Confirmer l’envoi') : t('Enregistrer le brouillon')}
       cancelText={t('Annuler')}
       confirmLoading={busy}
-      okButtonProps={{ disabled: !recipientIds.length || !formats.length || !timeZone.trim() }}
+      okButtonProps={{ disabled: !recipientIds.length || !formats.length || (!immediate && !timeZone.trim()) }}
     >
       <p>{analysis.title}</p>
       <p>
-        {t(
-          'Le rapport sera envoyé selon les droits communs à chaque destinataire et au propriétaire de l’analyse. Activez le brouillon dans Rapports pour commencer les envois.'
-        )}
+        {immediate
+          ? t(
+              'Les destinataires recevront une pièce jointe calculée selon leurs droits communs avec le propriétaire de l’analyse.'
+            )
+          : t(
+              'Le rapport sera envoyé selon les droits communs à chaque destinataire et au propriétaire de l’analyse. Activez le brouillon dans Rapports pour commencer les envois.'
+            )}
       </p>
       {error && <Alert type="error" message={error} />}
       <Form component={false} layout="vertical" disabled={busy}>
-        <Form.Item label={t('Fréquence')}>
-          <Select<ReportSchedule['frequency']>
-            aria-label={t('Fréquence')}
-            value={frequency}
-            onChange={value => {
-              setFrequency(value);
-              setDay(1);
-            }}
-            options={[
-              { value: 'daily', label: t('Quotidien') },
-              { value: 'weekly', label: t('Hebdomadaire') },
-              { value: 'monthly', label: t('Mensuel') }
-            ]}
-          />
-        </Form.Item>
-        {frequency !== 'daily' && (
-          <Form.Item label={frequency === 'weekly' ? t('Jour de la semaine') : t('Jour du mois')}>
-            <Select
-              aria-label={frequency === 'weekly' ? t('Jour de la semaine') : t('Jour du mois')}
-              value={day}
-              onChange={setDay}
-              options={
-                frequency === 'weekly'
-                  ? weekdays.map((label, i) => ({ value: i + 1, label }))
-                  : Array.from({ length: 28 }, (_, i) => ({ value: i + 1, label: String(i + 1) }))
-              }
+        {immediate ? (
+          <Form.Item label={t('Message facultatif')}>
+            <Input.TextArea
+              aria-label={t('Message facultatif')}
+              value={message}
+              maxLength={2000}
+              onChange={event => setMessage(event.target.value)}
             />
           </Form.Item>
+        ) : (
+          <>
+            <Form.Item label={t('Fréquence')}>
+              <Select<ReportSchedule['frequency']>
+                aria-label={t('Fréquence')}
+                value={frequency}
+                onChange={value => {
+                  setFrequency(value);
+                  setDay(1);
+                }}
+                options={[
+                  { value: 'daily', label: t('Quotidien') },
+                  { value: 'weekly', label: t('Hebdomadaire') },
+                  { value: 'monthly', label: t('Mensuel') }
+                ]}
+              />
+            </Form.Item>
+            {frequency !== 'daily' && (
+              <Form.Item label={frequency === 'weekly' ? t('Jour de la semaine') : t('Jour du mois')}>
+                <Select
+                  aria-label={frequency === 'weekly' ? t('Jour de la semaine') : t('Jour du mois')}
+                  value={day}
+                  onChange={setDay}
+                  options={
+                    frequency === 'weekly'
+                      ? weekdays.map((label, i) => ({ value: i + 1, label }))
+                      : Array.from({ length: 28 }, (_, i) => ({ value: i + 1, label: String(i + 1) }))
+                  }
+                />
+              </Form.Item>
+            )}
+            <Form.Item label={t('Heure')}>
+              <Select
+                aria-label={t('Heure')}
+                showSearch
+                value={time}
+                onChange={setTime}
+                options={Array.from({ length: 96 }, (_, i) => {
+                  const value = `${String(Math.floor(i / 4)).padStart(2, '0')}:${String((i % 4) * 15).padStart(2, '0')}`;
+                  return { value, label: value };
+                })}
+              />
+            </Form.Item>
+            <Form.Item label={t('Fuseau horaire')}>
+              <Input
+                aria-label={t('Fuseau horaire')}
+                value={timeZone}
+                onChange={event => setTimeZone(event.target.value)}
+                placeholder="Africa/Abidjan"
+                maxLength={100}
+              />
+            </Form.Item>
+          </>
         )}
-        <Form.Item label={t('Heure')}>
-          <Select
-            aria-label={t('Heure')}
-            showSearch
-            value={time}
-            onChange={setTime}
-            options={Array.from({ length: 96 }, (_, i) => {
-              const value = `${String(Math.floor(i / 4)).padStart(2, '0')}:${String((i % 4) * 15).padStart(2, '0')}`;
-              return { value, label: value };
-            })}
-          />
-        </Form.Item>
-        <Form.Item label={t('Fuseau horaire')}>
-          <Input
-            aria-label={t('Fuseau horaire')}
-            value={timeZone}
-            onChange={event => setTimeZone(event.target.value)}
-            placeholder="Africa/Abidjan"
-            maxLength={100}
-          />
-        </Form.Item>
         <Form.Item label={t('Formats')}>
           <Select
             mode="multiple"
