@@ -2,6 +2,8 @@ import { z } from 'zod';
 import type {
   BatchType,
   BudgetStatus,
+  ConstructionSiteStatus,
+  CrmDealStage,
   MaintenanceTicketPriority,
   MaintenanceTicketStatus,
   PropertyType
@@ -41,6 +43,9 @@ export type CopilotToolName =
   | 'syndicate_budget'
   | 'property_portfolio'
   | 'lease_portfolio'
+  | 'crm_pipeline'
+  | 'sale_mandates'
+  | 'construction_budget'
   | 'chart_analysis'
   | 'show_indicators'
   | 'compose_report'
@@ -367,7 +372,10 @@ export type AnalysisQuery =
   | (MaintenanceQueryFilters &
       ({ tool: 'maintenance_overview' } | { tool: 'syndicate_maintenance'; syndicateId: string }))
   | { tool: 'property_portfolio'; groupBy: 'propertyType' | 'zone'; propertyType?: PropertyType; zone?: string }
-  | { tool: 'lease_portfolio'; start: string; end: string; propertyId?: string };
+  | { tool: 'lease_portfolio'; start: string; end: string; propertyId?: string }
+  | { tool: 'crm_pipeline'; assignedToUserId?: string; stages?: Exclude<CrmDealStage, 'WON' | 'LOST'>[] }
+  | { tool: 'sale_mandates'; start: string; end: string; propertyId?: string; agentUserId?: string }
+  | { tool: 'construction_budget'; siteId?: string; status?: ConstructionSiteStatus; onlyOverBudget?: boolean };
 
 export interface ArtifactProvenance {
   source: string;
@@ -610,7 +618,7 @@ export interface CopilotToolDefinition<S extends z.ZodTypeAny = z.ZodTypeAny> {
   requiredPermission: string;
   /** Permissions supplémentaires, toutes exigées (ex. voir le document généré pour le télécharger). */
   additionalPermissions?: readonly string[];
-  feature: 'CORE' | 'RENTAL' | 'SYNDIC' | 'CONSTRUCTION';
+  feature: 'CORE' | 'RENTAL' | 'SYNDIC' | 'CONSTRUCTION' | 'CRM' | 'SALES';
   kind: 'read' | 'proposal';
   execute(input: z.infer<S>, ctx: CopilotToolContext): Promise<CopilotToolOutcome>;
 }

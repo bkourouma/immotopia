@@ -31,6 +31,9 @@ const TOOL_CAPABILITIES: Record<CopilotToolName, { group: string; text: string }
   rental_arrears: { group: 'rentalArrears', text: 'les échéances locatives non soldées par bien et par mois clos' },
   property_portfolio: { group: 'portfolio', text: 'l’occupation et la disponibilité du parc actuel' },
   lease_portfolio: { group: 'leasePortfolio', text: 'les baux actifs et les fins de bail par bien' },
+  crm_pipeline: { group: 'crmPipeline', text: 'les affaires ouvertes et leur valeur par étape du pipeline CRM' },
+  sale_mandates: { group: 'saleMandates', text: 'les échéances des mandats de vente actifs' },
+  construction_budget: { group: 'constructionBudget', text: 'les budgets actuels et les écarts des chantiers' },
   syndicate_budget: {
     group: 'syndicateBudget',
     text: 'le prévisionnel, le réalisé et les écarts des budgets de copropriété'

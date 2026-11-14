@@ -253,6 +253,132 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
   });
 
   describe('Assistant — historique privé', () => {
+    it('recalcule le pipeline CRM et filtre les échéances des mandats de vente de l’agence', async () => {
+      const actor = await createTenantMemberUser(tenantA, 'commercial-assistant', 'TEST_COMMERCIAL_ASSISTANT', [
+        'CRM_CONTACTS_VIEW',
+        'CRM_DEALS_VIEW'
+      ]);
+      const [contactId, foreignContact, rental, foreignRental] = await Promise.all([
+        createContactDirect(tenantA.id, 'Contact commercial'),
+        createContactDirect(tenantB.id, 'Autre contact commercial'),
+        createRentalFixtureDirect(tenantA.id, actor.id, 'mandat-assistant-a'),
+        createRentalFixtureDirect(tenantB.id, adminB.id, 'mandat-assistant-b')
+      ]);
+      const [lease, foreignLease] = await Promise.all([
+        prisma.rentalLease.findFirstOrThrow({ where: { tenant_id: tenantA.id, id: rental.leaseId } }),
+        prisma.rentalLease.findFirstOrThrow({ where: { tenant_id: tenantB.id, id: foreignRental.leaseId } })
+      ]);
+      const values = { type: 'VENTE', assignedToUserId: actor.id } as const;
+      const open = await prisma.crmDeal.create({
+        data: { ...values, tenantId: tenantA.id, contactId, stage: 'NEW', expectedValue: 450 }
+      });
+      await prisma.crmDeal.createMany({
+        data: [
+          { ...values, tenantId: tenantA.id, contactId, stage: 'WON', expectedValue: 700 },
+          { tenantId: tenantB.id, contactId: foreignContact, type: 'VENTE', stage: 'NEW', expectedValue: 999 }
+        ]
+      });
+      const start = '2030-01-01';
+      const end = '2030-01-10';
+      const mandateData = {
+        year: 2030,
+        sequence: 1,
+        mandateType: 'SIMPLE',
+        commissionMode: 'PERCENT',
+        commissionPayer: 'SELLER',
+        commissionRate: 5,
+        startDate: new Date(start),
+        endDate: new Date(end),
+        askingPrice: 500,
+        minimumPrice: 400,
+        notes: 'Détail privé'
+      } as const;
+      const own = await prisma.saleMandate.create({
+        data: {
+          ...mandateData,
+          tenantId: tenantA.id,
+          propertyId: rental.propertyId,
+          sellerClientId: lease.primary_renter_client_id,
+          agentUserId: actor.id
+        }
+      });
+      try {
+        await prisma.saleMandate.create({
+          data: {
+            ...mandateData,
+            tenantId: tenantB.id,
+            propertyId: foreignRental.propertyId,
+            sellerClientId: foreignLease.primary_renter_client_id,
+            agentUserId: adminB.id,
+            askingPrice: 999
+          }
+        });
+        await prisma.saleMandate.create({
+          data: {
+            ...mandateData,
+            tenantId: tenantA.id,
+            propertyId: rental.propertyId,
+            sellerClientId: lease.primary_renter_client_id,
+            agentUserId: actor.id,
+            sequence: 2,
+            status: 'REVOKED'
+          }
+        });
+        const base = `/api/tenants/${tenantA.id}`;
+        mockFakeScript = [
+          {
+            toolCalls: [
+              { name: 'crm_pipeline', input: { stages: ['NEW'] } },
+              { name: 'sale_mandates', input: { start, end } },
+              { name: 'sale_mandates', input: { start, end, propertyId: foreignRental.propertyId } }
+            ]
+          },
+          { text: 'Analyses prêtes.' }
+        ];
+        const response = await request(app)
+          .post(base + '/ai/chat')
+          .set(authed(actor))
+          .send({
+            turnId: randomUUID(),
+            messages: [{ role: 'user', content: 'Montre le pipeline et les mandats arrivant à échéance.' }]
+          });
+        expect(response.status).toBe(200);
+        const events = response.text
+          .split('\n')
+          .filter(line => line.startsWith('data: {'))
+          .map(line => JSON.parse(line.slice(6)));
+        const artifacts = events.filter(event => event.type === 'artifact').map(event => event.artifact);
+        expect(artifacts).toHaveLength(2);
+        const pipeline = artifacts.find(artifact => artifact.query.tool === 'crm_pipeline');
+        const mandates = artifacts.find(artifact => artifact.query.tool === 'sale_mandates');
+        const dashboard = await request(app)
+          .get(base + '/crm/dashboard')
+          .set(authed(actor));
+        expect(dashboard.status).toBe(200);
+        const stage = dashboard.body.data.pipeline.stages.find((row: { stage: string }) => row.stage === 'NEW');
+        expect(pipeline.rows).toEqual([expect.objectContaining({ count: 1, value: 450, currency: 'XOF' })]);
+        expect(pipeline.rows[0]).toMatchObject({ count: stage.count, value: stage.value });
+        expect(mandates.rows).toEqual([
+          expect.objectContaining({ end, askingPrice: 500, href: expect.stringContaining(own.id) })
+        ]);
+        expect(mandates.rows[0]).not.toHaveProperty('minimumPrice');
+        expect(response.text).not.toContain('Détail privé');
+
+        await prisma.crmDeal.updateMany({ where: { tenantId: tenantA.id, id: open.id }, data: { expectedValue: 600 } });
+        const conversationId = events.find(event => event.type === 'meta').conversationId;
+        const replay = await request(app)
+          .post(`${base}/ai/conversations/${conversationId}/artifacts/${pipeline.id}`)
+          .set(authed(actor))
+          .send({ expectedVersion: 1 });
+        expect(replay.status).toBe(201);
+        expect(replay.body.data.artifact.rows[0]).toMatchObject({ count: 1, value: 600 });
+      } finally {
+        mockFakeScript = undefined;
+        await prisma.saleMandate.deleteMany({ where: { tenantId: tenantA.id, propertyId: rental.propertyId } });
+        await prisma.saleMandate.deleteMany({ where: { tenantId: tenantB.id, propertyId: foreignRental.propertyId } });
+      }
+    });
+
     it('prépare et exécute les trois alertes locatives sans doublon', async () => {
       const actor = await createTenantMemberUser(tenantA, 'rental-alert-owner', 'TEST_RENTAL_ALERT_MANAGER', [
         'RENTAL_LEASES_VIEW',
@@ -361,7 +487,8 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
     it('prépare le seuil budgétaire sans écriture puis applique la règle métier après validation', async () => {
       const actor = await createTenantMemberUser(tenantA, 'budget-alert-owner', 'TEST_BUDGET_ALERT_MANAGER', [
         'FINANCE_SITES_MANAGE',
-        'FINANCE_ACCOUNTS_READ'
+        'FINANCE_ACCOUNTS_READ',
+        'FINANCE_REPORTS_READ'
       ]);
       const site = await prisma.constructionSite.create({
         data: { tenantId: tenantA.id, name: 'Atrium', status: 'IN_PROGRESS' }
@@ -393,6 +520,46 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       const base = `/api/tenants/${tenantA.id}`;
       const threshold = (id: string) => `${base}/finance/sites/${id}/budget-alert-threshold`;
       try {
+        mockFakeScript = [
+          {
+            toolCalls: [
+              { name: 'construction_budget', input: { siteId: site.id } },
+              { name: 'construction_budget', input: { siteId: foreign.id } },
+              { name: 'construction_budget', input: { siteId: site.id, onlyOverBudget: true } }
+            ]
+          },
+          { text: 'Budgets prêts.' }
+        ];
+        const analysis = await request(app)
+          .post(base + '/ai/chat')
+          .set(authed(actor))
+          .send({
+            turnId: randomUUID(),
+            messages: [{ role: 'user', content: 'Analyse le budget du chantier.' }]
+          });
+        expect(analysis.status).toBe(200);
+        const tables = analysis.text
+          .split('\n')
+          .filter(line => line.startsWith('data: {'))
+          .map(line => JSON.parse(line.slice(6)))
+          .filter(event => event.type === 'artifact')
+          .map(event => event.artifact);
+        expect(tables).toHaveLength(2);
+        const dashboard = await request(app)
+          .get(base + '/finance/sites/dashboard')
+          .set(authed(actor));
+        expect(dashboard.status).toBe(200);
+        const model = dashboard.body.data.rows.find((row: { siteId: string }) => row.siteId === site.id);
+        expect(tables.find(table => !table.query.onlyOverBudget).rows).toEqual([
+          expect.objectContaining({
+            site: model.siteLabel,
+            revisedBudget: model.revisedBudget,
+            engagedAmount: 800,
+            variance: 200
+          })
+        ]);
+        expect(tables.find(table => table.query.onlyOverBudget).rows).toEqual([]);
+
         async function prepare(input: { site: string; thresholdPercent: number }) {
           mockFakeScript = [{ toolCalls: [{ name: 'prepare_budget_alert', input }] }, { text: 'Formulaire prêt.' }];
           const response = await request(app)
@@ -500,7 +667,19 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         toolsForUser(permissions)
           .map(tool => tool.name)
           .filter(
-            name => name !== 'syndicate_maintenance' && name !== 'syndicate_charges' && name !== 'syndicate_budget'
+            name =>
+              ![
+                'syndicate_maintenance',
+                'syndicate_charges',
+                'syndicate_budget',
+                'crm_pipeline',
+                'sale_mandates',
+                'construction_budget',
+                'prepare_budget_alert',
+                'prepare_lease_expiry_alert',
+                'prepare_declaration_alert',
+                'prepare_rent_arrears_alert'
+              ].includes(name)
           )
       );
       const older = await prisma.assistantConversation.create({
@@ -2070,6 +2249,7 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
     it('persiste le fil complet et isole son accès du compte voisin et de l’autre agence', async () => {
       const baseA = `/api/tenants/${tenantA.id}/ai`;
       const baseB = `/api/tenants/${tenantB.id}/ai`;
+      const owner = await createTenantAdminUser(tenantA, 'assistant-history-owner');
       const colleague = await createTenantAdminUser(tenantA, 'assistant-colleague');
       const turnId = randomUUID();
       const payload = { turnId, messages: [{ role: 'user', content: 'Bilan confidentiel du test' }] };
@@ -2085,7 +2265,7 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         { toolCalls: [{ name: 'rental_receipts', input: { month: '2025-06' } }] },
         { text: 'Résultat synthétique.' }
       ];
-      const stream = await request(app).post(`${baseA}/chat`).set(authed(adminA)).send(payload);
+      const stream = await request(app).post(`${baseA}/chat`).set(authed(owner)).send(payload);
       expect(stream.status).toBe(200);
       const conversationId = JSON.parse(
         stream.text
@@ -2094,7 +2274,7 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
           .slice(6)
       ).conversationId;
 
-      const persisted = await request(app).get(`${baseA}/conversations/${conversationId}`).set(authed(adminA));
+      const persisted = await request(app).get(`${baseA}/conversations/${conversationId}`).set(authed(owner));
       expect(persisted.status).toBe(200);
       expect(persisted.body.data.turns).toMatchObject([
         { id: turnId, question: 'Bilan confidentiel du test', response: 'Résultat synthétique.' }
@@ -2102,7 +2282,7 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
 
       const duplicate = await request(app)
         .post(`${baseA}/chat`)
-        .set(authed(adminA))
+        .set(authed(owner))
         .send({ ...payload, conversationId });
       expect(duplicate.status).toBe(409);
 
@@ -2112,7 +2292,7 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       const suffix = `/conversations/${conversationId}/artifacts/${artifactId}/pdf`;
       const download = await request(app)
         .get(baseA + suffix)
-        .set(authed(adminA));
+        .set(authed(owner));
       expect(download.status).toBe(200);
       expect(download.headers['content-type']).toMatch(/^application\/pdf/);
       expect(download.headers['cache-control']).toBe('private, no-store');
@@ -2121,11 +2301,11 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       mockFakeScript = [{ text: 'Proposition concise.' }];
       const proposal = await request(app)
         .post(draftPath + '/rewrite')
-        .set(authed(adminA))
+        .set(authed(owner))
         .send(rewrite);
       expect(proposal.status).toBe(200);
       expect(proposal.body.data).toEqual({ text: 'Proposition concise.' });
-      const unchanged = await request(app).get(draftPath).set(authed(adminA));
+      const unchanged = await request(app).get(draftPath).set(authed(owner));
       expect(unchanged.body.data).toMatchObject({ version: 1, artifact: { content: 'Résultat synthétique.' } });
       expect(
         (
@@ -2139,23 +2319,23 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         (
           await request(app)
             .post(draftPath + '/rewrite')
-            .set(authed(adminA))
+            .set(authed(owner))
             .send({ ...rewrite, section: 1 })
         ).status
       ).toBe(422);
       const updated = await request(app)
         .post(draftPath)
-        .set(authed(adminA))
+        .set(authed(owner))
         .send({ expectedVersion: 1, textSections: ['Texte corrigé.'] });
       expect(updated.status).toBe(201);
       expect(updated.body.data).toMatchObject({ version: 2, artifact: { content: 'Texte corrigé.' } });
-      const superseded = await request(app).get(draftPath).query({ version: 1 }).set(authed(adminA));
+      const superseded = await request(app).get(draftPath).query({ version: 1 }).set(authed(owner));
       expect(superseded.body.data.artifact.content).toBe('Résultat synthétique.');
       expect(
         (
           await request(app)
             .post(draftPath)
-            .set(authed(adminA))
+            .set(authed(owner))
             .send({ expectedVersion: 1, textSections: ['Ancien brouillon.'] })
         ).status
       ).toBe(409);
@@ -2170,7 +2350,7 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
 
       const powerpoint = await request(app)
         .get(baseA + suffix.replace(/pdf$/, 'pptx'))
-        .set(authed(adminA));
+        .set(authed(owner));
       expect(powerpoint.status).toBe(200);
       expect(powerpoint.headers['content-type']).toContain('presentationml.presentation');
       expect(
@@ -2199,13 +2379,13 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         ]
       };
       await prisma.assistantTurn.updateMany({
-        where: { tenantId: tenantA.id, ownerId: adminA.id, id: turnId },
+        where: { tenantId: tenantA.id, ownerId: owner.id, id: turnId },
         data: { result: [...persisted.body.data.turns[0].result, { type: 'artifact', artifact: report }] }
       });
       const reportPath = `${baseA}/conversations/${conversationId}/artifacts/${report.id}`;
       const revisedReport = await request(app)
         .post(reportPath)
-        .set(authed(adminA))
+        .set(authed(owner))
         .send({ expectedVersion: 1, textSections: ['Rapport corrigé.'] });
       expect(revisedReport.status).toBe(201);
       expect(revisedReport.body.data.artifact.blocks).toEqual([
@@ -2216,46 +2396,46 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         (
           await request(app)
             .post(reportPath)
-            .set(authed(adminA))
+            .set(authed(owner))
             .send({ expectedVersion: 2, textSections: ['Introduction.', 'Section ajoutée.'] })
         ).status
       ).toBe(422);
       const receiptsId = receiptTable.id;
       const versionPath = `${baseA}/conversations/${conversationId}/artifacts/${receiptsId}`;
-      const original = await request(app).get(versionPath).set(authed(adminA));
+      const original = await request(app).get(versionPath).set(authed(owner));
       expect(original.body.data.version).toBe(1);
       const attempts = await Promise.all(
-        [1, 1].map(expectedVersion => request(app).post(versionPath).set(authed(adminA)).send({ expectedVersion }))
+        [1, 1].map(expectedVersion => request(app).post(versionPath).set(authed(owner)).send({ expectedVersion }))
       );
       expect(attempts.map(result => result.status).sort()).toEqual([201, 409]);
-      const latest = await request(app).get(versionPath).set(authed(adminA));
+      const latest = await request(app).get(versionPath).set(authed(owner));
       expect(latest.body.data).toMatchObject({ version: 2, latest: 2, versions: [{ version: 2 }, { version: 1 }] });
-      const historical = await request(app).get(versionPath).query({ version: 1 }).set(authed(adminA));
+      const historical = await request(app).get(versionPath).query({ version: 1 }).set(authed(owner));
       expect(historical.body.data.artifact).toEqual(original.body.data.artifact);
       const historicalFile = await request(app)
         .get(versionPath + '/csv')
         .query({ version: 1 })
-        .set(authed(adminA));
+        .set(authed(owner));
       expect(historicalFile.status).toBe(200);
       const renamed = await request(app)
         .post(versionPath)
-        .set(authed(adminA))
+        .set(authed(owner))
         .send({ expectedVersion: 2, title: 'Bilan renommé' });
       expect(renamed.status).toBe(201);
       expect(renamed.body.data).toMatchObject({ version: 3, artifact: { title: 'Bilan renommé' } });
       const restored = await request(app)
         .post(versionPath)
-        .set(authed(adminA))
+        .set(authed(owner))
         .send({ expectedVersion: 3, restoreVersion: 1 });
       expect(restored.status).toBe(201);
       expect(restored.body.data).toEqual({ version: 4, artifact: original.body.data.artifact });
-      const edit = await request(app).get(versionPath).query({ version: 3 }).set(authed(adminA));
+      const edit = await request(app).get(versionPath).query({ version: 3 }).set(authed(owner));
       expect(edit.body.data.artifact.title).toBe('Bilan renommé');
       const focusedTurnId = randomUUID();
       const focus = { artifactId: receiptsId, version: 3 };
       const focused = await request(app)
         .post(baseA + '/chat')
-        .set(authed(adminA))
+        .set(authed(owner))
         .send({
           conversationId,
           turnId: focusedTurnId,
@@ -2266,7 +2446,7 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       expect(JSON.stringify(mockProviderRequests.at(-1)?.messages)).toContain('Bilan renommé');
       const unknownVersion = await request(app)
         .post(baseA + '/chat')
-        .set(authed(adminA))
+        .set(authed(owner))
         .send({
           conversationId,
           turnId: randomUUID(),
@@ -2276,7 +2456,7 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       expect(unknownVersion.status).toBe(404);
       const rerun = await request(app)
         .post(baseA + '/chat')
-        .set(authed(adminA))
+        .set(authed(owner))
         .send({
           conversationId,
           regenerateTurnId: focusedTurnId,
@@ -2293,10 +2473,10 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       expect(otherOwner.status).toBe(404);
       expect(otherTenant.status).toBe(404);
 
-      const search = await request(app).get(`${baseA}/conversations`).set(authed(adminA)).query({ q: 'synthétique' });
+      const search = await request(app).get(`${baseA}/conversations`).set(authed(owner)).query({ q: 'synthétique' });
       expect(search.body.data.items).toMatchObject([{ id: conversationId }]);
 
-      const deleted = await request(app).delete(`${baseA}/conversations/${conversationId}`).set(authed(adminA));
+      const deleted = await request(app).delete(`${baseA}/conversations/${conversationId}`).set(authed(owner));
       expect(deleted.status).toBe(204);
       expect(await prisma.assistantTurn.count({ where: { tenantId: tenantA.id, conversationId } })).toBe(0);
     });

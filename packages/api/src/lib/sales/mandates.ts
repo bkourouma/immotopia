@@ -105,6 +105,7 @@ export async function listMandates(
   filters: {
     status?: string;
     propertyId?: string;
+    agentUserId?: string;
     search?: string;
     type?: string;
     startFrom?: string;
@@ -121,6 +122,7 @@ export async function listMandates(
   const where: Prisma.SaleMandateWhereInput = { tenantId };
   if (filters.status) where.status = { in: filters.status.split(',') as SaleMandateStatus[] };
   if (filters.propertyId) where.propertyId = filters.propertyId;
+  if (filters.agentUserId) where.agentUserId = filters.agentUserId;
   if (filters.type) where.mandateType = { in: filters.type.split(',') as SaleMandateType[] };
   if (filters.startFrom || filters.startTo)
     where.startDate = {

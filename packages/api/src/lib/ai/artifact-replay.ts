@@ -17,6 +17,7 @@ import { rentalReceiptsTool } from './tools/rental-receipts';
 import { chartAnalysisTool } from './tools/chart-analysis';
 import { showIndicatorsTool } from './tools/show-indicators';
 import { leasePortfolioTool, propertyPortfolioTool } from './tools/portfolio';
+import { constructionBudgetTool, crmPipelineTool, saleMandatesTool } from './tools/commercial-analysis';
 
 const querySchema = z.discriminatedUnion('tool', [
   z.object({ tool: z.literal('rental_arrears'), month: z.string().regex(monthPattern) }).strict(),
@@ -26,7 +27,10 @@ const querySchema = z.discriminatedUnion('tool', [
   syndicateChargesTool.inputSchema.extend({ tool: z.literal('syndicate_charges') }),
   syndicateMaintenanceTool.inputSchema.extend({ tool: z.literal('syndicate_maintenance') }),
   propertyPortfolioTool.inputSchema.required({ groupBy: true }).extend({ tool: z.literal('property_portfolio') }),
-  leasePortfolioTool.inputSchema.required({ start: true, end: true }).extend({ tool: z.literal('lease_portfolio') })
+  leasePortfolioTool.inputSchema.required({ start: true, end: true }).extend({ tool: z.literal('lease_portfolio') }),
+  crmPipelineTool.inputSchema.extend({ tool: z.literal('crm_pipeline') }),
+  saleMandatesTool.inputSchema.required({ start: true, end: true }).extend({ tool: z.literal('sale_mandates') }),
+  constructionBudgetTool.inputSchema.extend({ tool: z.literal('construction_budget') })
 ]);
 
 const analysisTools: Record<AnalysisQuery['tool'], CopilotToolDefinition> = {
@@ -37,7 +41,10 @@ const analysisTools: Record<AnalysisQuery['tool'], CopilotToolDefinition> = {
   syndicate_charges: syndicateChargesTool,
   syndicate_budget: syndicateBudgetTool,
   property_portfolio: propertyPortfolioTool,
-  lease_portfolio: leasePortfolioTool
+  lease_portfolio: leasePortfolioTool,
+  crm_pipeline: crmPipelineTool,
+  sale_mandates: saleMandatesTool,
+  construction_budget: constructionBudgetTool
 };
 
 export function canReplayArtifact(artifact: CopilotArtifact): boolean {

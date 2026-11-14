@@ -35,6 +35,7 @@ export const getSitesDashboard: GetSitesDashboard = async (tenantId, filters) =>
   const sites = await prisma.constructionSite.findMany({
     where: {
       tenantId,
+      ...(filters?.siteId ? { id: filters.siteId } : {}),
       ...(filters?.status ? { status: filters.status as any } : {})
     },
     orderBy: [{ createdAt: 'desc' }]

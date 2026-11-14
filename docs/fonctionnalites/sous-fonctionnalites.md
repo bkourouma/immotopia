@@ -6,14 +6,14 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | --- | --- |
 | Parc immobilier | 197 |
 | Gestion locative | 180 |
-| Finance | 197 |
-| CRM et Ventes | 70 |
+| Finance | 198 |
+| CRM et Ventes | 72 |
 | Maintenance | 34 |
 | Communication et Documents | 113 |
 | Syndic copropriete | 247 |
 | Administration plateforme | 142 |
 | Portails externes | 84 |
-| **Total** | **1264** |
+| **Total** | **1267** |
 
 ## Sous-fonctionnalités
 
@@ -605,6 +605,7 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Comptabilité | Rechercher un compte comptable | Choisir un compte du plan comptable pour filtrer les écritures ou ouvrir son grand livre. | Query `search?`, `withMovements?`, `from?`, `to?`, `limit?` | Comptes correspondants (maximum 50) | — | TENANT_ADMIN, TENANT_MANAGER, TENANT_ACCOUNTANT | Agence | GET /tenants/:tenantId/finance/accounting/accounts | FINANCE_REPORTS_READ | Disponible | Finance > Caisse et comptabilité > Comptabilité |
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Facturation et balances | Lister les biens disponibles dans les filtres des balances clients | Alimenter le filtre Bien des balances clients et âgée avec les seuls identifiants et titres des biens ayant un bail dans l’agence. Accessible au comptable avec FINANCE_REPORTS_READ, indépendamment de l’accès aux fiches des biens. Le bail et le bien sont filtrés par agence ; le titre utilise la référence interne en repli ; aucun autre détail du bien n’est exposé. | tenantId (URL), contexte agence autorisé ; aucune saisie supplémentaire | Liste triée de { id, title } ; liste vide si aucun bien lié à un bail ; 403 sans lecture des rapports | Consulter la balance clients ; Consulter la balance clients âgée | TENANT_ADMIN, TENANT_MANAGER, TENANT_ACCOUNTANT | Agence | GET /tenants/:tenantId/finance/clients/properties | FINANCE_REPORTS_READ | Disponible | Finance > Clients et propriétaires > Facturation et balances > filtre Bien |
 | Promoteur, Opérateur intégré | CONSTRUCTION | Suivi des chantiers | Configurer le seuil d’alerte budgétaire | Fixer ou désactiver le seuil du chantier. Le contrôle compare l’engagé au budget révisé. | Pourcentage, seuil en vigueur au moment de l’ouverture | Seuil enregistré et alerte ouverte si le seuil est déjà atteint | Chantier ouvert | Gestionnaire de chantier | Agence | GET et PATCH /api/tenants/:tenantId/finance/sites/:siteId/budget-alert-threshold | FINANCE_SITES_MANAGE | Disponible | Finance > Chantiers > Budget > Seuil d’alerte budgétaire |
+| Promoteur, Opérateur intégré | CONSTRUCTION | Assistant IA ImmoCopilot | Analyser les budgets de chantier | Consulter le budget révisé, le réalisé, l’engagé, l’écart et l’avancement selon le tableau de bord des chantiers. | Chantier, statut et filtre dépassement facultatifs | Tableau recalculable de la situation actuelle avec provenance | Module Construction | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | FINANCE_REPORTS_READ | Disponible | Assistant > Résultats et documents |
 
 ### CRM et Ventes
 
@@ -680,6 +681,8 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Agence, Promoteur, Opérateur intégré | SALES | Signature électronique du compromis de vente | Annuler automatiquement les demandes à la modification du compromis | Les demandes de signature en cours sont annulées (motif SOURCE_CHANGED) quand un champ imprimé change, quand une condition suspensive est ajoutée ou que l'échéancier change, ou quand le compromis est signé à la main ou annulé. Un échec de l'annulation est journalisé sans défaire l'opération. | Aucune (déclenché par la modification du compromis) | Demandes au statut CANCELED ; liens sans effet (404 uniforme) | Envoyer un compromis de vente pour signature | Collaborateur (accès agence) | Agence (collaborateur) | Aucune route propre : effet de PATCH /agreements/:id, POST /agreements/:id/sign, /cancel, /conditions et PUT /agreements/:id/milestones (préfixe /tenants/:tenantId/sales) | CRM_DEALS_EDIT | Disponible | Ventes > Mandats de vente > Compromis > détail du compromis > carte Signatures |
 | Agence, Syndic, Promoteur, Opérateur intégré | MODULE_AGENCY | CRM > Contacts (CORE) | Rattraper les propriétaires (TenantClient OWNER des contacts au rôle Propriétaire) | Créer le client propriétaire des contacts convertis au rôle Propriétaire avant que la conversion ne le fasse, pour les proposer comme vendeur, propriétaire d'un bien ou indivisaire | — | `{examined, created}` : contacts propriétaires examinés et clients créés. Idempotent ; un contact en échec n'empêche pas les autres. Aucune notification (WhatsApp, lien de réinitialisation) n'est envoyée par ce rattrapage | Contacts au rôle PROPRIETAIRE actif | Collaborateur agence — CRM_CONTACTS_EDIT | Agence (collaborateur) | POST /tenants/:tenantId/clients/sync-owners | CRM_CONTACTS_EDIT | Disponible | Biens > formulaire de bien (champ Propriétaire) ; ventes > mandat (vendeur) ; appel en arrière-plan, le refus de droit est toléré |
 | Agence, Promoteur, Opérateur intégré | CRM | Contacts | Voir l'adresse du compte portail qui reçoit les avis | Savoir, depuis la fiche contact, que les avis partent à l'adresse du compte portail quand elle diffère | — | Note sous le champ e-mail avec l'adresse masquée du compte portail (détail du contact seulement) | — | Collaborateur (accès agence) | Agence (collaborateur) | GET /tenants/:tenantId/crm/contacts/:contactId | CRM_CONTACTS_VIEW | Disponible (pas dans la fenêtre « Modifier » de la liste des contacts) | CRM › Contacts › Détail ou modification |
+| Agence, Promoteur, Opérateur intégré | CRM | Assistant IA ImmoCopilot | Analyser le pipeline des affaires | Reprendre les chiffres du pipeline CRM par étape ouverte. | Étapes ouvertes et collaborateur actif facultatifs | Tableau recalculable avec nombre, valeur, âge, part et provenance | Module CRM | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | CRM_DEALS_VIEW | Disponible | Assistant > Résultats et documents |
+| Agence, Promoteur, Opérateur intégré | SALES | Assistant IA ImmoCopilot | Analyser les échéances des mandats de vente | Lister les mandats actifs dont la date de fin est comprise dans la période. | Dates de début et de fin, bien et négociateur facultatifs | Tableau recalculable des échéances et prix demandés avec provenance | Module Ventes | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | CRM_DEALS_VIEW | Disponible | Assistant > Résultats et documents |
 
 ### Maintenance
 

@@ -112,7 +112,10 @@ export async function resolveSavedAssistantScope(
   toolNames: string[]
 ): Promise<string> {
   const scopeKey = assistantScope(permissions, toolNames);
-  const beforeRentalAlerts = toolNames.filter(
+  const beforeCommercialAnalysis = toolNames.filter(
+    name => !['crm_pipeline', 'sale_mandates', 'construction_budget'].includes(name)
+  );
+  const beforeRentalAlerts = beforeCommercialAnalysis.filter(
     name => !['prepare_lease_expiry_alert', 'prepare_declaration_alert', 'prepare_rent_arrears_alert'].includes(name)
   );
   const beforeSiteAlert = beforeRentalAlerts.filter(name => name !== 'prepare_budget_alert');
@@ -125,8 +128,8 @@ export async function resolveSavedAssistantScope(
   // The migration only adds available tools. Losing access does not migrate a thread.
   const earlierScopes = [
     ...new Set(
-      [beforeRentalAlerts, beforeSiteAlert, beforeBudget, previousTools, originalTools].map(tools =>
-        assistantScope(permissions, tools)
+      [beforeCommercialAnalysis, beforeRentalAlerts, beforeSiteAlert, beforeBudget, previousTools, originalTools].map(
+        tools => assistantScope(permissions, tools)
       )
     )
   ];
