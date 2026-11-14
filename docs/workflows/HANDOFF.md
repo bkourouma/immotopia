@@ -59,6 +59,8 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 **Charges de copropriété** — L’outil `syndicate_charges` filtre les appels sur leur date d’échéance par année ou mois, avec lot et type de campagne facultatifs. Il réunit les montants appelés, affectés, restant à payer et en retard par lot et devise. Les soldes et les retards sont calculés à la date de consultation avec les règles du syndic. Le filtre est enregistré et rejoué pour le recalcul et les exports. Les anciens fils sont repris sous le nouveau périmètre des droits. La recette PostgreSQL avec garde Prisma stricte couvre une affectation partielle, deux devises, l’exclusion d’un autre mois, le recalcul et le refus inter-agences. Les écarts au budget de copropriété restent à intégrer.
 
+**Budgets de copropriété** — Après `0ba1590c`, le tableau `syndicate_budget` compare prévisionnel et réalisé par poste et par exercice. Il réutilise le calcul de l’écran Syndic. Les dépenses non rattachées n’alimentent pas les postes calculés. L’écart est le prévisionnel moins le réalisé. Le jeu est disponible avec `SYNDIC_VIEW` et le module Syndic, et les filtres sont conservés pour les versions et exports.
+
 ## chore/deps-patch-minor — 2026-11-11
 
 **État** — PR 218 vers `main` (fusion par l'utilisateur), reprend la PR Dependabot 212 (28 mises à jour mineures : antd 6.7, Radix, TanStack Query, aws-sdk, docxtemplater, pizzip…). PR Dependabot 214 (`@vitejs/plugin-react` 6) et 215 (`vitest` 5) fermées le 2026-11-11 : sauts de versions majeures (module introuvable, matchers non typés), à traiter en migration dédiée ; envisager une règle `ignore` des versions majeures dans `.github/dependabot.yml`.

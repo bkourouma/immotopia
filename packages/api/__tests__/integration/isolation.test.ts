@@ -285,7 +285,9 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         permissions,
         toolsForUser(permissions)
           .map(tool => tool.name)
-          .filter(name => name !== 'syndicate_maintenance' && name !== 'syndicate_charges')
+          .filter(
+            name => name !== 'syndicate_maintenance' && name !== 'syndicate_charges' && name !== 'syndicate_budget'
+          )
       );
       const older = await prisma.assistantConversation.create({
         data: { ...owner, title: 'Historique avant le filtre Syndic', scopeKey: legacyScope }
@@ -462,6 +464,123 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
           .send({
             turnId: randomUUID(),
             messages: [{ role: 'user', content: 'Analyse les charges par lot.' }]
+          });
+        expect(foreign.status).toBe(200);
+        expect(foreign.text).not.toContain('"type":"artifact"');
+      } finally {
+        mockFakeScript = undefined;
+      }
+    });
+
+    it('compare les postes du budget avec le réalisé de l’écran syndic et protège le recalcul', async () => {
+      const syndicate = await prisma.syndicate.create({
+        data: { tenantId: tenantA.id, name: 'Résidence du budget', address: 'Cocody' }
+      });
+      createdSyndicateIds.push(syndicate.id);
+      const budget = await prisma.syndicateBudget.create({
+        data: {
+          syndicateId: syndicate.id,
+          fiscalYear: 2025,
+          label: 'Budget courant',
+          status: 'APPROVED',
+          totalAmount: 100,
+          lines: {
+            create: {
+              category: 'Entretien',
+              description: 'Pompe',
+              distributionKey: 'EQUAL',
+              amountForecast: 100,
+              amountActual: 80
+            }
+          }
+        },
+        include: { lines: true }
+      });
+      const contact = await createContactDirect(tenantA.id, 'Déclarant budget test');
+      const incident = await prisma.syndicateIncident.create({
+        data: {
+          syndicateId: syndicate.id,
+          reportedByContactId: contact,
+          incidentType: 'LEAK',
+          urgency: 'HIGH',
+          description: 'Fuite',
+          reportedAt: new Date('2025-06-01')
+        }
+      });
+      const imputation = await prisma.incidentCostImputation.create({
+        data: {
+          incidentId: incident.id,
+          imputationType: 'SYNDICATE_BUDGET',
+          budgetLineId: budget.lines[0].id,
+          amount: 35
+        }
+      });
+      await prisma.incidentCostImputation.create({
+        data: {
+          incidentId: incident.id,
+          imputationType: 'SYNDICATE_BUDGET',
+          amount: 500,
+          createdAt: new Date('2025-06-01')
+        }
+      });
+      await prisma.incidentCostImputation.create({
+        data: {
+          incidentId: incident.id,
+          imputationType: 'SYNDICATE_BUDGET',
+          budgetLineId: budget.lines[0].id,
+          amount: 450,
+          journalEntryId: randomUUID()
+        }
+      });
+      const base = `/api/tenants/${tenantA.id}`;
+      mockFakeScript = [
+        {
+          toolCalls: [
+            { name: 'syndicate_budget', input: { syndicateId: syndicate.id, fiscalYear: 2025, budgetId: budget.id } }
+          ]
+        },
+        { text: 'Voici les écarts.' }
+      ];
+      try {
+        const screen = await request(app)
+          .get(`${base}/syndics/${syndicate.id}/budgets?fiscalYear=2025`)
+          .set(authed(adminA));
+        expect(screen.status).toBe(200);
+        expect(screen.body.data[0].lines[0].actualTotal).toBe(115);
+        const result = await request(app)
+          .post(base + '/ai/chat')
+          .set(authed(adminA))
+          .send({
+            turnId: randomUUID(),
+            messages: [{ role: 'user', content: 'Compare le budget au réalisé.' }]
+          });
+        expect(result.status).toBe(200);
+        const events = result.text
+          .split('\n')
+          .filter(line => line.startsWith('data: {'))
+          .map(line => JSON.parse(line.slice(6)));
+        const { artifact } = events.find(event => event.type === 'artifact');
+        expect(artifact.rows).toEqual([
+          expect.objectContaining({
+            forecast: 100,
+            actual: screen.body.data[0].lines[0].actualTotal,
+            variance: -15
+          })
+        ]);
+        const { conversationId } = events.find(event => event.type === 'meta');
+        await prisma.incidentCostImputation.update({ where: { id: imputation.id }, data: { amount: 10 } });
+        const replay = await request(app)
+          .post(`${base}/ai/conversations/${conversationId}/artifacts/${artifact.id}`)
+          .set(authed(adminA))
+          .send({ expectedVersion: 1 });
+        expect(replay.status).toBe(201);
+        expect(replay.body.data.artifact.rows[0]).toMatchObject({ actual: 90, variance: 10 });
+        const foreign = await request(app)
+          .post(`/api/tenants/${tenantB.id}/ai/chat`)
+          .set(authed(adminB))
+          .send({
+            turnId: randomUUID(),
+            messages: [{ role: 'user', content: 'Compare le budget au réalisé.' }]
           });
         expect(foreign.status).toBe(200);
         expect(foreign.text).not.toContain('"type":"artifact"');

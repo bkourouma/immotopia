@@ -31,6 +31,10 @@ const TOOL_CAPABILITIES: Record<CopilotToolName, { group: string; text: string }
   rental_arrears: { group: 'rentalArrears', text: 'les échéances locatives non soldées par bien et par mois clos' },
   property_portfolio: { group: 'portfolio', text: 'l’occupation et la disponibilité du parc actuel' },
   lease_portfolio: { group: 'leasePortfolio', text: 'les baux actifs et les fins de bail par bien' },
+  syndicate_budget: {
+    group: 'syndicateBudget',
+    text: 'le prévisionnel, le réalisé et les écarts des budgets de copropriété'
+  },
   syndicate_charges: {
     group: 'syndicateCharges',
     text: 'les charges appelées, réglées et en retard par lot et devise'

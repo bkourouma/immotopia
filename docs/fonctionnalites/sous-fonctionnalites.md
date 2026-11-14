@@ -10,10 +10,10 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | CRM et Ventes | 70 |
 | Maintenance | 34 |
 | Communication et Documents | 93 |
-| Syndic copropriete | 246 |
+| Syndic copropriete | 247 |
 | Administration plateforme | 142 |
 | Portails externes | 84 |
-| **Total** | **1242** |
+| **Total** | **1243** |
 
 ## Sous-fonctionnalités
 
@@ -1067,6 +1067,7 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Syndic, Opérateur intégré | SYNDIC | Finances — Comptes de réception de paiement (configuration) | Voir l'image du QR d'un compte de réception de la copropriété | Afficher l'aperçu de l'image du QR d'un compte de la copropriété (actif ou non), par une route authentifiée ; jamais servie en statique. | accountId (URL) ; aucun corps | Octets de l'image servis en ligne ; 404 compte inconnu, sans image ou d'une autre copropriété ; 429 au-delà de 60 lectures par minute | Ajouter un compte de réception de la copropriété | Collaborateur agence — SYNDIC_VIEW (Administrateur et Gestionnaire par défaut ; ni Agent ni Comptable) | Agence | GET /tenants/:tenantId/syndics/:syndicId/receiving-accounts/:accountId/qr | requireAnyPropertyPermission(['SYNDIC_VIEW']) ; limiteur receivingAccountQrReadRateLimiter (60 par minute et par utilisateur) | Disponible | Syndic > Finances > Paiements (onglet « Paiements déclarés », carte « Comptes de réception de la copropriété », vignette du QR) |
 | Syndic (sans l'option AG en direct et visio) | SYNDIC | Assemblées et documents | Constater que l'AG en direct n'est pas souscrite (console) | Sans l'option « AG en direct et visio » (extension EXT_AG_EN_DIRECT, incluse d'office dans l'Opérateur intégré), la section « En direct » de la fiche d'AG n'ouvre ni console, ni visio, ni liens personnels : elle affiche l'état « AG en direct et visio — option non souscrite » et un bouton « Demander l'option » vers la page Abonnement avec l'offre pré-sélectionnée. L'AG classique (convocation, résolutions, votes saisis, pouvoirs, procès-verbal) reste utilisable. L'état n'apparaît qu'en mode d'application « enforce » ; en « warn » ou « off » la console s'affiche comme avant. | Droits d'abonnement de l'agence (features, enforcement) | État « option non souscrite » et bouton « Demander l'option » ; aucune route en direct appelée. Si une route en direct répond 403 OPTION_NOT_INCLUDED (cache des droits de 30 s), le même état s'affiche. | Convoquer une assemblée générale | Collaborateur agence — SYNDIC_VIEW | Agence | GET /tenants/:tenantId/entitlements (champ features ; SYNDIC_LIVE) ; refus 403 OPTION_NOT_INCLUDED des routes /assemblees/:meetingId/{direct, presences, participants, visio, enregistrements, resolutions/:id/ouvrir-vote et clore-vote} | authenticate + requireTenantAccess ; garde d'abonnement (fonctionnalité SYNDIC_LIVE) sur les routes en direct | Disponible | Syndic > Assemblées et documents > fiche de l'AG > En direct |
 | Syndic, Opérateur intégré | SYNDIC | Assistant IA ImmoCopilot | Analyser les appels de charges par lot | Mesurer les charges appelées, les règlements affectés, le reste à payer et le retard par lot et devise. | Copropriété, année ou mois d’échéance et filtres de lot ou type de campagne | Tableau par lot et devise avec provenance, export et recalcul | Module Syndic et appels de charges | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | SYNDIC_VIEW et accès à l’assistant | Disponible | Assistant > Résultats et documents |
+| Syndic, Opérateur intégré | SYNDIC | Assistant IA ImmoCopilot | Comparer le budget au réalisé par poste | Repérer les dépassements de budget en comparant les dépenses réalisées aux prévisions par poste. | Copropriété, exercice et filtres de budget ou statut | Tableau par poste avec prévisionnel, réalisé, écart, provenance, recalcul et export | Module Syndic et budgets | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | SYNDIC_VIEW et accès à l’assistant | Disponible | Assistant > Résultats et documents |
 
 ### Administration plateforme
 

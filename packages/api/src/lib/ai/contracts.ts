@@ -1,5 +1,11 @@
 import { z } from 'zod';
-import type { BatchType, MaintenanceTicketPriority, MaintenanceTicketStatus, PropertyType } from '@prisma/client';
+import type {
+  BatchType,
+  BudgetStatus,
+  MaintenanceTicketPriority,
+  MaintenanceTicketStatus,
+  PropertyType
+} from '@prisma/client';
 
 /**
  * Contrats figés d'ImmoCopilot (docs/architecture/PLAN_IMMOCOPILOT.md, §3).
@@ -32,6 +38,7 @@ export type CopilotToolName =
   | 'maintenance_overview'
   | 'syndicate_maintenance'
   | 'syndicate_charges'
+  | 'syndicate_budget'
   | 'property_portfolio'
   | 'lease_portfolio'
   | 'chart_analysis'
@@ -316,6 +323,7 @@ type MaintenanceQueryFilters = {
 };
 
 export type AnalysisQuery =
+  | { tool: 'syndicate_budget'; syndicateId: string; fiscalYear: number; budgetId?: string; status?: BudgetStatus }
   | {
       tool: 'syndicate_charges';
       syndicateId: string;

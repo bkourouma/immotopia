@@ -16,6 +16,7 @@ export type CopilotToolName =
   | 'maintenance_overview'
   | 'syndicate_maintenance'
   | 'syndicate_charges'
+  | 'syndicate_budget'
   | 'property_portfolio'
   | 'lease_portfolio'
   | 'chart_analysis'
