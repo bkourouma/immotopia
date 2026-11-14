@@ -178,6 +178,7 @@ export const LiveParticipantsTable: React.FC<LiveParticipantsTableProps> = ({
 
   return (
     <Table<MeetingParticipantView>
+      helpId="syndic.assemblees.detail.direct-participants"
       {...local.tableProps}
       aria-label={t('Participants et liens personnels')}
       exportable={false}

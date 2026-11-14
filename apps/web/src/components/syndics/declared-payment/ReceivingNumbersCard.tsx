@@ -29,6 +29,7 @@ import {
 } from '../../../services/syndic-declared-payment-service';
 import { MoneyValue } from '../../primitives';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 import { OPERATOR_OPTIONS, apiErrorCode, apiErrorMessage, formatPhone, operatorLabel } from './helpers';
 
 const { Text, Paragraph } = Typography;
@@ -327,7 +328,7 @@ export const ReceivingNumbersCard: React.FC<ReceivingNumbersCardProps> = ({
 
   return (
     <Card
-      title={title}
+      title={<HelpSectionTitle title={title} helpId="syndic.paiements.numeros" />}
       extra={
         canEdit ? (
           <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>

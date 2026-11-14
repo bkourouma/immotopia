@@ -117,6 +117,7 @@ export const LinkedProviderInvoices: React.FC<LinkedProviderInvoicesProps> = ({
   return (
     <>
       <Table
+        helpId="syndic.prestataires.factures-liees"
         // Sous-tableau d'une ligne dépliée (contrat, incident) : pas d'export propre.
         exportable={false}
         rowKey="id"

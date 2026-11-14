@@ -119,6 +119,8 @@ interface ChargeCallTableProps {
    * tableau. Absente : liste fournie en entier, sans barre. Sous critère actif, le tableau vide propose d'effacer.
    */
   search?: ListSearchBinding;
+  /** Fiche d'aide du tableau (le « ? » de l'en-tête). */
+  helpId?: string;
 }
 
 export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
@@ -133,7 +135,8 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
   onAssignFund,
   onPaymentLink,
   declaredPendingCallIds,
-  search
+  search,
+  helpId
 }) => {
   const fundNames = new Map((funds || []).map(fund => [fund.id, fund.name]));
   const columns: ColumnsType<ChargeCall> = [
@@ -256,6 +259,7 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
 
   return (
     <Table
+      helpId={helpId}
       exportFilename={t('Appels de charges')}
       rowKey="id"
       columns={columns}

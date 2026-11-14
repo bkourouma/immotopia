@@ -141,6 +141,7 @@ export const SyndicRemittancesCard: React.FC<SyndicRemittancesCardProps> = ({
           <Alert type="error" showIcon message={apiErrorMessage(error, t('Erreur lors du chargement des remises'))} />
         )}
         <Table<RemittanceSummaryDto>
+          helpId="syndic.prelevements.remises"
           aria-label={t('Remises')}
           search={search.searchProps}
           exportFilename={t('Remises')}

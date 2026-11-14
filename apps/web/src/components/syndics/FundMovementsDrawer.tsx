@@ -125,6 +125,7 @@ export const FundMovementsDrawer: React.FC<FundMovementsDrawerProps> = ({ tenant
         </div>
       ) : (
         <Table
+          helpId="syndic.fonds.mouvements"
           exportFilename={t('Mouvements du fonds')}
           // Tous les mouvements du fonds, pas seulement la page affichée.
           exportFetchAll={() =>

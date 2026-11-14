@@ -6,6 +6,7 @@ import { checkSyndicIban, createSyndicMandate, listLotDebtors } from '../../../s
 import { apiErrorMessage } from '../../rental/direct-debit/direct-debit-shared';
 import { SYNDIC_DD_KEYS } from './keys';
 import { STALE_TIME } from '../../../lib/query-keys';
+import { HelpSectionTitle } from '../../../help';
 import { t } from '../../../i18n/t';
 
 const { Text } = Typography;
@@ -180,7 +181,9 @@ export const SyndicMandateFormModal: React.FC<SyndicMandateFormModalProps> = ({
   return (
     <Modal
       open={open}
-      title={t('Nouveau mandat de prélèvement')}
+      title={
+        <HelpSectionTitle title={t('Nouveau mandat de prélèvement')} helpId="syndic.prelevements.mandat-nouveau" />
+      }
       okText={t('Créer le mandat de prélèvement')}
       cancelText={t('Annuler')}
       onOk={() => void handleOk()}

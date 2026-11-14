@@ -221,7 +221,7 @@ describe('SyndicDirectDebit — créancier du syndicat', () => {
   it('affiche la carte du créancier et ne propose aucun frais de rejet', async () => {
     mount();
     expect(
-      await screen.findByText('Compte de prélèvement du syndicat', { selector: '.ant-card-head-title' })
+      await screen.findByText('Compte de prélèvement du syndicat', { selector: '.ant-card-head-title span' })
     ).toBeInTheDocument();
     expect(await screen.findByText('Banque Atlantique')).toBeInTheDocument();
     expect(screen.getByText('EMT-77')).toBeInTheDocument();
@@ -268,7 +268,7 @@ describe('SyndicDirectDebit — créancier du syndicat', () => {
 
     await screen.findByText('Banque Atlantique');
     const creditorCard = screen
-      .getByText('Compte de prélèvement du syndicat', { selector: '.ant-card-head-title' })
+      .getByText('Compte de prélèvement du syndicat', { selector: '.ant-card-head-title span' })
       .closest('.ant-card') as HTMLElement;
     await user.click(within(creditorCard).getByRole('button', { name: 'Modifier' }));
     const modal = await dialog();
@@ -306,7 +306,7 @@ describe('SyndicDirectDebit — créancier du syndicat', () => {
     });
 
     const creditorCard = screen
-      .getByText('Compte de prélèvement du syndicat', { selector: '.ant-card-head-title' })
+      .getByText('Compte de prélèvement du syndicat', { selector: '.ant-card-head-title span' })
       .closest('.ant-card') as HTMLElement;
     // L'enregistrement de la désactivation doit être terminé (boutons de nouveau actifs).
     await waitFor(() => expect(within(creditorCard).getByRole('button', { name: 'Modifier' })).toBeEnabled());

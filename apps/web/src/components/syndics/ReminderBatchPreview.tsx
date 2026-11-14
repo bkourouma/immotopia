@@ -3,6 +3,7 @@ import { Alert, Modal, Space, Table, Typography } from 'antd';
 import { ReminderBatchPreview as ReminderBatchPreviewData } from '../../types/syndic-types';
 import { reminderExclusionLabel } from './reminder-failure';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 const { Text } = Typography;
 
@@ -28,7 +29,7 @@ export const ReminderBatchPreview: React.FC<ReminderBatchPreviewProps> = ({
 
   return (
     <Modal
-      title={t('Relances groupées')}
+      title={<HelpSectionTitle title={t('Relances groupées')} helpId="syndic.recouvrement.relances-groupees" />}
       open={open}
       onCancel={onCancel}
       onOk={onConfirm}

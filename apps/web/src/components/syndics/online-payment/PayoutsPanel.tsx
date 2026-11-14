@@ -164,6 +164,7 @@ export const PayoutsPanel: React.FC<PayoutsPanelProps> = ({
         search={search.searchProps}
         pagination={search.tablePagination(total)}
         aria-label={t('Reversements vers la banque')}
+        helpId="syndic.paiements.reversements"
         exportFilename={t('Reversements vers la banque')}
         exportFetchAll={() =>
           collectAllPages<SyndicGatewayPayout>(async (page, limit) => {

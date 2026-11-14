@@ -255,6 +255,7 @@ export const ScheduleTable: React.FC<{
 
   return (
     <Table
+      helpId="syndic.programmation.liste.tableau"
       {...local.tableProps}
       exportFilename={t('Programmation des appels de charges')}
       exportFetchAll={local.exportAll}

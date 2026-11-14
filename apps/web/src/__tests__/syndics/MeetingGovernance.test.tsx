@@ -92,7 +92,7 @@ vi.mock('antd', async () => {
     Input: InputComp,
     Modal: ({ open, title, children, onOk, okText }: any) =>
       open ? (
-        <div role="dialog" aria-label={title}>
+        <div role="dialog" aria-label={typeof title === 'string' ? title : (title?.props?.title ?? title)}>
           {children}
           <button type="button" onClick={onOk}>
             {okText}

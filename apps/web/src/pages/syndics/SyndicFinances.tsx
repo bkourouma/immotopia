@@ -23,6 +23,7 @@ import { FinanceSummary, OverdueDashboard } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
 import { displayCurrency } from '../../utils/syndic-currency';
+import { HelpSectionTitle } from '../../help';
 
 const { Paragraph, Title } = Typography;
 
@@ -225,6 +226,7 @@ export const SyndicFinances: React.FC = () => {
       columns={fundColumns}
       rowKey={row => row.id}
       aria-label={t('Détail des fonds')}
+      helpId="syndic.tresorerie.fonds"
       export={{ filename: t('Détail des fonds'), fetchAll: async () => fundsTable.allItems }}
       renderCard={row => (
         <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-start' }}>
@@ -315,6 +317,7 @@ export const SyndicFinances: React.FC = () => {
         <Row gutter={[16, 16]}>
           <Col xs={24} md={8}>
             <StatCard
+              helpId="syndic.tresorerie.indicateurs"
               label={t('Total fonds')}
               value={<MoneyValue value={summary?.totals.totalFundsBalance} />}
               onClick={() => setActiveTab('fonds')}
@@ -322,6 +325,7 @@ export const SyndicFinances: React.FC = () => {
           </Col>
           <Col xs={24} md={8}>
             <StatCard
+              helpId="syndic.tresorerie.indicateurs"
               label={t('Total appelé')}
               value={<MoneyValue value={summary?.totals.totalCalled} />}
               onClick={() => setActiveTab('appels')}
@@ -329,6 +333,7 @@ export const SyndicFinances: React.FC = () => {
           </Col>
           <Col xs={24} md={8}>
             <StatCard
+              helpId="syndic.tresorerie.indicateurs"
               label={t('Total payé')}
               value={<MoneyValue value={summary?.totals.totalPaid} />}
               onClick={() => setActiveTab('paiements')}
@@ -336,16 +341,22 @@ export const SyndicFinances: React.FC = () => {
           </Col>
           <Col xs={24} md={8}>
             <StatCard
+              helpId="syndic.tresorerie.indicateurs"
               label={t('Reste à payer')}
               value={<MoneyValue value={summary?.totals.totalOutstanding} />}
               onClick={() => setActiveTab('appels')}
             />
           </Col>
           <Col xs={24} md={8}>
-            <StatCard label={t('Total des avances')} value={<MoneyValue value={summary?.totals.totalAdvance} />} />
+            <StatCard
+              helpId="syndic.tresorerie.indicateurs"
+              label={t('Total des avances')}
+              value={<MoneyValue value={summary?.totals.totalAdvance} />}
+            />
           </Col>
           <Col xs={24} md={8}>
             <StatCard
+              helpId="syndic.tresorerie.indicateurs"
               label={t('Dossiers en retard')}
               value={dashboard.totals.overdueCount}
               tone={dashboard.totals.overdueCount > 0 ? 'danger' : 'neutral'}
@@ -354,6 +365,7 @@ export const SyndicFinances: React.FC = () => {
           </Col>
           <Col xs={24} md={8}>
             <StatCard
+              helpId="syndic.tresorerie.indicateurs"
               label={t('Montant en retard')}
               value={<MoneyValue value={dashboard.totals.overdueAmount} />}
               tone={dashboard.totals.overdueAmount > 0 ? 'danger' : 'neutral'}
@@ -427,7 +439,7 @@ export const SyndicFinances: React.FC = () => {
       </Modal>
 
       <Modal
-        title={t('Ajuster le solde du fonds')}
+        title={<HelpSectionTitle title={t('Ajuster le solde du fonds')} helpId="syndic.tresorerie.ajustement" />}
         open={Boolean(adjustTarget)}
         onCancel={() => setAdjustTarget(null)}
         onOk={() => void handleAdjustFund()}

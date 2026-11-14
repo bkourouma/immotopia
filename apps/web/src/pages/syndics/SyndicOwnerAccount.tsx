@@ -39,6 +39,7 @@ import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { collectAllPages } from '../../utils/table-export/collect';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 import { displayCurrency } from '../../utils/syndic-currency';
 
 import { localizedRecord } from '../../i18n/localized';
@@ -361,6 +362,7 @@ export const SyndicOwnerAccount: React.FC = () => {
             <Row gutter={[16, 16]}>
               <Col xs={24} md={8}>
                 <StatCard
+                  helpId="syndic.lots.compte.indicateurs"
                   label={t('Solde courant')}
                   value={<MoneyValue value={balanceInfo.amount} />}
                   hint={`${balanceToneLabel[balanceInfo.tone]} — ${balanceToneHint[balanceInfo.tone]}`}
@@ -368,13 +370,18 @@ export const SyndicOwnerAccount: React.FC = () => {
                 />
               </Col>
               <Col xs={24} md={8}>
-                <StatCard label={t('Transactions')} value={transactionsTotal ?? '—'} />
+                <StatCard
+                  helpId="syndic.lots.compte.indicateurs"
+                  label={t('Transactions')}
+                  value={transactionsTotal ?? '—'}
+                />
               </Col>
               <Col xs={24} md={8}>
-                <StatCard label={t('Propriétaire')} value={ownerName} />
+                <StatCard helpId="syndic.lots.compte.indicateurs" label={t('Propriétaire')} value={ownerName} />
               </Col>
               <Col xs={24} md={8}>
                 <StatCard
+                  helpId="syndic.lots.compte.indicateurs"
                   label={t('Avance disponible')}
                   value={<MoneyValue value={advance ?? 0} />}
                   hint={t('Imputée automatiquement sur les prochains appels de charges')}
@@ -393,6 +400,7 @@ export const SyndicOwnerAccount: React.FC = () => {
                   label: t('Historique des transactions'),
                   children: (
                     <Table
+                      helpId="syndic.lots.compte.transactions"
                       aria-label={t('Historique des transactions')}
                       search={txSearch.searchProps}
                       exportFilename={t('Historique des transactions')}
@@ -465,6 +473,7 @@ export const SyndicOwnerAccount: React.FC = () => {
                   label: t('Reçus et quittances'),
                   children: (
                     <Table
+                      helpId="syndic.lots.compte.recus"
                       aria-label={t('Reçus et quittances')}
                       search={receiptSearch.searchProps}
                       exportFilename={t('Reçus et quittances')}
@@ -542,7 +551,7 @@ export const SyndicOwnerAccount: React.FC = () => {
       </Space>
 
       <Modal
-        title={t('Ajouter un ajustement')}
+        title={<HelpSectionTitle title={t('Ajouter un ajustement')} helpId="syndic.lots.compte.ajustement" />}
         open={open}
         onCancel={() => setOpen(false)}
         onOk={() => void handleAdjustment()}

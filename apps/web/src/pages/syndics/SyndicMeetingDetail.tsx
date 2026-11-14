@@ -60,6 +60,7 @@ import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
 import { saveBlob } from '../../utils/save-blob';
 import { describeDownloadError } from '../../utils/download-error';
+import { HelpButton, HelpSectionTitle, helpAnchor } from '../../help';
 
 const { Paragraph, Title, Text } = Typography;
 
@@ -425,6 +426,7 @@ export const SyndicMeetingDetail: React.FC = () => {
                 {t('Détail assemblée générale')}
               </Title>
               <Tag color={meetingStatusColors[meeting.status]}>{meetingStatusLabels[meeting.status]}</Tag>
+              <HelpButton helpId="syndic.assemblees.detail.statuts" />
             </Space>
             <Paragraph type="secondary" style={{ marginBottom: 0 }}>
               Date: {dayjs(meeting.scheduledAt).format('DD/MM/YYYY HH:mm')} {t('| Type:')}{' '}
@@ -482,16 +484,18 @@ export const SyndicMeetingDetail: React.FC = () => {
                 cancelText={t('Annuler')}
                 onConfirm={() => handleResendConvocation()}
               >
-                <Button loading={resendingConvocation}>
+                <Button loading={resendingConvocation} {...helpAnchor('ag-convocation')}>
                   {convocationSent ? t('Renvoyer la convocation') : t('Envoyer les convocations')}
                 </Button>
               </Popconfirm>
             ) : null}
+            <HelpButton helpId="syndic.assemblees.detail.convocation" />
             {frozen ? null : (
               <Button
                 type="primary"
                 icon={<PlusOutlined />}
                 disabled={submittingResolution}
+                {...helpAnchor('ag-resolution')}
                 onClick={() => setOpenResolution(true)}
               >
                 {t('Ajouter une résolution')}
@@ -501,7 +505,7 @@ export const SyndicMeetingDetail: React.FC = () => {
         </div>
 
         {meeting.status === 'CANCELLED' ? null : (
-          <Card title={t('En direct')}>
+          <Card title={<HelpSectionTitle title={t('En direct')} helpId="syndic.assemblees.detail.direct" />}>
             <MeetingLiveConsole
               tenantId={effectiveTenantId || ''}
               syndicId={syndicId || ''}
@@ -536,7 +540,8 @@ export const SyndicMeetingDetail: React.FC = () => {
         />
 
         <Card
-          title={t('Ordre du jour')}
+          {...helpAnchor('ag-ordre-du-jour')}
+          title={<HelpSectionTitle title={t('Ordre du jour')} helpId="syndic.assemblees.detail.ordre-du-jour" />}
           extra={
             frozen ? (
               <Tooltip title={meetingFrozenReason(meeting.status)}>
@@ -618,7 +623,11 @@ export const SyndicMeetingDetail: React.FC = () => {
           </Space>
         </Card>
 
-        <Card id={MANUAL_VOTE_ANCHOR_ID} title={t('Ordre du jour et votes')}>
+        <Card
+          id={MANUAL_VOTE_ANCHOR_ID}
+          {...helpAnchor('ag-vote')}
+          title={<HelpSectionTitle title={t('Ordre du jour et votes')} helpId="syndic.assemblees.detail.vote" />}
+        >
           <MeetingAgenda
             resolutions={meeting.resolutions || []}
             lots={meetingLots}
@@ -636,7 +645,7 @@ export const SyndicMeetingDetail: React.FC = () => {
       </Space>
 
       <Modal
-        title={t('Ajouter une résolution')}
+        title={<HelpSectionTitle title={t('Ajouter une résolution')} helpId="syndic.assemblees.detail.resolution" />}
         open={openResolution}
         onCancel={() => {
           if (!submittingResolution) setOpenResolution(false);

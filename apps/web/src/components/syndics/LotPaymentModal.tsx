@@ -24,6 +24,7 @@ import { saveBlob } from '../../utils/save-blob';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { chargeCallStatusConfig } from './ChargeCallTable';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 import { displayCurrency } from '../../utils/syndic-currency';
 
 const { Paragraph, Text } = Typography;
@@ -402,7 +403,7 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
 
   return (
     <Modal
-      title={t('Enregistrer un paiement')}
+      title={<HelpSectionTitle title={t('Enregistrer un paiement')} helpId="syndic.lots.paiement" />}
       open={open}
       onCancel={onClose}
       onOk={() => void handleSubmit()}

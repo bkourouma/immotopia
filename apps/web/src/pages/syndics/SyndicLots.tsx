@@ -46,6 +46,7 @@ import {
 } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle, helpAnchor } from '../../help';
 import { dateFormat } from '../../i18n/format';
 import { getLotTypeLabel } from '../../utils/syndic-lot-label';
 
@@ -635,10 +636,12 @@ export const SyndicLots: React.FC = () => {
             </Paragraph>
           </Space>
 
-          <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal} {...helpAnchor('lots-nouveau')}>
             {t('Nouveau lot')}
           </Button>
-          <Button onClick={openImportModal}>{t('Importer des biens')}</Button>
+          <Button onClick={openImportModal} {...helpAnchor('lots-importer')}>
+            {t('Importer des biens')}
+          </Button>
         </div>
 
         {error ? <Alert type="error" message={error} showIcon /> : null}
@@ -664,24 +667,30 @@ export const SyndicLots: React.FC = () => {
 
             <Row gutter={[16, 16]}>
               <Col xs={24} md={8}>
-                <StatCard label={t('Nombre de lots')} value={lots.length} />
+                <StatCard helpId="syndic.lots.indicateurs" label={t('Nombre de lots')} value={lots.length} />
               </Col>
               <Col xs={24} md={8}>
-                <StatCard label={t('Tantièmes généraux cumulés')} value={sharesSum} />
+                <StatCard helpId="syndic.lots.indicateurs" label={t('Tantièmes généraux cumulés')} value={sharesSum} />
               </Col>
               {referenceShares !== null ? (
                 <Col xs={24} md={8}>
-                  <StatCard label={t('Total de référence des tantièmes')} value={referenceShares} />
+                  <StatCard
+                    helpId="syndic.lots.indicateurs"
+                    label={t('Total de référence des tantièmes')}
+                    value={referenceShares}
+                  />
                 </Col>
               ) : null}
               <Col xs={24} md={8}>
                 <StatCard
+                  helpId="syndic.lots.indicateurs"
                   label={t('Lots avec propriétaire')}
                   value={lots.filter(lot => Boolean(lot.ownerContactId || lot.ownersLabel)).length}
                 />
               </Col>
               <Col xs={24} md={8}>
                 <StatCard
+                  helpId="syndic.lots.indicateurs"
                   label={t('Lots avec accès au portail')}
                   value={
                     lots.filter(lot => lot.portalAccess?.status === 'ACTIVE' || lot.portalAccess?.status === 'PARTIAL')
@@ -691,6 +700,7 @@ export const SyndicLots: React.FC = () => {
               </Col>
               <Col xs={24} md={8}>
                 <StatCard
+                  helpId="syndic.lots.indicateurs"
                   label={t('Lots avec locataire actif')}
                   value={
                     lots.filter(lot => (lot.tenantAssignments || []).some(assignment => assignment.isActive)).length
@@ -699,7 +709,7 @@ export const SyndicLots: React.FC = () => {
               </Col>
             </Row>
 
-            <Card title={t('Tableau des lots')}>
+            <Card title={t('Tableau des lots')} {...helpAnchor('lots-tableau')}>
               <LotTable
                 lots={lots}
                 declaredPendingLotIds={declaredPendingLotIds}
@@ -724,7 +734,14 @@ export const SyndicLots: React.FC = () => {
       </Space>
 
       <Modal
-        title={editingLot ? t('Modifier le lot {{lotNumber}}', { lotNumber: editingLot.lotNumber }) : t('Créer un lot')}
+        title={
+          <HelpSectionTitle
+            title={
+              editingLot ? t('Modifier le lot {{lotNumber}}', { lotNumber: editingLot.lotNumber }) : t('Créer un lot')
+            }
+            helpId="syndic.lots.creation"
+          />
+        }
         open={open}
         onCancel={resetModalState}
         onOk={() => void handleSubmitLot()}
@@ -801,7 +818,7 @@ export const SyndicLots: React.FC = () => {
       </Modal>
 
       <Modal
-        title={t('Importer des lots depuis des propriétés')}
+        title={<HelpSectionTitle title={t('Importer des lots depuis des propriétés')} helpId="syndic.lots.import" />}
         open={importOpen}
         onCancel={() => setImportOpen(false)}
         onOk={() => void handleImportLots()}
@@ -844,9 +861,14 @@ export const SyndicLots: React.FC = () => {
 
       <Modal
         title={
-          tenantLot
-            ? t('Ajouter un locataire - {{lotNumber}}', { lotNumber: tenantLot.lotNumber })
-            : t('Ajouter un locataire')
+          <HelpSectionTitle
+            title={
+              tenantLot
+                ? t('Ajouter un locataire - {{lotNumber}}', { lotNumber: tenantLot.lotNumber })
+                : t('Ajouter un locataire')
+            }
+            helpId="syndic.lots.locataire"
+          />
         }
         open={tenantOpen}
         onCancel={() => {

@@ -8,6 +8,7 @@ import {
   type UpdateDeclaredPaymentSettingsBody
 } from '../../../services/syndic-declared-payment-service';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 import { INSTRUCTIONS_MAX_LENGTH, MONTHLY_AI_QUOTA_FALLBACK, apiErrorMessage } from './helpers';
 
 const { Paragraph, Text } = Typography;
@@ -152,7 +153,7 @@ export const DeclaredSettingsCard: React.FC<DeclaredSettingsCardProps> = ({
   const readOnly = !canEdit;
 
   return (
-    <Card title={title}>
+    <Card title={<HelpSectionTitle title={title} helpId="syndic.paiements.reglages" />}>
       <Paragraph type="secondary">
         {t(
           'Les copropriétaires déclarent un paiement mobile money déjà effectué ; le gestionnaire le vérifie puis le valide ou le rejette.'

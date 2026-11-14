@@ -21,6 +21,7 @@ import {
   approveSyndicDeclaration
 } from '../../../services/syndic-declared-payment-service';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 import {
   DECLARATION_NOT_PENDING_CODE,
   NOTE_MAX_LENGTH,
@@ -199,7 +200,7 @@ export const ApproveModal: React.FC<ApproveModalProps> = ({
   return (
     <Modal
       open
-      title={t('Valider la déclaration de paiement')}
+      title={<HelpSectionTitle title={t('Valider la déclaration de paiement')} helpId="syndic.paiements.validation" />}
       onCancel={onClose}
       onOk={() => void submit()}
       okText={realCorrection ? t('Valider avec correction') : t('Valider telle que déclarée')}
