@@ -405,6 +405,7 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
       ['PATCH', '/api/tenants/:tenantId/ai/conversations/:id'],
       ['DELETE', '/api/tenants/:tenantId/ai/conversations/:id'],
       ['POST', '/api/tenants/:tenantId/ai/chat'],
+      ['POST', '/api/tenants/:tenantId/ai/transcribe'],
       ['POST', '/api/tenants/:tenantId/ai/actions/execute'],
       ['POST', '/api/tenants/:tenantId/ai/actions/reject']
     ];

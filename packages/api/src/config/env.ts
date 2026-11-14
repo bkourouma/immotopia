@@ -450,6 +450,8 @@ const envSchema = z
     // `disabled` : l'assistant est coupe et l'application marche sans cle.
     // Aucun secret par defaut : ANTHROPIC_API_KEY est exigee si `anthropic`,
     // OPENROUTER_API_KEY si `openrouter`.
+    AI_TRANSCRIPTION_OPENAI_KEY: z.string().trim().min(1).optional(),
+    AI_TRANSCRIPTION_MODEL: z.string().trim().min(1).default('gpt-transcribe'),
     AI_PROVIDER: z.enum(['disabled', 'fake', 'anthropic', 'openrouter']).default('disabled'),
     ANTHROPIC_API_KEY: z.string().min(1).optional(),
     OPENROUTER_API_KEY: z.string().min(1).optional(),

@@ -247,6 +247,46 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
   });
 
   describe('Assistant — historique privé', () => {
+    it('transcrit un enregistrement audio et refuse les formats falsifiés', async () => {
+      const savedKey = env.AI_TRANSCRIPTION_OPENAI_KEY;
+      env.AI_TRANSCRIPTION_OPENAI_KEY = 'test-only';
+      const provider = jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValue(new Response(JSON.stringify({ text: 'Bilan des loyers' })));
+      try {
+        const url = `/api/tenants/${tenantA.id}/ai/transcribe`;
+        const malformed = await request(app)
+          .post(url)
+          .set(authed(adminA))
+          .attach('audio', Buffer.from('faux'), { filename: 'micro.webm', contentType: 'audio/webm' });
+        expect(malformed.status).toBe(400);
+        expect(provider).not.toHaveBeenCalled();
+        const audio = Buffer.from([0x1a, 0x45, 0xdf, 0xa3, 0x1]);
+        const ok = await request(app)
+          .post(url)
+          .set(authed(adminA))
+          .attach('audio', audio, { filename: 'micro.webm', contentType: 'audio/webm' });
+        expect(ok.status).toBe(200);
+        expect(ok.headers['cache-control']).toBe('private, no-store');
+        expect(ok.body.data).toEqual({ text: 'Bilan des loyers' });
+        const input = provider.mock.calls[0][1]?.body as FormData;
+        expect(input.get('model')).toBe(env.AI_TRANSCRIPTION_MODEL);
+        expect(Buffer.from(await (input.get('file') as Blob).arrayBuffer())).toEqual(audio);
+        expect(
+          (
+            await request(app)
+              .post(url)
+              .set(authed(adminB))
+              .attach('audio', audio, { filename: 'micro.webm', contentType: 'audio/webm' })
+          ).status
+        ).toBe(403);
+        expect(provider).toHaveBeenCalledTimes(1);
+      } finally {
+        provider.mockRestore();
+        env.AI_TRANSCRIPTION_OPENAI_KEY = savedKey;
+      }
+    });
+
     it('extrait le texte du PDF et refuse un PDF sans couche texte', async () => {
       const url = `/api/tenants/${tenantA.id}/ai`;
       const payload = () =>

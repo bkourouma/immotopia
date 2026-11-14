@@ -8,6 +8,7 @@ import { buildArtifactPowerPoint } from '../lib/ai/artifact-pptx';
 import { buildArtifactCsv, buildArtifactXlsx } from '../lib/ai/artifact-spreadsheet';
 import type { Request, Response } from 'express';
 import { AiDisabledError } from '../middleware/ai-access-middleware';
+import { env } from '../config/env';
 import { AppError, asyncHandler, ConflictError, ForbiddenError } from '../middleware/error-middleware';
 import { t } from '../i18n';
 import {
@@ -270,6 +271,13 @@ export const deleteConversationHandler = asyncHandler(async (req: Request, res: 
 });
 
 /** GET /ai/status — ce que l'interface peut proposer à cet utilisateur. Répond aussi quand l'assistant est désactivé. */
+export const requireAssistantTools = asyncHandler(async (req, _res, next) => {
+  const { tenantId, userId } = requireContext(req);
+  const { tools } = await resolveAvailableTools(userId, tenantId, true);
+  if (!tools.length) throw new ForbiddenError();
+  next();
+});
+
 export const getStatusHandler = asyncHandler(async (req: Request, res: Response) => {
   const { tenantId, userId } = requireContext(req);
   const provider = await getLlmProvider();
@@ -285,6 +293,7 @@ export const getStatusHandler = asyncHandler(async (req: Request, res: Response)
         ? { enabled: false, reason: 'NO_TOOLS', provider: provider.id, tools: [], limits }
         : { enabled: true, provider: provider.id, tools: tools.map(tool => tool.name), limits };
   }
+  if (status.enabled && env.AI_TRANSCRIPTION_OPENAI_KEY) status.transcription = true;
   res.json({ success: true, data: status });
 });
 

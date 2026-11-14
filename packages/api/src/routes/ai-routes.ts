@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import multer from 'multer';
+import { MAX_DICTATION_BYTES, transcribeHandler } from '../controllers/ai-transcription-controller';
 import { MAX_ASSISTANT_FILES, MAX_ASSISTANT_FILE_BYTES } from '../lib/ai/assistant-files';
 import { authenticate } from '../middleware/auth-middleware';
 import { requireTenantAccess, requireTenantCollaborator } from '../middleware/tenant-middleware';
@@ -24,6 +25,7 @@ import {
   getStatusHandler,
   listConversationsHandler,
   rejectActionHandler,
+  requireAssistantTools,
   updateConversationHandler
 } from '../controllers/ai-controller';
 
@@ -63,6 +65,20 @@ router.post(
 router.get('/conversations/:id/artifacts/:artifactId/:format', requireAiStatusAccess, downloadArtifactHandler);
 router.patch('/conversations/:id', requireAiStatusAccess, updateConversationHandler);
 router.delete('/conversations/:id', requireAiStatusAccess, deleteConversationHandler);
+
+router.post(
+  '/transcribe',
+  requireAiAssistantAccess,
+  requireAssistantTools,
+  aiChatRateLimiter,
+  aiTenantChatRateLimiter,
+  aiChatDailyLimiter,
+  aiTenantDailyLimiter,
+  multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_DICTATION_BYTES, files: 1, fields: 0 } }).single(
+    'audio'
+  ),
+  transcribeHandler
+);
 
 // Conversation en flux SSE. Chaque outil vérifie sa propre permission ; aucune écriture possible ici.
 router.post(

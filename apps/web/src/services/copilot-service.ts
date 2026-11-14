@@ -189,6 +189,15 @@ export const copilotService = {
   updateArtifactVersion,
   getArtifactVersion,
   downloadArtifact,
+  async transcribe(tenantId: string, audio: Blob, signal: AbortSignal) {
+    const data = new FormData();
+    data.set('audio', audio, 'dictation');
+    const response = await apiClient.post(`/tenants/${tenantId}/ai/transcribe`, data, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      signal
+    });
+    return unwrap<{ text: string }>(response.data).text;
+  },
   downloadAttachment(tenantId: string, conversationId: string, turnId: string, position: number) {
     return apiClient.get<Blob>(
       `/tenants/${tenantId}/ai/conversations/${conversationId}/turns/${turnId}/files/${position}`,

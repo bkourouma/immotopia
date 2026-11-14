@@ -226,6 +226,7 @@ export function isCapabilityExecuted(r: ExecuteActionResult | undefined): r is C
 }
 
 export interface CopilotStatus {
+  transcription?: boolean;
   enabled: boolean;
   /**
    * `NOT_CONFIGURED` / `NO_TOOLS` : renvoyés par l'API. `FORBIDDEN` / `NOT_FOUND` : posés par

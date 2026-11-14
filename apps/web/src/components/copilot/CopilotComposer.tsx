@@ -3,6 +3,7 @@ import { AudioOutlined, PaperClipOutlined, SendOutlined, StopOutlined } from '@a
 import { Button, Input, Space } from 'antd';
 import type { TextAreaRef } from 'antd/es/input/TextArea';
 import { appendDictation, useSpeechDictation } from '../../hooks/useSpeechDictation';
+import { useRecordedDictation } from '../../hooks/useRecordedDictation';
 import { t } from '../../i18n/t';
 import { useLanguage } from '../../i18n/useLanguage';
 
@@ -13,6 +14,7 @@ export interface CopilotComposerProps {
   onSubmit(value: string): void;
   onStop(): void;
   streaming: boolean;
+  transcribe?(audio: Blob, signal: AbortSignal): Promise<string>;
   files?: File[];
   onFilesChange?(files: File[]): void;
   maxChars?: number;
@@ -31,6 +33,7 @@ export const CopilotComposer: React.FC<CopilotComposerProps> = ({
   onSubmit,
   onStop,
   streaming,
+  transcribe,
   files = [],
   onFilesChange,
   maxChars,
@@ -57,6 +60,13 @@ export const CopilotComposer: React.FC<CopilotComposerProps> = ({
     language,
     onFinal: text => onChange(appendDictation(value, text))
   });
+  const recorded = useRecordedDictation(dictation.supported ? undefined : transcribe, text => {
+    onChange(appendDictation(value, text).slice(0, maxChars));
+  });
+  const listening = dictation.listening || recorded.phase === 'recording';
+  const recordingBusy = recorded.phase !== 'idle';
+  const dictationError = dictation.error || recorded.error;
+  const microphoneLabel = listening ? t('Arrêter la dictée') : t('Dicter un message');
   // Le texte provisoire s'affiche à la suite de la saisie, sans y être encore écrit.
   const shown = dictation.interim ? appendDictation(value, dictation.interim) : value;
 
@@ -80,7 +90,7 @@ export const CopilotComposer: React.FC<CopilotComposerProps> = ({
         onKeyDown={e => {
           if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
             e.preventDefault();
-            if (!streaming && (value.trim() || files.length)) onSubmit(value);
+            if (!streaming && !recordingBusy && (value.trim() || files.length)) onSubmit(value);
           }
         }}
         maxLength={maxChars}
@@ -125,14 +135,15 @@ export const CopilotComposer: React.FC<CopilotComposerProps> = ({
       )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          {dictation.listening && (
+          {listening && (
             <span role="status" style={{ color: 'var(--color-danger, #cf1322)', fontSize: 'var(--text-sm, 13px)' }}>
               {t('Écoute en cours…')}
             </span>
           )}
-          {!dictation.listening && dictation.error && (
+          {recorded.phase === 'processing' && <span role="status">{t('Transcription en cours…')}</span>}
+          {!listening && dictationError && (
             <span role="status" style={{ color: 'var(--text-secondary, #8c8c8c)', fontSize: 'var(--text-sm, 13px)' }}>
-              {dictation.error}
+              {dictationError}
             </span>
           )}
         </div>
@@ -147,16 +158,17 @@ export const CopilotComposer: React.FC<CopilotComposerProps> = ({
             title={t('Joindre des fichiers')}
           />
         )}
-        {dictation.supported && (
+        {(dictation.supported || recorded.supported) && (
           <Button
-            type={dictation.listening ? 'primary' : 'text'}
-            danger={dictation.listening}
+            type={listening ? 'primary' : 'text'}
+            danger={listening}
             shape="circle"
             icon={<AudioOutlined />}
-            onClick={dictation.toggle}
-            aria-pressed={dictation.listening}
-            aria-label={dictation.listening ? t('Arrêter la dictée') : t('Dicter un message')}
-            title={dictation.listening ? t('Arrêter la dictée') : t('Dicter un message')}
+            onClick={dictation.supported ? dictation.toggle : () => void recorded.toggle()}
+            disabled={streaming || (recordingBusy && !listening)}
+            aria-pressed={listening}
+            aria-label={microphoneLabel}
+            title={microphoneLabel}
           />
         )}
         {streaming ? (
@@ -166,7 +178,7 @@ export const CopilotComposer: React.FC<CopilotComposerProps> = ({
             type="primary"
             shape="circle"
             icon={<SendOutlined />}
-            disabled={!value.trim() && files.length === 0}
+            disabled={recordingBusy || (!value.trim() && files.length === 0)}
             onClick={() => onSubmit(value)}
             aria-label={t('Envoyer')}
           />

@@ -12,7 +12,8 @@ vi.mock('../../services/copilot-service', () => {
     executeProposal: vi.fn(),
     listConversations: vi.fn().mockResolvedValue({ items: [] }),
     getConversation: vi.fn(),
-    downloadAttachment: vi.fn()
+    downloadAttachment: vi.fn(),
+    transcribe: vi.fn()
   };
   return { default: service, copilotService: service };
 });
@@ -193,6 +194,50 @@ describe('AssistantPage', () => {
     renderPage();
     await screen.findByLabelText('Votre message');
     expect(screen.queryByRole('button', { name: 'Dicter un message' })).not.toBeInTheDocument();
+  });
+
+  it('utilise la transcription serveur et laisse le texte dans le brouillon', async () => {
+    const stopTrack = vi.fn();
+    vi.stubGlobal(
+      'MediaRecorder',
+      class {
+        static isTypeSupported() {
+          return true;
+        }
+        state = 'inactive';
+        mimeType = 'audio/webm;codecs=opus';
+        ondataavailable?: (event: { data: Blob }) => void;
+        onstop?: () => void;
+        start() {
+          this.state = 'recording';
+        }
+        stop() {
+          this.state = 'inactive';
+          this.ondataavailable?.({ data: new Blob(['audio']) });
+          this.onstop?.();
+        }
+      }
+    );
+    const original = Object.getOwnPropertyDescriptor(navigator, 'mediaDevices');
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [{ stop: stopTrack }] }) }
+    });
+    try {
+      getStatus.mockResolvedValue({ ...ENABLED, transcription: true });
+      vi.mocked(copilotService.transcribe).mockResolvedValue('Bilan des loyers');
+      renderPage();
+      fireEvent.click(await screen.findByRole('button', { name: 'Dicter un message' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Arrêter la dictée' }));
+      await waitFor(() => expect(screen.getByLabelText('Votre message')).toHaveValue('Bilan des loyers'));
+      expect(copilotService.transcribe).toHaveBeenCalledWith('t1', expect.any(Blob), expect.any(AbortSignal));
+      expect(stopTrack).toHaveBeenCalled();
+      expect(streamChat).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+      if (original) Object.defineProperty(navigator, 'mediaDevices', original);
+      else Reflect.deleteProperty(navigator, 'mediaDevices');
+    }
   });
 
   it('dicte du texte dans la zone sans l’envoyer', async () => {

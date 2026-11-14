@@ -281,6 +281,7 @@ export interface CapabilityExecutedPayload {
 }
 
 export interface CopilotStatus {
+  transcription?: boolean;
   enabled: boolean;
   reason?: 'NOT_CONFIGURED' | 'NO_TOOLS';
   provider: 'fake' | 'anthropic' | 'openrouter' | null;
