@@ -11660,6 +11660,7 @@ model AssistantScheduledReport {
   schedule       Json?
   immediateKey   String?   @map("immediate_key")
   message        String?
+  sharesCreated  Boolean   @default(false) @map("shares_created")
   recipientIds   String[]  @map("recipient_ids")
   formats        String[]
   active         Boolean   @default(false)

@@ -111,6 +111,9 @@ export function ScheduleReportDialog({
               'Le rapport sera envoyé selon les droits communs à chaque destinataire et au propriétaire de l’analyse. Activez le brouillon dans Rapports pour commencer les envois.'
             )}
       </p>
+      {immediate && (
+        <p>{t('La confirmation partage aussi l’analyse en lecture seule avec les collègues sélectionnés.')}</p>
+      )}
       {error && <Alert type="error" message={error} />}
       <Form component={false} layout="vertical" disabled={busy}>
         {immediate ? (

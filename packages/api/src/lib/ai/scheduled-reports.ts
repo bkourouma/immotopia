@@ -5,6 +5,7 @@ import { t } from '../../i18n';
 import { prisma } from '../../utils/database';
 import type { AssistantOwner } from './conversations';
 import { nextReportRun, reportSchedule } from './report-schedule';
+import { createAnalysisSharesInTransaction } from './analysis-shares';
 
 const reportInput = z.object({
   conversationId: z.string().uuid(),
@@ -19,6 +20,7 @@ const scheduledReportInput = reportInput.extend({ schedule: reportSchedule }).st
 const immediateReportInput = reportInput
   .extend({
     requestId: z.string().uuid(),
+    share: z.literal(true),
     message: z.string().trim().max(2000).optional()
   })
   .strict();
@@ -54,11 +56,12 @@ export async function queueImmediateReport(
   const recipientIds = [...new Set(input.recipientIds)].sort();
   const formats = [...new Set(input.formats)].sort();
   const message = input.message || null;
-  const inserted = await prisma.$executeRaw`
+  return prisma.$transaction(async tx => {
+    const inserted = await tx.$executeRaw`
     INSERT INTO assistant_scheduled_reports
-      (id, tenant_id, owner_id, conversation_id, artifact_id, immediate_key, message, recipient_ids, formats, active, next_run_at)
+      (id, tenant_id, owner_id, conversation_id, artifact_id, immediate_key, message, recipient_ids, formats, active, next_run_at, shares_created)
     SELECT ${id}, a.tenant_id, a.owner_id, a.conversation_id, a.artifact_id, ${input.requestId}, ${message},
-      ${recipientIds}::text[], ${formats}::text[], true, CURRENT_TIMESTAMP
+      ${recipientIds}::text[], ${formats}::text[], true, CURRENT_TIMESTAMP, true
     FROM assistant_saved_analyses a
     JOIN assistant_conversations c ON (c.tenant_id, c.owner_id, c.id) = (a.tenant_id, a.owner_id, a.conversation_id)
     WHERE a.tenant_id = ${owner.tenantId} AND a.owner_id = ${owner.ownerId}
@@ -67,20 +70,28 @@ export async function queueImmediateReport(
     FOR SHARE OF a, c
     ON CONFLICT (tenant_id, owner_id, immediate_key) DO NOTHING
   `;
-  if (inserted) return { id };
-  const previous = await prisma.assistantScheduledReport.findFirst({
-    where: { ...owner, immediateKey: input.requestId, analysis: { conversation: { scopeKey } } }
+    if (inserted) {
+      await createAnalysisSharesInTransaction(tx, owner, scopeKey, {
+        conversationId: input.conversationId,
+        artifactId: input.artifactId,
+        recipientIds: recipientIds.filter(recipientId => recipientId !== owner.ownerId)
+      });
+      return { id };
+    }
+    const previous = await tx.assistantScheduledReport.findFirst({
+      where: { ...owner, immediateKey: input.requestId, analysis: { conversation: { scopeKey } } }
+    });
+    if (!previous) throw new NotFoundError();
+    if (
+      previous.artifactId !== input.artifactId ||
+      previous.conversationId !== input.conversationId ||
+      previous.message !== message ||
+      JSON.stringify(previous.recipientIds) !== JSON.stringify(recipientIds) ||
+      JSON.stringify(previous.formats) !== JSON.stringify(formats)
+    )
+      throw new ConflictError(t('Cette confirmation correspond déjà à un autre envoi.'));
+    return { id: previous.id };
   });
-  if (!previous) throw new NotFoundError();
-  if (
-    previous.artifactId !== input.artifactId ||
-    previous.conversationId !== input.conversationId ||
-    previous.message !== message ||
-    JSON.stringify(previous.recipientIds) !== JSON.stringify(recipientIds) ||
-    JSON.stringify(previous.formats) !== JSON.stringify(formats)
-  )
-    throw new ConflictError(t('Cette confirmation correspond déjà à un autre envoi.'));
-  return { id: previous.id };
 }
 
 export async function listScheduledReports(owner: AssistantOwner, scopeKey: string, cursor?: string) {
@@ -99,6 +110,7 @@ export async function listScheduledReports(owner: AssistantOwner, scopeKey: stri
       recipientIds: true,
       formats: true,
       active: true,
+      sharesCreated: true,
       nextRunAt: true,
       lastRunAt: true,
       lastStatus: true,
@@ -118,14 +130,39 @@ export async function removeScheduledReport(owner: AssistantOwner, id: string) {
   await prisma.assistantScheduledReport.deleteMany({ where: { ...owner, id, immediateKey: null } });
 }
 
-export async function setScheduledReportActive(owner: AssistantOwner, scopeKey: string, id: string, active: boolean) {
+export function findScheduledReport(owner: AssistantOwner, scopeKey: string, id: string) {
+  return prisma.assistantScheduledReport.findFirst({
+    where: { ...owner, id, immediateKey: null, analysis: { conversation: { scopeKey } } }
+  });
+}
+
+export async function setScheduledReportActive(
+  owner: AssistantOwner,
+  scopeKey: string,
+  id: string,
+  active: boolean,
+  share?: true
+) {
   const where = { ...owner, id, immediateKey: null, analysis: { conversation: { scopeKey } } };
-  const report = await prisma.assistantScheduledReport.findFirst({ where });
-  if (!report) throw new NotFoundError();
-  if (active === report.active) return;
-  const nextRunAt = active ? nextReportRun(reportSchedule.parse(report.schedule), new Date()) : null;
-  await prisma.assistantScheduledReport.updateMany({
-    where: { ...where, active: !active },
-    data: { active, nextRunAt }
+  return prisma.$transaction(async tx => {
+    const report = await tx.assistantScheduledReport.findFirst({ where });
+    if (!report) throw new NotFoundError();
+    if (active === report.active) return;
+    const recipients = report.recipientIds.filter(recipientId => recipientId !== owner.ownerId);
+    if (active && !report.sharesCreated && recipients.length && !share) {
+      throw new ConflictError(t('Confirmez le partage de l’analyse pour activer ce rapport.'));
+    }
+    const nextRunAt = active ? nextReportRun(reportSchedule.parse(report.schedule), new Date()) : null;
+    const updated = await tx.assistantScheduledReport.updateMany({
+      where: { ...where, active: !active, sharesCreated: report.sharesCreated },
+      data: { active, nextRunAt, ...(active ? { sharesCreated: true } : {}) }
+    });
+    if (updated.count && active && !report.sharesCreated) {
+      await createAnalysisSharesInTransaction(tx, owner, scopeKey, {
+        conversationId: report.conversationId,
+        artifactId: report.artifactId,
+        recipientIds: recipients
+      });
+    }
   });
 }

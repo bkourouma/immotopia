@@ -197,6 +197,8 @@ export type ScheduledReport = {
   schedule: ReportSchedule | null;
   formats: ReportFormat[];
   active: boolean;
+  sharesCreated: boolean;
+  shareRecipients: string[];
   nextRunAt: string | null;
   lastRunAt: string | null;
   lastStatus: string | null;
@@ -243,11 +245,11 @@ export const copilotService = {
       message?: string;
     }
   ) {
-    const response = await apiClient.post(`/tenants/${tenantId}/ai/reports`, input);
+    const response = await apiClient.post(`/tenants/${tenantId}/ai/reports`, { ...input, share: true });
     return unwrap<{ id: string }>(response.data);
   },
-  async setScheduledReportActive(tenantId: string, id: string, active: boolean) {
-    await apiClient.patch(`/tenants/${tenantId}/ai/reports/${id}`, { active });
+  async setScheduledReportActive(tenantId: string, id: string, active: boolean, share?: true) {
+    await apiClient.patch(`/tenants/${tenantId}/ai/reports/${id}`, { active, share });
   },
   async deleteScheduledReport(tenantId: string, id: string) {
     await apiClient.delete(`/tenants/${tenantId}/ai/reports/${id}`);

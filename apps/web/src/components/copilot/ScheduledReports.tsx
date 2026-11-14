@@ -43,12 +43,18 @@ export function ScheduledReports({ tenantId, onClose }: { tenantId: string; onCl
     setRevision(value => value + 1);
   }
 
-  async function update(report: ScheduledReport, remove = false) {
+  async function update(report: ScheduledReport, action: 'toggle' | 'share' | 'remove' = 'toggle') {
     setPending(report.id);
     setError('');
     try {
-      if (remove) await copilotService.deleteScheduledReport(tenantId, report.id);
-      else await copilotService.setScheduledReportActive(tenantId, report.id, !report.active);
+      if (action === 'remove') await copilotService.deleteScheduledReport(tenantId, report.id);
+      else
+        await copilotService.setScheduledReportActive(
+          tenantId,
+          report.id,
+          !report.active,
+          action === 'share' ? true : undefined
+        );
       refresh();
     } catch {
       setError(t('Impossible de modifier ce rapport.'));
@@ -74,6 +80,8 @@ export function ScheduledReports({ tenantId, onClose }: { tenantId: string; onCl
         {!loading && !error && !items.length && <Empty description={t('Aucun rapport à afficher.')} />}
         {items.map(report => {
           const { schedule } = report;
+          const label = report.active ? t('Mettre en pause') : report.lastRunAt ? t('Reprendre') : t('Activer');
+          const changesShare = schedule && !report.active && !report.sharesCreated && report.shareRecipients.length > 0;
           const day =
             schedule?.frequency === 'weekly'
               ? weekdays[schedule.day - 1]
@@ -118,14 +126,26 @@ export function ScheduledReports({ tenantId, onClose }: { tenantId: string; onCl
               )}
               {schedule && (
                 <Space wrap>
-                  <Button disabled={loading || !!pending} onClick={() => void update(report)}>
-                    {report.active ? t('Mettre en pause') : report.lastRunAt ? t('Reprendre') : t('Activer')}
-                  </Button>
+                  {changesShare ? (
+                    <Popconfirm
+                      title={t('Activer le rapport et partager l’analyse en lecture seule ?')}
+                      description={report.shareRecipients.join(' · ')}
+                      okText={t('Activer et partager')}
+                      cancelText={t('Annuler')}
+                      onConfirm={() => update(report, 'share')}
+                    >
+                      <Button disabled={loading || !!pending}>{label}</Button>
+                    </Popconfirm>
+                  ) : (
+                    <Button disabled={loading || !!pending} onClick={() => void update(report)}>
+                      {label}
+                    </Button>
+                  )}
                   <Popconfirm
                     title={t('Supprimer ce rapport programmé ?')}
                     okText={t('Supprimer')}
                     cancelText={t('Annuler')}
-                    onConfirm={() => update(report, true)}
+                    onConfirm={() => update(report, 'remove')}
                   >
                     <Button danger disabled={loading || !!pending}>
                       {t('Supprimer')}

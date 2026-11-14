@@ -118,6 +118,8 @@ describe('AssistantPage — artefacts', () => {
       schedule: { frequency: 'weekly' as const, day: 1, time: '08:00', timeZone: 'Africa/Abidjan' },
       formats: ['pdf' as const],
       active: false,
+      sharesCreated: false,
+      shareRecipients: ['Camille Destinataire'],
       nextRunAt: null,
       lastRunAt: null,
       lastStatus: null,
@@ -132,7 +134,10 @@ describe('AssistantPage — artefacts', () => {
     const drawer = await screen.findByRole('dialog', { name: 'Rapports' });
     expect(await within(drawer).findByText('Situation locative')).toBeInTheDocument();
     fireEvent.click(within(drawer).getByRole('button', { name: 'Activer' }));
-    expect(copilotService.setScheduledReportActive).toHaveBeenCalledWith('t1', 'report-1', true);
+    expect(await screen.findByText('Camille Destinataire')).toBeInTheDocument();
+    expect(copilotService.setScheduledReportActive).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole('button', { name: 'Activer et partager' }));
+    expect(copilotService.setScheduledReportActive).toHaveBeenCalledWith('t1', 'report-1', true, true);
     expect(await within(drawer).findByRole('button', { name: 'Mettre en pause' })).toBeEnabled();
     expect(within(drawer).getByText(/Prochaine échéance/)).toBeInTheDocument();
   });
@@ -151,6 +156,8 @@ describe('AssistantPage — artefacts', () => {
         {
           id: 'report-2',
           schedule: null,
+          sharesCreated: true,
+          shareRecipients: [],
           formats: ['pdf'],
           active: true,
           nextRunAt: '2026-11-16T08:00:00Z',

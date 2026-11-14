@@ -591,14 +591,7 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       }
     });
 
-    it('enregistre un brouillon de rapport dans le périmètre du propriétaire', async () => {
-      const owner = await createTenantAdminUser(tenantA, 'report-owner');
-      const recipient = await createTenantAdminUser(tenantA, 'report-recipient');
-      const disabled = await createTenantAdminUser(tenantA, 'report-disabled');
-      await prisma.user.update({ where: { id: recipient.id }, data: { emailVerified: true, preferredLanguage: 'en' } });
-      const configured = jest.spyOn(reportEmail, 'isEmailDeliveryConfigured').mockReturnValue(true);
-      const send = jest.spyOn(reportEmail.emailService, 'sendEmail').mockResolvedValue({ sent: true });
-      const base = `/api/tenants/${tenantA.id}/ai`;
+    async function saveReportAnalysis(base: string, owner: Awaited<ReturnType<typeof createTenantAdminUser>>) {
       mockFakeScript = [
         { toolCalls: [{ name: 'rental_receipts', input: { month: '2025-06' } }] },
         { text: 'Voici le tableau.' }
@@ -621,6 +614,22 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         expect(
           (await request(app).put(`${base}/analyses/${conversationId}/${artifactId}`).set(authed(owner))).status
         ).toBe(200);
+        return { conversationId, artifactId };
+      } finally {
+        mockFakeScript = undefined;
+      }
+    }
+
+    it('enregistre un brouillon de rapport dans le périmètre du propriétaire', async () => {
+      const owner = await createTenantAdminUser(tenantA, 'report-owner');
+      const recipient = await createTenantAdminUser(tenantA, 'report-recipient');
+      const disabled = await createTenantAdminUser(tenantA, 'report-disabled');
+      await prisma.user.update({ where: { id: recipient.id }, data: { emailVerified: true, preferredLanguage: 'en' } });
+      const configured = jest.spyOn(reportEmail, 'isEmailDeliveryConfigured').mockReturnValue(true);
+      const send = jest.spyOn(reportEmail.emailService, 'sendEmail').mockResolvedValue({ sent: true });
+      const base = `/api/tenants/${tenantA.id}/ai`;
+      try {
+        const { conversationId, artifactId } = await saveReportAnalysis(base, owner);
         const input = {
           conversationId,
           artifactId,
@@ -644,10 +653,25 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
           expect.objectContaining({ id: report.body.data.id, active: false, schedule: input.schedule, nextRunAt: null })
         ]);
         expect((await request(app).get(reports).set(authed(recipient))).body.data.items).toEqual([]);
+        const received = base + '/shares?direction=incoming';
+        expect((await request(app).get(received).set(authed(recipient))).body.data.items).toEqual([]);
         const id = report.body.data.id;
         const reportPath = reports + '/' + id;
         expect((await request(app).patch(reportPath).set(authed(recipient)).send({ active: true })).status).toBe(404);
-        expect((await request(app).patch(reportPath).set(authed(owner)).send({ active: true })).status).toBe(204);
+        expect((await request(app).patch(reportPath).set(authed(owner)).send({ active: true })).status).toBe(409);
+        expect((await request(app).get(received).set(authed(recipient))).body.data.items).toEqual([]);
+        expect(
+          (await request(app).patch(reportPath).set(authed(owner)).send({ active: true, share: true })).status
+        ).toBe(204);
+        const shared = (await request(app).get(received).set(authed(recipient))).body.data.items;
+        expect(shared).toHaveLength(1);
+        expect(
+          (
+            await request(app)
+              .get(base + '/shares/' + shared[0].id)
+              .set(authed(recipient))
+          ).status
+        ).toBe(200);
         const dueAt = new Date('2030-01-07T08:15:00Z');
         await prisma.assistantScheduledReport.updateMany({
           where: { tenantId: tenantA.id, id },
@@ -680,14 +704,40 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         expect(
           (
             await request(app)
+              .delete(base + '/shares/' + shared[0].id)
+              .set(authed(recipient))
+          ).status
+        ).toBe(204);
+        expect((await request(app).patch(reportPath).set(authed(owner)).send({ active: true })).status).toBe(204);
+        expect((await request(app).get(received).set(authed(recipient))).body.data.items).toEqual([]);
+        expect(
+          (
+            await request(app)
               .delete(reports + '/' + report.body.data.id)
               .set(authed(owner))
           ).status
         ).toBe(204);
         expect((await request(app).get(reports).set(authed(owner))).body.data.items).toEqual([]);
+      } finally {
+        configured.mockRestore();
+        send.mockRestore();
+      }
+    });
 
+    it('confirme un envoi ponctuel et ne rétablit pas un partage révoqué au rejeu', async () => {
+      const owner = await createTenantAdminUser(tenantA, 'immediate-owner');
+      const recipient = await createTenantAdminUser(tenantA, 'immediate-recipient');
+      await prisma.user.update({ where: { id: recipient.id }, data: { emailVerified: true, preferredLanguage: 'en' } });
+      const configured = jest.spyOn(reportEmail, 'isEmailDeliveryConfigured').mockReturnValue(true);
+      const send = jest.spyOn(reportEmail.emailService, 'sendEmail').mockResolvedValue({ sent: true });
+      const base = `/api/tenants/${tenantA.id}/ai`;
+      try {
+        const { conversationId, artifactId } = await saveReportAnalysis(base, owner);
+        const reports = base + '/reports';
+        const received = base + '/shares?direction=incoming';
         const immediate = {
           requestId: randomUUID(),
+          share: true,
           conversationId,
           artifactId,
           recipientIds: [recipient.id],
@@ -698,7 +748,9 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         const responses = await Promise.all([confirm(), confirm()]);
         expect(responses.map(response => response.status)).toEqual([202, 202]);
         expect(responses[1].body.data).toEqual(responses[0].body.data);
-        expect(send).toHaveBeenCalledTimes(1);
+        const immediateShares = (await request(app).get(received).set(authed(recipient))).body.data.items;
+        expect(immediateShares).toHaveLength(1);
+        expect(send).not.toHaveBeenCalled();
         const immediateId = responses[0].body.data.id;
         expect((await request(app).get(reports).set(authed(owner))).body.data.items).toEqual([
           expect.objectContaining({ id: immediateId, schedule: null, active: true, lastStatus: null })
@@ -713,7 +765,7 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         ).toBe(409);
         await Promise.all([runAssistantReports(), runAssistantReports()]);
         await runAssistantReports();
-        expect(send).toHaveBeenCalledTimes(2);
+        expect(send).toHaveBeenCalledTimes(1);
         expect(send).toHaveBeenLastCalledWith(
           expect.objectContaining({
             to: recipient.email,
@@ -737,8 +789,16 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
               .send({ active: true })
           ).status
         ).toBe(404);
+        expect(
+          (
+            await request(app)
+              .delete(base + '/shares/' + immediateShares[0].id)
+              .set(authed(owner))
+          ).status
+        ).toBe(204);
+        expect((await confirm()).status).toBe(202);
+        expect((await request(app).get(received).set(authed(recipient))).body.data.items).toEqual([]);
       } finally {
-        mockFakeScript = undefined;
         configured.mockRestore();
         send.mockRestore();
       }

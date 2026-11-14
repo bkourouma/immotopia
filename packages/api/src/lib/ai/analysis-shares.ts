@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { Prisma } from '@prisma/client';
 import { isLanguage, t } from '../../i18n';
 import { NotFoundError } from '../../middleware/error-middleware';
 import { prisma } from '../../utils/database';
@@ -77,29 +78,35 @@ export async function listAnalysisShares(owner: AssistantOwner, incoming: boolea
   };
 }
 
-export async function createAnalysisShares(
+type AnalysisShareReference = {
+  conversationId: string;
+  artifactId?: string;
+  recipientIds: string[];
+  message?: string;
+};
+
+export function createAnalysisShares(owner: AssistantOwner, scopeKey: string, reference: AnalysisShareReference) {
+  return prisma.$transaction(tx => createAnalysisSharesInTransaction(tx, owner, scopeKey, reference));
+}
+
+export async function createAnalysisSharesInTransaction(
+  tx: Prisma.TransactionClient,
   owner: AssistantOwner,
   scopeKey: string,
-  reference: {
-    conversationId: string;
-    artifactId?: string;
-    recipientIds: string[];
-    message?: string;
-  }
+  reference: AnalysisShareReference
 ) {
   const { recipientIds, message, ...location } = reference;
-  return prisma.$transaction(async tx => {
-    const shares = new Map<string, { id: string; recipientId: string }>();
-    // Concurrent requests acquire their share rows in the same order.
-    for (const recipientId of [...recipientIds].sort()) {
-      const where = {
-        ...owner,
-        conversationId: location.conversationId,
-        artifactId: location.artifactId ?? null,
-        recipientId
-      };
-      const id = randomUUID();
-      const created = await tx.$executeRaw`
+  const shares = new Map<string, { id: string; recipientId: string }>();
+  // Concurrent requests acquire their share rows in the same order.
+  for (const recipientId of [...recipientIds].sort()) {
+    const where = {
+      ...owner,
+      conversationId: location.conversationId,
+      artifactId: location.artifactId ?? null,
+      recipientId
+    };
+    const id = randomUUID();
+    const created = await tx.$executeRaw`
     INSERT INTO assistant_analysis_shares (id, tenant_id, owner_id, conversation_id, artifact_id, recipient_id, message)
     SELECT ${id}::text, c.tenant_id, c.owner_id, c.id, ${location.artifactId ?? null}::text, m.user_id, ${message ?? null}::text
     FROM assistant_conversations c
@@ -116,60 +123,59 @@ export async function createAnalysisShares(
     FOR SHARE OF c, m
     ON CONFLICT DO NOTHING
   `;
-      const share = await tx.assistantAnalysisShare.findFirst({
-        where: {
-          ...where,
-          conversation: { scopeKey },
-          recipient: {
-            isActive: true,
-            globalRole: { not: 'SUPER_ADMIN' },
-            memberships: { some: { tenantId: owner.tenantId, status: 'ACTIVE' } },
-            userRoles: { some: { tenantId: owner.tenantId, role: { scope: 'TENANT' } } }
+    const share = await tx.assistantAnalysisShare.findFirst({
+      where: {
+        ...where,
+        conversation: { scopeKey },
+        recipient: {
+          isActive: true,
+          globalRole: { not: 'SUPER_ADMIN' },
+          memberships: { some: { tenantId: owner.tenantId, status: 'ACTIVE' } },
+          userRoles: { some: { tenantId: owner.tenantId, role: { scope: 'TENANT' } } }
+        }
+      },
+      select: { id: true, recipient: { select: { fullName: true, preferredLanguage: true } } }
+    });
+    if (!share) throw new NotFoundError();
+    // The notification and its in-app delivery commit with the new share. An
+    // idempotent retry returns the existing share without notifying again.
+    if (created) {
+      const preferred = share.recipient.preferredLanguage;
+      const language = isLanguage(preferred) ? preferred : 'fr';
+      const now = new Date();
+      await tx.userNotification.create({
+        data: {
+          tenantId: owner.tenantId,
+          recipientUserId: recipientId,
+          recipientLabel: share.recipient.fullName || t('Collaborateur', undefined, language),
+          senderUserId: owner.ownerId,
+          key: 'ASSISTANT_ANALYSIS_SHARED',
+          title: location.artifactId
+            ? t('Une analyse vous a été partagée', undefined, language)
+            : t('Une conversation vous a été partagée', undefined, language),
+          body: t('Ouvrez l’assistant pour consulter ce partage.', undefined, language),
+          link: `/tenant/${encodeURIComponent(owner.tenantId)}/assistant?partage=${share.id}`,
+          relatedEntityType: 'AssistantAnalysisShare',
+          relatedEntityId: share.id,
+          status: 'SENT',
+          sentAt: now,
+          deliveries: {
+            create: {
+              tenantId: owner.tenantId,
+              channel: 'IN_APP',
+              status: 'SENT',
+              attempts: 1,
+              sentAt: now,
+              lastAttemptAt: now
+            }
           }
         },
-        select: { id: true, recipient: { select: { fullName: true, preferredLanguage: true } } }
+        select: { id: true }
       });
-      if (!share) throw new NotFoundError();
-      // The notification and its in-app delivery commit with the new share. An
-      // idempotent retry returns the existing share without notifying again.
-      if (created) {
-        const preferred = share.recipient.preferredLanguage;
-        const language = isLanguage(preferred) ? preferred : 'fr';
-        const now = new Date();
-        await tx.userNotification.create({
-          data: {
-            tenantId: owner.tenantId,
-            recipientUserId: recipientId,
-            recipientLabel: share.recipient.fullName || t('Collaborateur', undefined, language),
-            senderUserId: owner.ownerId,
-            key: 'ASSISTANT_ANALYSIS_SHARED',
-            title: location.artifactId
-              ? t('Une analyse vous a été partagée', undefined, language)
-              : t('Une conversation vous a été partagée', undefined, language),
-            body: t('Ouvrez l’assistant pour consulter ce partage.', undefined, language),
-            link: `/tenant/${encodeURIComponent(owner.tenantId)}/assistant?partage=${share.id}`,
-            relatedEntityType: 'AssistantAnalysisShare',
-            relatedEntityId: share.id,
-            status: 'SENT',
-            sentAt: now,
-            deliveries: {
-              create: {
-                tenantId: owner.tenantId,
-                channel: 'IN_APP',
-                status: 'SENT',
-                attempts: 1,
-                sentAt: now,
-                lastAttemptAt: now
-              }
-            }
-          },
-          select: { id: true }
-        });
-      }
-      shares.set(recipientId, { id: share.id, recipientId });
     }
-    return recipientIds.map(recipientId => shares.get(recipientId)!);
-  });
+    shares.set(recipientId, { id: share.id, recipientId });
+  }
+  return recipientIds.map(recipientId => shares.get(recipientId)!);
 }
 
 export async function revokeAnalysisShare(owner: AssistantOwner, id: string) {

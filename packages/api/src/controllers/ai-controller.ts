@@ -8,6 +8,7 @@ import { buildArtifactPowerPoint } from '../lib/ai/artifact-pptx';
 import {
   assistantReportInput,
   createScheduledReportDraft,
+  findScheduledReport,
   listScheduledReports,
   queueImmediateReport,
   removeScheduledReport,
@@ -299,16 +300,28 @@ type ShareParty = Pick<Awaited<ReturnType<typeof resolveAvailableTools>>, 'permi
 export const listScheduledReportsHandler = asyncHandler(async (req, res) => {
   const { cursor } = z.object({ cursor: z.string().uuid().optional() }).strict().parse(req.query);
   const { owner, scopeKey } = await conversationScope(req);
-  const data = await listScheduledReports(owner, scopeKey, cursor);
+  const page = await listScheduledReports(owner, scopeKey, cursor);
+  const members = page.items.some(report => report.schedule && !report.sharesCreated)
+    ? await listAssignableMembers(owner.tenantId)
+    : [];
+  const names = new Map(members.map(member => [member.userId, member.displayName]));
+  const data = {
+    ...page,
+    items: page.items.map(report => ({
+      ...report,
+      shareRecipients: report.recipientIds
+        .filter(id => id !== owner.ownerId)
+        .map(id => names.get(id))
+        .filter((name): name is string => typeof name === 'string')
+    }))
+  };
   res.set('Cache-Control', 'private, no-store').json({ success: true, data });
 });
 
-export const createScheduledReportDraftHandler = asyncHandler(async (req, res) => {
-  const input = assistantReportInput.parse(req.body);
-  const source = await conversationScope(req);
-  if ('requestId' in input && !isEmailDeliveryConfigured()) {
-    throw new AppError(t('Le service d’envoi par e-mail est indisponible.'), 503);
-  }
+async function assertReportRecipients(
+  source: Awaited<ReturnType<typeof conversationScope>>,
+  input: { conversationId: string; artifactId: string; recipientIds: string[]; formats: string[] }
+) {
   const { tenantId, ownerId } = source.owner;
   const stored = await getStoredArtifact(source.owner, input.conversationId, input.artifactId, source.scopeKey);
   for (const recipientId of new Set(input.recipientIds)) {
@@ -324,6 +337,15 @@ export const createScheduledReportDraftHandler = asyncHandler(async (req, res) =
     );
     if (input.formats.includes('csv')) buildArtifactCsv(artifact);
   }
+}
+
+export const createScheduledReportDraftHandler = asyncHandler(async (req, res) => {
+  const input = assistantReportInput.parse(req.body);
+  const source = await conversationScope(req);
+  if ('requestId' in input && !isEmailDeliveryConfigured()) {
+    throw new AppError(t('Le service d’envoi par e-mail est indisponible.'), 503);
+  }
+  await assertReportRecipients(source, input);
   const immediate = 'requestId' in input;
   const data = immediate
     ? await queueImmediateReport(source.owner, source.scopeKey, input)
@@ -343,9 +365,17 @@ export const deleteScheduledReportHandler = asyncHandler(async (req, res) => {
 
 export const updateScheduledReportHandler = asyncHandler(async (req, res) => {
   const { id } = conversationParams.parse(req.params);
-  const { active } = z.object({ active: z.boolean() }).strict().parse(req.body);
-  const { owner, scopeKey } = await conversationScope(req);
-  await setScheduledReportActive(owner, scopeKey, id, active);
+  const { active, share } = z
+    .object({ active: z.boolean(), share: z.literal(true).optional() })
+    .strict()
+    .parse(req.body);
+  const source = await conversationScope(req);
+  if (active) {
+    const report = await findScheduledReport(source.owner, source.scopeKey, id);
+    if (!report) throw new NotFoundError();
+    if (!report.active && !report.sharesCreated) await assertReportRecipients(source, report);
+  }
+  await setScheduledReportActive(source.owner, source.scopeKey, id, active, share);
   res.sendStatus(204);
 });
 
