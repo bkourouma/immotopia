@@ -288,9 +288,7 @@ export default function TenantDashboard() {
             {data.nextInstallment ? (
               <>
                 <Statistic
-                  title={
-                    <HelpSectionTitle title={t('Prochaine échéance')} helpId="portails.locataire.accueil.indicateurs" />
-                  }
+                  title={t('Prochaine échéance')}
                   value={formatCurrency(data.nextInstallment.amount)}
                   prefix={<CalendarOutlined style={{ color: '#1890ff' }} />}
                   valueStyle={{ color: '#1890ff' }}
@@ -331,9 +329,7 @@ export default function TenantDashboard() {
         <Col xs={24} sm={12} lg={8}>
           <Card>
             <Statistic
-              title={
-                <HelpSectionTitle title={t('Dépôt de garantie')} helpId="portails.locataire.accueil.indicateurs" />
-              }
+              title={t('Dépôt de garantie')}
               value={formatCurrency(data.depositInfo.collectedAmount)}
               prefix={
                 <SafetyOutlined style={{ color: data.depositInfo.status === 'COLLECTED' ? '#52c41a' : '#722ed1' }} />

@@ -20,8 +20,9 @@ describe('HelpCenterPage (contenu réel)', () => {
     fireEvent.change(screen.getByLabelText("Rechercher dans l'aide"), { target: { value: 'liste des baux' } });
     // Attend la liste de résultats (anti-rebond), sinon le clic vise la carte de la liste par module, remplacée entre-temps.
     await screen.findByText(/^Résultats : /, {}, { timeout: 5000 });
-    const card = await screen.findByRole('button', { name: /^Liste des baux/ }, { timeout: 5000 });
-    fireEvent.click(card);
+    // Plusieurs modules ont une fiche « Liste des baux » (locatif, portail propriétaire) : on les ouvre toutes.
+    const cards = await screen.findAllByRole('button', { name: /^Liste des baux/ }, { timeout: 5000 });
+    cards.forEach(card => fireEvent.click(card));
     expect(openHelp).toHaveBeenCalledWith('locatif.baux.liste');
   });
 });

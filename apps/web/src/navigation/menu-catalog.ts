@@ -142,6 +142,7 @@ const MENU_REQUIREMENTS: Record<string, string[]> = {
   'admin-audit': ['PLATFORM_AUDIT_VIEW'],
   'admin-notifications': ['PLATFORM_TENANTS_VIEW'],
   'admin-ai-settings': ['PLATFORM_TENANTS_EDIT'],
+  'admin-help-feedback': ['PLATFORM_TENANTS_VIEW'],
 
   // Parc immobilier.
   biens: ['PROPERTIES_VIEW'],
@@ -246,6 +247,7 @@ const MENU_REQUIREMENTS: Record<string, string[]> = {
   'agence-settings': ['TENANT_SETTINGS_VIEW'],
   'agence-finance-settings': ['TENANT_SETTINGS_VIEW'],
   'agence-activity': ['TENANT_AUDIT_VIEW'],
+  'agence-help-feedback': ['TENANT_AUDIT_VIEW'],
   'agence-notifications': ['TENANT_NOTIFICATIONS_ADMIN'],
   // Mon compte : mêmes routes `/subscription` que l'écran d'abonnement, ouvertes par TENANT_SETTINGS_VIEW.
   'mon-compte': ['TENANT_SETTINGS_VIEW'],

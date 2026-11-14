@@ -855,7 +855,7 @@ export default function TenantPayments() {
           <Col xs={24} sm={12} lg={6}>
             <Card>
               <Statistic
-                title={<HelpSectionTitle title={t('Payées')} helpId="portails.locataire.paiements.indicateurs" />}
+                title={t('Payées')}
                 value={data.summary.paid}
                 valueStyle={{ color: '#3f8600' }}
                 prefix={<DollarOutlined />}
@@ -865,7 +865,7 @@ export default function TenantPayments() {
           <Col xs={24} sm={12} lg={6}>
             <Card>
               <Statistic
-                title={<HelpSectionTitle title={t('En attente')} helpId="portails.locataire.paiements.indicateurs" />}
+                title={t('En attente')}
                 value={data.summary.due}
                 valueStyle={{ color: '#faad14' }}
                 prefix={<DollarOutlined />}
@@ -875,7 +875,7 @@ export default function TenantPayments() {
           <Col xs={24} sm={12} lg={6}>
             <Card>
               <Statistic
-                title={<HelpSectionTitle title={t('En retard')} helpId="portails.locataire.paiements.indicateurs" />}
+                title={t('En retard')}
                 value={data.summary.overdue}
                 valueStyle={{ color: '#cf1322' }}
                 prefix={<DollarOutlined />}
@@ -897,10 +897,15 @@ export default function TenantPayments() {
           items={[
             {
               key: 'declarations',
-              label: (
-                <HelpSectionTitle title={t('Mes déclarations')} helpId="portails.locataire.paiements.declarations" />
-              ),
-              children: <MyDeclarationsList onChanged={rechargerApresDeclaration} />
+              label: t('Mes déclarations'),
+              children: (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <HelpButton size="small" helpId="portails.locataire.paiements.declarations" />
+                  </div>
+                  <MyDeclarationsList onChanged={rechargerApresDeclaration} />
+                </>
+              )
             }
           ]}
         />

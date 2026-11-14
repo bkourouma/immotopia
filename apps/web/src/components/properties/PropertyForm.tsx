@@ -797,14 +797,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
 
         {/* SECTION 5: CARACTÉRISTIQUES PHYSIQUES */}
         {selectedType && shouldShowRooms(selectedType) && (
-          <Card
-            title={
-              <HelpSectionTitle
-                title={t('5. Caractéristiques physiques')}
-                helpId="commercial.biens.modifier.caracteristiques"
-              />
-            }
-          >
+          <Card title={t('5. Caractéristiques physiques')}>
             <Row gutter={16}>
               <Col xs={24} sm={12}>
                 <Form.Item label={t('Nombre de pièces')} name="rooms">
@@ -849,14 +842,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
 
         {/* SECTION 6: CARACTÉRISTIQUES SPÉCIFIQUES */}
         {template && template.sections && Array.isArray(template.sections) && template.sections.length > 0 && (
-          <Card
-            title={
-              <HelpSectionTitle
-                title={t('6. Caractéristiques spécifiques')}
-                helpId="commercial.biens.modifier.caracteristiques"
-              />
-            }
-          >
+          <Card title={t('6. Caractéristiques spécifiques')}>
             {loadingTemplate ? (
               <div style={{ textAlign: 'center', padding: '24px' }}>
                 <Spin />

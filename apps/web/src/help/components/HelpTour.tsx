@@ -5,6 +5,7 @@ import { t } from '../../i18n/t';
 import { useHelp } from '../help-context';
 import { useHelpEntry } from '../registry';
 import { markTourSeen } from '../tour-storage';
+import { HELP_TOUR_Z_INDEX } from '../z-index';
 
 /** Intervalle et durée maximale d'attente des cibles (l'écran peut encore charger). */
 const RETRY_INTERVAL_MS = 250;
@@ -103,7 +104,7 @@ const HelpTour: React.FC = () => {
 
   if (steps.length === 0) return null;
 
-  return <Tour open steps={steps} onClose={() => stopTour()} onFinish={() => stopTour()} />;
+  return <Tour open zIndex={HELP_TOUR_Z_INDEX} steps={steps} onClose={() => stopTour()} onFinish={() => stopTour()} />;
 };
 
 export default HelpTour;

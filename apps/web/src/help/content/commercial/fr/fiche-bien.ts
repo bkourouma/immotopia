@@ -29,7 +29,7 @@ const entries: HelpEntry[] = [
     },
     steps: [
       { title: 'Lire le bandeau', detail: 'Titre, statut, adresse, prix, chiffres clés.' },
-      { title: 'Ouvrir un onglet', detail: 'Cliquez sur son nom : chacun a son « ? ».' },
+      { title: 'Ouvrir un onglet', detail: 'Cliquez sur son nom : la plupart des onglets ont leur « ? ».' },
       { title: 'Modifier le bien', detail: 'Bouton « Modifier » : le formulaire permet aussi de changer le statut.' },
       {
         title: 'Autres actions',

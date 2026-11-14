@@ -6,6 +6,7 @@ import { isRtl } from '../../i18n/config';
 import { t } from '../../i18n/t';
 import { useHelp } from '../help-context';
 import { HELP_CENTER_PATH } from '../paths';
+import { HELP_DRAWER_Z_INDEX } from '../z-index';
 import { currentHelpLanguage } from '../registry';
 import { HelpEntryView } from './HelpEntryView';
 
@@ -71,6 +72,7 @@ export function HelpDrawer() {
       placement={placement}
       size={isMobile ? '100%' : DESKTOP_WIDTH}
       mask={false}
+      zIndex={HELP_DRAWER_Z_INDEX}
       keyboard
       title={t('Aide')}
       footer={<CenterLink onOpen={openCenter} />}

@@ -10,7 +10,7 @@ const entries: HelpEntry[] = [
     summary:
       "Retrouvez ici tous les contacts de votre agence : prospects, clients et contacts archivés. C'est le point de départ pour créer, rechercher, ouvrir, modifier ou supprimer un contact.",
     purpose:
-      "Un contact est une personne ou une entreprise que votre agence suit : acheteur potentiel, futur locataire, propriétaire… Un contact créé est d'abord un « Prospect ». Il devient « Client actif » quand vous lui attribuez un rôle (Propriétaire, Locataire, Copropriétaire, Acquéreur). Chaque contact a sa fiche, avec ses tags, ses rôles et, si votre pack inclut le CRM, ses affaires et ses activités.",
+      "Un contact est une personne ou une entreprise que votre agence suit : acheteur potentiel, futur locataire, propriétaire… Un contact créé est d'abord un « Prospect ». Il devient « Client actif » quand vous lui attribuez un rôle (Propriétaire, Locataire, Copropriétaire, Acquéreur). Chaque contact a sa fiche (tags, rôles, affaires et activités avec le pack CRM).",
     steps: [
       {
         title: 'Créer un contact',
@@ -52,9 +52,8 @@ const entries: HelpEntry[] = [
     ],
     consequences: [
       "Un nouveau contact est toujours créé avec le statut « Prospect ». L'adresse e-mail doit être unique dans votre agence : un doublon est refusé.",
-      "Si WhatsApp est configuré pour votre agence, le contact peut recevoir à sa création une invitation à votre groupe WhatsApp, à condition d'avoir le « Consentement WhatsApp ».",
-      "La suppression est définitive : elle efface aussi les affaires, les activités, les rôles et les tags rattachés au contact. Elle est refusée si le contact a un compte propriétaire, un compte de tiers ou un historique financier (par exemple une offre d'achat).",
-      'Un export reprend les contacts correspondant à vos critères : pensez à effacer les critères pour tout exporter.'
+      "Si la plateforme a activé l'envoi WhatsApp, le contact peut recevoir à sa création une invitation à votre groupe WhatsApp, à condition d'avoir le « Consentement WhatsApp ».",
+      "La suppression est définitive : elle efface aussi les affaires, les activités, les rôles et les tags rattachés au contact. Elle est refusée si le contact a un compte propriétaire, un compte de tiers ou un historique financier (par exemple une offre d'achat)."
     ],
     faq: [
       {
@@ -66,16 +65,8 @@ const entries: HelpEntry[] = [
         a: 'Ouvrez sa fiche et cliquez sur « Convertir », puis choisissez au moins un rôle. Vous pouvez aussi ajouter un rôle depuis la carte « Rôles » de la fiche.'
       },
       {
-        q: 'Pourquoi la suppression est-elle refusée ?',
-        a: 'Le contact porte un compte propriétaire, un compte de tiers ou un historique financier. Ces liens sont conservés : le contact ne peut pas être supprimé.'
-      },
-      {
         q: 'Mon enregistrement est refusé. Pourquoi ?',
         a: "Vérifiez d'abord l'e-mail (déjà utilisé ?) et les champs obligatoires. Sinon, il vous manque peut-être un droit : « Créer des contacts » pour créer, « Modifier les contacts » pour modifier ou supprimer."
-      },
-      {
-        q: 'Comment retrouver un contact ?',
-        a: 'Tapez son nom, sa raison sociale, son e-mail ou son téléphone dans le champ de recherche. Affinez ensuite avec Statut, Tags, Collaborateur ou « Plus de critères ».'
       }
     ],
     permissions: {

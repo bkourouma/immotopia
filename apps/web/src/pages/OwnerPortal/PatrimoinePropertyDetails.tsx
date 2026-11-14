@@ -26,7 +26,7 @@ import {
   workStatusTag
 } from './owner-patrimoine-labels';
 import { t } from '../../i18n/t';
-import { HelpSectionTitle } from '../../help';
+import { HelpButton, HelpSectionTitle } from '../../help';
 
 const { Title, Text } = Typography;
 
@@ -334,16 +334,18 @@ export default function PatrimoinePropertyDetails() {
       { replace: true }
     );
 
-  const onglets: Array<{ key: string; label: React.ReactNode; vide: boolean; children: React.ReactNode }> = [];
+  const onglets: Array<{
+    key: string;
+    label: React.ReactNode;
+    helpId: string;
+    vide: boolean;
+    children: React.ReactNode;
+  }> = [];
   if (sections.valuation && valuations && valuations.length > 0) {
     onglets.push({
       key: 'valorisations',
-      label: (
-        <HelpSectionTitle
-          title={t('Historique des valorisations')}
-          helpId="portails.proprietaire.patrimoine-detail.valorisations"
-        />
-      ),
+      label: t('Historique des valorisations'),
+      helpId: 'portails.proprietaire.patrimoine-detail.valorisations',
       vide: false,
       children: (
         <Table
@@ -360,7 +362,8 @@ export default function PatrimoinePropertyDetails() {
   if (sections.loans) {
     onglets.push({
       key: 'emprunts',
-      label: <HelpSectionTitle title={t('Emprunts')} helpId="portails.proprietaire.patrimoine-detail.emprunts" />,
+      label: t('Emprunts'),
+      helpId: 'portails.proprietaire.patrimoine-detail.emprunts',
       vide: !(loans && loans.length > 0),
       children:
         loans && loans.length > 0 ? (
@@ -380,7 +383,8 @@ export default function PatrimoinePropertyDetails() {
   if (sections.works) {
     onglets.push({
       key: 'travaux',
-      label: <HelpSectionTitle title={t('Travaux')} helpId="portails.proprietaire.patrimoine-detail.travaux" />,
+      label: t('Travaux'),
+      helpId: 'portails.proprietaire.patrimoine-detail.travaux',
       vide: !(works && works.length > 0),
       children:
         works && works.length > 0 ? (
@@ -393,7 +397,8 @@ export default function PatrimoinePropertyDetails() {
   if (sections.documents) {
     onglets.push({
       key: 'documents',
-      label: <HelpSectionTitle title={t('Documents')} helpId="portails.proprietaire.patrimoine-detail.documents" />,
+      label: t('Documents'),
+      helpId: 'portails.proprietaire.patrimoine-detail.documents',
       vide: !(documents && documents.length > 0),
       children:
         documents && documents.length > 0 ? (
@@ -499,7 +504,18 @@ export default function PatrimoinePropertyDetails() {
           activeKey={ongletActif}
           onChange={changerOnglet}
           destroyOnHidden
-          items={onglets.map(({ key, label, children }) => ({ key, label, children }))}
+          items={onglets.map(({ key, label, helpId, children }) => ({
+            key,
+            label,
+            children: (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <HelpButton size="small" helpId={helpId} />
+                </div>
+                {children}
+              </>
+            )
+          }))}
         />
       )}
     </Space>

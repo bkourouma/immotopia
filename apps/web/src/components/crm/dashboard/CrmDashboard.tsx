@@ -230,7 +230,6 @@ export const CrmDashboard: React.FC = () => {
         </Col>
         <Col xs={24} sm={12} lg={8}>
           <KpiCard
-            helpId="commercial.activites.tableau-de-bord.indicateurs"
             title={t('Leads convertis')}
             icon={<RiseOutlined />}
             iconColor="#52c41a"
@@ -241,7 +240,6 @@ export const CrmDashboard: React.FC = () => {
         </Col>
         <Col xs={24} sm={12} lg={8}>
           <KpiCard
-            helpId="commercial.activites.tableau-de-bord.indicateurs"
             title={t('Affaires créées')}
             icon={<ShoppingOutlined />}
             iconColor="#722ed1"
@@ -252,7 +250,6 @@ export const CrmDashboard: React.FC = () => {
         </Col>
         <Col xs={24} sm={12} lg={8}>
           <KpiCard
-            helpId="commercial.activites.tableau-de-bord.indicateurs"
             title={t('Affaires gagnées')}
             icon={<CheckCircleOutlined />}
             iconColor="#13c2c2"

@@ -11,6 +11,15 @@ import type { PatrimoinePropertyDetails as Details } from '../../services/owner-
  * sont des onglets (`?tab=`), la synthèse reste visible au-dessus.
  */
 
+// « ? » rendu en bouton repérable : le test vérifie où il est posé, pas son contenu.
+vi.mock('../../help', async () => {
+  const actual = await vi.importActual<typeof import('../../help')>('../../help');
+  return {
+    ...actual,
+    HelpButton: ({ helpId }: { helpId: string }) => <button type="button" data-help-id={helpId} aria-label="Aide" />
+  };
+});
+
 const getPropertyDetails = vi.fn();
 const downloadDocument = vi.fn();
 
@@ -135,5 +144,17 @@ describe('Détail du patrimoine — onglets', () => {
 
     expect(await screen.findByText('Banque Atlantique')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByTestId('adresse').textContent).toContain('tab=emprunts'));
+  });
+
+  it("le « ? » d'un onglet est dans son contenu, jamais dans son libellé", async () => {
+    getPropertyDetails.mockResolvedValue(details());
+    mount('/owner/patrimoine/prop-1?tab=emprunts');
+
+    await screen.findByText('Banque Atlantique', {}, { timeout: 8000 });
+    for (const onglet of screen.getAllByRole('tab')) {
+      expect(onglet.querySelector('[data-help-id]')).toBeNull();
+    }
+    const panneau = screen.getByRole('tabpanel');
+    expect(panneau.querySelector('[data-help-id="portails.proprietaire.patrimoine-detail.emprunts"]')).not.toBeNull();
   });
 });

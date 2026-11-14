@@ -41,7 +41,7 @@ paragraphes d'un même champ se séparent par une ligne vide (`\n\n`).
 | `summary`                            | 2 phrases au plus                                  |
 | `steps`                              | 8 étapes au plus, titre court, `detail` facultatif |
 | `faq`                                | de 3 à 8 questions, réponses de 1 à 3 phrases      |
-| Fiche de page (tout le texte cumulé) | environ 400 mots au plus                           |
+| Fiche de page (tout le texte cumulé) | environ 650 mots au plus                           |
 | `tour.steps[].description`           | 1 à 2 phrases                                      |
 
 Contenu des champs :
@@ -134,7 +134,10 @@ content/<module>/
 - Traduisez à partir du français validé, fiche par fiche, avec les mêmes identifiants.
 - Arabe standard moderne, clair, sans dialecte. Gardez un glossaire cohérent dans le module (« bail », « loyer »,
   « quittance », « syndic »… toujours rendus par le même mot) et notez-le dans votre rapport.
-- Conservez `FCFA` tel quel, ainsi que les noms de boutons s'ils sont affichés en français dans l'interface cible.
+- Conservez `FCFA` tel quel.
+- Citez les libellés tels que l'interface les affiche **dans chaque langue** : en anglais et en arabe, reprenez le
+  libellé traduit du catalogue de l'interface (`apps/web/src/i18n/`), jamais le texte français. Seul un libellé que
+  l'interface affiche réellement en français dans cette langue reste en français.
 - Ne traduisez **jamais** les clés et valeurs techniques : `id`, `kind`, `key` (des colonnes), `value` (des statuts),
   `target` (des étapes de visite), `helpId`, `to`. Seuls les textes lus par l'utilisateur se traduisent.
 - Les trois langues portent exactement les mêmes identifiants, et le même nombre d'étapes, de questions et de colonnes.
@@ -187,6 +190,22 @@ Une étape dont l'ancre est absente de l'écran est ignorée : ne documentez pas
 
 N'ajoutez au code d'un écran que ces props et ces ancres : ne modifiez pas sa logique.
 
+### Règles de câblage
+
+- **Visite `autoStart` : ancres visibles à l'ouverture.** Une visite qui démarre toute seule ne doit viser que des
+  ancres présentes dès l'ouverture de l'écran. Le lecteur d'étapes ne les cherche que pendant 3 secondes (toutes les
+  250 ms) : si aucune n'apparaît, la visite s'arrête sans rien afficher. Une ancre dans un onglet fermé, un
+  panneau replié ou un bloc qui se charge tard n'a pas sa place dans une visite `autoStart` : visez le premier
+  écran visible, ou retirez `autoStart`.
+- **Chaque fiche de bloc est câblée.** Une fiche `section` ou `table` doit être appelée par un « ? » ou une
+  colonne de l'écran (`helpId` littéral). `npm run help:check` ne vérifie que le sens inverse (A : tout `helpId`
+  du code a sa fiche) ; il ne signale pas une fiche que le code n'appelle jamais. Cette règle reste donc une règle
+  de revue : cherchez l'identifiant dans `apps/web/src` avant de livrer.
+- **Jamais de « ? » dans le libellé d'un onglet.** Un clic sur l'onglet change d'onglet et déclenche aussi le « ? » :
+  l'aide s'ouvre sans que l'on l'ait demandée. Posez le « ? » en tête du contenu de l'onglet, avec le même `helpId`.
+- **Un seul « ? » par rangée de cartes.** Placez-le sur la première carte, ou à côté du titre de la section qui
+  porte la rangée : pas un « ? » par carte.
+
 ## 9. Liens, droits d'abonnement, visites guidées
 
 - `related` : `helpId` ouvre une autre fiche d'aide ; `to` est un lien interne. Dans `to`, écrivez `:tenantId` : il est
@@ -202,6 +221,9 @@ N'ajoutez au code d'un écran que ces props et ces ancres : ne modifiez pas sa l
 
 - [ ] Chaque affirmation du français a été relue contre l'écran, le service ou la spécification.
 - [ ] Longueurs respectées (résumé, étapes, FAQ, fiche de page).
+- [ ] Libellés cités tels qu'affichés dans chaque langue (en et ar : libellé traduit du catalogue).
+- [ ] Règles de câblage respectées : visite `autoStart` sur ancres visibles, fiche de bloc appelée par le code, pas de
+      « ? » dans un onglet, un « ? » par rangée de cartes.
 - [ ] Texte brut partout, vouvoiement, FCFA, aucun terme technique.
 - [ ] `en.ts` et `ar.ts` portent exactement les mêmes identifiants que `fr.ts`.
 - [ ] Toutes les routes du module sont dans `routes.ts` et pointent vers une fiche `page`.

@@ -367,8 +367,7 @@ export default function TenantLease() {
             <Card
               title={
                 <>
-                  <UserOutlined />{' '}
-                  <HelpSectionTitle title={t('Propriétaire')} helpId="portails.locataire.bail.parties" />
+                  <UserOutlined /> {t('Propriétaire')}
                 </>
               }
             >
@@ -391,7 +390,7 @@ export default function TenantLease() {
         <Card
           title={
             <>
-              <UserOutlined /> <HelpSectionTitle title={t('Co-locataires')} helpId="portails.locataire.bail.parties" />
+              <UserOutlined /> {t('Co-locataires')}
             </>
           }
         >

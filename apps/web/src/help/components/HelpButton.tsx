@@ -58,6 +58,11 @@ export function HelpButton({ helpId, size = 'middle', label, className, style }:
         event.stopPropagation();
         openHelp(helpId);
       }}
+      onKeyDown={event => {
+        // Entrée/Espace ne doivent pas déclencher un parent (Collapse, onglet) ;
+        // pas de preventDefault : l'activation native du bouton reste.
+        if (event.key === 'Enter' || event.key === ' ') event.stopPropagation();
+      }}
       style={{
         minWidth: small ? 24 : 32,
         minHeight: small ? 24 : 32,

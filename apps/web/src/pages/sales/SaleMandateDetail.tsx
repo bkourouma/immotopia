@@ -424,41 +424,52 @@ export const SaleMandateDetail: React.FC = () => {
     },
     {
       key: 'compromis',
-      label: <HelpSectionTitle title={t('Compromis')} helpId="commercial.ventes.mandat.compromis" />,
-      children:
-        mandate.agreements.length === 0 ? (
-          <StateBlock
-            variant="empty"
-            description={t(
-              "Aucun compromis pour ce mandat : créez-le depuis l'onglet Offres, une fois une offre acceptée."
-            )}
-          />
-        ) : (
-          <Space direction="vertical" style={{ width: '100%' }}>
-            {mandate.agreements.map(agreement => (
-              <Card key={agreement.id} size="small">
-                <Space style={{ width: '100%', justifyContent: 'space-between' }}>
-                  <Space direction="vertical" size={0}>
-                    <Text strong>{agreement.number}</Text>
-                    <Text type="secondary">
-                      <MoneyValue value={agreement.price} /> · {agreement.buyerName}
-                    </Text>
+      label: t('Compromis'),
+      children: (
+        <>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <HelpButton size="small" helpId="commercial.ventes.mandat.compromis" />
+          </div>
+          {mandate.agreements.length === 0 ? (
+            <StateBlock
+              variant="empty"
+              description={t(
+                "Aucun compromis pour ce mandat : créez-le depuis l'onglet Offres, une fois une offre acceptée."
+              )}
+            />
+          ) : (
+            <Space direction="vertical" style={{ width: '100%' }}>
+              {mandate.agreements.map(agreement => (
+                <Card key={agreement.id} size="small">
+                  <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+                    <Space direction="vertical" size={0}>
+                      <Text strong>{agreement.number}</Text>
+                      <Text type="secondary">
+                        <MoneyValue value={agreement.price} /> · {agreement.buyerName}
+                      </Text>
+                    </Space>
+                    <Space>
+                      <SaleStatusTag kind="agreement" status={agreement.status} />
+                      <Link to={`/tenant/${tenantId}/sales/agreements/${agreement.id}`}>{t('Ouvrir')}</Link>
+                    </Space>
                   </Space>
-                  <Space>
-                    <SaleStatusTag kind="agreement" status={agreement.status} />
-                    <Link to={`/tenant/${tenantId}/sales/agreements/${agreement.id}`}>{t('Ouvrir')}</Link>
-                  </Space>
-                </Space>
-              </Card>
-            ))}
-          </Space>
-        )
+                </Card>
+              ))}
+            </Space>
+          )}
+        </>
+      )
     },
     {
       key: 'signatures',
-      label: <HelpSectionTitle title={t('Signatures')} helpId="commercial.ventes.mandat.signatures" />,
+      label: t('Signatures'),
       children: (
-        <MandateSignatures kind="SALE_MANDATE" mandateId={mandate.id} fileLabel={`mandat-vente-${mandate.number}`} />
+        <>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <HelpButton size="small" helpId="commercial.ventes.mandat.signatures" />
+          </div>
+          <MandateSignatures kind="SALE_MANDATE" mandateId={mandate.id} fileLabel={`mandat-vente-${mandate.number}`} />
+        </>
       )
     },
     {

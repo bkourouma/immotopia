@@ -228,7 +228,7 @@ export default function TenantDeposit() {
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
-              title={<HelpSectionTitle title={t('Montant collecté')} helpId="portails.locataire.caution.indicateurs" />}
+              title={t('Montant collecté')}
               value={deposit.collectedAmount}
               valueStyle={{ color: '#3f8600' }}
               prefix={<DollarOutlined />}
@@ -239,7 +239,7 @@ export default function TenantDeposit() {
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
-              title={<HelpSectionTitle title={t('Montant retenu')} helpId="portails.locataire.caution.indicateurs" />}
+              title={t('Montant retenu')}
               value={deposit.heldAmount}
               valueStyle={{ color: '#faad14' }}
               prefix={<DollarOutlined />}
@@ -250,9 +250,7 @@ export default function TenantDeposit() {
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
-              title={
-                <HelpSectionTitle title={t('Montant disponible')} helpId="portails.locataire.caution.indicateurs" />
-              }
+              title={t('Montant disponible')}
               value={availableAmount}
               valueStyle={{ color: availableAmount > 0 ? '#3f8600' : '#cf1322' }}
               prefix={<DollarOutlined />}

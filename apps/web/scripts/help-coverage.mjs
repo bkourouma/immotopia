@@ -64,7 +64,11 @@ const IGNORED_ROUTES = [
   '/acces-partage',
   '/signer/:token',
   '/ag-direct',
-  '/atelier/*'
+  '/atelier/*',
+  // Le centre d'aide est l'aide elle-meme : il n'a pas de fiche de page.
+  '/aide',
+  // Projection de l'assemblee generale : plein ecran sans coquille, donc ni « ? » ni panneau d'aide.
+  '/tenant/:tenantId/syndics/:syndicId/assemblees/:meetingId/projection'
 ];
 
 /* ---------------------------------------------------------------- sortie */
