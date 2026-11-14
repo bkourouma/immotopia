@@ -6,6 +6,12 @@ import { appendArtifactVersion, readArtifactVersions } from '../lib/ai/artifact-
 import { canReplayArtifact, replayArtifact } from '../lib/ai/artifact-replay';
 import { buildArtifactPowerPoint } from '../lib/ai/artifact-pptx';
 import {
+  createScheduledReportDraft,
+  listScheduledReports,
+  removeScheduledReport,
+  scheduledReportInput
+} from '../lib/ai/scheduled-reports';
+import {
   assertSavedAnalysisPinned,
   listSavedAnalyses,
   listSavedAnalysisPins,
@@ -329,6 +335,42 @@ const artifactExporters = {
 };
 
 type ShareParty = Pick<Awaited<ReturnType<typeof resolveAvailableTools>>, 'permissions' | 'tools'>;
+
+export const listScheduledReportsHandler = asyncHandler(async (req, res) => {
+  const { cursor } = z.object({ cursor: z.string().uuid().optional() }).strict().parse(req.query);
+  const { owner, scopeKey } = await conversationScope(req);
+  const data = await listScheduledReports(owner, scopeKey, cursor);
+  res.set('Cache-Control', 'private, no-store').json({ success: true, data });
+});
+
+export const createScheduledReportDraftHandler = asyncHandler(async (req, res) => {
+  const input = scheduledReportInput.parse(req.body);
+  const source = await conversationScope(req);
+  const { tenantId, ownerId } = source.owner;
+  const stored = await getStoredArtifact(source.owner, input.conversationId, input.artifactId, source.scopeKey);
+  for (const recipientId of new Set(input.recipientIds)) {
+    await assertAnalysisCollaborator(tenantId, recipientId);
+    const recipient = recipientId === ownerId ? source : await resolveAvailableTools(recipientId, tenantId, true);
+    const artifact = await recalculateSharedArtifact(
+      stored,
+      tenantId,
+      recipientId,
+      input.conversationId,
+      source,
+      recipient
+    );
+    if (input.formats.includes('csv')) buildArtifactCsv(artifact);
+  }
+  const data = await createScheduledReportDraft(source.owner, source.scopeKey, input);
+  res.set('Cache-Control', 'private, no-store').status(201).json({ success: true, data });
+});
+
+export const deleteScheduledReportHandler = asyncHandler(async (req, res) => {
+  const { tenantId, userId } = requireContext(req);
+  const { id } = conversationParams.parse(req.params);
+  await removeScheduledReport({ tenantId, ownerId: userId }, id);
+  res.sendStatus(204);
+});
 
 async function recalculateSharedArtifact(
   artifact: CopilotArtifact,

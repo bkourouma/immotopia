@@ -79,6 +79,8 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 **Partage de conversations** — Après `65aa9a6a`, le bouton de partage du fil réutilise le formulaire pour 1 à 20 collègues. Le destinataire consulte les artefacts calculables des 100 derniers tours et peut les exporter individuellement dans son périmètre commun avec l’auteur. Les questions, réponses libres et pièces jointes restent privées. La révocation fonctionne des deux côtés. Migration `20261115060000_assistant_conversation_shares`. Les épingles restent disponibles au niveau d’un artefact partagé individuellement.
 
+**Rapports programmés** — Après `b7486844`, les routes de brouillon enregistrent un artefact recalculable, les destinataires habilités, les formats et un horaire dans un fuseau IANA. La migration `20261115070000_assistant_scheduled_reports` rattache la configuration à l’analyse enregistrée. Les brouillons sont inactifs. Reste à brancher le calcul d’échéance au job et aux commandes de pause/reprise, à réserver une livraison par échéance et destinataire et à fournir l’onglet Rapports.
+
 ## chore/deps-patch-minor — 2026-11-11
 
 **État** — PR 218 vers `main` (fusion par l'utilisateur), reprend la PR Dependabot 212 (28 mises à jour mineures : antd 6.7, Radix, TanStack Query, aws-sdk, docxtemplater, pizzip…). PR Dependabot 214 (`@vitejs/plugin-react` 6) et 215 (`vitest` 5) fermées le 2026-11-11 : sauts de versions majeures (module introuvable, matchers non typés), à traiter en migration dédiée ; envisager une règle `ignore` des versions majeures dans `.github/dependabot.yml`.

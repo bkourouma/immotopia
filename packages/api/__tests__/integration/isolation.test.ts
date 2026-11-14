@@ -589,6 +589,68 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       }
     });
 
+    it('enregistre un brouillon de rapport dans le périmètre du propriétaire', async () => {
+      const owner = await createTenantAdminUser(tenantA, 'report-owner');
+      const recipient = await createTenantAdminUser(tenantA, 'report-recipient');
+      const base = `/api/tenants/${tenantA.id}/ai`;
+      mockFakeScript = [
+        { toolCalls: [{ name: 'rental_receipts', input: { month: '2025-06' } }] },
+        { text: 'Voici le tableau.' }
+      ];
+      try {
+        const stream = await request(app)
+          .post(base + '/chat')
+          .set(authed(owner))
+          .send({
+            turnId: randomUUID(),
+            messages: [{ role: 'user', content: 'Prépare le rapport.' }]
+          });
+        expect(stream.status).toBe(200);
+        const events = stream.text
+          .split('\n')
+          .filter(line => line.startsWith('data: {'))
+          .map(line => JSON.parse(line.slice(6)));
+        const { conversationId } = events.find(event => event.type === 'meta');
+        const { id: artifactId } = events.find(event => event.type === 'artifact').artifact;
+        expect(
+          (await request(app).put(`${base}/analyses/${conversationId}/${artifactId}`).set(authed(owner))).status
+        ).toBe(200);
+        const input = {
+          conversationId,
+          artifactId,
+          recipientIds: [recipient.id],
+          formats: ['csv'],
+          schedule: { frequency: 'weekly', day: 1, time: '08:15', timeZone: 'Africa/Abidjan' }
+        };
+        const reports = base + '/reports';
+        expect(
+          (
+            await request(app)
+              .post(reports)
+              .set(authed(owner))
+              .send({ ...input, recipientIds: [adminB.id] })
+          ).status
+        ).toBe(404);
+        const report = await request(app).post(reports).set(authed(owner)).send(input);
+        expect(report.status).toBe(201);
+        expect(report.body.data.previewRunAt).toMatch(/T08:15:00\.000Z$/);
+        expect((await request(app).get(reports).set(authed(owner))).body.data.items).toEqual([
+          expect.objectContaining({ id: report.body.data.id, active: false, schedule: input.schedule, nextRunAt: null })
+        ]);
+        expect((await request(app).get(reports).set(authed(recipient))).body.data.items).toEqual([]);
+        expect(
+          (
+            await request(app)
+              .delete(reports + '/' + report.body.data.id)
+              .set(authed(owner))
+          ).status
+        ).toBe(204);
+        expect((await request(app).get(reports).set(authed(owner))).body.data.items).toEqual([]);
+      } finally {
+        mockFakeScript = undefined;
+      }
+    });
+
     it('partage un tableau recalculé, exclut le titre privé et révoque la lecture et l’export', async () => {
       const owner = await createTenantAdminUser(tenantA, 'share-owner');
       const recipient = await createTenantAdminUser(tenantA, 'share-recipient');

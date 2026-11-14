@@ -11623,6 +11623,7 @@ model AssistantSavedAnalysis {
 
   conversation AssistantConversation @relation(fields: [tenantId, ownerId, conversationId], references: [tenantId, ownerId, id], onDelete: Cascade, map: "assistant_saved_analyses_conversation_fkey")
   shares AssistantAnalysisShare[]
+  scheduledReports AssistantScheduledReport[]
 
   @@id([tenantId, ownerId, conversationId, artifactId])
   @@index([tenantId, ownerId, createdAt(sort: Desc), conversationId, artifactId], map: "assistant_saved_analyses_list_idx")
@@ -11648,4 +11649,26 @@ model AssistantAnalysisShare {
   // Les partages de fil sans artefact sont dédupliqués par un index partiel SQL.
   @@index([tenantId, recipientId, createdAt(sort: Desc), id], map: "assistant_analysis_shares_inbox_idx")
   @@map("assistant_analysis_shares")
+}
+
+model AssistantScheduledReport {
+  id             String    @id @default(uuid())
+  tenantId       String    @map("tenant_id")
+  ownerId        String    @map("owner_id")
+  conversationId String    @map("conversation_id")
+  artifactId     String    @map("artifact_id")
+  schedule       Json
+  recipientIds   String[]  @map("recipient_ids")
+  formats        String[]
+  active         Boolean   @default(false)
+  nextRunAt      DateTime? @map("next_run_at")
+  lastRunAt      DateTime? @map("last_run_at")
+  lastStatus     String?   @map("last_status")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  analysis AssistantSavedAnalysis @relation(fields: [tenantId, ownerId, conversationId, artifactId], references: [tenantId, ownerId, conversationId, artifactId], onDelete: Cascade, map: "assistant_scheduled_reports_analysis_fkey")
+
+  @@index([tenantId, ownerId, createdAt(sort: Desc), id], map: "assistant_scheduled_reports_list_idx")
+  @@index([active, nextRunAt], map: "assistant_scheduled_reports_due_idx")
+  @@map("assistant_scheduled_reports")
 }
