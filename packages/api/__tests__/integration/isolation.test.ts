@@ -286,6 +286,26 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
               .set(authed(adminA))
           ).body.data.turns;
         expect((await read())[1].feedback).toEqual(vote);
+        await prisma.permission.upsert({
+          where: { key: 'PLATFORM_TENANTS_VIEW' },
+          create: { key: 'PLATFORM_TENANTS_VIEW', description: 'Test avis' },
+          update: {}
+        });
+        const platform = await createSuperAdminUser('assistant-feedback-platform');
+        try {
+          const adminFeedback = '/api/platform/ai-settings/feedback?rating=unhelpful';
+          expect((await request(app).get(adminFeedback).set(authed(adminA))).status).toBe(403);
+          const results = await request(app).get(adminFeedback).set(authed(platform));
+          expect(results.status).toBe(200);
+          expect(results.body.data.items).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({ helpful: false, comment: vote.comment, excerpt: 'Réponse originale.' })
+            ])
+          );
+        } finally {
+          await prisma.user.delete({ where: { id: platform.id } });
+        }
+
         mockFakeScript = [{}];
         const empty = await regenerate(lastId);
         expect(empty.text).toContain('"reason":"error"');

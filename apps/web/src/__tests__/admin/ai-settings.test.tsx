@@ -83,8 +83,8 @@ describe('AiSettingsPage', () => {
     mount();
     expect(listAssistantFeedback).not.toHaveBeenCalled();
     fireEvent.click(await screen.findByText('Avis sur les réponses de l’assistant'));
-    expect(await screen.findByText('Extrait court')).toBeVisible();
-    expect(screen.getByText('À préciser')).toBeVisible();
+    expect(await screen.findByRole('cell', { name: 'Extrait court' })).toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: 'À préciser' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Suivant' }));
     expect(await screen.findByText('Aucun avis')).toBeVisible();
     expect(listAssistantFeedback).toHaveBeenLastCalledWith(25, 'all', expect.any(AbortSignal));
