@@ -98,12 +98,14 @@ import {
 const mockProviderRequests: Array<{ messages: unknown }> = [];
 let mockFakeScript: Array<{ text?: string; toolCalls?: Array<{ name: string; input: unknown }> }> | undefined;
 let mockReportedUsage: import('../../src/lib/ai/contracts').LlmUsage | undefined;
+let mockFastTitleProvider: import('../../src/lib/ai/contracts').LlmProvider | undefined;
 let mockUsageFailure = false;
 jest.mock('../../src/lib/ai/providers', () => {
   const actual = jest.requireActual('../../src/lib/ai/providers');
   return {
     ...actual,
-    getLlmProvider: () => {
+    getLlmProvider: (mode?: string) => {
+      if (mode === 'fast' && mockFastTitleProvider) return mockFastTitleProvider;
       const fake = new actual.FakeProvider(mockFakeScript);
       return {
         id: fake.id,
@@ -263,6 +265,101 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
   });
 
   describe('Assistant — historique privé', () => {
+    it('diffuse le titre automatique avant la fin et conserve un titre choisi pendant la génération', async () => {
+      const actor = await createTenantMemberUser(tenantA, 'assistant-title', 'TEST_ASSISTANT_TITLE', [
+        'PROPERTIES_VIEW'
+      ]);
+      const base = `/api/tenants/${tenantA.id}/ai`;
+      const send = (content: string) =>
+        request(app)
+          .post(base + '/chat')
+          .set(authed(actor))
+          .send({
+            turnId: randomUUID(),
+            messages: [{ role: 'user', content }]
+          });
+      const events = (body: string) =>
+        body
+          .split('\n')
+          .filter(line => line.startsWith('data: {'))
+          .map(line => JSON.parse(line.slice(6)));
+      let started!: () => void;
+      let resume!: () => void;
+      const start = new Promise<void>(resolve => {
+        started = resolve;
+      });
+      const pause = new Promise<void>(resolve => {
+        resume = resolve;
+      });
+      const runTurn = jest
+        .fn<
+          ReturnType<NonNullable<typeof mockFastTitleProvider>['runTurn']>,
+          Parameters<NonNullable<typeof mockFastTitleProvider>['runTurn']>
+        >()
+        .mockResolvedValueOnce({
+          stopReason: 'end_turn',
+          toolCalls: [],
+          model: 'fixture/fast-title',
+          assistantContent: [{ type: 'text', text: '« Titre : État du parc locatif. »' }]
+        })
+        .mockImplementationOnce(async () => {
+          started();
+          await pause;
+          return {
+            stopReason: 'end_turn',
+            toolCalls: [],
+            assistantContent: [{ type: 'text', text: 'Titre du modèle' }]
+          };
+        })
+        .mockRejectedValueOnce(new Error('Fournisseur momentanément indisponible'));
+      mockFastTitleProvider = { id: 'openrouter', runTurn };
+      mockFakeScript = [{ text: 'Voici le bilan.' }];
+      try {
+        const created = await send('Montre-moi l’occupation des biens.');
+        expect(created.status).toBe(200);
+        const first = events(created.text);
+        const id = first.find(event => event.type === 'meta').conversationId;
+        expect(first.slice(-2)).toEqual([
+          { type: 'conversation_title', conversationId: id, title: 'État du parc locatif' },
+          { type: 'done', reason: 'end_turn' }
+        ]);
+        expect(runTurn.mock.calls[0][0]).toMatchObject({ tools: [], maxOutputTokens: 40 });
+        const visible = await request(app)
+          .get(base + '/conversations/' + id)
+          .set(authed(actor));
+        expect(visible.body.data.title).toBe('État du parc locatif');
+        expect(
+          await prisma.assistantProviderUsage.count({
+            where: { tenantId: tenantA.id, userId: actor.id, mode: 'fast', model: 'fixture/fast-title' }
+          })
+        ).toBe(1);
+
+        const running = Promise.resolve(send('Comparer les mandats actifs'));
+        await Promise.race([
+          start,
+          running.then(() => {
+            throw new Error('Le titre n’a pas été demandé');
+          })
+        ]);
+        const pending = await prisma.assistantConversation.findFirstOrThrow({
+          where: { tenantId: tenantA.id, ownerId: actor.id, titlePending: true }
+        });
+        const path = base + '/conversations/' + pending.id;
+        expect((await request(app).patch(path).set(authed(actor)).send({ title: pending.title })).status).toBe(204);
+        resume();
+        expect(events((await running).text).find(event => event.type === 'conversation_title')).toBeUndefined();
+        const kept = await request(app).get(path).set(authed(actor));
+        expect(kept.body.data.title).toBe('Comparer les mandats actifs');
+        const fallback = events((await send('## Visites de la semaine ?')).text);
+        expect(fallback.at(-2)).toMatchObject({ type: 'conversation_title', title: 'Visites de la semaine' });
+        expect(fallback.at(-1)).toEqual({ type: 'done', reason: 'end_turn' });
+      } finally {
+        resume();
+        mockFastTitleProvider = undefined;
+        mockFakeScript = undefined;
+      }
+    });
+
     it('ventile les appels réels au fournisseur avec coût partiel et export réservé au super-admin', async () => {
       const actor = await createTenantMemberUser(tenantA, 'usage-assistant', 'TEST_USAGE_ASSISTANT', [
         'PROPERTIES_VIEW'
@@ -1527,9 +1624,11 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         expect(immediateShares).toHaveLength(1);
         expect(send).not.toHaveBeenCalled();
         const immediateId = responses[0].body.data.id;
-        expect((await request(app).get(reports).set(authed(owner))).body.data.items).toEqual([
+        const due = (await request(app).get(reports).set(authed(owner))).body.data.items;
+        expect(due).toEqual([
           expect.objectContaining({ id: immediateId, schedule: null, active: true, lastStatus: null })
         ]);
+        expect(new Date(due[0].nextRunAt).getTime()).toBeLessThanOrEqual(Date.now());
         expect(
           (
             await request(app)

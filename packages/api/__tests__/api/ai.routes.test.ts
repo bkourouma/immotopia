@@ -194,6 +194,19 @@ beforeEach(() => {
 });
 
 describe('GET /ai/status', () => {
+  const propertyTools = [
+    'call_read',
+    'chart_analysis',
+    'compose_report',
+    'list_capabilities',
+    'list_property_documents',
+    'plan_write',
+    'property_portfolio',
+    'propose_follow_up',
+    'search_properties',
+    'show_artifact',
+    'show_indicators'
+  ];
   it('assistant désactivé : 200 enabled=false NOT_CONFIGURED (jamais 503)', async () => {
     mockProvider = null;
     const res = await get(`${base()}/status`);
@@ -217,14 +230,7 @@ describe('GET /ai/status', () => {
     expect(res.status).toBe(200);
     expect(res.body.data.enabled).toBe(true);
     expect(res.body.data.provider).toBe('fake');
-    expect([...res.body.data.tools].sort()).toEqual([
-      'call_read',
-      'list_capabilities',
-      'list_property_documents',
-      'plan_write',
-      'search_properties',
-      'show_artifact'
-    ]);
+    expect([...res.body.data.tools].sort()).toEqual(propertyTools);
     expect(mockGetUserPermissions).toHaveBeenCalledWith(currentUser, TENANT_A);
   });
 
@@ -248,14 +254,7 @@ describe('GET /ai/status', () => {
     });
     const res = await get(`${base()}/status`);
     expect(res.status).toBe(200);
-    expect([...res.body.data.tools].sort()).toEqual([
-      'call_read',
-      'list_capabilities',
-      'list_property_documents',
-      'plan_write',
-      'search_properties',
-      'show_artifact'
-    ]);
+    expect([...res.body.data.tools].sort()).toEqual(propertyTools);
     expect(mockGetEntitlements).toHaveBeenCalledWith(TENANT_A);
   });
 

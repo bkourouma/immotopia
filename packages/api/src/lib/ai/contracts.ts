@@ -454,6 +454,7 @@ export type AnalysisTable = Extract<CopilotArtifact, { kind: 'table' }>;
 // "event: <type>\ndata: <JSON de l'objet>\n\n" ; commentaire ": ping" toutes les 15 s
 export type CopilotSseEvent =
   | { type: 'meta'; conversationId: string; requestId: string }
+  | { type: 'conversation_title'; conversationId: string; title: string }
   | { type: 'text_delta'; text: string }
   | {
       type: 'tool_status';

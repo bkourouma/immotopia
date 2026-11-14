@@ -5,6 +5,7 @@ import { t } from '../../i18n';
 import { ConflictError, NotFoundError } from '../../middleware/error-middleware';
 import { prisma } from '../../utils/database';
 import { analysisSources } from './artifact-sources';
+import { fallbackConversationTitle } from './conversation-title';
 import {
   COPILOT_MAX_MESSAGE_CHARS,
   COPILOT_MAX_MESSAGES,
@@ -301,8 +302,26 @@ export async function updateConversation(
   scopeKey: string,
   data: z.infer<typeof conversationPatch>
 ) {
-  const result = await prisma.assistantConversation.updateMany({ where: { ...owner, id, scopeKey }, data });
+  const result = await prisma.assistantConversation.updateMany({
+    where: { ...owner, id, scopeKey },
+    data: { ...data, ...(data.title !== undefined && { titlePending: false }) }
+  });
   if (result.count === 0) throw new NotFoundError();
+}
+
+export async function finalizeConversationTitle(owner: AssistantOwner, id: string, scopeKey: string, title: string) {
+  const result = await prisma.assistantConversation.updateMany({
+    where: { ...owner, id, scopeKey, titlePending: true, archived: false },
+    data: { title, titlePending: false }
+  });
+  return result.count === 1;
+}
+
+export async function readPendingConversationTitle(owner: AssistantOwner, id: string, scopeKey: string) {
+  return prisma.assistantConversation.findFirst({
+    where: { ...owner, id, scopeKey, archived: false, titlePending: true },
+    select: { title: true }
+  });
 }
 
 export async function deleteConversation(owner: AssistantOwner, id: string) {
@@ -359,9 +378,8 @@ export async function beginAssistantTurn(
         });
         if (result.count === 0) throw new NotFoundError();
       } else {
-        const title = input.question.split('\n')[0].replace(/\s+/g, ' ').slice(0, 80).trim();
         const conversation = await tx.assistantConversation.create({
-          data: { ...owner, scopeKey, title: title || t('Nouvelle conversation') },
+          data: { ...owner, scopeKey, title: fallbackConversationTitle(input.question), titlePending: true },
           select: { id: true }
         });
         conversationId = conversation.id;

@@ -66,11 +66,12 @@ export async function queueImmediateReportInTransaction(
   const recipientIds = [...new Set(input.recipientIds)].sort();
   const formats = [...new Set(input.formats)].sort();
   const message = input.message || null;
+  const dueAt = new Date(); // Même horloge que le filtre d’échéance du job.
   const inserted = await tx.$executeRaw`
     INSERT INTO assistant_scheduled_reports
       (id, tenant_id, owner_id, conversation_id, artifact_id, immediate_key, message, recipient_ids, formats, active, next_run_at, shares_created)
     SELECT ${id}, a.tenant_id, a.owner_id, a.conversation_id, a.artifact_id, ${input.requestId}, ${message},
-      ${recipientIds}::text[], ${formats}::text[], true, CURRENT_TIMESTAMP, true
+      ${recipientIds}::text[], ${formats}::text[], true, ${dueAt}, true
     FROM assistant_saved_analyses a
     JOIN assistant_conversations c ON (c.tenant_id, c.owner_id, c.id) = (a.tenant_id, a.owner_id, a.conversation_id)
     WHERE a.tenant_id = ${owner.tenantId} AND a.owner_id = ${owner.ownerId}

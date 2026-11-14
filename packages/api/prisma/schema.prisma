@@ -11533,6 +11533,7 @@ model AssistantConversation {
   tenantId  String   @map("tenant_id")
   ownerId   String   @map("owner_id")
   title     String
+  titlePending Boolean @default(false) @map("title_pending")
   pinned    Boolean  @default(false)
   archived  Boolean  @default(false)
   scopeKey  String   @map("scope_key")

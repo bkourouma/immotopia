@@ -364,6 +364,9 @@ export function useCopilotChat(tenantId: string, persistent = false): UseCopilot
               updateMessage(assistantId, message => ({ ...message, rating: { turnId, revision: 0 } }));
             }
             break;
+          case 'conversation_title':
+            // La liste d’historique relit le titre enregistré à la fin de la requête.
+            break;
           default:
             break; // tool_status : rien à conserver
         }

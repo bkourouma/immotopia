@@ -66,6 +66,7 @@ import { getLlmProvider } from '../lib/ai/providers';
 import { measuredProvider } from '../lib/ai/provider-usage';
 import { loopbackHeadersFor } from '../lib/ai/gateway/loopback-auth';
 import { openSseStream } from '../lib/ai/sse';
+import { generateConversationTitle } from '../lib/ai/conversation-title';
 import type { CopilotSseEvent } from '../lib/ai/contracts';
 import {
   resolveSavedAssistantScope,
@@ -74,12 +75,14 @@ import {
   conversationPatch,
   deleteConversation,
   finishAssistantTurn,
+  finalizeConversationTitle,
   getConversation,
   getConversationArtifactTurns,
   getStoredArtifact,
   getConversationAttachment,
   saveResponseFeedback,
   prepareRegeneration,
+  readPendingConversationTitle,
   replaceLatestResponse,
   historyQuery,
   listConversations,
@@ -989,6 +992,30 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
       );
     } else if (regenerated && outcome === 'end_turn') {
       terminal = { type: 'done', reason: 'error' };
+    }
+    if (saved && outcome === 'end_turn' && response.trim() && !signal.aborted) {
+      const id = saved.conversationId;
+      try {
+        const pending = await readPendingConversationTitle(owner, id, scopeKey);
+        if (pending && !signal.aborted) {
+          const fast = await getLlmProvider('fast');
+          const generated =
+            fast && fast.id !== 'fake' && !signal.aborted
+              ? await generateConversationTitle(
+                  measuredProvider(fast, { tenantId, userId, mode: 'fast' }),
+                  body.messages[0].content,
+                  response,
+                  signal
+                )
+              : undefined;
+          const title = generated ?? pending.title;
+          if (!signal.aborted && (await finalizeConversationTitle(owner, id, scopeKey, title))) {
+            stream.send({ type: 'conversation_title', conversationId: id, title });
+          }
+        }
+      } catch {
+        logger.warn('ImmoCopilot : titre automatique indisponible', { tenantId });
+      }
     }
     if (terminal) stream.send(terminal);
   } catch {

@@ -51,6 +51,7 @@ async function getStatus(tenantId: string): Promise<CopilotStatus> {
 
 const KNOWN_EVENTS = new Set([
   'meta',
+  'conversation_title',
   'text_delta',
   'tool_status',
   'property_results',

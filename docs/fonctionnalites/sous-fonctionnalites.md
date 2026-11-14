@@ -9,11 +9,11 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Finance | 198 |
 | CRM et Ventes | 72 |
 | Maintenance | 34 |
-| Communication et Documents | 113 |
+| Communication et Documents | 114 |
 | Syndic copropriete | 247 |
 | Administration plateforme | 145 |
 | Portails externes | 84 |
-| **Total** | **1274** |
+| **Total** | **1275** |
 
 ## Sous-fonctionnalités
 
@@ -844,6 +844,7 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Confirmer une action proposée dans le chat | Préparer une tâche, une notification, un envoi par e-mail ou un rapport programmé. Le fil conserve la carte, l’accord, l’annulation ou l’échec. | Action, destinataires, paramètres métier et analyse selon le type | Carte dans le fil et exécution unique après confirmation | Conversation enregistrée et droits actuels sur les destinataires et l’analyse | Propriétaire de la conversation | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat et PATCH /api/tenants/:tenantId/ai/follow-ups/:id | Accès collaborateur, périmètre du fil et droits métier | Disponible | Assistant > Conversation > Carte d’action |
 | Promoteur, Opérateur intégré | CONSTRUCTION | Assistant IA ImmoCopilot | Préparer une alerte budgétaire | Vérifier le chantier et préparer un lien vers le formulaire prérempli. | Chantier et seuil en pourcentage | Carte dans le chat et formulaire prérempli | Chantier ouvert et module Construction | Gestionnaire de chantier | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | FINANCE_SITES_MANAGE et FINANCE_ACCOUNTS_READ | Disponible | Assistant > Alerte budgétaire préparée |
 | Agence, Syndic, Promoteur, Opérateur intégré | RENTAL | Assistant IA ImmoCopilot | Créer et gérer les alertes locatives | Préparer depuis le chat ou créer dans le formulaire une règle de fin de bail, de déclaration en attente ou de seuil d’impayés. | Règle, délai, bien facultatif, montant et devise pour les impayés | Alerte personnelle, notification interne au déclenchement et réarmement lorsque la condition cesse | Module locatif et permission de lecture de la donnée concernée | Collaborateur de l’agence | Agence (collaborateur) | GET /api/tenants/:tenantId/ai/rental-alerts et /properties ; PUT et DELETE /api/tenants/:tenantId/ai/rental-alerts/:id | RENTAL_LEASES_VIEW, RENTAL_PAYMENTS_VIEW ou RENTAL_INSTALLMENTS_VIEW selon la règle | Disponible | Assistant > Alertes locatives |
+| Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Titrer automatiquement une conversation | Proposer un titre court avec le modèle rapide après une réponse réussie. Le titre choisi par le propriétaire est conservé. | Première question et réponse réussie, avec extraits bornés | Titre enregistré dans l’historique, avec repli sur la première ligne de la question | Conversation privée avec un titre en attente | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | authenticate + requireTenantAccess + requireTenantCollaborator + requireAiStatusAccess | Disponible | Assistant > Historique |
 
 ### Syndic copropriete
 

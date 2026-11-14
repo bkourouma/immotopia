@@ -86,6 +86,7 @@ describe('streamChat', () => {
       opts.onEvent({ event: 'text_delta', data: '{"text":"a"}' });
       opts.onEvent({ event: 'inconnu', data: '{}' });
       opts.onEvent({ event: 'text_delta', data: 'pas du json' });
+      opts.onEvent({ event: 'conversation_title', data: '{"conversationId":"c1","title":"Bilan locatif"}' });
       opts.onEvent({ event: 'done', data: '{"reason":"end_turn"}' });
     });
     const events: unknown[] = [];
@@ -95,6 +96,7 @@ describe('streamChat', () => {
     expect(mockedStream.mock.calls[0][1]).toBe(req);
     expect(events).toEqual([
       { type: 'text_delta', text: 'a' },
+      { type: 'conversation_title', conversationId: 'c1', title: 'Bilan locatif' },
       { type: 'done', reason: 'end_turn' }
     ]);
   });
