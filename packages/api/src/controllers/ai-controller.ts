@@ -5,7 +5,14 @@ import { buildArtifactPdf } from '../lib/ai/artifact-pdf';
 import { appendArtifactVersion, readArtifactVersions } from '../lib/ai/artifact-versions';
 import { canReplayArtifact, replayArtifact } from '../lib/ai/artifact-replay';
 import { buildArtifactPowerPoint } from '../lib/ai/artifact-pptx';
-import { listSavedAnalyses, removeSavedAnalysis, saveAnalysis } from '../lib/ai/saved-analyses';
+import {
+  assertSavedAnalysisPinned,
+  listSavedAnalyses,
+  listSavedAnalysisPins,
+  removeSavedAnalysis,
+  saveAnalysis,
+  setSavedAnalysisPin
+} from '../lib/ai/saved-analyses';
 import {
   assertAnalysisCollaborator,
   createAnalysisShare,
@@ -202,6 +209,36 @@ export const removeSavedAnalysisHandler = asyncHandler(async (req, res) => {
   const { owner, scopeKey } = await conversationScope(req);
   await removeSavedAnalysis(owner, scopeKey, location);
   res.sendStatus(204);
+});
+
+export const listSavedAnalysisPinsHandler = asyncHandler(async (req, res) => {
+  const { owner, scopeKey } = await conversationScope(req);
+  const data = await listSavedAnalysisPins(owner, scopeKey);
+  res.set('Cache-Control', 'private, no-store').json({ success: true, data });
+});
+
+export const setSavedAnalysisPinHandler = asyncHandler(async (req, res) => {
+  const location = analysisReference.parse(req.params);
+  const { pinned } = z.object({ pinned: z.boolean() }).strict().parse(req.body);
+  const { owner, scopeKey } = await conversationScope(req);
+  await setSavedAnalysisPin(owner, scopeKey, location, pinned);
+  res.sendStatus(204);
+});
+
+export const getSavedAnalysisPinHandler = asyncHandler(async (req, res) => {
+  const location = analysisReference.parse(req.params);
+  const { owner, scopeKey, permissions, tools } = await conversationScope(req);
+  await assertSavedAnalysisPinned(owner, scopeKey, location);
+  const { artifact: stored } = await readArtifactVersions({ ...owner, ...location }, scopeKey);
+  const artifact = await replayArtifact(stored, {
+    tenantId: owner.tenantId,
+    userId: owner.ownerId,
+    conversationId: location.conversationId,
+    permissions,
+    tools
+  });
+  await assertSavedAnalysisPinned(owner, scopeKey, location);
+  res.set('Cache-Control', 'private, no-store').json({ success: true, data: { artifact } });
 });
 
 const versionNumber = z.number().int().positive().max(2147483647);

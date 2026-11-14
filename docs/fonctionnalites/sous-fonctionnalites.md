@@ -9,11 +9,11 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Finance | 196 |
 | CRM et Ventes | 70 |
 | Maintenance | 34 |
-| Communication et Documents | 101 |
+| Communication et Documents | 102 |
 | Syndic copropriete | 247 |
 | Administration plateforme | 142 |
 | Portails externes | 84 |
-| **Total** | **1251** |
+| **Total** | **1252** |
 
 ## Sous-fonctionnalités
 
@@ -823,7 +823,8 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Consulter et exporter un partage reçu | Ouvrir un résultat partagé et l’exporter après recalcul selon les droits actuels. | Partage reçu | Résultat et exports PDF, PPTX, XLSX ou CSV selon le format du résultat | Analyse enregistrée avec des données recalculables | Collaborateurs habilités de la même agence | Agence (collaborateur) | GET /api/tenants/:tenantId/ai/shares et GET /api/tenants/:tenantId/ai/shares/:id[/:format] | Accès à l’assistant et droits sur les données | Disponible | Assistant > Partages |
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Révoquer un partage envoyé | Retirer le droit du destinataire depuis les partages envoyés. | Partage envoyé | Accès révoqué | Analyse enregistrée avec des données recalculables | Collaborateurs habilités de la même agence | Agence (collaborateur) | DELETE /api/tenants/:tenantId/ai/shares/:id | Accès à l’assistant et droits sur les données | Disponible | Assistant > Partages |
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Épingler ou retirer une analyse reçue | Choisir les analyses reçues qui figurent sur son tableau de bord. | Partage reçu | Épingle personnelle mise à jour | Partage en lecture seule | Destinataire actif | Agence (collaborateur) | PUT /api/tenants/:tenantId/ai/shares/:id/pin | Accès à l’assistant et droits sur les données | Disponible | Assistant > Partages > Reçus |
-| Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Ouvrir une analyse épinglée | Ouvrir un résultat épinglé après vérification des droits actuels. | Partage reçu | Vignette et accès au résultat recalculé | Partage en lecture seule | Destinataire actif | Agence (collaborateur) | GET /api/tenants/:tenantId/ai/shares/pins et GET /api/tenants/:tenantId/ai/shares/:id | Accès à l’assistant et droits sur les données | Disponible | Tableau de bord > Analyses épinglées |
+| Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Ouvrir une analyse épinglée | Ouvrir un résultat épinglé après vérification des droits actuels. | Partage reçu ou analyse personnelle | Vignette et accès au résultat recalculé | Analyse épinglée | Propriétaire ou destinataire actif | Agence (collaborateur) | GET /api/tenants/:tenantId/ai/shares/pins et GET /api/tenants/:tenantId/ai/shares/:id ou GET /api/tenants/:tenantId/ai/analyses/pins et GET /api/tenants/:tenantId/ai/analyses/:conversationId/:artifactId/pin | Accès à l’assistant et droits sur les données | Disponible | Tableau de bord > Analyses épinglées |
+| Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Épingler ou retirer une analyse personnelle | Retrouver une analyse de sa bibliothèque dans son tableau de bord. | Analyse personnelle | Épingle personnelle | Analyse enregistrée | Propriétaire de l’analyse | Agence (collaborateur) | PUT /api/tenants/:tenantId/ai/analyses/:conversationId/:artifactId/pin | Accès à l’assistant et au fil privé | Disponible | Assistant > Mes analyses |
 
 ### Syndic copropriete
 

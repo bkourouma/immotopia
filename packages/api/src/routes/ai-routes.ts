@@ -25,6 +25,9 @@ import {
   getStatusHandler,
   listConversationsHandler,
   listSavedAnalysesHandler,
+  listSavedAnalysisPinsHandler,
+  getSavedAnalysisPinHandler,
+  setSavedAnalysisPinHandler,
   listAnalysisSharesHandler,
   listAnalysisSharePinsHandler,
   setAnalysisSharePinHandler,
@@ -70,6 +73,14 @@ router.get('/shares/:id', requireAiStatusAccess, getSharedAnalysisHandler);
 router.get('/shares/:id/:format', requireAiStatusAccess, downloadSharedAnalysisHandler);
 router.delete('/shares/:id', requireAiStatusAccess, aiActionRateLimiter, revokeAnalysisShareHandler);
 router.get('/analyses', requireAiStatusAccess, listSavedAnalysesHandler);
+router.get('/analyses/pins', requireAiStatusAccess, listSavedAnalysisPinsHandler);
+router.get('/analyses/:conversationId/:artifactId/pin', requireAiStatusAccess, getSavedAnalysisPinHandler);
+router.put(
+  '/analyses/:conversationId/:artifactId/pin',
+  requireAiStatusAccess,
+  aiActionRateLimiter,
+  setSavedAnalysisPinHandler
+);
 router.put('/analyses/:conversationId/:artifactId', requireAiStatusAccess, aiActionRateLimiter, saveAnalysisHandler);
 router.delete(
   '/analyses/:conversationId/:artifactId',

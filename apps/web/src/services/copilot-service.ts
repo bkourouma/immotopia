@@ -188,7 +188,7 @@ async function updateArtifactVersion(
 }
 
 export type SavedAnalysisReference = { conversationId: string; artifactId: string };
-export type SavedAnalysis = SavedAnalysisReference & { title: string; createdAt: string };
+export type SavedAnalysis = SavedAnalysisReference & { title: string; createdAt: string; pinnedAt?: string | null };
 export type AnalysisShare = { id: string; colleague: string; createdAt: string; title?: string; pinned?: boolean };
 
 function savedAnalysisPath(tenantId: string, { conversationId, artifactId }: SavedAnalysisReference) {
@@ -196,6 +196,17 @@ function savedAnalysisPath(tenantId: string, { conversationId, artifactId }: Sav
 }
 
 export const copilotService = {
+  async listSavedAnalysisPins(tenantId: string, signal: AbortSignal) {
+    const response = await apiClient.get(`/tenants/${tenantId}/ai/analyses/pins`, { signal });
+    return unwrap<SavedAnalysisReference[]>(response.data);
+  },
+  async getSavedAnalysisPin(tenantId: string, reference: SavedAnalysisReference, signal: AbortSignal) {
+    const response = await apiClient.get(savedAnalysisPath(tenantId, reference) + '/pin', { signal });
+    return unwrap<{ artifact: unknown }>(response.data).artifact;
+  },
+  async setSavedAnalysisPin(tenantId: string, reference: SavedAnalysisReference, pinned: boolean) {
+    await apiClient.put(savedAnalysisPath(tenantId, reference) + '/pin', { pinned });
+  },
   async listAnalysisPins(tenantId: string, signal?: AbortSignal) {
     const response = await apiClient.get(`/tenants/${tenantId}/ai/shares/pins`, { signal });
     return unwrap<Array<{ id: string }>>(response.data);

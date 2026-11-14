@@ -79,6 +79,12 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
   const [params, setParams] = useSearchParams();
   const activeId = params.get('c');
   const sharedId = params.get('partage');
+  const analysisConversation = params.get('fil');
+  const analysisArtifact = params.get('analyse');
+  const initialAnalysis =
+    analysisConversation && analysisArtifact
+      ? { conversationId: analysisConversation, artifactId: analysisArtifact }
+      : undefined;
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [analysesOpen, setAnalysesOpen] = useState(false);
@@ -371,7 +377,26 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
 
   return (
     <div style={{ display: 'flex', height: pageHeight(hasTabs), minHeight: 320, gap: 'var(--space-4)' }}>
-      {analysesOpen && <SavedAnalyses tenantId={tenantId} onClose={() => setAnalysesOpen(false)} />}
+      {(analysesOpen || initialAnalysis) && (
+        <SavedAnalyses
+          key={analysisArtifact ?? ''}
+          tenantId={tenantId}
+          initialAnalysis={initialAnalysis}
+          onClose={() => {
+            setAnalysesOpen(false);
+            if (initialAnalysis)
+              setParams(
+                previous => {
+                  const next = new URLSearchParams(previous);
+                  next.delete('fil');
+                  next.delete('analyse');
+                  return next;
+                },
+                { replace: true }
+              );
+          }}
+        />
+      )}
       {(sharesOpen || sharedId) && (
         <AnalysisShares
           key={sharedId ?? ''}

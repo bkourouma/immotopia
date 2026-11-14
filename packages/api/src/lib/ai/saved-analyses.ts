@@ -4,7 +4,7 @@ import { readArtifactVersions } from './artifact-versions';
 import { getStoredArtifact, type AssistantOwner } from './conversations';
 
 type AnalysisReference = { conversationId: string; artifactId: string };
-const select = { conversationId: true, artifactId: true, title: true, createdAt: true } as const;
+const select = { conversationId: true, artifactId: true, title: true, createdAt: true, pinnedAt: true } as const;
 
 export async function listSavedAnalyses(owner: AssistantOwner, scopeKey: string, cursor?: AnalysisReference) {
   const where = { ...owner, conversation: { scopeKey } };
@@ -52,4 +52,33 @@ export async function removeSavedAnalysis(owner: AssistantOwner, scopeKey: strin
   await prisma.assistantSavedAnalysis.deleteMany({
     where: { ...owner, ...location, conversation: { scopeKey } }
   });
+}
+
+export async function setSavedAnalysisPin(
+  owner: AssistantOwner,
+  scopeKey: string,
+  location: AnalysisReference,
+  pinned: boolean
+) {
+  const result = await prisma.assistantSavedAnalysis.updateMany({
+    where: { ...owner, ...location, conversation: { scopeKey } },
+    data: { pinnedAt: pinned ? new Date() : null }
+  });
+  if (!result.count) throw new NotFoundError();
+}
+
+export function listSavedAnalysisPins(owner: AssistantOwner, scopeKey: string) {
+  return prisma.assistantSavedAnalysis.findMany({
+    where: { ...owner, conversation: { scopeKey }, pinnedAt: { not: null } },
+    select: { conversationId: true, artifactId: true },
+    orderBy: [{ pinnedAt: 'desc' }, { conversationId: 'asc' }, { artifactId: 'asc' }]
+  });
+}
+
+export async function assertSavedAnalysisPinned(owner: AssistantOwner, scopeKey: string, location: AnalysisReference) {
+  const pin = await prisma.assistantSavedAnalysis.findFirst({
+    where: { ...owner, ...location, conversation: { scopeKey }, pinnedAt: { not: null } },
+    select: { artifactId: true }
+  });
+  if (!pin) throw new NotFoundError();
 }

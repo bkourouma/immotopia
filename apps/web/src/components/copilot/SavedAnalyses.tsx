@@ -8,7 +8,15 @@ import { sanitizeArtifact } from '../../utils/copilot-artifact';
 import { filenameFromDisposition, saveBlob } from '../../utils/save-blob';
 import { ArtifactPanel } from './artifact/ArtifactPanel';
 
-function SavedAnalysisPreview({ tenantId, item, onBack }: { tenantId: string; item: SavedAnalysis; onBack(): void }) {
+function SavedAnalysisPreview({
+  tenantId,
+  item,
+  onBack
+}: {
+  tenantId: string;
+  item: SavedAnalysisReference;
+  onBack(): void;
+}) {
   const [artifact, setArtifact] = useState<CopilotArtifact>();
   const [failed, setFailed] = useState(false);
   const read = useCallback(
@@ -57,9 +65,17 @@ function SavedAnalysisPreview({ tenantId, item, onBack }: { tenantId: string; it
   );
 }
 
-export function SavedAnalyses({ tenantId, onClose }: { tenantId: string; onClose(): void }) {
+export function SavedAnalyses({
+  tenantId,
+  onClose,
+  initialAnalysis
+}: {
+  tenantId: string;
+  onClose(): void;
+  initialAnalysis?: SavedAnalysisReference;
+}) {
   const [items, setItems] = useState<SavedAnalysis[]>([]);
-  const [selected, setSelected] = useState<SavedAnalysis>();
+  const [selected, setSelected] = useState<SavedAnalysisReference | undefined>(initialAnalysis);
   const [cursor, setCursor] = useState<SavedAnalysisReference>();
   const [nextCursor, setNextCursor] = useState<SavedAnalysisReference>();
   const [busy, setBusy] = useState(true);
@@ -202,6 +218,26 @@ export function SavedAnalyses({ tenantId, onClose }: { tenantId: string; onClose
                     }}
                   >
                     {t('Partager')}
+                  </Button>
+                  <Button
+                    type="text"
+                    onClick={async () => {
+                      const pinned = !item.pinnedAt;
+                      try {
+                        await copilotService.setSavedAnalysisPin(tenantId, item, pinned);
+                        setItems(previous =>
+                          previous.map(row =>
+                            row.conversationId === item.conversationId && row.artifactId === item.artifactId
+                              ? { ...row, pinnedAt: pinned ? new Date().toISOString() : null }
+                              : row
+                          )
+                        );
+                      } catch {
+                        feedback.error(t('Impossible de modifier l’épingle.'));
+                      }
+                    }}
+                  >
+                    {item.pinnedAt ? t('Désépingler') : t('Épingler au tableau de bord')}
                   </Button>
                   <Popconfirm
                     title={t('Retirer cette analyse de la liste ?')}

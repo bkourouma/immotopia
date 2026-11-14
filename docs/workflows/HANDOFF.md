@@ -69,6 +69,8 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 **Épingles d’analyses reçues** — Après `0a9a3058`, le destinataire épingle un partage sur son tableau de bord ou le retire. Le tableau de bord récupère les identifiants, puis utilise la lecture sécurisée du partage pour chaque vignette. La révocation supprime l’épingle avec le partage. Le lien ouvre le détail dans l’assistant. La migration `20261115030000_assistant_analysis_pins` ajoute la date d’épinglage. L’épinglage direct des analyses privées reste à intégrer.
 
+**Épingles personnelles** — Après `e54bee66`, une analyse enregistrée peut être épinglée depuis Mes analyses. La vignette charge la dernière version et recalcule les jeux compatibles dans le périmètre actuel du propriétaire. Elle ouvre Mes analyses sur le résultat. Le retrait de l’analyse ou du fil retire aussi son épingle. Migration `20261115040000_assistant_saved_analysis_pins`.
+
 ## chore/deps-patch-minor — 2026-11-11
 
 **État** — PR 218 vers `main` (fusion par l'utilisateur), reprend la PR Dependabot 212 (28 mises à jour mineures : antd 6.7, Radix, TanStack Query, aws-sdk, docxtemplater, pizzip…). PR Dependabot 214 (`@vitejs/plugin-react` 6) et 215 (`vitest` 5) fermées le 2026-11-11 : sauts de versions majeures (module introuvable, matchers non typés), à traiter en migration dédiée ; envisager une règle `ignore` des versions majeures dans `.github/dependabot.yml`.

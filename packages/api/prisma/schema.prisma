@@ -11618,6 +11618,7 @@ model AssistantSavedAnalysis {
   title          String
   original       Json
   createdAt      DateTime @default(now()) @map("created_at")
+  pinnedAt       DateTime? @map("pinned_at")
 
   conversation AssistantConversation @relation(fields: [tenantId, ownerId, conversationId], references: [tenantId, ownerId, id], onDelete: Cascade, map: "assistant_saved_analyses_conversation_fkey")
   shares AssistantAnalysisShare[]

@@ -799,6 +799,20 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         expect(refreshed.status).toBe(200);
         const read = await request(app).get(artifact).set(authed(analyst));
         expect(read.body.data).toMatchObject({ version: 2, artifact: { title: 'Bilan vérifié' } });
+        const pin = bookmark + '/pin';
+        expect((await request(app).put(pin).set(authed(colleague)).send({ pinned: true })).status).toBe(404);
+        expect((await request(app).put(pin).set(authed(analyst)).send({ pinned: true })).status).toBe(204);
+        expect(
+          (
+            await request(app)
+              .get(base + '/analyses/pins')
+              .set(authed(analyst))
+          ).body.data
+        ).toEqual([{ conversationId, artifactId }]);
+        expect((await request(app).get(pin).set(authed(analyst))).body.data.artifact.title).toBe('Bilan vérifié');
+        expect((await request(app).get(pin).set(authed(colleague))).status).toBe(404);
+        expect((await request(app).put(pin).set(authed(analyst)).send({ pinned: false })).status).toBe(204);
+        expect((await request(app).get(pin).set(authed(analyst))).status).toBe(404);
         const original = await request(app).get(artifact).query({ version: 1 }).set(authed(analyst));
         expect(original.body.data.artifact.content).toBe('Résultat initial.');
         expect(
