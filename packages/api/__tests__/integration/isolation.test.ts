@@ -592,6 +592,7 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
     it('partage un tableau recalculé, exclut le titre privé et révoque la lecture et l’export', async () => {
       const owner = await createTenantAdminUser(tenantA, 'share-owner');
       const recipient = await createTenantAdminUser(tenantA, 'share-recipient');
+      await prisma.user.update({ where: { id: recipient.id }, data: { preferredLanguage: 'en' } });
       const base = `/api/tenants/${tenantA.id}/ai`;
       mockFakeScript = [
         { toolCalls: [{ name: 'rental_receipts', input: { month: '2025-06' } }] },
@@ -634,6 +635,29 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
           expect(sent.status).toBe(status);
           if (status === 404) continue;
           const link = base + '/shares/' + sent.body.data.id;
+          const repeated = await request(app)
+            .post(base + '/shares')
+            .set(authed(owner))
+            .send({ conversationId, artifactId, recipientId });
+          expect(repeated.body.data).toEqual(sent.body.data);
+          const notifications = `/api/tenants/${tenantA.id}/notifications`;
+          const inbox = await request(app).get(notifications).set(authed(recipient));
+          const expectedLink = `/tenant/${tenantA.id}/assistant?partage=${sent.body.data.id}`;
+          expect(inbox.status).toBe(200);
+          expect(
+            inbox.body.data.items.filter((item: { key: string }) => item.key === 'ASSISTANT_ANALYSIS_SHARED')
+          ).toEqual([
+            expect.objectContaining({
+              title: 'An analysis was shared with you',
+              body: 'Open the assistant to view this share.',
+              link: expectedLink,
+              deliveries: [expect.objectContaining({ channel: 'IN_APP', status: 'SENT' })]
+            })
+          ]);
+          const otherInbox = await request(app).get(notifications).set(authed(adminA));
+          expect(otherInbox.body.data.items).not.toEqual(
+            expect.arrayContaining([expect.objectContaining({ link: expectedLink })])
+          );
           expect(
             (
               await request(app)

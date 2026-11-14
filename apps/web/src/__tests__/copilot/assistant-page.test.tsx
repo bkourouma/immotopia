@@ -107,6 +107,16 @@ function setDesktop(desktop: boolean) {
 describe('AssistantPage — artefacts', () => {
   afterEach(() => setDesktop(false));
 
+  it('ouvre le partage indiqué par le lien de notification', async () => {
+    getStatus.mockResolvedValue(ENABLED);
+    vi.mocked(copilotService.listAnalysisShares).mockResolvedValue({ items: [] });
+    vi.mocked(copilotService.getSharedAnalysis).mockResolvedValueOnce(ARTIFACT_EVENT.artifact);
+    renderPage('/tenant/t1/assistant?partage=notification-share');
+    const drawer = await screen.findByRole('dialog', { name: 'Partages' });
+    expect(await within(drawer).findByText('important')).toBeInTheDocument();
+    expect(copilotService.getSharedAnalysis).toHaveBeenCalledWith('t1', 'notification-share');
+  });
+
   it('ouvre un tableau reçu dans un panneau en lecture seule', async () => {
     getStatus.mockResolvedValue(ENABLED);
     vi.mocked(copilotService.listAnalysisShares).mockResolvedValue({
