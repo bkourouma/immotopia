@@ -193,7 +193,13 @@ function buildTurnHistory(
 export async function beginAssistantTurn(
   owner: AssistantOwner,
   scopeKey: string,
-  input: { conversationId?: string; turnId: string; question: string; files?: Array<SavedFile & { bytes: Buffer }> }
+  input: {
+    conversationId?: string;
+    turnId: string;
+    question: string;
+    focus?: ChatRequest['focus'];
+    files?: Array<SavedFile & { bytes: Buffer }>;
+  }
 ): Promise<{
   conversationId: string;
   messages: ChatRequest['messages'];
@@ -236,6 +242,7 @@ export async function beginAssistantTurn(
           conversationId,
           id: input.turnId,
           question: input.question,
+          focus: input.focus,
           files: input.files?.map(file => file.name)
         },
         skipDuplicates: true
@@ -297,6 +304,7 @@ export async function prepareRegeneration(owner: AssistantOwner, conversationId:
       response: true,
       outcome: true,
       responseRevision: true,
+      focus: true,
       result: true,
       attachments: {
         where: owner,
@@ -313,6 +321,7 @@ export async function prepareRegeneration(owner: AssistantOwner, conversationId:
   const importedTables = storedAnalysisTables([turn.result]).filter(table => importedIds.has(table.id));
   return {
     revision: turn.responseRevision,
+    focus: turn.focus as ChatRequest['focus'] | null,
     messages: buildTurnHistory(turn.question, history),
     analysisTables: storedAnalysisTables(
       history

@@ -13,6 +13,7 @@ vi.mock('../../services/copilot-service', () => {
     executeProposal: vi.fn(),
     listConversations: vi.fn().mockResolvedValue({ items: [] }),
     getConversation: vi.fn(),
+    getArtifactVersion: vi.fn(),
     downloadAttachment: vi.fn(),
     transcribe: vi.fn()
   };
@@ -300,6 +301,45 @@ it('affiche la nouvelle réponse après confirmation du serveur', async () => {
   expect(await screen.findByText('Nouveau bilan.')).toBeVisible();
   expect(screen.queryByText('Ancien bilan.')).toBeNull();
   expect(streamChat.mock.calls[0][1]).toMatchObject({ conversationId: id, regenerateTurnId: turn.id });
+});
+
+it('prépare une relance sur la version du résultat affichée', async () => {
+  getStatus.mockResolvedValue(ENABLED);
+  const id = '5258bdd1-74d6-47ea-a37f-ab4d1e8eae45';
+  getConversation.mockResolvedValueOnce({
+    id,
+    title: 'Analyse',
+    pinned: false,
+    archived: false,
+    updatedAt: '2026-11-14T12:00:00Z',
+    turns: [
+      {
+        id: 'tour-1',
+        question: 'Bilan du mois',
+        response: 'Voici le bilan.',
+        outcome: 'end_turn',
+        result: [ARTIFACT_EVENT]
+      }
+    ]
+  });
+  vi.mocked(copilotService.getArtifactVersion).mockResolvedValue({
+    artifact: ARTIFACT_EVENT.artifact,
+    version: 2,
+    latest: 2,
+    versions: [{ version: 2, createdAt: null }]
+  });
+  renderPage(`/tenant/t1/assistant?c=${id}`);
+  fireEvent.click(await screen.findByRole('button', { name: 'Ouvrir : Synthèse du mois' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Poser une question sur ce résultat' }));
+  expect(screen.getByLabelText('Votre message')).toHaveValue('Explique les points importants de ce résultat.');
+  expect(streamChat).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Envoyer' }));
+  await waitFor(() =>
+    expect(streamChat.mock.calls[0][1]).toMatchObject({
+      conversationId: id,
+      focus: { artifactId: ARTIFACT_EVENT.artifact.id, version: 2 }
+    })
+  );
 });
 
 it('rouvre le fil et ses artefacts depuis le lien de conversation', async () => {

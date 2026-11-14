@@ -44,6 +44,7 @@ export type ChatDoneReason = Extract<CopilotSseEvent, { type: 'done' }>['reason'
 
 export interface RunChatInput {
   deep?: boolean;
+  focusedArtifact?: CopilotArtifact;
   fileExtracts?: Array<{ name: string; excerpt: string; artifactId?: string }>;
   importedTables?: Array<Extract<CopilotArtifact, { kind: 'table' }>>;
   analysisTables?: Array<Extract<CopilotArtifact, { kind: 'table' }>>;
@@ -143,6 +144,13 @@ export async function runChat(input: RunChatInput): Promise<ChatDoneReason> {
   const analysisTables = new Map(
     [...(input.analysisTables ?? []), ...(input.importedTables ?? [])].map(table => [table.id, table])
   );
+  const focus = input.focusedArtifact;
+  if (focus?.kind === 'table' && focus.provenance) analysisTables.set(focus.id, focus);
+  if (focus?.kind === 'document') {
+    for (const block of focus.blocks) {
+      if (block.kind === 'table' && block.table.provenance) analysisTables.set(block.table.id, block.table);
+    }
+  }
   const sourceRefs = [...analysisTables.values()].map(table => ({
     id: table.id,
     period: table.provenance?.period,
@@ -151,6 +159,23 @@ export async function runChat(input: RunChatInput): Promise<ChatDoneReason> {
   const screenContext = formatContextBlock(input.pageContext, input.now?.());
   const contextBlocks = [screenContext];
   if (sourceRefs.length) contextBlocks.push('<analysis_sources>' + JSON.stringify(sourceRefs) + '</analysis_sources>');
+  if (focus) {
+    let omittedItems = false;
+    const serialized = JSON.stringify(focus, (key, value: unknown) => {
+      if (!['rows', 'data', 'cards', 'blocks'].includes(key) || !Array.isArray(value) || value.length <= 12)
+        return value;
+      omittedItems = true;
+      return value.slice(0, 12);
+    });
+    const snapshot = JSON.stringify({
+      id: focus.id,
+      kind: focus.kind,
+      title: focus.title.slice(0, 160),
+      preview: serialized.slice(0, 8_000),
+      truncated: omittedItems || serialized.length > 8_000
+    }).replace(/</g, '\\u003c');
+    contextBlocks.push('<focused_result>' + snapshot + '</focused_result>');
+  }
   if (input.fileExtracts?.length) {
     const excerpts = JSON.stringify(input.fileExtracts).replace(/</g, '\\u003c');
     contextBlocks.push('<file_extracts>' + excerpts + '</file_extracts>');

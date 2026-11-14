@@ -11547,6 +11547,7 @@ model AssistantTurn {
   files            String[] @default([])
   response         String   @default("")
   responseRevision Int      @default(0) @map("response_revision")
+  focus            Json?
   result           Json?
   outcome          String?
   startedAt        DateTime @default(now()) @map("started_at")

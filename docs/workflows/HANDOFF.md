@@ -41,7 +41,9 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 **Dictée (`45b32448`, `1073066a`)** — Repli MediaRecorder dans la page Assistant si la dictée du navigateur est indisponible. L’API vérifie le type et la signature, transmet l’audio en mémoire à OpenAI et renvoie le texte dans le brouillon. Activer avec `AI_TRANSCRIPTION_OPENAI_KEY` et régler le modèle avec `AI_TRANSCRIPTION_MODEL`. Recette automatisée avec fournisseur simulé.
 
-**Régénération** — La page Assistant relance la dernière question sauvegardée, ses fichiers importés et le contexte des tours précédents. L’ancienne réponse reste affichée et stockée jusqu’au succès. L’écriture verrouille le fil puis vérifie le dernier tour et la révision.
+**Régénération (`0036f408`)** — La page Assistant relance la dernière question sauvegardée, ses fichiers importés et le contexte des tours précédents. L’ancienne réponse reste affichée et stockée jusqu’au succès. L’écriture verrouille le fil puis vérifie le dernier tour et la révision.
+
+**Relances** — Depuis le panneau des résultats, un bouton cible la version affichée et prépare un brouillon modifiable. Le serveur vérifie le périmètre et transmet un aperçu borné. La référence est conservée pour la régénération.
 
 **À poursuivre** — Ajouter l’édition du contenu des artefacts par l’utilisateur et par le modèle. Étendre le catalogue aux lots, au syndic, au patrimoine, à la maintenance, au CRM et à la promotion. Enrichir les exports avec des graphiques natifs. Poursuivre le partage, les épingles, les actions de suivi, les envois, l’administration et les six langues. Recetter avec un fournisseur réel et un navigateur.
 

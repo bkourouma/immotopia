@@ -63,6 +63,10 @@ export const chatRequestSchema = z
     conversationId: z.string().uuid().optional(),
     turnId: z.string().uuid().optional(),
     regenerateTurnId: z.string().uuid().optional(),
+    focus: z
+      .object({ artifactId: z.string().uuid(), version: z.number().int().positive().max(2147483647) })
+      .strict()
+      .optional(),
     deep: z.boolean().optional(),
     messages: z
       .array(
@@ -86,6 +90,9 @@ export const chatRequestSchema = z
   })
   .strict()
   .superRefine((value, ctx) => {
+    if (value.focus && (!value.conversationId || !value.turnId)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['focus'], message: 'tour enregistré requis' });
+    }
     if (value.regenerateTurnId && (!value.conversationId || value.turnId)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['regenerateTurnId'], message: 'conversation requise' });
     }

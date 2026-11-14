@@ -347,11 +347,23 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
     body.regenerateTurnId && body.conversationId
       ? await prepareRegeneration(owner, body.conversationId, body.regenerateTurnId, scopeKey)
       : undefined;
+  const reference = regenerated?.focus ?? body.focus;
+  const focus =
+    reference && body.conversationId
+      ? (
+          await readArtifactVersions(
+            { ...owner, conversationId: body.conversationId, artifactId: reference.artifactId },
+            scopeKey,
+            reference.version
+          )
+        ).artifact
+      : undefined;
   const saved = body.turnId
     ? await beginAssistantTurn(owner, scopeKey, {
         conversationId: body.conversationId,
         turnId: body.turnId,
         question: body.messages[0].content,
+        focus: body.focus,
         files: extracts.map(({ name, excerpt, table }, position) => ({
           name,
           excerpt,
@@ -374,6 +386,7 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
     const outcome = await runChat({
       provider,
       deep: body.deep,
+      focusedArtifact: focus,
       analysisTables: regenerated?.analysisTables ?? saved?.analysisTables,
       fileExtracts: [
         ...extracts.map(({ name, excerpt, table }) => ({ name, excerpt, artifactId: table?.id })),

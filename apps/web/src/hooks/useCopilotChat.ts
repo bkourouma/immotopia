@@ -8,6 +8,7 @@ import {
   COPILOT_MAX_MESSAGES,
   COPILOT_MAX_MESSAGE_CHARS,
   COPILOT_MAX_TOTAL_CHARS,
+  type ChatRequest,
   type CopilotArtifact,
   type CopilotAttachment,
   type CopilotChatStatus,
@@ -238,7 +239,13 @@ export function useCopilotChat(tenantId: string, persistent = false): UseCopilot
   );
 
   const send = useCallback(
-    async (text: string, ctx: CopilotPageContext, deep = false, files?: readonly File[]): Promise<void> => {
+    async (
+      text: string,
+      ctx: CopilotPageContext,
+      deep = false,
+      files?: readonly File[],
+      focus?: ChatRequest['focus']
+    ): Promise<void> => {
       const content = text.trim();
       if (!content || streamingRef.current) return;
 
@@ -347,6 +354,7 @@ export function useCopilotChat(tenantId: string, persistent = false): UseCopilot
             ...(turnId ? { turnId } : {}),
             messages: persistent ? [{ role: 'user', content }] : history,
             ...(persistent && deep ? { deep } : {}),
+            ...(persistent && focus ? { focus } : {}),
             context: ctx
           },
           { signal: controller.signal, ...(persistent && files?.length ? { files } : {}), onEvent }

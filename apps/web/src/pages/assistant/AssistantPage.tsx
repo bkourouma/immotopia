@@ -88,6 +88,7 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
     setArchivedThread(false);
     setDraft('');
     setFiles([]);
+    setFocus(undefined);
     setHistoryOpen(false);
     setParams(previous => {
       const next = new URLSearchParams(previous);
@@ -147,6 +148,8 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
   }, [isNewConversation, tenantId]);
   const { stop } = chat;
   const [draft, setDraft] = useState('');
+  const [focus, setFocus] = useState<{ artifactId: string; version: number; title: string }>();
+  useEffect(() => setFocus(undefined), [activeId, tenantId]);
   const [files, setFiles] = useState<File[]>([]);
   const inputRef = useRef<TextAreaRef>(null);
   const [regenerating, setRegenerating] = useState(false);
@@ -209,6 +212,16 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
       selectedId={chat.selectedArtifactId}
       onSelect={chat.selectArtifact}
       onClose={closePanel}
+      onFollowUp={
+        conversationId && !streaming && !archivedThread
+          ? (artifact, version) => {
+              setFocus({ artifactId: artifact.id, version, title: artifact.title });
+              setDraft(previous => previous || t('Explique les points importants de ce résultat.'));
+              closePanel();
+              requestAnimationFrame(() => inputRef.current?.focus());
+            }
+          : undefined
+      }
       onRefresh={
         conversationId && !streaming && chat.replaceArtifact
           ? async (artifactId, expectedVersion = 1) => {
@@ -257,6 +270,7 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
       setArchivedThread(false);
       setDraft('');
       setFiles([]);
+      setFocus(undefined);
       navigate(pathname);
     };
     window.addEventListener('keydown', onKeyDown);
@@ -313,7 +327,12 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
     if (!value || streaming || loadingHistory || archivedThread || (activeId && activeId !== conversationId)) return;
     setDraft('');
     setFiles([]);
-    const request = files.length ? chat.send(value, context, deep, files) : chat.send(value, context, deep);
+    setFocus(undefined);
+    const request = focus
+      ? chat.send(value, context, deep, files, { artifactId: focus.artifactId, version: focus.version })
+      : files.length
+        ? chat.send(value, context, deep, files)
+        : chat.send(value, context, deep);
     void request.finally(() => {
       setHistoryRefresh(value => value + 1);
     });
@@ -432,6 +451,15 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
               {(canRegenerate || regenerating) && (
                 <Button size="small" loading={regenerating} onClick={() => void regenerate()}>
                   {t('Régénérer la dernière réponse')}
+                </Button>
+              )}
+              {focus && (
+                <Button
+                  type="text"
+                  onClick={() => setFocus(undefined)}
+                  aria-label={t('Retirer le résultat de la question')}
+                >
+                  {focus.title} ×
                 </Button>
               )}
               <CopilotComposer

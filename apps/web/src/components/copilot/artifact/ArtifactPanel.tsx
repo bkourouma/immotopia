@@ -23,6 +23,7 @@ export interface ArtifactPanelProps {
   selectedId?: string;
   onSelect(id: string): void;
   onClose(): void;
+  onFollowUp?(artifact: CopilotArtifact, version: number): void;
   onDownloadFile?(artifactId: string, format: ArtifactDownloadFormat, version?: number): Promise<void>;
   onReadVersion?(
     artifactId: string,
@@ -145,6 +146,7 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
   onClose,
   onRefresh,
   onReadVersion,
+  onFollowUp,
   onEditVersion,
   onDownloadFile
 }) => {
@@ -300,6 +302,11 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
               }))
             ]}
           />
+        )}
+        {onFollowUp && downloadVersion !== undefined && (
+          <Button onClick={() => onFollowUp(artifact, downloadVersion)}>
+            {t('Poser une question sur ce résultat')}
+          </Button>
         )}
         {onEditVersion &&
           snapshot &&

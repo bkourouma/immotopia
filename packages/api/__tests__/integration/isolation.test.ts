@@ -676,6 +676,40 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       expect(restored.body.data).toEqual({ version: 4, artifact: original.body.data.artifact });
       const edit = await request(app).get(versionPath).query({ version: 3 }).set(authed(adminA));
       expect(edit.body.data.artifact.title).toBe('Bilan renommé');
+      const focusedTurnId = randomUUID();
+      const focus = { artifactId: receiptsId, version: 3 };
+      const focused = await request(app)
+        .post(baseA + '/chat')
+        .set(authed(adminA))
+        .send({
+          conversationId,
+          turnId: focusedTurnId,
+          focus,
+          messages: [{ role: 'user', content: 'Explique cette version.' }]
+        });
+      expect(focused.status).toBe(200);
+      expect(JSON.stringify(mockProviderRequests.at(-1)?.messages)).toContain('Bilan renommé');
+      const unknownVersion = await request(app)
+        .post(baseA + '/chat')
+        .set(authed(adminA))
+        .send({
+          conversationId,
+          turnId: randomUUID(),
+          focus: { ...focus, version: 999 },
+          messages: [{ role: 'user', content: 'Explique cette version.' }]
+        });
+      expect(unknownVersion.status).toBe(404);
+      const rerun = await request(app)
+        .post(baseA + '/chat')
+        .set(authed(adminA))
+        .send({
+          conversationId,
+          regenerateTurnId: focusedTurnId,
+          messages: [{ role: 'user', content: 'Explique cette version.' }]
+        });
+      expect(rerun.status).toBe(200);
+      expect(JSON.stringify(mockProviderRequests.at(-1)?.messages)).toContain('Bilan renommé');
+
       expect((await request(app).get(versionPath).set(authed(colleague))).status).toBe(404);
       expect((await request(app).post(versionPath).set(authed(colleague)).send({ expectedVersion: 2 })).status).toBe(
         404

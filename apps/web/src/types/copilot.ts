@@ -61,6 +61,7 @@ export interface AssistantConversation extends AssistantConversationSummary {
 }
 
 export interface ChatRequest {
+  focus?: { artifactId: string; version: number };
   regenerateTurnId?: string;
   turnId?: string;
   deep?: boolean;
@@ -396,7 +397,13 @@ export interface UseCopilotChatResult {
   selectArtifact(id: string): void;
   status: CopilotChatStatus;
   error?: { code: string; message: string };
-  send(text: string, ctx: CopilotPageContext, deep?: boolean, files?: readonly File[]): Promise<void>;
+  send(
+    text: string,
+    ctx: CopilotPageContext,
+    deep?: boolean,
+    files?: readonly File[],
+    focus?: ChatRequest['focus']
+  ): Promise<void>;
   stop(): void;
   confirmProposal(proposalId: string): Promise<void>;
   cancelProposal(proposalId: string): void;
