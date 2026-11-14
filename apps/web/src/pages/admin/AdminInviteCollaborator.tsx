@@ -11,6 +11,7 @@ import { getRoleLabelFr } from '../../constants/permissions-labels';
 import { ArrowLeft, Mail, Users } from 'lucide-react';
 import { App } from 'antd';
 import { t } from '../../i18n/t';
+import { HelpButton } from '../../help';
 
 interface Role {
   id: string;
@@ -136,6 +137,7 @@ export const AdminInviteCollaborator: React.FC = () => {
               <p className="text-sm text-primary-active">
                 {t('Une invitation sera envoyée par e-mail au collaborateur.')}
               </p>
+              <HelpButton size="small" helpId="administration.plateforme-agences.invitation.formulaire" />
             </div>
           </div>
 

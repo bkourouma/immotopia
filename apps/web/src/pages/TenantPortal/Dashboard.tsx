@@ -15,6 +15,7 @@ import { useQuery } from '@tanstack/react-query';
 import { tenantPortalService } from '../../services/tenantPortalService';
 import { getOnlinePaymentAvailability } from '../../services/payment-gateway-service';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle, helpAnchor } from '../../help';
 
 import { activeLocale } from '../../i18n/format';
 import { formatMontantLocatif } from '../../lib/rental-labels';
@@ -169,7 +170,12 @@ export default function TenantDashboard() {
           <Text type="secondary">{t("Vue d'ensemble de votre situation locative")}</Text>
         </div>
         {onlinePaymentAvailability?.available && data.currentBalance > 0 ? (
-          <Button type="primary" icon={<CreditCardOutlined aria-hidden />} onClick={() => navigate('/tenant/payments')}>
+          <Button
+            type="primary"
+            icon={<CreditCardOutlined aria-hidden />}
+            onClick={() => navigate('/tenant/payments')}
+            {...helpAnchor('locataire-payer-en-ligne')}
+          >
             {t('Payer en ligne')}
           </Button>
         ) : null}
@@ -208,7 +214,8 @@ export default function TenantDashboard() {
       <Card
         title={
           <>
-            <HomeOutlined /> {t('Informations du bail')}
+            <HomeOutlined />{' '}
+            <HelpSectionTitle title={t('Informations du bail')} helpId="portails.locataire.accueil.bail" />
           </>
         }
       >
@@ -254,9 +261,11 @@ export default function TenantDashboard() {
       <Row gutter={[16, 16]}>
         {/* Overdue Installments Card (T029) */}
         <Col xs={24} sm={12} lg={8}>
-          <Card>
+          <Card {...helpAnchor('locataire-retard')}>
             <Statistic
-              title={t('Retard des échéances')}
+              title={
+                <HelpSectionTitle title={t('Retard des échéances')} helpId="portails.locataire.accueil.indicateurs" />
+              }
               value={data.overdueInstallmentsCount ?? 0}
               prefix={<WarningOutlined style={{ color: data.overdueInstallmentsCount > 0 ? '#ff4d4f' : '#d9d9d9' }} />}
               valueStyle={{ color: data.overdueInstallmentsCount > 0 ? '#ff4d4f' : '#000000' }}
@@ -275,11 +284,13 @@ export default function TenantDashboard() {
 
         {/* Next Installment Card (T030) */}
         <Col xs={24} sm={12} lg={8}>
-          <Card>
+          <Card {...helpAnchor('locataire-prochaine-echeance')}>
             {data.nextInstallment ? (
               <>
                 <Statistic
-                  title={t('Prochaine échéance')}
+                  title={
+                    <HelpSectionTitle title={t('Prochaine échéance')} helpId="portails.locataire.accueil.indicateurs" />
+                  }
                   value={formatCurrency(data.nextInstallment.amount)}
                   prefix={<CalendarOutlined style={{ color: '#1890ff' }} />}
                   valueStyle={{ color: '#1890ff' }}
@@ -320,7 +331,9 @@ export default function TenantDashboard() {
         <Col xs={24} sm={12} lg={8}>
           <Card>
             <Statistic
-              title={t('Dépôt de garantie')}
+              title={
+                <HelpSectionTitle title={t('Dépôt de garantie')} helpId="portails.locataire.accueil.indicateurs" />
+              }
               value={formatCurrency(data.depositInfo.collectedAmount)}
               prefix={
                 <SafetyOutlined style={{ color: data.depositInfo.status === 'COLLECTED' ? '#52c41a' : '#722ed1' }} />
@@ -346,9 +359,11 @@ export default function TenantDashboard() {
         {/* Recent Payments List (T032) */}
         <Col xs={24} lg={12}>
           <Card
+            {...helpAnchor('locataire-paiements-recents')}
             title={
               <>
-                <WalletOutlined /> {t('Paiements récents')}
+                <WalletOutlined />{' '}
+                <HelpSectionTitle title={t('Paiements récents')} helpId="portails.locataire.accueil.paiements" />
               </>
             }
             extra={
@@ -386,7 +401,8 @@ export default function TenantDashboard() {
           <Card
             title={
               <>
-                <ToolOutlined /> {t('Résumé maintenance')}
+                <ToolOutlined />{' '}
+                <HelpSectionTitle title={t('Résumé maintenance')} helpId="portails.locataire.accueil.maintenance" />
               </>
             }
           >

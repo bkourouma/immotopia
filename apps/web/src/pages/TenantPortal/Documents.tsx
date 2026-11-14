@@ -7,6 +7,7 @@ import { DocumentsSansResultat, useDocumentsSearch } from './search/documentsSea
 import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
 import { filenameFromDisposition } from '../../utils/save-blob';
+import { HelpSectionTitle } from '../../help';
 
 const { Title, Text } = Typography;
 
@@ -146,7 +147,7 @@ export default function TenantDocuments() {
               title={
                 <Space>
                   <FileTextOutlined />
-                  <span>{getDocumentTypeLabel(type)}</span>
+                  <HelpSectionTitle title={getDocumentTypeLabel(type)} helpId="portails.locataire.documents.liste" />
                   <Tag>{documents.length}</Tag>
                 </Space>
               }

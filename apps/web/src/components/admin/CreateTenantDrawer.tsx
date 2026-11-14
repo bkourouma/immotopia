@@ -35,6 +35,7 @@ import {
   type CatalogQuote
 } from '../../services/subscription-v2-service';
 import { MoneyValue } from '../primitives';
+import { HelpSectionTitle } from '../../help';
 import { TenantCreatedResult } from './TenantCreatedResult';
 
 const { Text, Title } = Typography;
@@ -340,7 +341,16 @@ export const CreateTenantDrawer: React.FC<CreateTenantDrawerProps> = ({ open, on
 
   return (
     <Drawer
-      title={result ? t('Agence créée') : t('Nouvelle agence')}
+      title={
+        result ? (
+          <HelpSectionTitle title={t('Agence créée')} helpId="administration.plateforme-agences.creation.resultat" />
+        ) : (
+          <HelpSectionTitle
+            title={t('Nouvelle agence')}
+            helpId="administration.plateforme-agences.creation.assistant"
+          />
+        )
+      }
       placement="right"
       width={560}
       open={open}
@@ -556,7 +566,12 @@ export const CreateTenantDrawer: React.FC<CreateTenantDrawerProps> = ({ open, on
           </Space>
 
           <Card
-            title={t('Récapitulatif')}
+            title={
+              <HelpSectionTitle
+                title={t('Récapitulatif')}
+                helpId="administration.plateforme-agences.creation.recapitulatif"
+              />
+            }
             size="small"
             style={{ marginBottom: 'var(--space-4)', borderColor: 'var(--color-accent-border)' }}
             styles={{ header: { borderInlineStartColor: 'var(--color-accent)' } }}

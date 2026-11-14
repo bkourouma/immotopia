@@ -13,6 +13,7 @@ import { getAuditOutcomeColor } from '../../utils/tenant-audit-display';
 import { getPlatformActorDisplay } from '../../utils/platform-audit-display';
 import { ChangesBlock, DetailsBlock, formatFullDate } from '../tenant/ActivityLogDetailModal';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 const { Text, Paragraph } = Typography;
 
@@ -57,7 +58,7 @@ export const PlatformAuditDetailModal: React.FC<PlatformAuditDetailModalProps> =
   onFilterRequest
 }) => (
   <Modal
-    title={t("Détail de l'activité")}
+    title={<HelpSectionTitle title={t("Détail de l'activité")} helpId="administration.pilotage.audit.detail" />}
     open={log !== null}
     onCancel={onClose}
     footer={[

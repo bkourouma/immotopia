@@ -32,6 +32,7 @@ import { formatMoney } from '../../components/primitives';
 import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle, helpAnchor } from '../../help';
 
 import { activeLocale } from '../../i18n/format';
 const { Text, Paragraph } = Typography;
@@ -192,9 +193,13 @@ export const PaymentGatewaySettingsCard: React.FC<PaymentGatewaySettingsCardProp
     }
   };
 
+  const cardTitle = (
+    <HelpSectionTitle title={t('Paiement en ligne')} helpId="administration.agence.finance.paiement-en-ligne" />
+  );
+
   if (loading) {
     return (
-      <Card title={t('Paiement en ligne')}>
+      <Card title={cardTitle}>
         <div style={{ display: 'flex', justifyContent: 'center', padding: 32 }}>
           <Spin />
         </div>
@@ -204,7 +209,7 @@ export const PaymentGatewaySettingsCard: React.FC<PaymentGatewaySettingsCardProp
 
   if (error && !settings) {
     return (
-      <Card title={t('Paiement en ligne')}>
+      <Card title={cardTitle}>
         <Alert
           type="error"
           showIcon
@@ -227,7 +232,7 @@ export const PaymentGatewaySettingsCard: React.FC<PaymentGatewaySettingsCardProp
     : t('Aucune clé enregistrée');
 
   return (
-    <Card title={t('Paiement en ligne')} style={{ marginBottom: 16 }}>
+    <Card title={cardTitle} style={{ marginBottom: 16 }}>
       <Paragraph type="secondary">
         {t(
           "Permet au locataire de régler ses échéances depuis son portail, via la page hébergée de l'agrégateur PaySecureHub."
@@ -254,96 +259,103 @@ export const PaymentGatewaySettingsCard: React.FC<PaymentGatewaySettingsCardProp
       ) : null}
 
       <Form form={form} layout="vertical" onFinish={handleSubmit} onFinishFailed={onAntFormValidationFailed(form)}>
-        <Row gutter={16}>
-          <Col xs={24} md={12}>
-            <Form.Item label={t('Mode')} name="mode" rules={[{ required: true, message: t('Le mode est requis') }]}>
-              <Radio.Group>
-                <Radio.Button value="SIMULATOR" disabled={!settings.simulatorAvailable}>
-                  {t('Simulateur')}
-                </Radio.Button>
-                <Radio.Button value="LIVE">{t('Réel')}</Radio.Button>
-              </Radio.Group>
-            </Form.Item>
-          </Col>
-          <Col xs={24} md={12}>
-            <Form.Item label={t('Activer le paiement en ligne')} name="isActive" valuePropName="checked">
-              <Switch />
-            </Form.Item>
-          </Col>
-          <Col xs={24} md={12}>
-            <Form.Item
-              label={t('Identifiant marchand')}
-              name="merchantId"
-              rules={[{ required: mode === 'LIVE', message: t("L'identifiant marchand est requis en mode réel") }]}
-            >
-              <Input placeholder={t('Identifiant marchand PaySecureHub')} />
-            </Form.Item>
-          </Col>
-          <Col xs={24} md={12}>
-            <Form.Item label={t('Clé API')} required={mode === 'LIVE'}>
-              <Space.Compact style={{ width: '100%' }}>
-                <Form.Item name="apiKeyInput" noStyle>
-                  <Input.Password
-                    disabled={!editingApiKey || !settings.encryptionAvailable}
-                    placeholder={placeholderCle}
-                    autoComplete="new-password"
-                    iconRender={visible => (visible ? <CheckCircleOutlined /> : <KeyOutlined />)}
-                  />
-                </Form.Item>
-                {settings.apiKeyConfigured && !editingApiKey ? (
-                  <Button
-                    disabled={!settings.encryptionAvailable}
-                    onClick={() => {
-                      setEditingApiKey(true);
-                      form.setFieldValue('apiKeyInput', '');
-                    }}
-                  >
-                    {t('Remplacer la clé')}
-                  </Button>
-                ) : null}
-              </Space.Compact>
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                {t("La clé enregistrée n'est jamais réaffichée. Laisser ce champ inactif la conserve inchangée.")}
-              </Text>
-            </Form.Item>
-          </Col>
-          <Col xs={24} md={12}>
-            <Form.Item
-              label={t('Compte de trésorerie')}
-              name="treasuryAccountId"
-              extra={t(
-                'Comptes Mobile Money et banque uniquement. Sans choix, un compte de collecte est créé automatiquement à l’activation.'
-              )}
-            >
-              <Select
-                allowClear
-                showSearch
-                optionFilterProp="label"
-                placeholder={t('Compte par défaut')}
-                loading={comptesEnCours}
-                options={optionsComptes}
-              />
-            </Form.Item>
-          </Col>
-          <Col xs={24} md={12}>
-            <Form.Item
-              label={t('Qui paie les frais de l’agrégateur')}
-              name="feesPaidBy"
-              rules={[{ required: true, message: t('Ce choix est requis') }]}
-            >
-              <Radio.Group>
-                <Radio.Button value="CLIENT">{t('Le locataire')}</Radio.Button>
-                <Radio.Button value="AGENCY">{t("L'agence")}</Radio.Button>
-              </Radio.Group>
-            </Form.Item>
-          </Col>
-        </Row>
+        <div {...helpAnchor('passerelle-identifiants')}>
+          <Row gutter={16}>
+            <Col xs={24} md={12}>
+              <Form.Item label={t('Mode')} name="mode" rules={[{ required: true, message: t('Le mode est requis') }]}>
+                <Radio.Group>
+                  <Radio.Button value="SIMULATOR" disabled={!settings.simulatorAvailable}>
+                    {t('Simulateur')}
+                  </Radio.Button>
+                  <Radio.Button value="LIVE">{t('Réel')}</Radio.Button>
+                </Radio.Group>
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label={t('Activer le paiement en ligne')} name="isActive" valuePropName="checked">
+                <Switch />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label={t('Identifiant marchand')}
+                name="merchantId"
+                rules={[{ required: mode === 'LIVE', message: t("L'identifiant marchand est requis en mode réel") }]}
+              >
+                <Input placeholder={t('Identifiant marchand PaySecureHub')} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label={t('Clé API')} required={mode === 'LIVE'}>
+                <Space.Compact style={{ width: '100%' }}>
+                  <Form.Item name="apiKeyInput" noStyle>
+                    <Input.Password
+                      disabled={!editingApiKey || !settings.encryptionAvailable}
+                      placeholder={placeholderCle}
+                      autoComplete="new-password"
+                      iconRender={visible => (visible ? <CheckCircleOutlined /> : <KeyOutlined />)}
+                    />
+                  </Form.Item>
+                  {settings.apiKeyConfigured && !editingApiKey ? (
+                    <Button
+                      disabled={!settings.encryptionAvailable}
+                      onClick={() => {
+                        setEditingApiKey(true);
+                        form.setFieldValue('apiKeyInput', '');
+                      }}
+                    >
+                      {t('Remplacer la clé')}
+                    </Button>
+                  ) : null}
+                </Space.Compact>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  {t("La clé enregistrée n'est jamais réaffichée. Laisser ce champ inactif la conserve inchangée.")}
+                </Text>
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label={t('Compte de trésorerie')}
+                name="treasuryAccountId"
+                extra={t(
+                  'Comptes Mobile Money et banque uniquement. Sans choix, un compte de collecte est créé automatiquement à l’activation.'
+                )}
+              >
+                <Select
+                  allowClear
+                  showSearch
+                  optionFilterProp="label"
+                  placeholder={t('Compte par défaut')}
+                  loading={comptesEnCours}
+                  options={optionsComptes}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label={t('Qui paie les frais de l’agrégateur')}
+                name="feesPaidBy"
+                rules={[{ required: true, message: t('Ce choix est requis') }]}
+              >
+                <Radio.Group>
+                  <Radio.Button value="CLIENT">{t('Le locataire')}</Radio.Button>
+                  <Radio.Button value="AGENCY">{t("L'agence")}</Radio.Button>
+                </Radio.Group>
+              </Form.Item>
+            </Col>
+          </Row>
+        </div>
 
         <Space wrap>
-          <Button type="primary" htmlType="submit" loading={saving}>
+          <Button type="primary" htmlType="submit" loading={saving} {...helpAnchor('passerelle-enregistrer')}>
             {t('Enregistrer')}
           </Button>
-          <Button icon={<ReloadOutlined aria-hidden />} onClick={() => void handleTest()} loading={testing}>
+          <Button
+            icon={<ReloadOutlined aria-hidden />}
+            onClick={() => void handleTest()}
+            loading={testing}
+            {...helpAnchor('passerelle-tester')}
+          >
             {t('Tester la connexion')}
           </Button>
         </Space>
@@ -370,7 +382,11 @@ export const PaymentGatewaySettingsCard: React.FC<PaymentGatewaySettingsCardProp
 
       <Descriptions column={1} size="small" style={{ marginTop: 16 }} bordered>
         <Descriptions.Item label={t('Adresse de notification (IPN)')}>
-          <Text copyable={{ text: settings.callbackUrl }} style={{ wordBreak: 'break-all' }}>
+          <Text
+            copyable={{ text: settings.callbackUrl }}
+            style={{ wordBreak: 'break-all' }}
+            {...helpAnchor('passerelle-ipn')}
+          >
             {settings.callbackUrl}
           </Text>
         </Descriptions.Item>

@@ -29,6 +29,7 @@ import { ListSearch, StateBlock } from '../../components/primitives';
 import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion } from '../../utils/list-search';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 import { localizedRecord } from '../../i18n/localized';
 
 import { activeLocale, formatFcfa } from '../../i18n/format';
@@ -381,7 +382,14 @@ export default function PropertyDetails() {
           }
           key="info"
         >
-          <Card title={t('Informations de la propriété')}>
+          <Card
+            title={
+              <HelpSectionTitle
+                title={t('Informations de la propriété')}
+                helpId="portails.proprietaire.bien-detail.informations"
+              />
+            }
+          >
             <Descriptions column={{ xs: 1, sm: 2 }} bordered>
               <Descriptions.Item label={t('Adresse')}>{data.property.address}</Descriptions.Item>
               <Descriptions.Item label={t('Type')}>
@@ -414,7 +422,9 @@ export default function PropertyDetails() {
           key="lease"
         >
           {data.currentLease ? (
-            <Card title={t('Bail actif')}>
+            <Card
+              title={<HelpSectionTitle title={t('Bail actif')} helpId="portails.proprietaire.bien-detail.bail-actif" />}
+            >
               <Descriptions column={{ xs: 1, sm: 2 }} bordered>
                 <Descriptions.Item label={t('Locataire principal')}>
                   {data.currentLease.primaryRenter.user.fullName}
@@ -469,7 +479,14 @@ export default function PropertyDetails() {
           key="history"
         >
           {data.leaseHistory.length > 0 ? (
-            <Card title={t('Historique des baux')}>
+            <Card
+              title={
+                <HelpSectionTitle
+                  title={t('Historique des baux')}
+                  helpId="portails.proprietaire.bien-detail.historique-baux"
+                />
+              }
+            >
               <LeaseHistoryList leases={data.leaseHistory} />
             </Card>
           ) : (
@@ -486,7 +503,14 @@ export default function PropertyDetails() {
           }
           key="revenue"
         >
-          <Card title={t('Statistiques de revenus')}>
+          <Card
+            title={
+              <HelpSectionTitle
+                title={t('Statistiques de revenus')}
+                helpId="portails.proprietaire.bien-detail.revenus"
+              />
+            }
+          >
             <Row gutter={[16, 16]}>
               <Col xs={24} sm={12} lg={8}>
                 <Statistic
@@ -523,7 +547,14 @@ export default function PropertyDetails() {
           key="maintenance"
         >
           {data.maintenanceHistory.length > 0 ? (
-            <Card title={t('Historique de maintenance')}>
+            <Card
+              title={
+                <HelpSectionTitle
+                  title={t('Historique de maintenance')}
+                  helpId="portails.proprietaire.bien-detail.maintenance"
+                />
+              }
+            >
               <MaintenanceList tickets={data.maintenanceHistory} />
             </Card>
           ) : (

@@ -13,6 +13,7 @@ import {
 import { StatusTag, Table, useConfirmAction, type StatusTone } from '../../primitives';
 import { activeLocale } from '../../../i18n/format';
 import { t } from '../../../i18n/t';
+import { HelpButton } from '../../../help';
 import { localizedRecord } from '../../../i18n/localized';
 
 const { Text } = Typography;
@@ -227,7 +228,16 @@ export const DataExportTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         )}
       </Text>
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBlock: 'var(--space-4)' }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'flex-end',
+          alignItems: 'center',
+          gap: 'var(--space-2)',
+          marginBlock: 'var(--space-4)'
+        }}
+      >
+        <HelpButton helpId="administration.plateforme-agences.detail.export" />
         <Button type="primary" icon={<ExportOutlined />} loading={requesting} onClick={handleRequest}>
           {t('Préparer un export')}
         </Button>
@@ -237,6 +247,7 @@ export const DataExportTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           « Préparer un export » ci-dessus est l'export de cet écran. */}
       <Table<TenantDataExport>
         exportable={false}
+        helpId="administration.plateforme-agences.detail.export.historique"
         rowKey="id"
         columns={columns}
         dataSource={exports}

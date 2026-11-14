@@ -1,6 +1,7 @@
 import React from 'react';
 import { Card, Statistic } from 'antd';
 import { ReactNode } from 'react';
+import { HelpButton, HelpSectionTitle } from '../../help';
 
 interface StatCardProps {
   title: string;
@@ -16,6 +17,8 @@ interface StatCardProps {
    * dont le montant a besoin, et le chiffre part du meme bord que son libelle.
    */
   compact?: boolean;
+  /** Fiche d'aide du bloc d'indicateurs (optionnel, sans effet sur le rendu s'il manque). */
+  helpId?: string;
 }
 
 export const StatCard: React.FC<StatCardProps> = ({
@@ -25,7 +28,8 @@ export const StatCard: React.FC<StatCardProps> = ({
   suffix,
   valueStyle,
   icon,
-  compact = false
+  compact = false,
+  helpId
 }) => {
   if (compact) {
     return (
@@ -60,6 +64,7 @@ export const StatCard: React.FC<StatCardProps> = ({
             </span>
           )}
           <span style={{ minWidth: 0 }}>{title}</span>
+          {helpId && <HelpButton size="small" helpId={helpId} />}
         </div>
         <div
           style={{
@@ -85,7 +90,13 @@ export const StatCard: React.FC<StatCardProps> = ({
 
   return (
     <Card>
-      <Statistic title={title} value={value} prefix={prefix || icon} suffix={suffix} valueStyle={valueStyle} />
+      <Statistic
+        title={helpId ? <HelpSectionTitle title={title} helpId={helpId} /> : title}
+        value={value}
+        prefix={prefix || icon}
+        suffix={suffix}
+        valueStyle={valueStyle}
+      />
     </Card>
   );
 };

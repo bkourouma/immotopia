@@ -10,6 +10,7 @@ import { STALE_TIME } from '../../lib/query-keys';
 import { useOwnerPropertyOptions } from './useOwnerPropertyOptions';
 import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 const { Title, Text } = Typography;
 
@@ -213,7 +214,10 @@ export default function Documents() {
                 title={
                   <Space>
                     <FolderOutlined />
-                    <span>{getDocumentTypeLabel(type)}</span>
+                    <HelpSectionTitle
+                      title={getDocumentTypeLabel(type)}
+                      helpId="portails.proprietaire.documents.liste"
+                    />
                     <Tag>{group.length}</Tag>
                   </Space>
                 }

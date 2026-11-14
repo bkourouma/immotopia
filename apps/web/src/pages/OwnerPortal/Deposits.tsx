@@ -247,6 +247,7 @@ export default function Deposits() {
         <Row gutter={[16, 16]}>
           <Col xs={24} sm={12} lg={6}>
             <StatCard
+              helpId="portails.proprietaire.cautions.indicateurs"
               title={t('Total')}
               value={data.summary.total.toString()}
               icon={<WalletOutlined style={{ color: '#1890ff' }} />}
@@ -284,6 +285,7 @@ export default function Deposits() {
       <Card title={t('Liste des dépôts de garantie')}>
         {data && data.deposits.length > 0 ? (
           <Table
+            helpId="portails.proprietaire.cautions.tableau"
             aria-label={t('Liste des dépôts de garantie')}
             exportFilename={t('Liste des dépôts de garantie')}
             exportFetchAll={local.exportAll}
@@ -321,6 +323,7 @@ export default function Deposits() {
           </div>
         ) : movements.length > 0 ? (
           <Table
+            helpId="portails.proprietaire.cautions.mouvements"
             exportFilename={t('Historique des mouvements')}
             scroll={{ x: 'max-content' }}
             columns={movementColumns}

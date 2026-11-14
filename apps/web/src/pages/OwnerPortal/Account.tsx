@@ -14,6 +14,7 @@ import { DataCard, DataView, MoneyValue, SkeletonList, SkeletonStats, StateBlock
 import { AccountTabs } from './search/AccountTabs';
 import { useAccountSearch } from './search/useAccountSearch';
 import { t } from '../../i18n/t';
+import { HelpButton } from '../../help';
 import { localizedRecord } from '../../i18n/localized';
 
 const { Title, Text } = Typography;
@@ -197,9 +198,12 @@ export default function Account() {
       {/* En-tête : la phrase, jamais un nombre nu. */}
       <Card>
         <Space direction="vertical" size={4}>
-          <Title level={3} style={{ margin: 0 }}>
-            {soldeLibelle(compte.balance)}
-          </Title>
+          <Space align="center" size={8}>
+            <Title level={3} style={{ margin: 0 }}>
+              {soldeLibelle(compte.balance)}
+            </Title>
+            <HelpButton helpId="portails.proprietaire.compte.solde" size="small" />
+          </Space>
           {compte.balance !== 0 && (
             <Text style={{ fontSize: 'var(--font-size-h2)', fontWeight: 600 }}>
               <MoneyValue value={Math.abs(compte.balance)} />
@@ -287,6 +291,7 @@ export default function Account() {
         <AccountTabs
           payouts={
             <DataView<OwnerPayout>
+              helpId="portails.proprietaire.compte.reversements"
               export={{ filename: t('Reversements reçus'), fetchAll: payoutsSearch.exportAll }}
               {...payoutsSearch.dataViewProps}
               search={payoutsSearch.search}
@@ -307,6 +312,7 @@ export default function Account() {
           }
           movements={
             <DataView<OwnerMovement>
+              helpId="portails.proprietaire.compte.mouvements"
               export={{ filename: t('Détail des mouvements'), fetchAll: movementsSearch.exportAll }}
               {...movementsSearch.dataViewProps}
               search={movementsSearch.search}

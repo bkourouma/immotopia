@@ -4,6 +4,7 @@ import { DollarOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { Table } from '../primitives';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 import { formatFcfa } from '../../i18n/format';
 import { libelleOperateurMobileMoney } from '../../lib/rental-payment-status';
@@ -92,7 +93,10 @@ export const PaymentDetailsModal: React.FC<PaymentDetailsModalProps> = ({
       title={
         <Space>
           <DollarOutlined />
-          <span>{t('Détails du paiement')}</span>
+          <HelpSectionTitle
+            title={<span>{t('Détails du paiement')}</span>}
+            helpId="portails.proprietaire.paiements.detail"
+          />
         </Space>
       }
       open={visible}
@@ -147,6 +151,7 @@ export const PaymentDetailsModal: React.FC<PaymentDetailsModalProps> = ({
           <div>
             <Title level={4}>{t('Allocations aux échéances')}</Title>
             <Table
+              helpId="portails.proprietaire.paiements.allocations"
               exportFilename={t('Allocations aux échéances')}
               scroll={{ x: 'max-content' }}
               columns={allocationColumns}

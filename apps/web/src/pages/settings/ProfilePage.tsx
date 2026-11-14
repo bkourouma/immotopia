@@ -4,6 +4,7 @@ import { Card, Typography, Descriptions, Avatar, Space, Tag, Spin, Divider, Sele
 import { UserOutlined, MailOutlined, SafetyCertificateOutlined, GlobalOutlined } from '@ant-design/icons';
 import { useAuth } from '../../hooks/useAuth';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 import { useLanguage } from '../../i18n/useLanguage';
 import { LANGUAGE_CODES, LANGUAGES, type Language } from '../../i18n/config';
 
@@ -71,7 +72,17 @@ export const ProfilePage: React.FC = () => {
 
           <Divider />
 
-          <Descriptions title={t('Informations du compte')} column={1} bordered size="small">
+          <Descriptions
+            title={
+              <HelpSectionTitle
+                title={t('Informations du compte')}
+                helpId="administration.equipe.profil.informations"
+              />
+            }
+            column={1}
+            bordered
+            size="small"
+          >
             <Descriptions.Item
               label={
                 <>
@@ -98,7 +109,7 @@ export const ProfilePage: React.FC = () => {
 
           <div>
             <Title level={5} style={{ marginTop: 0 }}>
-              {t('Langue')}
+              <HelpSectionTitle title={t('Langue')} helpId="administration.equipe.profil.langue" />
             </Title>
             <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
               {t(

@@ -53,6 +53,7 @@ import { activeLocale } from '../../../i18n/format';
 import { useLocalListSearch } from '../../../utils/list-search';
 import { t } from '../../../i18n/t';
 import { localizedList, localizedRecord } from '../../../i18n/localized';
+import { HelpButton, HelpSectionTitle } from '../../../help';
 
 const { Text, Title } = Typography;
 
@@ -347,6 +348,7 @@ const InvoicePreviewSection: React.FC<{ tenantId: string }> = ({ tenantId }) => 
 
   return (
     <Space direction="vertical" size="small" style={{ width: '100%' }}>
+      <HelpButton size="small" helpId="administration.plateforme-agences.detail.abonnement.apercu-facture" />
       <Text type="secondary">
         {t('Période du {{start}} au {{end}}', {
           start: formatDateTime(invoicePreview.periodStart),
@@ -444,6 +446,7 @@ const ExtensionRequestsSection: React.FC<{
       rowKey="id"
       size="small"
       aria-label={t("Demandes d'extension")}
+      helpId="administration.plateforme-agences.detail.abonnement.demandes"
       locale={local.isFiltered ? undefined : { emptyText: t('Aucune demande') }}
       columns={[
         { title: t('Date'), dataIndex: 'createdAt', key: 'createdAt', render: (v: string) => formatDateTime(v) },
@@ -935,7 +938,17 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      <Card title={t('Abonnement')}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <HelpButton helpId="administration.plateforme-agences.detail.abonnement" />
+      </div>
+      <Card
+        title={
+          <HelpSectionTitle
+            title={t('Abonnement')}
+            helpId="administration.plateforme-agences.detail.abonnement.resume"
+          />
+        }
+      >
         <Descriptions column={{ xs: 1, sm: 2, lg: 3 }} size="small">
           <Descriptions.Item label={t('Statut')}>
             <StatusTag status={subscription.status} />
@@ -1025,7 +1038,12 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
       </Card>
 
       <Card
-        title={t('Consommation')}
+        title={
+          <HelpSectionTitle
+            title={t('Consommation')}
+            helpId="administration.plateforme-agences.detail.abonnement.consommation"
+          />
+        }
         extra={
           <Button size="small" onClick={() => setOverrideOpen(true)}>
             {t('Accorder une dérogation')}
@@ -1077,6 +1095,7 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
           pagination={false}
           size="small"
           aria-label={t('Packs et extensions')}
+          helpId="administration.plateforme-agences.detail.abonnement.packs"
         />
       </Card>
 
@@ -1090,10 +1109,18 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
           size="small"
           locale={{ emptyText: t('Aucune dérogation') }}
           aria-label={t('Dérogations')}
+          helpId="administration.plateforme-agences.detail.abonnement.derogations"
         />
       </Card>
 
-      <Card title={t('Modules inclus')}>
+      <Card
+        title={
+          <HelpSectionTitle
+            title={t('Modules inclus')}
+            helpId="administration.plateforme-agences.detail.abonnement.modules"
+          />
+        }
+      >
         <Space wrap>
           {(Object.keys(entitlements.moduleAccess) as Array<keyof typeof entitlements.moduleAccess>).map(key => {
             const access = entitlements.moduleAccess[key];
@@ -1136,7 +1163,12 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
 
       <ReasonPromptModal
         open={!!removeNowItem}
-        title={t('Retirer « {{value}} » immédiatement ?', { value: removeNowItem?.name ?? '' })}
+        title={
+          <HelpSectionTitle
+            title={t('Retirer « {{value}} » immédiatement ?', { value: removeNowItem?.name ?? '' })}
+            helpId="administration.plateforme-agences.detail.abonnement.motifs"
+          />
+        }
         reasonPlaceholder={t('Raison du retrait immédiat')}
         okText={t('Retirer immédiatement')}
         cancelText={t('Annuler')}
@@ -1148,7 +1180,12 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
 
       <ReasonPromptModal
         open={!!discountItem}
-        title={t('Modifier « {{value}} »', { value: discountItem?.name ?? '' })}
+        title={
+          <HelpSectionTitle
+            title={t('Modifier « {{value}} »', { value: discountItem?.name ?? '' })}
+            helpId="administration.plateforme-agences.detail.abonnement.motifs"
+          />
+        }
         reasonRequired={false}
         reasonPlaceholder={t('Raison de la modification')}
         okText={t('Enregistrer')}
@@ -1183,7 +1220,12 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
 
       <ReasonPromptModal
         open={manualReadOnlyPromptOpen}
-        title={t('Passer « {{value}} » en lecture seule ?', { value: tenantName ?? '' })}
+        title={
+          <HelpSectionTitle
+            title={t('Passer « {{value}} » en lecture seule ?', { value: tenantName ?? '' })}
+            helpId="administration.plateforme-agences.detail.abonnement.motifs"
+          />
+        }
         reasonPlaceholder={t('Motif (obligatoire)')}
         okText={t('Passer en lecture seule')}
         cancelText={t('Annuler')}

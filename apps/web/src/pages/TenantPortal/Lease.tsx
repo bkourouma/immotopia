@@ -26,6 +26,7 @@ import {
 } from '@ant-design/icons';
 import { tenantPortalService } from '../../services/tenantPortalService';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 import { filenameFromDisposition } from '../../utils/save-blob';
 
 import { activeLocale } from '../../i18n/format';
@@ -275,7 +276,8 @@ export default function TenantLease() {
       <Card
         title={
           <>
-            <FileTextOutlined /> {t('Informations du bail')}
+            <FileTextOutlined />{' '}
+            <HelpSectionTitle title={t('Informations du bail')} helpId="portails.locataire.bail.informations" />
           </>
         }
       >
@@ -349,7 +351,8 @@ export default function TenantLease() {
           <Card
             title={
               <>
-                <UserOutlined /> {t('Locataire principal')}
+                <UserOutlined />{' '}
+                <HelpSectionTitle title={t('Locataire principal')} helpId="portails.locataire.bail.parties" />
               </>
             }
           >
@@ -364,7 +367,8 @@ export default function TenantLease() {
             <Card
               title={
                 <>
-                  <UserOutlined /> {t('Propriétaire')}
+                  <UserOutlined />{' '}
+                  <HelpSectionTitle title={t('Propriétaire')} helpId="portails.locataire.bail.parties" />
                 </>
               }
             >
@@ -387,7 +391,7 @@ export default function TenantLease() {
         <Card
           title={
             <>
-              <UserOutlined /> {t('Co-locataires')}
+              <UserOutlined /> <HelpSectionTitle title={t('Co-locataires')} helpId="portails.locataire.bail.parties" />
             </>
           }
         >
@@ -411,7 +415,7 @@ export default function TenantLease() {
       <Card
         title={
           <>
-            <FileTextOutlined /> {t('Documents')}
+            <FileTextOutlined /> <HelpSectionTitle title={t('Documents')} helpId="portails.locataire.bail.documents" />
           </>
         }
       >

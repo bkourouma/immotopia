@@ -48,6 +48,7 @@ import {
   formatPeriod
 } from '../../subscription/platform-invoice-labels';
 import { t } from '../../../i18n/t';
+import { HelpButton, HelpSectionTitle } from '../../../help';
 import { localizedList, localizedRecord } from '../../../i18n/localized';
 
 const { Text } = Typography;
@@ -348,7 +349,16 @@ export const InvoicesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBlockEnd: 'var(--space-4)' }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'flex-end',
+          alignItems: 'center',
+          gap: 'var(--space-2)',
+          marginBlockEnd: 'var(--space-4)'
+        }}
+      >
+        <HelpButton helpId="administration.plateforme-agences.detail.factures" />
         <Button
           type="primary"
           icon={<PlusOutlined />}
@@ -380,12 +390,18 @@ export const InvoicesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         loading={loading}
         scroll={{ x: 'max-content' }}
         aria-label={t('Factures')}
+        helpId="administration.plateforme-agences.detail.factures.tableau"
         pagination={search.tablePagination(total)}
         locale={search.isFiltered ? undefined : { emptyText: t('Aucune facture pour cette agence') }}
       />
 
       <Modal
-        title={t('Générer une facture')}
+        title={
+          <HelpSectionTitle
+            title={t('Générer une facture')}
+            helpId="administration.plateforme-agences.detail.factures.generation"
+          />
+        }
         open={generateOpen}
         onCancel={() => setGenerateOpen(false)}
         onOk={() => generateForm.submit()}
@@ -409,7 +425,16 @@ export const InvoicesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       </Modal>
 
       <Modal
-        title={paying ? t('Paiement de la facture {{value}}', { value: paying.invoiceNumber ?? '' }) : ''}
+        title={
+          paying ? (
+            <HelpSectionTitle
+              title={t('Paiement de la facture {{value}}', { value: paying.invoiceNumber ?? '' })}
+              helpId="administration.plateforme-agences.detail.factures.paiement"
+            />
+          ) : (
+            ''
+          )
+        }
         open={Boolean(paying)}
         onCancel={() => setPaying(null)}
         onOk={() => payForm.submit()}
@@ -458,7 +483,16 @@ export const InvoicesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       </Modal>
 
       <Modal
-        title={crediting ? t('Avoir sur la facture {{value}}', { value: crediting.invoiceNumber ?? '' }) : ''}
+        title={
+          crediting ? (
+            <HelpSectionTitle
+              title={t('Avoir sur la facture {{value}}', { value: crediting.invoiceNumber ?? '' })}
+              helpId="administration.plateforme-agences.detail.factures.avoir"
+            />
+          ) : (
+            ''
+          )
+        }
         open={Boolean(crediting)}
         onCancel={() => setCrediting(null)}
         onOk={() => creditForm.submit()}

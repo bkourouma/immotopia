@@ -14,6 +14,7 @@ import { ArrowLeft, Edit, Key, LogOut, UserX, UserCheck, Users } from 'lucide-re
 import { App, Typography } from 'antd';
 import { useConfirmAction } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 import { activeLocale } from '../../i18n/format';
 interface Role {
@@ -276,7 +277,9 @@ export const AdminCollaboratorDetail: React.FC = () => {
 
         {/* Roles */}
         <div className="bg-white rounded-lg shadow p-6 space-y-4">
-          <h2 className="text-lg font-medium text-gray-900">{t('Roles')}</h2>
+          <h2 className="text-lg font-medium text-gray-900">
+            <HelpSectionTitle title={t('Roles')} helpId="administration.plateforme-agences.collaborateur.roles" />
+          </h2>
           {availableRoles.length === 0 ? (
             <p className="text-sm text-gray-500">{t('Chargement des roles...')}</p>
           ) : (
@@ -318,7 +321,9 @@ export const AdminCollaboratorDetail: React.FC = () => {
 
         {/* Actions */}
         <div className="bg-white rounded-lg shadow p-6 space-y-4">
-          <h2 className="text-lg font-medium text-gray-900">{t('Actions')}</h2>
+          <h2 className="text-lg font-medium text-gray-900">
+            <HelpSectionTitle title={t('Actions')} helpId="administration.plateforme-agences.collaborateur.actions" />
+          </h2>
           <div className="flex flex-wrap gap-4">
             <button
               onClick={handleResetPassword}

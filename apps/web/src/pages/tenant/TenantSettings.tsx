@@ -22,6 +22,7 @@ import {
 } from '../../services/document-branding-service';
 import { OwnerPortalSettingsCard } from '../../components/settings/OwnerPortalSettingsCard';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 import { writeErrorMessage } from '../../utils/error-handler';
 
 const { Title, Text } = Typography;
@@ -287,7 +288,12 @@ export const TenantSettings: React.FC = () => {
           }}
         >
           {/* Logo et couleur de marque */}
-          <Card title={t('Logo et couleur de marque')} style={{ marginBottom: 16 }}>
+          <Card
+            title={
+              <HelpSectionTitle title={t('Logo et couleur de marque')} helpId="administration.agence.parametres.logo" />
+            }
+            style={{ marginBottom: 16 }}
+          >
             <Row gutter={16}>
               <Col xs={24} md={12}>
                 <Form.Item label={t('Logo')}>
@@ -376,7 +382,15 @@ export const TenantSettings: React.FC = () => {
           {/* Signature et cachet pour les documents (lot S1, besoin 7) : images
               privées (jamais un <img src> direct), utilisées comme identité par
               défaut quand une copropriété n'a pas de mandant. */}
-          <Card title={t('Signature et cachet pour les documents')} style={{ marginBottom: 16 }}>
+          <Card
+            title={
+              <HelpSectionTitle
+                title={t('Signature et cachet pour les documents')}
+                helpId="administration.agence.parametres.signature-cachet"
+              />
+            }
+            style={{ marginBottom: 16 }}
+          >
             <Space direction="vertical" size="large" style={{ width: '100%' }}>
               <BrandingImageField
                 label={t('Signature')}
@@ -398,7 +412,15 @@ export const TenantSettings: React.FC = () => {
           </Card>
 
           {/* Informations Générales */}
-          <Card title={t('Informations Générales')} style={{ marginBottom: 16 }}>
+          <Card
+            title={
+              <HelpSectionTitle
+                title={t('Informations Générales')}
+                helpId="administration.agence.parametres.informations"
+              />
+            }
+            style={{ marginBottom: 16 }}
+          >
             <Row gutter={16}>
               <Col xs={24} md={12}>
                 <Form.Item
@@ -418,7 +440,15 @@ export const TenantSettings: React.FC = () => {
           </Card>
 
           {/* Informations de Contact */}
-          <Card title={t('Informations de Contact')} style={{ marginBottom: 16 }}>
+          <Card
+            title={
+              <HelpSectionTitle
+                title={t('Informations de Contact')}
+                helpId="administration.agence.parametres.contact"
+              />
+            }
+            style={{ marginBottom: 16 }}
+          >
             <Row gutter={16}>
               <Col xs={24} md={12}>
                 <Form.Item
@@ -450,7 +480,10 @@ export const TenantSettings: React.FC = () => {
           </Card>
 
           {/* Adresse */}
-          <Card title={t('Adresse')} style={{ marginBottom: 16 }}>
+          <Card
+            title={<HelpSectionTitle title={t('Adresse')} helpId="administration.agence.parametres.adresse" />}
+            style={{ marginBottom: 16 }}
+          >
             <Row gutter={16}>
               <Col xs={24}>
                 <Form.Item label={t('Adresse complète')} name="address">
