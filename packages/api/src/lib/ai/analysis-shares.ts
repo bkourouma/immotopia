@@ -142,7 +142,13 @@ export async function createAnalysisShare(
 }
 
 export async function revokeAnalysisShare(owner: AssistantOwner, id: string) {
-  await prisma.assistantAnalysisShare.deleteMany({ where: { ...owner, id } });
+  await prisma.assistantAnalysisShare.deleteMany({
+    where: {
+      tenantId: owner.tenantId,
+      id,
+      OR: [{ ownerId: owner.ownerId }, { recipientId: owner.ownerId }]
+    }
+  });
 }
 
 export async function setAnalysisSharePin(tenantId: string, recipientId: string, id: string, pinned: boolean) {

@@ -751,6 +751,31 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
                 .set(authed(recipient))
             ).status
           ).toBe(404);
+          const replacement = await request(app)
+            .post(base + '/shares')
+            .set(authed(owner))
+            .send({ conversationId, artifactId, recipientId });
+          expect(replacement.status).toBe(200);
+          const replacementLink = base + '/shares/' + replacement.body.data.id;
+          expect(
+            (
+              await request(app)
+                .put(replacementLink + '/pin')
+                .set(authed(recipient))
+                .send({ pinned: true })
+            ).status
+          ).toBe(204);
+          expect((await request(app).delete(replacementLink).set(authed(adminA))).status).toBe(204);
+          expect((await request(app).get(replacementLink).set(authed(recipient))).status).toBe(200);
+          expect((await request(app).delete(replacementLink).set(authed(recipient))).status).toBe(204);
+          expect((await request(app).get(replacementLink).set(authed(recipient))).status).toBe(404);
+          expect(
+            (
+              await request(app)
+                .get(base + '/shares/pins')
+                .set(authed(recipient))
+            ).body.data
+          ).toEqual([]);
         }
       } finally {
         mockFakeScript = undefined;

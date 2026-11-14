@@ -162,6 +162,11 @@ export function AnalysisShares({
                     >
                       {row.pinned ? t('Désépingler') : t('Épingler au tableau de bord')}
                     </Button>
+                    <Popconfirm title={t('Retirer cette analyse de la liste ?')} onConfirm={() => revoke(row.id)}>
+                      <Button danger type="text">
+                        {t('Retirer')}
+                      </Button>
+                    </Popconfirm>
                   </>
                 ) : (
                   <Popconfirm title={t('Révoquer ce partage ?')} onConfirm={() => revoke(row.id)}>

@@ -73,6 +73,8 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 **Notification de partage** — Après `eba28ad5`, la création d’un partage et la notification interne se valident dans une transaction. Un double envoi renvoie le partage existant et conserve une seule notification. Le texte générique est dans la langue du destinataire. Le lien ouvre le détail avec les contrôles habituels. Après révocation, l’ancien lien ne fournit plus le résultat.
 
+**Retrait côté destinataire** — Après `24ce106c`, le destinataire peut aussi retirer un partage reçu. La suppression de la ligne enlève l’épingle et ferme l’accès au résultat. Un tiers de l’agence ne peut pas retirer un partage auquel il ne participe pas.
+
 ## chore/deps-patch-minor — 2026-11-11
 
 **État** — PR 218 vers `main` (fusion par l'utilisateur), reprend la PR Dependabot 212 (28 mises à jour mineures : antd 6.7, Radix, TanStack Query, aws-sdk, docxtemplater, pizzip…). PR Dependabot 214 (`@vitejs/plugin-react` 6) et 215 (`vitest` 5) fermées le 2026-11-11 : sauts de versions majeures (module introuvable, matchers non typés), à traiter en migration dédiée ; envisager une règle `ignore` des versions majeures dans `.github/dependabot.yml`.
