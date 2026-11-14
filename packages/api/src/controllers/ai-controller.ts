@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Request, Response } from 'express';
 import { AiDisabledError } from '../middleware/ai-access-middleware';
-import { asyncHandler, ForbiddenError } from '../middleware/error-middleware';
+import { AppError, asyncHandler, ForbiddenError } from '../middleware/error-middleware';
 import { t } from '../i18n';
 import {
   chatRequestSchema,
@@ -62,11 +62,12 @@ const TOOL_FEATURES: readonly ToolFeature[] = ['CORE', 'RENTAL'];
 
 /**
  * Modules de l'abonnement ouvrant chaque fonctionnalité d'outil. `undefined`
- * (aucun filtre) hors mode `enforce`, ou si les droits sont indisponibles :
- * comme le garde d'abonnement, une panne du module ne ferme pas l'assistant.
+ * (aucun filtre) hors mode `enforce`. Les conversations persistantes exigent
+ * un périmètre établi avant de relire des données déjà calculées.
  */
 async function entitledFeatures(
-  tenantId: string
+  tenantId: string,
+  requireFreshScope: boolean
 ): Promise<{ read: Set<ToolFeature>; write: Set<ToolFeature> } | undefined> {
   if (getSubscriptionEnforcement() !== 'enforce') return undefined;
   try {
@@ -75,7 +76,8 @@ async function entitledFeatures(
       new Set(TOOL_FEATURES.filter(feature => evaluateFeatureAccess(entitlements, feature, write).allowed));
     return { read: allowed(false), write: allowed(true) };
   } catch (error) {
-    logger.error('ImmoCopilot : droits d’abonnement indisponibles, outils non filtrés', { tenantId, error });
+    logger.error('ImmoCopilot : droits d’abonnement indisponibles', { tenantId, error });
+    if (requireFreshScope) throw new AppError(t('Les droits de l’assistant sont temporairement indisponibles.'), 503);
     return undefined;
   }
 }
@@ -83,10 +85,11 @@ async function entitledFeatures(
 /** Outils que cet utilisateur peut employer : permission détenue et module d'abonnement inclus. */
 async function resolveAvailableTools(
   userId: string,
-  tenantId: string
+  tenantId: string,
+  requireFreshScope = false
 ): Promise<{ permissions: Set<string>; tools: CopilotToolDefinition[]; unavailableFeatures: Set<ToolFeature> }> {
   const permissions = new Set(await getUserPermissions(userId, tenantId));
-  const features = await entitledFeatures(tenantId);
+  const features = await entitledFeatures(tenantId, requireFreshScope);
   // Une proposition prépare une écriture : elle exige l'accès en écriture au module.
   const tools = toolsForUser(permissions, features?.read).filter(
     tool => tool.kind !== 'proposal' || !features || features.write.has(tool.feature)
@@ -100,7 +103,7 @@ async function resolveAvailableTools(
 
 async function conversationScope(req: Request) {
   const { tenantId, userId } = requireContext(req);
-  const { permissions, tools } = await resolveAvailableTools(userId, tenantId);
+  const { permissions, tools } = await resolveAvailableTools(userId, tenantId, true);
   if (tools.length === 0) throw new ForbiddenError();
   return {
     owner: { tenantId, ownerId: userId },
@@ -176,7 +179,11 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
 
   const body = chatRequestSchema.parse(req.body ?? {});
 
-  const { permissions, tools, unavailableFeatures } = await resolveAvailableTools(userId, tenantId);
+  const { permissions, tools, unavailableFeatures } = await resolveAvailableTools(
+    userId,
+    tenantId,
+    Boolean(body.turnId)
+  );
   if (tools.length === 0) {
     throw new ForbiddenError("Aucun outil de l'assistant n'est disponible avec vos droits.");
   }

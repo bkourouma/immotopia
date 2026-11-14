@@ -29,6 +29,8 @@ export type CopilotToolName =
   | 'rental_arrears'
   | 'rental_receipts'
   | 'chart_analysis'
+  | 'show_indicators'
+  | 'compose_report'
   | 'list_lease_documents'
   | 'list_property_documents'
   | 'propose_rental_document'
@@ -288,20 +290,39 @@ export interface CopilotStatus {
 /** Données d'affichage seulement : jamais de HTML, jamais d'écriture. L'`id` est généré par le serveur. */
 export type ArtifactCell = string | number | null;
 
+export interface ArtifactProvenance {
+  source: string;
+  href: string;
+  period: string;
+  calculatedAt: string;
+  rules: string[];
+}
+
+export interface ArtifactIndicator {
+  label: string;
+  value: number;
+  currency?: string;
+  comparison?: { label: string; value: number; change?: number };
+}
+
+export type ArtifactDocumentBlock = { kind: 'text'; content: string } | { kind: 'table'; table: AnalysisTable };
+
 export type CopilotArtifact =
+  | { kind: 'document'; id: string; title: string; blocks: ArtifactDocumentBlock[] }
+  | { kind: 'indicators'; id: string; title: string; cards: ArtifactIndicator[]; provenance?: ArtifactProvenance }
   | {
       kind: 'table';
       id: string;
       title: string;
       columns: { key: string; label: string; linkKey?: string; type?: 'text' | 'number' | 'currency' | 'date' }[];
-      provenance?: { source: string; href: string; period: string; calculatedAt: string; rules: string[] };
+      provenance?: ArtifactProvenance;
       rows: Record<string, ArtifactCell>[];
       truncated?: boolean;
     }
   | { kind: 'markdown'; id: string; title: string; content: string }
   | {
       kind: 'chart';
-      provenance?: { source: string; href: string; period: string; calculatedAt: string; rules: string[] };
+      provenance?: ArtifactProvenance;
       id: string;
       title: string;
       chartType: 'bar' | 'line' | 'pie';
@@ -309,6 +330,8 @@ export type CopilotArtifact =
       series: { key: string; label: string }[];
       data: Record<string, ArtifactCell>[];
     };
+
+export type AnalysisTable = Extract<CopilotArtifact, { kind: 'table' }>;
 
 // --- Fil SSE ---------------------------------------------------------------
 

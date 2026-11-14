@@ -171,6 +171,43 @@ describe('ArtifactPanel — rendus', () => {
   });
 });
 
+describe('ArtifactPanel — rapports et indicateurs', () => {
+  it('affiche la valeur de référence et une variation de même devise', () => {
+    renderPanel([
+      {
+        kind: 'indicators',
+        id: 'i1',
+        title: 'Encaissements',
+        cards: [
+          { label: 'Montant', currency: 'XOF', value: 150, comparison: { label: 'Septembre', value: 100, change: 50 } }
+        ]
+      }
+    ]);
+    expect(screen.getByText('150 XOF')).toBeInTheDocument();
+    expect(screen.getByText('100 XOF')).toBeInTheDocument();
+    expect(screen.getByText(/^\+50/)).toBeInTheDocument();
+  });
+
+  it('affiche un tableau source dans un rapport et le conserve dans le Markdown téléchargé', async () => {
+    renderPanel([
+      {
+        kind: 'document',
+        id: 'd1',
+        title: 'Bilan de mars',
+        blocks: [
+          { kind: 'text', content: '## Recettes' },
+          { kind: 'table', table }
+        ]
+      }
+    ]);
+    expect(screen.getByRole('article', { name: 'Bilan de mars' })).toBeInTheDocument();
+    expect(screen.getByText('Zoé')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Télécharger' }));
+    expect(save).toHaveBeenCalledWith(expect.any(Blob), 'Bilan-de-mars.md');
+    await expect(blobText(save.mock.calls[0][0])).resolves.toContain('Zoé');
+  });
+});
+
 describe('ArtifactPanel — téléchargements', () => {
   it('télécharge un CSV UTF-8 avec BOM, « ; » en français et neutralise les formules', async () => {
     renderPanel([table]);

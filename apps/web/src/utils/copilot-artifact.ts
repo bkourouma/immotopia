@@ -1,4 +1,5 @@
 import { activeLocale } from '../i18n/format';
+import { t } from '../i18n/t';
 import {
   ARTIFACT_MAX_CHART_POINTS,
   ARTIFACT_MAX_COLUMNS,
@@ -6,6 +7,9 @@ import {
   ARTIFACT_MAX_ROWS,
   ARTIFACT_MAX_SERIES,
   type ArtifactCell,
+  type ArtifactIndicator,
+  type ArtifactDocumentBlock,
+  type ArtifactProvenance,
   type CopilotArtifact
 } from '../types/copilot';
 
@@ -42,7 +46,7 @@ export function artifactInternalLink(value: unknown): string | undefined {
   return typeof value === 'string' && /^\/tenant\/[A-Za-z0-9_-]+\/[A-Za-z0-9_/-]+$/.test(value) ? value : undefined;
 }
 
-function sanitizeProvenance(raw: unknown): Extract<CopilotArtifact, { kind: 'table' }>['provenance'] {
+function sanitizeProvenance(raw: unknown): ArtifactProvenance | undefined {
   if (!isRecord(raw)) return undefined;
   const { source, period, calculatedAt, rules } = raw;
   const href = artifactInternalLink(raw.href);
@@ -73,6 +77,47 @@ export function sanitizeArtifact(raw: unknown): CopilotArtifact | null {
   const id = str(raw.id);
   const title = typeof raw.title === 'string' ? raw.title : '';
   if (!id) return null;
+
+  if (raw.kind === 'document') {
+    if (!Array.isArray(raw.blocks)) return null;
+    const blocks: ArtifactDocumentBlock[] = [];
+    for (const block of raw.blocks.slice(0, 20)) {
+      if (!isRecord(block)) continue;
+      if (block.kind === 'text' && typeof block.content === 'string') {
+        blocks.push({ kind: 'text', content: block.content.slice(0, 4000) });
+      }
+      if (block.kind === 'table' && isRecord(block.table) && block.table.kind === 'table') {
+        const table = sanitizeArtifact(block.table);
+        if (table?.kind === 'table') blocks.push({ kind: 'table', table });
+      }
+    }
+    return blocks.length ? { kind: 'document', id, title, blocks } : null;
+  }
+
+  if (raw.kind === 'indicators') {
+    if (!Array.isArray(raw.cards)) return null;
+    const cards: ArtifactIndicator[] = [];
+    for (const item of raw.cards.slice(0, 12)) {
+      if (!isRecord(item) || !str(item.label) || typeof item.value !== 'number' || !Number.isFinite(item.value))
+        continue;
+      const card: ArtifactIndicator = { label: String(item.label).slice(0, 400), value: item.value };
+      if (typeof item.currency === 'string' && /^[A-Z]{3}$/.test(item.currency)) card.currency = item.currency;
+      const cmp = item.comparison;
+      if (
+        isRecord(cmp) &&
+        typeof cmp.label === 'string' &&
+        typeof cmp.value === 'number' &&
+        Number.isFinite(cmp.value)
+      ) {
+        card.comparison = { label: cmp.label.slice(0, 400), value: cmp.value };
+        if (typeof cmp.change === 'number' && Number.isFinite(cmp.change)) card.comparison.change = cmp.change;
+      }
+      cards.push(card);
+    }
+    if (cards.length === 0) return null;
+    const provenance = sanitizeProvenance(raw.provenance);
+    return { kind: 'indicators', id, title, cards, ...(provenance ? { provenance } : {}) };
+  }
 
   if (raw.kind === 'markdown') {
     if (typeof raw.content !== 'string') return null;
@@ -260,6 +305,26 @@ export function exportableTable(
   artifact: CopilotArtifact
 ): { columns: { key: string; label: string }[]; rows: Record<string, ArtifactCell>[] } | null {
   if (artifact.kind === 'table') return { columns: artifact.columns, rows: artifact.rows };
+  if (artifact.kind === 'indicators') {
+    return {
+      columns: [
+        { key: 'label', label: t('Indicateur') },
+        { key: 'value', label: t('Valeur') },
+        { key: 'currency', label: t('Devise') },
+        { key: 'comparisonLabel', label: t('Comparaison') },
+        { key: 'comparisonValue', label: t('Valeur de référence') },
+        { key: 'change', label: t('Variation (%)') }
+      ],
+      rows: artifact.cards.map(card => ({
+        label: card.label,
+        value: card.value,
+        currency: card.currency ?? null,
+        comparisonLabel: card.comparison?.label ?? null,
+        comparisonValue: card.comparison?.value ?? null,
+        change: card.comparison?.change ?? null
+      }))
+    };
+  }
   if (artifact.kind === 'chart') {
     return {
       columns: [

@@ -72,6 +72,8 @@ export function copilotToolLabel(tool: CopilotToolName): string {
     rental_arrears: t('Analyse des impayés locatifs'),
     rental_receipts: t('Analyse des encaissements locatifs'),
     chart_analysis: t('Création du graphique'),
+    show_indicators: t('Calcul des indicateurs'),
+    compose_report: t('Préparation du rapport'),
     list_lease_documents: t('Liste des documents du bail'),
     list_property_documents: t('Liste des documents du bien'),
     propose_rental_document: t('Préparation d’un document'),

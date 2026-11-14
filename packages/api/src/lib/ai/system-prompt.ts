@@ -31,6 +31,8 @@ const TOOL_CAPABILITIES: Record<CopilotToolName, { group: string; text: string }
   rental_arrears: { group: 'rentalArrears', text: 'les échéances locatives non soldées par bien et par mois clos' },
   rental_receipts: { group: 'rentalReceipts', text: 'les encaissements locatifs par mois clos et devise' },
   chart_analysis: { group: 'charts', text: 'des graphiques fondés sur les tableaux calculés par le serveur' },
+  show_indicators: { group: 'indicators', text: 'des indicateurs chiffrés issus des analyses' },
+  compose_report: { group: 'reports', text: 'des rapports structurés avec tableaux et provenance' },
   list_lease_documents: { group: 'documents', text: 'des documents' },
   list_property_documents: { group: 'documents', text: 'des documents' },
   propose_rental_document: { group: 'receipts', text: 'des quittances de loyer ou des relevés de compte' },
@@ -71,6 +73,16 @@ export function buildSystemPrompt(
   }
   const cards = ['biens', ...(hasLeases ? ['baux'] : []), 'documents', ...(canPropose ? ['propositions'] : [])];
   const help: string[] = [];
+  if (tools.some(tool => tool.name === 'compose_report')) {
+    help.push(
+      'Pour un rapport, utilise compose_report avec des sections Markdown et des références aux tableaux calculés de cette conversation.'
+    );
+  }
+  if (tools.some(tool => tool.name === 'show_indicators')) {
+    help.push(
+      'Pour des indicateurs chiffrés, appelle show_indicators avec les références des lignes du tableau, notamment la période et la devise. Les cartes et leurs variations sont calculées côté serveur.'
+    );
+  }
   if (tools.some(tool => tool.name === 'chart_analysis')) {
     help.push(
       'Pour un graphique fondé sur une analyse locative, appelle chart_analysis avec le tableau de cette conversation et les clés retournées. Les séries sont calculées côté serveur.'

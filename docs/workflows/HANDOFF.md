@@ -21,9 +21,11 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 **Base** — `origin/main` à `af33a6da`. Plan de parité dans [PLAN_PARITE_IMMOCOPILOT_MEDIC_ASSIST.md](../architecture/PLAN_PARITE_IMMOCOPILOT_MEDIC_ASSIST.md).
 
-**En cours** — Historique privé plein écran avec recherche, gestion des fils, rechargement des réponses et artefacts. Lanceur depuis l’en-tête et briefing issu du tableau de bord. Classement des échéances non soldées avec paiements partiels et analyse comparée des encaissements. Exports Excel et CSV avec provenance pour ces tableaux.
+**PR #221** — Branche `feat/assistant-immotopia`. Les commits `ab7d75f5` et `a51e965c` livrent le chat et son historique privé, le lanceur, le briefing et les analyses locatives (tableaux, graphiques serveur, provenance et exports Excel/CSV). La migration a été appliquée sur PostgreSQL de test et la suite principale d’isolation a validé les refus entre comptes et agences.
 
-**Suite** — Vérifier la migration sur une base isolée et le parcours complet. Continuer les quatre lots du plan, notamment les jeux de données rejouables, les versions, les pièces jointes, les exports PDF et PPTX, la collaboration, les actions de suivi et l’administration.
+**Dernier lot** — Indicateurs calculés à partir des tableaux de la conversation, comparaisons par devise, rapports Markdown et tableaux reliés avec leur provenance. L’ajout de ces deux transformations préserve l’empreinte des anciens fils. Si la lecture des droits d’abonnement échoue en mode enforce, l’accès aux fils persistants échoue aussi.
+
+**Suite** — Construire les jeux rejouables et les versions, les exports PDF et PPTX, les pièces jointes et la transcription. Poursuivre le partage, les épingles, les actions de suivi, les envois, l’administration et les six langues. Recetter avec un fournisseur réel et un navigateur.
 
 ## chore/deps-patch-minor — 2026-11-11
 

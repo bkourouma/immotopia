@@ -3,10 +3,12 @@ import { CloseOutlined, DownloadOutlined } from '@ant-design/icons';
 import { Button, Dropdown, Select, Skeleton, Typography } from 'antd';
 import { feedback } from '../../../lib/feedback';
 import { t } from '../../../i18n/t';
-import type { CopilotArtifact } from '../../../types/copilot';
+import type { ArtifactProvenance, CopilotArtifact } from '../../../types/copilot';
 import { downloadChartPng, downloadCsv, downloadMarkdown, downloadXlsx } from '../../../utils/copilot-artifact-export';
 import { SafeMarkdown } from '../SafeMarkdown';
 import { ArtifactTable } from './ArtifactTable';
+import { formatArtifactAmount } from '../../../utils/copilot-artifact';
+import { activeLocale } from '../../../i18n/format';
 
 // recharts reste hors du bundle de la page : chargé à l'affichage d'un graphique.
 const ArtifactChart = React.lazy(() => import('./ArtifactChart'));
@@ -18,10 +20,92 @@ export interface ArtifactPanelProps {
   onClose(): void;
 }
 
+function ArtifactSource({ provenance }: { provenance: ArtifactProvenance }) {
+  return (
+    <details style={{ marginBlock: 8 }}>
+      <summary>{t('Comment j’ai calculé')}</summary>
+      <p>
+        <a href={provenance.href}>{provenance.source}</a> · {provenance.period}
+      </p>
+      <ul>
+        {provenance.rules.map((rule, index) => (
+          <li key={index}>{rule}</li>
+        ))}
+      </ul>
+      <time dateTime={provenance.calculatedAt}>{new Date(provenance.calculatedAt).toLocaleString(activeLocale())}</time>
+    </details>
+  );
+}
+
 function ArtifactBody({ artifact }: { artifact: CopilotArtifact }): React.ReactElement {
   switch (artifact.kind) {
+    case 'document':
+      return (
+        <article aria-label={artifact.title}>
+          {artifact.blocks.map((block, index) =>
+            block.kind === 'text' ? (
+              <SafeMarkdown key={index} text={block.content} />
+            ) : (
+              <section key={index} aria-label={block.table.title} style={{ marginBlock: 16 }}>
+                <Typography.Title level={5}>{block.table.title}</Typography.Title>
+                {block.table.provenance && <ArtifactSource provenance={block.table.provenance} />}
+                <ArtifactTable artifact={block.table} />
+              </section>
+            )
+          )}
+        </article>
+      );
     case 'table':
       return <ArtifactTable artifact={artifact} />;
+    case 'indicators':
+      return (
+        <dl
+          style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 150px), 1fr))' }}
+        >
+          {artifact.cards.map((card, index) => (
+            <div
+              key={index}
+              style={{
+                border: '1px solid var(--border-subtle)',
+                borderRadius: 8,
+                padding: 12,
+                minWidth: 0,
+                overflowWrap: 'anywhere'
+              }}
+            >
+              <dt>{card.label}</dt>
+              <dd style={{ marginInlineStart: 0 }}>
+                <Typography.Text strong style={{ fontSize: '1.35rem' }}>
+                  <bdi>
+                    {formatArtifactAmount(card.value)}
+                    {card.currency ? ' ' + card.currency : ''}
+                  </bdi>
+                </Typography.Text>
+                {card.comparison && (
+                  <div style={{ marginBlockStart: 4 }}>
+                    {card.comparison.label && <span>{card.comparison.label} · </span>}
+                    <bdi>
+                      {formatArtifactAmount(card.comparison.value)}
+                      {card.currency ? ' ' + card.currency : ''}
+                    </bdi>
+                    {card.comparison.change !== undefined && (
+                      <Typography.Text type="secondary" style={{ display: 'block' }}>
+                        <bdi>
+                          {new Intl.NumberFormat(activeLocale(), {
+                            style: 'percent',
+                            signDisplay: 'exceptZero',
+                            maximumFractionDigits: 2
+                          }).format(card.comparison.change / 100)}
+                        </bdi>
+                      </Typography.Text>
+                    )}
+                  </div>
+                )}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      );
     case 'markdown':
       return <SafeMarkdown text={artifact.content} />;
     case 'chart':
@@ -52,7 +136,7 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({ artifacts, selecte
   };
 
   const downloads =
-    artifact.kind === 'table'
+    artifact.kind === 'table' || artifact.kind === 'indicators'
       ? [
           { key: 'csv', label: t('CSV'), onClick: () => run(() => downloadCsv(artifact)) },
           { key: 'xlsx', label: t('Excel (.xlsx)'), onClick: () => run(() => downloadXlsx(artifact)) }
@@ -88,7 +172,7 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({ artifacts, selecte
             </Typography.Title>
           )}
         </div>
-        {artifact.kind === 'markdown' ? (
+        {artifact.kind === 'markdown' || artifact.kind === 'document' ? (
           <Button icon={<DownloadOutlined aria-hidden />} onClick={() => void run(() => downloadMarkdown(artifact))}>
             {t('Télécharger')}
           </Button>
@@ -106,22 +190,7 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({ artifacts, selecte
           onClick={onClose}
         />
       </header>
-      {artifact.kind !== 'markdown' && artifact.provenance && (
-        <details style={{ marginBlock: 8 }}>
-          <summary>{t('Comment j’ai calculé')}</summary>
-          <p>
-            <a href={artifact.provenance.href}>{artifact.provenance.source}</a> · {artifact.provenance.period}
-          </p>
-          <ul>
-            {artifact.provenance.rules.map(rule => (
-              <li key={rule}>{rule}</li>
-            ))}
-          </ul>
-          <time dateTime={artifact.provenance.calculatedAt}>
-            {new Date(artifact.provenance.calculatedAt).toLocaleString()}
-          </time>
-        </details>
-      )}
+      {'provenance' in artifact && artifact.provenance && <ArtifactSource provenance={artifact.provenance} />}
       <div ref={bodyRef} style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
         <ArtifactBody artifact={artifact} />
       </div>

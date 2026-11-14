@@ -7,7 +7,9 @@ import type { CopilotArtifact } from '../../../types/copilot';
 const ICONS = {
   table: <TableOutlined aria-hidden />,
   markdown: <FileTextOutlined aria-hidden />,
-  chart: <BarChartOutlined aria-hidden />
+  chart: <BarChartOutlined aria-hidden />,
+  indicators: <BarChartOutlined aria-hidden />,
+  document: <FileTextOutlined aria-hidden />
 } as const;
 
 /** Pastille d'un message qui renvoie vers un artefact du panneau. */

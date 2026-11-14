@@ -9,11 +9,11 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Finance | 196 |
 | CRM et Ventes | 70 |
 | Maintenance | 32 |
-| Communication et Documents | 76 |
+| Communication et Documents | 78 |
 | Syndic copropriete | 245 |
 | Administration plateforme | 141 |
 | Portails externes | 84 |
-| **Total** | **1219** |
+| **Total** | **1221** |
 
 ## Sous-fonctionnalités
 
@@ -795,6 +795,8 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Ouvrir le lanceur de l’assistant | Ouvrir l’assistant en pleine page par l’en-tête ou Ctrl/Cmd+K et transmettre la question avec le contexte d’écran facultatif. | Question et écran courant | Nouveau fil | Assistant activé | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | Accès agence et permissions des outils ou du tableau de bord | Disponible | Assistant |
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Consulter le briefing | Consulter la file de travail du tableau de bord depuis l’accueil de l’assistant et ouvrir les écrans correspondants. | Agence active | Cartes et liens métier | Assistant activé | Collaborateur agence éligible | Agence (collaborateur) | GET /api/tenants/:tenantId/dashboard | Accès agence et permissions des outils ou du tableau de bord | Disponible | Assistant |
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Étendre l’analyse | Augmenter le budget d’outils d’un tour depuis la page Assistant. | Question et option Analyse approfondie | Réponse en flux | Assistant activé | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | Accès agence et permissions des outils ou du tableau de bord | Disponible | Assistant |
+| Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Afficher des indicateurs d’analyse | Afficher des cartes fondées sur les lignes d’un tableau du serveur avec comparaison et variation de même devise. | Tableau, mesure et filtres | Cartes avec provenance et exports CSV ou Excel | Analyse accessible dans la conversation | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | PROPERTIES_VIEW et accès aux analyses sources | Disponible | Assistant > Résultats et documents |
+| Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Préparer un rapport structuré | Combiner des sections de texte et des tableaux calculés du même fil avec leur provenance. | Titre, sections de texte et tableaux | Rapport dans le panneau et export Markdown | Analyse accessible dans la conversation | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | PROPERTIES_VIEW et accès aux analyses sources | Disponible | Assistant > Résultats et documents |
 
 ### Syndic copropriete
 

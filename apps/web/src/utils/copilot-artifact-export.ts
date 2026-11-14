@@ -12,7 +12,7 @@ import { saveBlob } from './save-blob';
 const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 function provenanceRows(artifact: CopilotArtifact): string[][] {
-  if (artifact.kind === 'markdown' || !artifact.provenance) return [];
+  if (artifact.kind === 'markdown' || artifact.kind === 'document' || !artifact.provenance) return [];
   const provenance = artifact.provenance;
   return [
     [t('Source'), provenance.source],
@@ -73,8 +73,24 @@ export async function downloadXlsx(artifact: CopilotArtifact): Promise<void> {
 }
 
 export function downloadMarkdown(artifact: CopilotArtifact): void {
-  if (artifact.kind !== 'markdown') return;
-  saveBlob(new Blob([artifact.content], { type: 'text/markdown;charset=utf-8' }), `${safeFilename(artifact.title)}.md`);
+  if (artifact.kind !== 'markdown' && artifact.kind !== 'document') return;
+  const content =
+    artifact.kind === 'markdown'
+      ? artifact.content
+      : [
+          `# ${artifact.title}`,
+          ...artifact.blocks.flatMap(block => {
+            if (block.kind === 'text') return [block.content];
+            const { table } = block;
+            const code = toCsv(table.columns, table.rows).replace(/```/g, '` ` `');
+            return [
+              `## ${table.title}`,
+              '```csv\n' + code + '\n```',
+              ...provenanceRows(table).map(([label, value]) => `- ${label} — ${value}`)
+            ];
+          })
+        ].join('\n\n');
+  saveBlob(new Blob([content], { type: 'text/markdown;charset=utf-8' }), `${safeFilename(artifact.title)}.md`);
 }
 
 /**

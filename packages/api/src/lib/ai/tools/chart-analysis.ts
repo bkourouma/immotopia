@@ -7,7 +7,7 @@ import {
   COPILOT_ARTIFACT_MAX_SERIES,
   type CopilotToolDefinition
 } from '../contracts';
-import { outcome } from './tool-utils';
+import { assertToolPermission, outcome } from './tool-utils';
 
 const schema = z
   .object({
@@ -40,6 +40,7 @@ export const chartAnalysisTool: CopilotToolDefinition<typeof schema> = {
   feature: 'CORE',
   kind: 'read',
   async execute(input, ctx) {
+    assertToolPermission(ctx, 'PROPERTIES_VIEW');
     const source = ctx.analysisTables?.get(input.sourceId);
     const dimension = source?.columns.find(column => column.key === input.dimension);
     const measure = source?.columns.find(column => column.key === input.measure);
