@@ -273,6 +273,7 @@ describe('OpenRouterProvider', () => {
       const error = await run(jest.fn().mockResolvedValue(response)).catch(e => e);
       expect(error).toBeInstanceOf(LlmProviderError);
       expect(error.retryable).toBe(true);
+      expect(error.automaticRetry).toBe(true);
       expect(error.upstreamStatus).toBe(status);
       expect(error.message).not.toContain('secret');
     }
@@ -293,8 +294,21 @@ describe('OpenRouterProvider', () => {
     expect(error).toBeInstanceOf(LlmProviderError);
     expect(error.retryable).toBe(true);
     expect(error.model).toBe('provider/model-served');
+    expect(error.automaticRetry).toBe(false);
     expect(error.usage?.costUsd).toBe(0.001);
     expect(error.message).not.toContain('secret');
+  });
+
+  it.each([false, true])('reprise avant contenu quand le flux surcharge (outil partiel : %s)', async hasTool => {
+    const response = sseResponse([
+      data({ model: 'provider/model-served' }),
+      ...(hasTool ? [choice({ tool_calls: [{ index: 0, id: 'call_a' }] })] : []),
+      data({ error: { code: 529 } })
+    ]);
+    await expect(run(jest.fn().mockResolvedValue(response))).rejects.toMatchObject({
+      retryable: true,
+      automaticRetry: !hasTool
+    });
   });
 
   it('traite une panne réseau comme réessayable', async () => {

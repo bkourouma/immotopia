@@ -341,8 +341,14 @@ describe('AssistantPage — artefacts', () => {
     expect(copilotService.setScheduledReportActive).not.toHaveBeenCalled();
     fireEvent.click(await screen.findByRole('button', { name: 'Activer et partager' }));
     expect(copilotService.setScheduledReportActive).toHaveBeenCalledWith('t1', 'report-1', true, true);
-    expect(await within(drawer).findByRole('button', { name: 'Mettre en pause' })).toBeEnabled();
-    expect(within(drawer).getByText(/Prochaine échéance/)).toBeInTheDocument();
+    await waitFor(
+      () => {
+        const reports = within(screen.getByRole('dialog', { name: 'Rapports' }));
+        expect(reports.getByRole('button', { name: 'Mettre en pause' })).toBeEnabled();
+        expect(reports.getByText(/Prochaine échéance/)).toBeInTheDocument();
+      },
+      { timeout: 3000 }
+    );
   });
 
   it('attend la confirmation avant de mettre un envoi ponctuel en file', async () => {

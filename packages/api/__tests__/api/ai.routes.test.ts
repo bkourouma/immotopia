@@ -231,7 +231,7 @@ describe('GET /ai/status', () => {
     expect(res.body.data.enabled).toBe(true);
     expect(res.body.data.provider).toBe('fake');
     expect([...res.body.data.tools].sort()).toEqual(propertyTools);
-    expect(mockGetUserPermissions).toHaveBeenCalledWith(currentUser, TENANT_A);
+    expect(mockGetUserPermissions).toHaveBeenCalledWith(currentUser, TENANT_A, { fresh: false });
   });
 
   it('aucun outil : enabled=false NO_TOOLS', async () => {
@@ -255,7 +255,7 @@ describe('GET /ai/status', () => {
     const res = await get(`${base()}/status`);
     expect(res.status).toBe(200);
     expect([...res.body.data.tools].sort()).toEqual(propertyTools);
-    expect(mockGetEntitlements).toHaveBeenCalledWith(TENANT_A);
+    expect(mockGetEntitlements).toHaveBeenCalledWith(TENANT_A, { fresh: false });
   });
 
   it('en enforce, un module de location en lecture seule garde la recherche mais perd la proposition', async () => {

@@ -21,7 +21,9 @@ const mockGetPropertyForTenant = jest.fn();
 const mockResolveTemplate = jest.fn();
 const mockGenerateDocument = jest.fn();
 const mockLogAudit = jest.fn();
+const mockDelay = jest.fn();
 
+jest.mock('node:timers/promises', () => ({ setTimeout: (...args: unknown[]) => mockDelay(...args) }));
 jest.mock('../../src/utils/database', () => ({ prisma: mockPrisma }));
 jest.mock('../../src/utils/logger', () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }
@@ -537,6 +539,54 @@ describe('orchestrateur — limites, abandon, refus', () => {
 });
 
 describe('orchestrateur — erreurs', () => {
+  const overload = new LlmProviderError('Indisponible', { retryable: true, automaticRetry: true });
+
+  it('rejoue au plus trois fois une étape interrompue avant le premier contenu', async () => {
+    mockDelay.mockResolvedValue(undefined);
+    const random = jest.spyOn(Math, 'random').mockReturnValue(0.5);
+    try {
+      const runTurn = jest.fn().mockRejectedValue(overload);
+      const harness = start({ id: 'fake', runTurn });
+      await expect(harness.result).resolves.toBe('error');
+      expect(runTurn).toHaveBeenCalledTimes(4);
+      expect(mockDelay.mock.calls.map(([ms]) => ms)).toEqual([2_000, 4_000, 8_000]);
+      expect(harness.events.filter(event => event.type === 'error')).toHaveLength(1);
+    } finally {
+      random.mockRestore();
+      mockDelay.mockReset();
+    }
+  });
+
+  it('arrête les reprises au premier texte déjà transmis', async () => {
+    const runTurn = jest.fn(async (_request, onText: (text: string) => void) => {
+      onText('Réponse partielle');
+      throw overload;
+    });
+    const harness = start({ id: 'fake', runTurn });
+    await expect(harness.result).resolves.toBe('error');
+    expect(runTurn).toHaveBeenCalledTimes(1);
+    expect(mockDelay).not.toHaveBeenCalled();
+    expect(harness.events.filter(event => event.type === 'text_delta')).toEqual([
+      { type: 'text_delta', text: 'Réponse partielle' }
+    ]);
+  });
+
+  it('interrompt l’attente d’une reprise quand le client annule', async () => {
+    mockDelay.mockImplementation(jest.requireActual('node:timers/promises').setTimeout);
+    try {
+      const runTurn = jest.fn().mockRejectedValue(overload);
+      const harness = start({ id: 'fake', runTurn });
+      await Promise.resolve();
+      expect(mockDelay).toHaveBeenCalledWith(expect.any(Number), undefined, { signal: harness.controller.signal });
+      harness.controller.abort();
+      await expect(harness.result).resolves.toBe('aborted');
+      expect(runTurn).toHaveBeenCalledTimes(1);
+      expect(harness.events.some(event => event.type === 'error')).toBe(false);
+    } finally {
+      mockDelay.mockReset();
+    }
+  });
+
   it('erreur typée du fournisseur : code, retryable puis done error', async () => {
     const provider: LlmProvider = {
       id: 'fake',

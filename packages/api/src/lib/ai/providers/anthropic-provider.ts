@@ -38,17 +38,19 @@ export const SERVER_SIDE_FALLBACK_BETA = 'server-side-fallback-2026-07-01';
 export class LlmProviderError extends AppError {
   readonly copilotCode: CopilotErrorCode;
   readonly retryable: boolean;
+  readonly automaticRetry: boolean;
   readonly upstreamStatus?: number;
   readonly model?: string;
   readonly usage?: LlmUsage;
 
   constructor(
     message: string,
-    options: { retryable: boolean; upstreamStatus?: number; model?: string; usage?: LlmUsage }
+    options: { retryable: boolean; automaticRetry?: boolean; upstreamStatus?: number; model?: string; usage?: LlmUsage }
   ) {
     super(message, 503, 'PROVIDER_UNAVAILABLE');
     this.copilotCode = 'PROVIDER_UNAVAILABLE';
     this.retryable = options.retryable;
+    this.automaticRetry = options.automaticRetry ?? false;
     this.upstreamStatus = options.upstreamStatus;
     this.model = options.model;
     this.usage = options.usage;
@@ -146,7 +148,7 @@ export class AnthropicProvider implements LlmProvider {
   private getClient(): Anthropic {
     if (!this.client) {
       // Clé passée explicitement : jamais lue implicitement par le SDK.
-      this.client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+      this.client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, maxRetries: 0 });
     }
     return this.client;
   }
@@ -205,8 +207,12 @@ export class AnthropicProvider implements LlmProvider {
     // Évite un « unhandled rejection » si l'appel réussit avant l'abandon.
     aborted.catch(() => undefined);
 
+    let receivedContent = false;
     try {
       const stream = this.getClient().beta.messages.stream(params, { signal: controller.signal });
+      stream.on('streamEvent', event => {
+        if (event.type === 'content_block_start' || event.type === 'content_block_delta') receivedContent = true;
+      });
       stream.on('text', (delta: string) => {
         if (delta) onTextDelta(delta);
       });
@@ -258,8 +264,10 @@ export class AnthropicProvider implements LlmProvider {
         errorName: error instanceof Error ? error.name : typeof error,
         status
       });
+      const retryable = status === undefined || status === 429 || status >= 500;
       throw new LlmProviderError(t("L'assistant est momentanément indisponible. Réessayez dans un instant."), {
-        retryable: status === undefined || status === 429 || status >= 500,
+        retryable,
+        automaticRetry: retryable && !receivedContent,
         upstreamStatus: status,
         model: config.model
       });

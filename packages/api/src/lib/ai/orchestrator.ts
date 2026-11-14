@@ -1,3 +1,4 @@
+import { setTimeout as delay } from 'node:timers/promises';
 import { env } from '../../config/env';
 import { currentLanguage, t } from '../../i18n';
 import { AppError, ForbiddenError } from '../../middleware/error-middleware';
@@ -133,6 +134,41 @@ function toSseError(error: unknown): { code: CopilotErrorCode; message: string; 
   return { code: 'INTERNAL', message: t('Une erreur est survenue. Réessayez dans un instant.'), retryable: true };
 }
 
+const PROVIDER_RETRY_DELAYS_MS = [2_000, 4_000, 8_000];
+
+async function runProviderStep(
+  provider: LlmProvider,
+  request: Parameters<LlmProvider['runTurn']>[0],
+  emit: RunChatInput['emit'],
+  signal: AbortSignal
+): Promise<LlmTurnResult> {
+  for (let attempt = 0; ; attempt += 1) {
+    let textSent = false;
+    try {
+      return await provider.runTurn(
+        request,
+        text => {
+          if (!text || signal.aborted) return;
+          textSent = true;
+          emit({ type: 'text_delta', text });
+        },
+        signal
+      );
+    } catch (error) {
+      const backoff = PROVIDER_RETRY_DELAYS_MS[attempt];
+      if (
+        signal.aborted ||
+        textSent ||
+        backoff === undefined ||
+        !(error instanceof LlmProviderError && error.automaticRetry)
+      ) {
+        throw error;
+      }
+      await delay(Math.round(backoff * (0.75 + Math.random() * 0.5)), undefined, { signal });
+    }
+  }
+}
+
 /**
  * Exécute un tour de chat complet et l'émet en événements. Se termine toujours
  * par un événement `done` ; ne lève pas d'erreur (elles deviennent `error`).
@@ -224,7 +260,8 @@ export async function runChat(input: RunChatInput): Promise<ChatDoneReason> {
         break;
       }
 
-      const turn: LlmTurnResult = await provider.runTurn(
+      const turn = await runProviderStep(
+        provider,
         {
           system,
           messages,
@@ -232,7 +269,7 @@ export async function runChat(input: RunChatInput): Promise<ChatDoneReason> {
           maxOutputTokens,
           ...(input.deep ? { deep: true } : {})
         },
-        text => emit({ type: 'text_delta', text }),
+        emit,
         signal
       );
 

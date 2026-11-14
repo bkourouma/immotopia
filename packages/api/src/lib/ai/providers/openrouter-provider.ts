@@ -124,6 +124,9 @@ interface StreamChunk {
   choices?: Array<{
     delta?: {
       content?: string | null;
+      reasoning?: string | null;
+      reasoning_details?: unknown[];
+      refusal?: string | null;
       tool_calls?: Array<{
         index?: number;
         id?: string;
@@ -168,7 +171,8 @@ function parseToolInput(raw: string): unknown {
 
 async function consumeStream(
   body: ReadableStream<Uint8Array>,
-  onTextDelta: (text: string) => void
+  onTextDelta: (text: string) => void,
+  onContent: () => void
 ): Promise<LlmTurnResult> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
@@ -200,11 +204,14 @@ async function consumeStream(
     const choice = chunk.choices?.[0];
     if (!choice) return;
     const delta = choice.delta;
+    if (delta?.reasoning || delta?.reasoning_details?.length || delta?.refusal) onContent();
     if (delta?.content) {
+      onContent();
       text += delta.content;
       onTextDelta(delta.content);
     }
     for (const fragment of delta?.tool_calls ?? []) {
+      onContent();
       const index = fragment.index ?? 0;
       const acc = calls.get(index) ?? { id: '', name: '', args: '' };
       if (fragment.id) acc.id = fragment.id;
@@ -354,6 +361,7 @@ export class OpenRouterProvider implements LlmProvider {
     });
     aborted.catch(() => undefined);
 
+    let receivedContent = false;
     try {
       const work = (async () => {
         const response = await this.fetchImpl(request.url, {
@@ -364,7 +372,9 @@ export class OpenRouterProvider implements LlmProvider {
         });
         if (!response.ok) throw new UpstreamStatusError(response.status);
         if (!response.body) throw new UpstreamStatusError(undefined);
-        return consumeStream(response.body, onTextDelta);
+        return consumeStream(response.body, onTextDelta, () => {
+          receivedContent = true;
+        });
       })();
       work.catch(() => undefined);
       const result = await Promise.race([work, aborted]);
@@ -388,8 +398,10 @@ export class OpenRouterProvider implements LlmProvider {
         errorName: error instanceof Error ? error.name : typeof error,
         status
       });
+      const retryable = status === undefined || status === 429 || status >= 500;
       throw new LlmProviderError(t("L'assistant est momentanément indisponible. Réessayez dans un instant."), {
-        retryable: status === undefined || status === 429 || status >= 500,
+        retryable,
+        automaticRetry: retryable && !receivedContent,
         upstreamStatus: status,
         model: upstream?.model || config.model,
         usage: upstream?.usage
