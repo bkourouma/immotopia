@@ -93,7 +93,7 @@ export function SavedAnalyses({ tenantId, onClose }: { tenantId: string; onClose
       setShareItem(undefined);
       feedback.success(t('Analyse partagée.'));
     } catch {
-      feedback.error(t('Le partage exige un tableau recalculable et un destinataire habilité.'));
+      feedback.error(t('Le partage exige des données recalculables et un destinataire habilité.'));
     } finally {
       setSharing(false);
     }
@@ -150,7 +150,7 @@ export function SavedAnalyses({ tenantId, onClose }: { tenantId: string; onClose
         confirmLoading={sharing}
         okButtonProps={{ disabled: !recipient }}
       >
-        <p>{t('Le collègue reçoit un tableau recalculé selon vos droits communs.')}</p>
+        <p>{t('Le collègue voit les résultats recalculés selon vos droits communs.')}</p>
         <Select
           aria-label={t('Destinataire')}
           placeholder={t('Destinataire')}

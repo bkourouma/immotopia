@@ -24,6 +24,7 @@ export interface ArtifactPanelProps {
   selectedId?: string;
   onSelect(id: string): void;
   onClose(): void;
+  serverDownloadsOnly?: boolean;
   onSaveAnalysis?(artifactId: string): Promise<void>;
   onFollowUp?(artifact: CopilotArtifact, version: number): void;
   onDownloadFile?(artifactId: string, format: ArtifactDownloadFormat, version?: number): Promise<void>;
@@ -152,6 +153,7 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
   selectedId,
   onSelect,
   onClose,
+  serverDownloadsOnly,
   onSaveAnalysis,
   onRefresh,
   onReadVersion,
@@ -280,7 +282,7 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
 
   const csv = () => run(() => (onDownloadFile ? downloadFile('csv') : downloadCsv(artifact)));
   const xlsx = () => run(() => (onDownloadFile ? downloadFile('xlsx') : downloadXlsx(artifact)));
-  const downloads =
+  const downloadOptions =
     artifact.kind === 'table' || artifact.kind === 'indicators'
       ? [
           { key: 'csv', label: t('CSV'), onClick: csv },
@@ -297,6 +299,15 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
             { key: 'xlsx', label: t('Excel (.xlsx)'), onClick: xlsx }
           ]
         : [{ key: 'md', label: t('Markdown (.md)'), onClick: () => run(() => downloadMarkdown(artifact)) }];
+  const downloads = serverDownloadsOnly
+    ? downloadOptions.filter(option => option.key !== 'png' && option.key !== 'md')
+    : downloadOptions;
+  if (serverDownloadsOnly && onDownloadFile && artifact.kind === 'document') {
+    downloads.push({ key: 'xlsx', label: t('Excel (.xlsx)'), onClick: xlsx });
+    if (artifact.blocks.length === 1 && artifact.blocks[0].kind === 'table') {
+      downloads.push({ key: 'csv', label: t('CSV'), onClick: csv });
+    }
+  }
   if (onDownloadFile)
     downloads.push({
       key: 'pdf',

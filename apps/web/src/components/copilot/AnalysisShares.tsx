@@ -79,6 +79,7 @@ export function AnalysisShares({ tenantId, onClose }: { tenantId: string; onClos
           <Button onClick={() => setSelection(undefined)}>{t('Retour aux partages')}</Button>
           {artifact ? (
             <ArtifactPanel
+              serverDownloadsOnly
               artifacts={[artifact]}
               onSelect={() => undefined}
               onClose={() => setSelection(undefined)}

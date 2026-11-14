@@ -290,7 +290,7 @@ const artifactExporters = {
 
 type ShareParty = Pick<Awaited<ReturnType<typeof resolveAvailableTools>>, 'permissions' | 'tools'>;
 
-async function readSharedTable(
+async function recalculateSharedArtifact(
   artifact: CopilotArtifact,
   tenantId: string,
   userId: string,
@@ -333,7 +333,7 @@ export const createAnalysisShareHandler = asyncHandler(async (req, res) => {
   await assertAnalysisCollaborator(tenantId, reference.recipientId);
   const recipient = await resolveAvailableTools(reference.recipientId, tenantId, true);
   const stored = await getStoredArtifact(source.owner, reference.conversationId, reference.artifactId, source.scopeKey);
-  await readSharedTable(stored, tenantId, reference.recipientId, reference.conversationId, source, recipient);
+  await recalculateSharedArtifact(stored, tenantId, reference.recipientId, reference.conversationId, source, recipient);
   const data = await createAnalysisShare(source.owner, source.scopeKey, reference);
   res.set('Cache-Control', 'private, no-store').json({ success: true, data });
 });
@@ -358,7 +358,7 @@ async function getSharedAnalysis(req: Request) {
   );
   const authorized = await readAnalysisShare(tenantId, userId, id, sourceScope);
   if (!authorized) throw new NotFoundError();
-  const artifact = await readSharedTable(
+  const artifact = await recalculateSharedArtifact(
     authorized.analysis.original as unknown as CopilotArtifact,
     tenantId,
     userId,

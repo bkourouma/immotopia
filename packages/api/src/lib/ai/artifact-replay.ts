@@ -98,24 +98,43 @@ export async function replayArtifact(
       return previous;
     }
     const fresh = await read(previous.query);
-    return { ...fresh, id: previous.id, title: shared ? fresh.title : previous.title };
+    if (shared) {
+      const { query: _query, ...result } = fresh;
+      return { ...result, id: previous.id };
+    }
+    return { ...fresh, id: previous.id, title: previous.title };
   }
 
   if (artifact.kind === 'table') return table(artifact);
-  if (artifact.kind === 'document' && !shared) {
+  if (artifact.kind === 'document') {
     const blocks = [];
     for (const block of artifact.blocks) {
-      blocks.push(block.kind === 'table' ? { ...block, table: await table(block.table) } : block);
+      if (!shared) {
+        blocks.push(block.kind === 'table' ? { ...block, table: await table(block.table) } : block);
+      } else if (block.kind === 'table' && block.table.query && allowed.has(block.table.query.tool)) {
+        blocks.push({ kind: 'table' as const, table: await table(block.table) });
+      }
+    }
+    if (shared) {
+      if (!blocks.length) throw unavailable();
+      return { kind: 'document', id: artifact.id, title: t('Rapport partagé'), blocks };
     }
     return { ...artifact, blocks };
   }
-  if (!shared && (artifact.kind === 'chart' || artifact.kind === 'indicators') && artifact.replay) {
+  if ((artifact.kind === 'chart' || artifact.kind === 'indicators') && artifact.replay) {
     const tool: CopilotToolDefinition = artifact.kind === 'chart' ? chartAnalysisTool : showIndicatorsTool;
     if (artifact.replay.tool !== tool.name || !allowed.has(tool.name)) throw new ForbiddenError();
     const input = tool.inputSchema.parse(artifact.replay.input);
     const fresh = await read(artifact.replay.source);
-    const result = await tool.execute(input, { ...ctx, analysisTables: new Map([[input.sourceId, fresh]]) });
-    if (result.uiEvent?.type !== 'artifact') throw unavailable();
+    const result = await tool.execute(shared ? { ...input, title: fresh.title.slice(0, 120) } : input, {
+      ...ctx,
+      analysisTables: new Map([[input.sourceId, fresh]])
+    });
+    if (result.uiEvent?.type !== 'artifact' || result.uiEvent.artifact.kind !== artifact.kind) throw unavailable();
+    if (shared) {
+      const { replay: _replay, ...derived } = result.uiEvent.artifact;
+      return { ...derived, id: artifact.id };
+    }
     return { ...result.uiEvent.artifact, id: artifact.id, title: artifact.title };
   }
   if (shared) throw unavailable();
