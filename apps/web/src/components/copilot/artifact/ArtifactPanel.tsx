@@ -1,6 +1,6 @@
 import React, { Suspense, useEffect, useRef, useState } from 'react';
 import { CloseOutlined, DownloadOutlined } from '@ant-design/icons';
-import { Button, Dropdown, Select, Skeleton, Typography } from 'antd';
+import { Button, Dropdown, Input, Modal, Select, Skeleton, Typography } from 'antd';
 import { feedback } from '../../../lib/feedback';
 import { t } from '../../../i18n/t';
 import type {
@@ -34,6 +34,10 @@ export interface ArtifactPanelProps {
     versions: ArtifactVersionInfo[];
   }>;
   onRefresh?(artifactId: string, expectedVersion?: number): Promise<void>;
+  onEditVersion?(
+    artifactId: string,
+    change: { expectedVersion: number; restoreVersion?: number; title?: string }
+  ): Promise<void>;
 }
 
 function ArtifactSource({ provenance }: { provenance: ArtifactProvenance }) {
@@ -141,6 +145,7 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
   onClose,
   onRefresh,
   onReadVersion,
+  onEditVersion,
   onDownloadFile
 }) => {
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -151,6 +156,12 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
   const [requested, setRequested] = useState<{ id: string; version: number }>();
   const [loaded, setLoaded] = useState<Awaited<ReturnType<NonNullable<ArtifactPanelProps['onReadVersion']>>>>();
   const [revision, setRevision] = useState(0);
+  const [versionEdit, setVersionEdit] = useState<{
+    id: string;
+    expectedVersion: number;
+    title?: string;
+    restoreVersion?: number;
+  }>();
   const viewed = requested?.id === rootId ? requested?.version : undefined;
   useEffect(() => {
     if (!rootId || !onReadVersion) return;
@@ -203,6 +214,22 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
       setRevision(value => value + 1);
       feedback.error(t('Cette analyse ne peut pas être recalculée.'));
     } finally {
+      setRefreshing(false);
+    }
+  }
+
+  async function saveVersion() {
+    if (!versionEdit || !onEditVersion || versionEdit.id !== root?.id) return;
+    const { id, ...change } = versionEdit;
+    setRefreshing(true);
+    try {
+      await onEditVersion(id, change);
+      setRequested(undefined);
+    } catch {
+      feedback.error(t('La modification du résultat a échoué.'));
+    } finally {
+      setVersionEdit(undefined);
+      setRevision(value => value + 1);
       setRefreshing(false);
     }
   }
@@ -274,6 +301,26 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
             ]}
           />
         )}
+        {onEditVersion &&
+          snapshot &&
+          !versionPending &&
+          (downloadVersion === snapshot.latest ? (
+            <Button
+              disabled={refreshing}
+              onClick={() => setVersionEdit({ id: root.id, expectedVersion: snapshot.latest, title: artifact.title })}
+            >
+              {t('Renommer le résultat')}
+            </Button>
+          ) : (
+            <Button
+              disabled={refreshing}
+              onClick={() =>
+                setVersionEdit({ id: root.id, expectedVersion: snapshot.latest, restoreVersion: downloadVersion })
+              }
+            >
+              {t('Restaurer cette version')}
+            </Button>
+          ))}
         {onRefresh && artifact.canRefresh && (!onReadVersion || (!!snapshot && !viewed)) && (
           <Button loading={refreshing} onClick={() => void refresh(artifact.id)}>
             {t('Recalculer')}
@@ -301,6 +348,29 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
           onClick={onClose}
         />
       </header>
+      <Modal
+        open={versionEdit?.id === root.id}
+        title={versionEdit?.restoreVersion === undefined ? t('Renommer le résultat') : t('Restaurer cette version')}
+        okText={t('Enregistrer')}
+        cancelText={t('Annuler')}
+        confirmLoading={refreshing}
+        okButtonProps={{ disabled: versionEdit?.title !== undefined && !versionEdit.title.trim() }}
+        onCancel={() => {
+          if (!refreshing) setVersionEdit(undefined);
+        }}
+        onOk={() => void saveVersion()}
+      >
+        {versionEdit?.title !== undefined ? (
+          <Input
+            aria-label={t('Titre du résultat')}
+            value={versionEdit.title}
+            maxLength={120}
+            onChange={event => setVersionEdit({ ...versionEdit, title: event.target.value })}
+          />
+        ) : (
+          t('Cette restauration crée une nouvelle version et conserve l’historique.')
+        )}
+      </Modal>
       {'provenance' in artifact && artifact.provenance && <ArtifactSource provenance={artifact.provenance} />}
       <div ref={bodyRef} style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
         {versionPending ? (

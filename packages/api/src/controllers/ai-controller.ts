@@ -197,21 +197,37 @@ export const getArtifactVersionHandler = asyncHandler(async (req: Request, res: 
   res.set('Cache-Control', 'private, no-store').json({ success: true, data });
 });
 
-export const refreshArtifactHandler = asyncHandler(async (req: Request, res: Response) => {
+export const updateArtifactVersionHandler = asyncHandler(async (req: Request, res: Response) => {
   const { id, artifactId } = artifactExportParams.parse(req.params);
   const { owner, scopeKey, permissions, tools } = await conversationScope(req);
   const location = { ...owner, conversationId: id, artifactId };
   const { artifact: stored, latest } = await readArtifactVersions(location, scopeKey);
-  const { expectedVersion } = z.object({ expectedVersion: versionNumber }).strict().parse(req.body);
+  const { expectedVersion, restoreVersion, title } = z
+    .object({
+      expectedVersion: versionNumber,
+      restoreVersion: versionNumber.optional(),
+      title: z.string().trim().min(1).max(120).optional()
+    })
+    .strict()
+    .refine(value => value.restoreVersion === undefined || value.title === undefined)
+    .parse(req.body);
   if (expectedVersion !== latest) throw new ConflictError(t('Une version plus récente est déjà disponible.'));
-  if (!canReplayArtifact(stored)) throw new AppError(t('Cette analyse ne peut pas être recalculée.'), 422);
-  const artifact = await replayArtifact(stored, {
-    tenantId: owner.tenantId,
-    userId: owner.ownerId,
-    conversationId: id,
-    permissions,
-    tools
-  });
+  let artifact = stored;
+  if (restoreVersion !== undefined) {
+    if (restoreVersion >= latest) throw new AppError(t('Sélectionnez une version antérieure.'), 422);
+    artifact = (await readArtifactVersions(location, scopeKey, restoreVersion)).artifact;
+  } else if (title !== undefined) {
+    artifact = { ...stored, title };
+  } else {
+    if (!canReplayArtifact(stored)) throw new AppError(t('Cette analyse ne peut pas être recalculée.'), 422);
+    artifact = await replayArtifact(stored, {
+      tenantId: owner.tenantId,
+      userId: owner.ownerId,
+      conversationId: id,
+      permissions,
+      tools
+    });
+  }
   const version = await appendArtifactVersion(location, latest, artifact);
   res.status(201).set('Cache-Control', 'private, no-store').json({ success: true, data: { artifact, version } });
 });

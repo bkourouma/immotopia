@@ -14,7 +14,7 @@ import {
   chatHandler,
   deleteConversationHandler,
   downloadArtifactHandler,
-  refreshArtifactHandler,
+  updateArtifactVersionHandler,
   getArtifactVersionHandler,
   executeActionHandler,
   getConversationHandler,
@@ -46,7 +46,7 @@ router.post(
   '/conversations/:id/artifacts/:artifactId',
   requireAiStatusAccess,
   aiActionRateLimiter,
-  refreshArtifactHandler
+  updateArtifactVersionHandler
 );
 router.get('/conversations/:id/artifacts/:artifactId/:format', requireAiStatusAccess, downloadArtifactHandler);
 router.patch('/conversations/:id', requireAiStatusAccess, updateConversationHandler);

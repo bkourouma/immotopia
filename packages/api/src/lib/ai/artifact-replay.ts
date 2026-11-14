@@ -77,7 +77,7 @@ export async function replayArtifact(
   async function table(previous: AnalysisTable): Promise<AnalysisTable> {
     if (!previous.query) return previous;
     const fresh = await read(previous.query);
-    return { ...fresh, id: previous.id };
+    return { ...fresh, id: previous.id, title: previous.title };
   }
 
   if (artifact.kind === 'table') return table(artifact);
@@ -95,7 +95,7 @@ export async function replayArtifact(
     const fresh = await read(artifact.replay.source);
     const result = await tool.execute(input, { ...ctx, analysisTables: new Map([[input.sourceId, fresh]]) });
     if (result.uiEvent?.type !== 'artifact') throw unavailable();
-    return { ...result.uiEvent.artifact, id: artifact.id };
+    return { ...result.uiEvent.artifact, id: artifact.id, title: artifact.title };
   }
   return artifact;
 }

@@ -331,6 +331,20 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         .query({ version: 1 })
         .set(authed(adminA));
       expect(historicalFile.status).toBe(200);
+      const renamed = await request(app)
+        .post(versionPath)
+        .set(authed(adminA))
+        .send({ expectedVersion: 2, title: 'Bilan renommé' });
+      expect(renamed.status).toBe(201);
+      expect(renamed.body.data).toMatchObject({ version: 3, artifact: { title: 'Bilan renommé' } });
+      const restored = await request(app)
+        .post(versionPath)
+        .set(authed(adminA))
+        .send({ expectedVersion: 3, restoreVersion: 1 });
+      expect(restored.status).toBe(201);
+      expect(restored.body.data).toEqual({ version: 4, artifact: original.body.data.artifact });
+      const edit = await request(app).get(versionPath).query({ version: 3 }).set(authed(adminA));
+      expect(edit.body.data.artifact.title).toBe('Bilan renommé');
       expect((await request(app).get(versionPath).set(authed(colleague))).status).toBe(404);
       expect((await request(app).post(versionPath).set(authed(colleague)).send({ expectedVersion: 2 })).status).toBe(
         404

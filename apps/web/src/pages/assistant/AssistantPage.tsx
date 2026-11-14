@@ -202,10 +202,21 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
         conversationId && !streaming && chat.replaceArtifact
           ? async (artifactId, expectedVersion = 1) => {
               const artifact = sanitizeArtifact(
-                (await copilotService.refreshArtifact(tenantId, conversationId, artifactId, expectedVersion)).artifact
+                (await copilotService.updateArtifactVersion(tenantId, conversationId, artifactId, { expectedVersion }))
+                  .artifact
               );
               if (!artifact || artifact.id !== artifactId)
                 throw new Error(t('Cette analyse ne peut pas être recalculée.'));
+              chat.replaceArtifact?.(artifact, conversationId);
+            }
+          : undefined
+      }
+      onEditVersion={
+        conversationId && !streaming && chat.replaceArtifact
+          ? async (artifactId, change) => {
+              const result = await copilotService.updateArtifactVersion(tenantId, conversationId, artifactId, change);
+              const artifact = sanitizeArtifact(result.artifact);
+              if (!artifact || artifact.id !== artifactId) throw new Error(t('Cette version est indisponible.'));
               chat.replaceArtifact?.(artifact, conversationId);
             }
           : undefined

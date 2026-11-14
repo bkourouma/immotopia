@@ -168,13 +168,18 @@ async function getArtifactVersion(tenantId: string, conversationId: string, arti
   return unwrap<ArtifactVersionPayload>(response.data);
 }
 
-async function refreshArtifact(tenantId: string, conversationId: string, artifactId: string, expectedVersion: number) {
-  const response = await apiClient.post(artifactPath(tenantId, conversationId, artifactId), { expectedVersion });
+async function updateArtifactVersion(
+  tenantId: string,
+  conversationId: string,
+  artifactId: string,
+  change: { expectedVersion: number; restoreVersion?: number; title?: string }
+) {
+  const response = await apiClient.post(artifactPath(tenantId, conversationId, artifactId), change);
   return unwrap<{ artifact: unknown; version: number }>(response.data);
 }
 
 export const copilotService = {
-  refreshArtifact,
+  updateArtifactVersion,
   getArtifactVersion,
   downloadArtifact,
   getStatus,

@@ -209,6 +209,27 @@ describe('ArtifactPanel — rapports et indicateurs', () => {
 });
 
 describe('ArtifactPanel — recalcul', () => {
+  it('crée une version nommée avec la révision affichée', async () => {
+    const onReadVersion = vi.fn().mockResolvedValue({
+      artifact: table,
+      version: 2,
+      latest: 2,
+      versions: [
+        { version: 2, createdAt: null },
+        { version: 1, createdAt: null }
+      ]
+    });
+    const onEditVersion = vi.fn().mockResolvedValue(undefined);
+    renderPanel([table], undefined, { onReadVersion, onEditVersion });
+    fireEvent.click(await screen.findByRole('button', { name: 'Renommer le résultat' }));
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Titre du résultat' }), {
+      target: { value: 'Bilan locatif' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+    await waitFor(() =>
+      expect(onEditVersion).toHaveBeenCalledWith('t1', { expectedVersion: 2, title: 'Bilan locatif' })
+    );
+  });
   it('télécharge la version affichée et transmet la version attendue au recalcul', async () => {
     const current = { ...table, canRefresh: true };
     const onReadVersion = vi.fn().mockResolvedValue({
