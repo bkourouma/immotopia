@@ -47,6 +47,7 @@ import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { t } from '../../i18n/t';
 import { SaleStatusTag } from './SaleStatusTag';
 import { SaleAgreementSignatures } from './SaleAgreementSignatures';
+import { HelpSectionTitle, helpAnchor } from '../../help';
 
 import { localizedList } from '../../i18n/localized';
 const { Text, Title } = Typography;
@@ -411,15 +412,17 @@ export const SaleAgreementDetail: React.FC = () => {
             style={{ marginBottom: 'var(--space-4)' }}
           />
         ) : (
-          <Steps
-            current={STEP_INDEX[agreement.status] ?? 0}
-            items={[
-              { title: t('Brouillon') },
-              { title: t('Signé'), subTitle: dateCourte(agreement.signedAt) },
-              { title: t('Acte'), subTitle: dateCourte(agreement.deedDate) }
-            ]}
-            style={{ marginBottom: 'var(--space-6)' }}
-          />
+          <div {...helpAnchor('compromis-etapes')}>
+            <Steps
+              current={STEP_INDEX[agreement.status] ?? 0}
+              items={[
+                { title: t('Brouillon') },
+                { title: t('Signé'), subTitle: dateCourte(agreement.signedAt) },
+                { title: t('Acte'), subTitle: dateCourte(agreement.deedDate) }
+              ]}
+              style={{ marginBottom: 'var(--space-6)' }}
+            />
+          </div>
         )}
 
         <Descriptions column={{ xs: 1, md: 2 }} size="small" bordered>
@@ -432,7 +435,7 @@ export const SaleAgreementDetail: React.FC = () => {
         </Descriptions>
 
         <Title level={5} style={{ marginTop: 'var(--space-5)' }}>
-          {t('Prix, dépôt et notaire')}
+          <HelpSectionTitle title={t('Prix, dépôt et notaire')} helpId="commercial.ventes.compromis.prix-depot" />
         </Title>
         <Form<EditFormValues>
           form={editForm}
@@ -470,7 +473,7 @@ export const SaleAgreementDetail: React.FC = () => {
           )}
         </Form>
 
-        <Space wrap style={{ marginTop: 'var(--space-6)' }}>
+        <Space wrap style={{ marginTop: 'var(--space-6)' }} {...helpAnchor('compromis-actions')}>
           {peutSigner && (
             <Tooltip
               title={
@@ -517,6 +520,7 @@ export const SaleAgreementDetail: React.FC = () => {
       )}
 
       <Card
+        {...helpAnchor('compromis-conditions')}
         title={t('Conditions suspensives')}
         style={{ marginBottom: 'var(--space-6)' }}
         extra={
@@ -528,6 +532,7 @@ export const SaleAgreementDetail: React.FC = () => {
         }
       >
         <Table<SaleConditionDto>
+          helpId="commercial.ventes.compromis.conditions"
           exportFilename={t('Conditions suspensives')}
           size="small"
           dataSource={agreement.conditions}
@@ -538,7 +543,13 @@ export const SaleAgreementDetail: React.FC = () => {
         />
       </Card>
 
-      <Card title={t('Échéancier de l’acquéreur')} style={{ marginBottom: 'var(--space-6)' }}>
+      <Card
+        {...helpAnchor('compromis-echeancier')}
+        title={
+          <HelpSectionTitle title={t('Échéancier de l’acquéreur')} helpId="commercial.ventes.compromis.echeancier" />
+        }
+        style={{ marginBottom: 'var(--space-6)' }}
+      >
         {depassePrix && (
           <Alert
             type="warning"
@@ -620,7 +631,10 @@ export const SaleAgreementDetail: React.FC = () => {
         </Space>
       </Card>
 
-      <Card title={t('Commission')}>
+      <Card
+        {...helpAnchor('compromis-commission')}
+        title={<HelpSectionTitle title={t('Commission')} helpId="commercial.ventes.compromis.commission" />}
+      >
         {agreement.commission ? (
           <Descriptions column={{ xs: 1, md: 2 }} size="small" bordered>
             <Descriptions.Item label={t('Numéro')}>{agreement.commission.number}</Descriptions.Item>
@@ -654,7 +668,7 @@ export const SaleAgreementDetail: React.FC = () => {
 
       {/* Signature */}
       <Modal
-        title={t('Signer le compromis')}
+        title={<HelpSectionTitle title={t('Signer le compromis')} helpId="commercial.ventes.compromis.etapes" />}
         open={signOpen}
         onCancel={() => setSignOpen(false)}
         onOk={signer}
@@ -673,7 +687,7 @@ export const SaleAgreementDetail: React.FC = () => {
 
       {/* Passage à l'acte */}
       <Modal
-        title={t('Passer à l’acte')}
+        title={<HelpSectionTitle title={t('Passer à l’acte')} helpId="commercial.ventes.compromis.etapes" />}
         open={completeOpen}
         onCancel={() => setCompleteOpen(false)}
         onOk={passerActe}
@@ -692,7 +706,7 @@ export const SaleAgreementDetail: React.FC = () => {
 
       {/* Annulation */}
       <Modal
-        title={t('Annuler le compromis')}
+        title={<HelpSectionTitle title={t('Annuler le compromis')} helpId="commercial.ventes.compromis.etapes" />}
         open={cancelOpen}
         onCancel={() => setCancelOpen(false)}
         onOk={annuler}

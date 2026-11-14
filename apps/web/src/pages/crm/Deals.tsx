@@ -28,6 +28,7 @@ import { App } from 'antd';
 import { t } from '../../i18n/t';
 import { dealStageLabel, dealTypeLabel } from '../../utils/crm-labels';
 import { formatFcfa } from '../../utils/crm-utils';
+import { HelpButton, helpAnchor } from '../../help';
 
 import { activeLocale, formatNumber } from '../../i18n/format';
 export const Deals: React.FC = () => {
@@ -269,7 +270,12 @@ export const Deals: React.FC = () => {
               <FileSpreadsheet className="h-3 w-3 me-1" />
               {'Excel'}
             </Button>
-            <Button onClick={() => setShowForm(true)} size="sm" className="h-8 text-xs">
+            <Button
+              onClick={() => setShowForm(true)}
+              size="sm"
+              className="h-8 text-xs"
+              {...helpAnchor('affaires-nouvelle')}
+            >
               <Plus className="h-3 w-3 me-1" />
               {t('Nouvelle affaire')}
             </Button>
@@ -312,31 +318,34 @@ export const Deals: React.FC = () => {
         )}
 
         {/* Recherche multicritères (champ libre + critères) et choix de la vue */}
-        <ListSearch
-          {...search.searchProps}
-          resultCount={isLoading ? undefined : resultCount}
-          extra={
-            <div className="flex gap-1">
-              <Button
-                variant={viewMode === 'list' ? 'default' : 'outline'}
-                size="sm"
-                className="text-xs h-8"
-                onClick={() => setViewMode('list')}
-              >
-                {t('Liste')}
-              </Button>
-              <Button
-                variant={viewMode === 'kanban' ? 'default' : 'outline'}
-                size="sm"
-                className="text-xs h-8"
-                onClick={() => setViewMode('kanban')}
-              >
-                <LayoutGrid className="h-3 w-3 me-1" />
-                {t('Pipeline')}
-              </Button>
-            </div>
-          }
-        />
+        <div {...helpAnchor('affaires-recherche')}>
+          <ListSearch
+            {...search.searchProps}
+            resultCount={isLoading ? undefined : resultCount}
+            extra={
+              <div className="flex items-center gap-1" {...helpAnchor('affaires-vues')}>
+                <Button
+                  variant={viewMode === 'list' ? 'default' : 'outline'}
+                  size="sm"
+                  className="text-xs h-8"
+                  onClick={() => setViewMode('list')}
+                >
+                  {t('Liste')}
+                </Button>
+                <Button
+                  variant={viewMode === 'kanban' ? 'default' : 'outline'}
+                  size="sm"
+                  className="text-xs h-8"
+                  onClick={() => setViewMode('kanban')}
+                >
+                  <LayoutGrid className="h-3 w-3 me-1" />
+                  {t('Pipeline')}
+                </Button>
+                <HelpButton helpId="commercial.affaires.liste.recherche" size="small" />
+              </div>
+            }
+          />
+        </div>
 
         {/* Deals View */}
         {loadError && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">{loadError}</div>}
@@ -365,7 +374,10 @@ export const Deals: React.FC = () => {
             </Button>
           </div>
         ) : isKanban ? (
-          <div className="bg-white rounded-lg shadow p-3 w-full overflow-x-auto">
+          <div className="bg-white rounded-lg shadow p-3 w-full overflow-x-auto" {...helpAnchor('affaires-pipeline')}>
+            <div className="flex justify-end">
+              <HelpButton helpId="commercial.affaires.liste.kanban" size="small" />
+            </div>
             <DealKanban
               stages={kanban.stages}
               columns={kanban.columns}
@@ -396,7 +408,10 @@ export const Deals: React.FC = () => {
             />
           </div>
         ) : (
-          <div className="bg-white rounded-lg shadow overflow-hidden">
+          <div className="bg-white rounded-lg shadow overflow-hidden" {...helpAnchor('affaires-tableau')}>
+            <div className="flex justify-end px-3 pt-2">
+              <HelpButton helpId="commercial.affaires.liste.tableau" size="small" />
+            </div>
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>

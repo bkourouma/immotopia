@@ -104,6 +104,7 @@ export function ContactSearchResults({
 
   return (
     <Table<ContactSearchResultItem>
+      helpId="commercial.contacts.recherche-avancee.resultats"
       // Pas d'export dans un sélecteur de contacts : seule la recherche en consultation s'exporte.
       exportable={mode === 'view'}
       exportFilename={translate('Contacts')}

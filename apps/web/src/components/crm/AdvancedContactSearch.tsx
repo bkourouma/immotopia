@@ -17,6 +17,7 @@ import { t } from '../../i18n/t';
 import { writeErrorMessage } from '../../utils/error-handler';
 import { collectAllPages } from '../../utils/table-export/collect';
 import { ListSearch } from '../primitives/ListSearch';
+import { HelpButton, HelpSectionTitle } from '../../help';
 
 interface AdvancedContactSearchProps {
   onSelectContacts?: (contacts: ContactSearchResultItem[]) => void;
@@ -231,6 +232,7 @@ export function AdvancedContactSearch({
             <Button icon={<FolderOpenOutlined />} onClick={() => setSavedModalOpen(true)}>
               {t('Recherches sauvegardées')}
             </Button>
+            <HelpButton helpId="commercial.contacts.recherche-avancee" />
           </div>
         }
       />
@@ -325,7 +327,7 @@ export function AdvancedContactSearch({
       )}
 
       <Modal
-        title={t('Filtres avancés')}
+        title={<HelpSectionTitle title={t('Filtres avancés')} helpId="commercial.contacts.recherche-avancee.filtres" />}
         open={filterModalOpen}
         onCancel={() => setFilterModalOpen(false)}
         footer={null}
@@ -361,7 +363,12 @@ export function AdvancedContactSearch({
       </Modal>
 
       <Modal
-        title={t('Recherches sauvegardées')}
+        title={
+          <HelpSectionTitle
+            title={t('Recherches sauvegardées')}
+            helpId="commercial.contacts.recherche-avancee.enregistrees"
+          />
+        }
         open={savedModalOpen}
         onCancel={() => setSavedModalOpen(false)}
         footer={null}

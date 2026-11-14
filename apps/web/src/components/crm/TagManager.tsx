@@ -4,6 +4,7 @@ import { PlusOutlined, TagOutlined, SearchOutlined, CloseOutlined } from '@ant-d
 import { listTags, assignTag, removeTag, getContactTags, createTag, CrmTag } from '../../services/crm-service';
 import { writeErrorMessage } from '../../utils/error-handler';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 const { Search } = Input;
 const { Title, Text } = Typography;
@@ -145,7 +146,7 @@ export const TagManager: React.FC<TagManagerProps> = ({
       title={
         <Space>
           <TagOutlined style={{ color: '#1890ff' }} />
-          <span>{t('Gérer les tags')}</span>
+          <HelpSectionTitle title={t('Gérer les tags')} helpId="commercial.contacts.detail.gerer-tags" />
         </Space>
       }
       open={open}

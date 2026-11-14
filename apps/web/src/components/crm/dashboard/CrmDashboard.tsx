@@ -18,6 +18,7 @@ import { FunnelChart } from './charts/FunnelChart';
 import { TimeSeriesChart } from './charts/TimeSeriesChart';
 import { Workbench } from './workbench/Workbench';
 import { TeamPerformanceTable } from './team/TeamPerformanceTable';
+import { HelpButton, HelpSectionTitle, helpAnchor } from '../../../help';
 import { t } from '../../../i18n/t';
 
 const { Title, Text } = Typography;
@@ -187,7 +188,7 @@ export const CrmDashboard: React.FC = () => {
           </Text>
         </Col>
         <Col xs={24} sm={24} md={12} style={{ textAlign: 'end' }}>
-          <Space wrap>
+          <Space wrap {...helpAnchor('dashboard-periode')}>
             <Button
               onClick={() => {
                 const today = dayjs();
@@ -209,14 +210,16 @@ export const CrmDashboard: React.FC = () => {
             >
               30 derniers jours
             </Button>
+            <HelpButton helpId="commercial.activites.tableau-de-bord.periode" size="small" />
           </Space>
         </Col>
       </Row>
 
       {/* KPI Cards */}
-      <Row gutter={[16, 16]}>
+      <Row gutter={[16, 16]} {...helpAnchor('dashboard-indicateurs')}>
         <Col xs={24} sm={12} lg={8}>
           <KpiCard
+            helpId="commercial.activites.tableau-de-bord.indicateurs"
             title={t('Nouveaux leads')}
             icon={<UserOutlined />}
             iconColor="#1890ff"
@@ -227,6 +230,7 @@ export const CrmDashboard: React.FC = () => {
         </Col>
         <Col xs={24} sm={12} lg={8}>
           <KpiCard
+            helpId="commercial.activites.tableau-de-bord.indicateurs"
             title={t('Leads convertis')}
             icon={<RiseOutlined />}
             iconColor="#52c41a"
@@ -237,6 +241,7 @@ export const CrmDashboard: React.FC = () => {
         </Col>
         <Col xs={24} sm={12} lg={8}>
           <KpiCard
+            helpId="commercial.activites.tableau-de-bord.indicateurs"
             title={t('Affaires créées')}
             icon={<ShoppingOutlined />}
             iconColor="#722ed1"
@@ -247,6 +252,7 @@ export const CrmDashboard: React.FC = () => {
         </Col>
         <Col xs={24} sm={12} lg={8}>
           <KpiCard
+            helpId="commercial.activites.tableau-de-bord.indicateurs"
             title={t('Affaires gagnées')}
             icon={<CheckCircleOutlined />}
             iconColor="#13c2c2"
@@ -257,6 +263,7 @@ export const CrmDashboard: React.FC = () => {
         </Col>
         <Col xs={24} sm={12} lg={8}>
           <KpiCard
+            helpId="commercial.activites.tableau-de-bord.actions-en-retard"
             title={t('Actions en retard')}
             icon={<ExclamationCircleOutlined />}
             iconColor="#ff4d4f"
@@ -271,10 +278,14 @@ export const CrmDashboard: React.FC = () => {
       <Row gutter={[16, 16]}>
         <Col xs={24} lg={12}>
           <Card
+            {...helpAnchor('dashboard-pipeline')}
             title={
               <Space>
                 <BarChartOutlined />
-                {t('Pipeline des affaires')}
+                <HelpSectionTitle
+                  title={t('Pipeline des affaires')}
+                  helpId="commercial.activites.tableau-de-bord.pipeline"
+                />
               </Space>
             }
           >
@@ -287,14 +298,29 @@ export const CrmDashboard: React.FC = () => {
       </Row>
 
       {/* Time Series Chart */}
-      <Card title={t('Évolution dans le temps')}>
+      <Card
+        title={
+          <HelpSectionTitle
+            title={t('Évolution dans le temps')}
+            helpId="commercial.activites.tableau-de-bord.evolution"
+          />
+        }
+      >
         <TimeSeriesChart data={data.timeSeries} />
       </Card>
 
       {/* Workbench and Team Performance */}
       <Row gutter={[16, 16]}>
         <Col xs={24} lg={12}>
-          <Card title={t('Plan de travail')}>
+          <Card
+            {...helpAnchor('dashboard-plan-de-travail')}
+            title={
+              <HelpSectionTitle
+                title={t('Plan de travail')}
+                helpId="commercial.activites.tableau-de-bord.plan-de-travail"
+              />
+            }
+          >
             <Workbench data={data.workbench} onItemClick={handleWorkbenchItemClick} />
           </Card>
         </Col>

@@ -11,6 +11,7 @@ import { TicketDetail as TicketDetailType, MaintenanceTicketStatus } from '../..
 import { useAuth } from '../../../hooks/useAuth';
 import { formatTicketDate } from '../../../utils/date-utils';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 import { localizedRecord } from '../../../i18n/localized';
 
 const { Title, Text, Paragraph } = Typography;
@@ -139,7 +140,10 @@ export const TicketDetail: React.FC = () => {
                     {t('Créé le')} {formattedCreatedDate}
                   </Text>
                 </div>
-                <TicketStatusBadge status={ticket.status} />
+                <HelpSectionTitle
+                  title={<TicketStatusBadge status={ticket.status} />}
+                  helpId="commercial.maintenance.detail.statut"
+                />
               </div>
 
               <div>
@@ -188,14 +192,21 @@ export const TicketDetail: React.FC = () => {
               <Divider />
 
               <div>
-                <Title level={5}>{t('Historique des statuts')}</Title>
+                <Title level={5}>
+                  <HelpSectionTitle
+                    title={t('Historique des statuts')}
+                    helpId="commercial.maintenance.detail.historique"
+                  />
+                </Title>
                 <TicketTimeline statusHistory={ticket.statusHistory || []} />
               </div>
 
               <Divider />
 
               <div>
-                <Title level={5}>{t('Pièces jointes')}</Title>
+                <Title level={5}>
+                  <HelpSectionTitle title={t('Pièces jointes')} helpId="commercial.maintenance.detail.pieces-jointes" />
+                </Title>
                 {effectiveTenantId && (
                   <AttachmentList
                     attachments={ticket.attachments || []}
@@ -207,7 +218,9 @@ export const TicketDetail: React.FC = () => {
               <Divider />
 
               <div>
-                <Title level={5}>{t('Commentaires')}</Title>
+                <Title level={5}>
+                  <HelpSectionTitle title={t('Commentaires')} helpId="commercial.maintenance.detail.commentaires" />
+                </Title>
                 <CommentThread comments={ticket.comments || []} />
 
                 <div style={{ marginTop: 16 }}>

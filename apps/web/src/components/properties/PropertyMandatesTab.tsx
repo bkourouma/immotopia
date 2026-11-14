@@ -13,6 +13,7 @@ import { apiErrorMessage } from '../patrimoine/patrimoine-labels';
 import { feedback } from '../../lib/feedback';
 import { activeLocale } from '../../i18n/format';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 const { Text } = Typography;
 
@@ -88,7 +89,11 @@ const ConfierAUnProprietaire: React.FC<{ tenantId: string; propertyId: string; o
   };
 
   return (
-    <Card title={t('Confier ce bien à un propriétaire')}>
+    <Card
+      title={
+        <HelpSectionTitle title={t('Confier ce bien à un propriétaire')} helpId="commercial.biens.detail.confier" />
+      }
+    >
       <Space direction="vertical" style={{ width: '100%' }}>
         <Text type="secondary">
           {t(
@@ -175,7 +180,7 @@ const MandatsDuBien: React.FC<Pick<Props, 'tenantId' | 'propertyId' | 'ownerName
         </Card>
       )}
       <Card
-        title={t('Mandat de gestion')}
+        title={<HelpSectionTitle title={t('Mandat de gestion')} helpId="commercial.biens.detail.mandats" />}
         extra={
           !hasActive && (
             <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreating(true)}>
@@ -185,6 +190,7 @@ const MandatsDuBien: React.FC<Pick<Props, 'tenantId' | 'propertyId' | 'ownerName
         }
       >
         <Table
+          helpId="commercial.biens.detail.mandats.tableau"
           exportFilename={t('Mandat de gestion')}
           scroll={{ x: 'max-content' }}
           rowKey="id"

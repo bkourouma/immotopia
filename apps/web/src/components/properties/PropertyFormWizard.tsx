@@ -45,6 +45,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { useOwnAssetsOnly } from '../../hooks/useMenuAccess';
 import { getOwnerClients, TenantClient } from '../../services/tenant-service';
+import { HelpSectionTitle, helpAnchor } from '../../help';
 import { t } from '../../i18n/t';
 import { isQuotaExceededResponse } from '../../utils/subscription-denial-notice';
 
@@ -811,6 +812,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
 
   const toutesLesEtapes: Array<{
     cle: CleEtape;
+    helpId: string;
     title: string;
     shortTitle?: string;
     description: string;
@@ -818,11 +820,12 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
   }> = [
     {
       cle: 'identification',
+      helpId: 'commercial.biens.nouveau.identification',
       title: t('Type et identification'),
       description: t('Sélectionnez le type de bien et les informations de base'),
       content: (
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
-          <div>
+          <div {...helpAnchor('biens-type')}>
             <Text strong>
               {t('Type de propriété')} <Text type="danger">*</Text>
             </Text>
@@ -837,7 +840,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
             )}
           </div>
 
-          <div>
+          <div {...helpAnchor('biens-titre')}>
             <Text strong>
               {t('Titre')} <Text type="danger">*</Text>
             </Text>
@@ -854,7 +857,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
             )}
           </div>
 
-          <div>
+          <div {...helpAnchor('biens-proprietaire')}>
             {!ownAssetsOnly && (
               <>
                 <Text strong>{t('Propriétaire')}</Text>
@@ -936,6 +939,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
     },
     {
       cle: 'localisation',
+      helpId: 'commercial.biens.nouveau.localisation',
       title: t('Localisation'),
       description: t("Indiquez l'emplacement de la propriété"),
       content: (
@@ -980,6 +984,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
     },
     {
       cle: 'caracteristiques',
+      helpId: 'commercial.biens.nouveau.caracteristiques',
       title: t('Caractéristiques générales'),
       shortTitle: t('Caractéristiques'),
       description: t('Informations générales sur la propriété'),
@@ -1127,6 +1132,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
     },
     {
       cle: 'prix',
+      helpId: 'commercial.biens.nouveau.prix',
       title: t('Prix & Conditions'),
       shortTitle: t('Prix et conditions'),
       description: t('Définissez le prix et les conditions de transaction'),
@@ -1234,6 +1240,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
     },
     {
       cle: 'specificites',
+      helpId: 'commercial.biens.nouveau.specificites',
       title: t('Caractéristiques spécifiques'),
       shortTitle: t('Spécificités'),
       description: t('Détails spécifiques au type de bien sélectionné'),
@@ -1406,6 +1413,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
     },
     {
       cle: 'medias',
+      helpId: 'commercial.biens.nouveau.medias',
       title: t('Médias'),
       description: t('Ajoutez des photos et vidéos de la propriété'),
       content: (
@@ -1551,7 +1559,10 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
     <div style={{ maxWidth: 1200, margin: '0 auto' }}>
       {/* Le rail porte la position dans le parcours ; l'en-tete du panneau
           porte le detail de l'etape. Aucun des deux ne repete l'autre. */}
-      <Card styles={{ body: { padding: isDesktop ? 'var(--space-6)' : 'var(--space-4)' } }}>
+      <Card
+        {...helpAnchor('biens-etapes')}
+        styles={{ body: { padding: isDesktop ? 'var(--space-6)' : 'var(--space-4)' } }}
+      >
         <StepRail
           items={steps.map(step => ({ title: step.title, shortTitle: step.shortTitle }))}
           current={currentStep}
@@ -1583,7 +1594,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                   lineHeight: 'var(--line-height-h1)'
                 }}
               >
-                {steps[currentStep].title}
+                <HelpSectionTitle title={steps[currentStep].title} helpId={steps[currentStep].helpId} />
               </Title>
               {steps[currentStep].description && (
                 <Text type="secondary" style={{ fontSize: 'var(--font-size-small)' }}>
@@ -1631,6 +1642,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
         </Space>
 
         <div
+          {...helpAnchor('biens-navigation')}
           style={{
             display: 'flex',
             gap: 'var(--space-2)',

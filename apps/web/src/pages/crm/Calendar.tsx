@@ -31,6 +31,7 @@ import {
   lignesExport
 } from './calendar-model';
 import { t } from '../../i18n/t';
+import { HelpButton, HelpSectionTitle, helpAnchor } from '../../help';
 
 import { activeLocale } from '../../i18n/format';
 import { localizedList } from '../../i18n/localized';
@@ -402,6 +403,7 @@ export const CalendarPage: React.FC = () => {
         // formulaire avec les mêmes valeurs.
         primaryAction={{
           label: t('Nouvelle relance'),
+          helpAnchor: 'calendrier-nouvelle-relance',
           icon: <PlusOutlined />,
           onClick: () => setFormulaireOuvert(true)
         }}
@@ -422,14 +424,16 @@ export const CalendarPage: React.FC = () => {
           marginBottom: 'var(--space-4)'
         }}
       >
-        <Segmented<Vue>
-          value={vue}
-          onChange={valeur => list.setFilters({ vue: valeur })}
-          options={VUES}
-          // Le choix de vue est une navigation, pas un filtre de données :
-          // il mérite un nom accessible propre.
-          aria-label={t('Choisir la vue du calendrier')}
-        />
+        <div {...helpAnchor('calendrier-vues')}>
+          <Segmented<Vue>
+            value={vue}
+            onChange={valeur => list.setFilters({ vue: valeur })}
+            options={VUES}
+            // Le choix de vue est une navigation, pas un filtre de données :
+            // il mérite un nom accessible propre.
+            aria-label={t('Choisir la vue du calendrier')}
+          />
+        </div>
         <Checkbox
           checked={perimetre === 'MINE'}
           onChange={e => list.setFilters({ perimetre: e.target.checked ? 'mine' : undefined })}
@@ -442,19 +446,26 @@ export const CalendarPage: React.FC = () => {
         >
           {t('Afficher les relances')}
         </Checkbox>
+        <HelpButton helpId="commercial.activites.calendrier.vues" size="small" />
         {isFetching && !isPending && <Text type="secondary">{t('Mise à jour…')}</Text>}
       </div>
 
-      <ListSearch
-        {...recherche.searchProps}
-        aria-label={t("Rechercher dans l'agenda")}
-        resultCount={isPending ? undefined : evenements.length}
-      />
+      <div {...helpAnchor('calendrier-recherche')}>
+        <ListSearch
+          {...recherche.searchProps}
+          aria-label={t("Rechercher dans l'agenda")}
+          resultCount={isPending ? undefined : evenements.length}
+        />
+      </div>
 
-      <div style={{ marginTop: 'var(--space-4)' }}>{contenu()}</div>
+      <div style={{ marginTop: 'var(--space-4)' }} {...helpAnchor('calendrier-contenu')}>
+        {contenu()}
+      </div>
 
       <Drawer
-        title={t("Détails de l'événement")}
+        title={
+          <HelpSectionTitle title={t("Détails de l'événement")} helpId="commercial.activites.calendrier.evenement" />
+        }
         placement={isDesktop ? 'right' : 'bottom'}
         height={isDesktop ? undefined : '70%'}
         width={isDesktop ? 420 : undefined}
@@ -530,7 +541,7 @@ export const CalendarPage: React.FC = () => {
       </Drawer>
 
       <Modal
-        title={t('Nouvelle relance')}
+        title={<HelpSectionTitle title={t('Nouvelle relance')} helpId="commercial.activites.calendrier.relance" />}
         open={formulaireOuvert}
         onCancel={() => setFormulaireOuvert(false)}
         footer={null}

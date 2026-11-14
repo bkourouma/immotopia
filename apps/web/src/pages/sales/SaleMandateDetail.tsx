@@ -50,6 +50,7 @@ import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { t } from '../../i18n/t';
 import { SaleStatusTag } from './SaleStatusTag';
 import { MandateSignatures } from '../../components/signature/MandateSignatures';
+import { HelpButton, HelpSectionTitle, helpAnchor } from '../../help';
 
 const { Text, Title } = Typography;
 const { TextArea } = Input;
@@ -392,30 +393,38 @@ export const SaleMandateDetail: React.FC = () => {
       children: (
         <>
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 'var(--space-3)' }}>
-            <Button icon={<PlusOutlined />} onClick={ouvrirNouvelleOffre} disabled={!mandatActif}>
+            <Button
+              icon={<PlusOutlined />}
+              onClick={ouvrirNouvelleOffre}
+              disabled={!mandatActif}
+              {...helpAnchor('mandat-nouvelle-offre')}
+            >
               {t('Nouvelle offre')}
             </Button>
           </div>
-          <Table<SaleOfferDto>
-            exportFilename={t('Offres')}
-            columns={colonnesOffres}
-            rowKey={o => o.id}
-            {...(mandate.offers.length > OFFRES_SEUIL_RECHERCHE
-              ? { ...localOffres.tableProps, exportFetchAll: localOffres.exportAll, 'aria-label': t('Offres') }
-              : { dataSource: mandate.offers, pagination: false as const })}
-            // Sous critère, la Table affiche seule son bloc « Aucun résultat ».
-            locale={
-              mandate.offers.length > OFFRES_SEUIL_RECHERCHE && localOffres.isFiltered
-                ? undefined
-                : { emptyText: t('Aucune offre pour ce mandat.') }
-            }
-          />
+          <div {...helpAnchor('mandat-offres')}>
+            <Table<SaleOfferDto>
+              helpId="commercial.ventes.mandat.offres"
+              exportFilename={t('Offres')}
+              columns={colonnesOffres}
+              rowKey={o => o.id}
+              {...(mandate.offers.length > OFFRES_SEUIL_RECHERCHE
+                ? { ...localOffres.tableProps, exportFetchAll: localOffres.exportAll, 'aria-label': t('Offres') }
+                : { dataSource: mandate.offers, pagination: false as const })}
+              // Sous critère, la Table affiche seule son bloc « Aucun résultat ».
+              locale={
+                mandate.offers.length > OFFRES_SEUIL_RECHERCHE && localOffres.isFiltered
+                  ? undefined
+                  : { emptyText: t('Aucune offre pour ce mandat.') }
+              }
+            />
+          </div>
         </>
       )
     },
     {
       key: 'compromis',
-      label: t('Compromis'),
+      label: <HelpSectionTitle title={t('Compromis')} helpId="commercial.ventes.mandat.compromis" />,
       children:
         mandate.agreements.length === 0 ? (
           <StateBlock
@@ -447,7 +456,7 @@ export const SaleMandateDetail: React.FC = () => {
     },
     {
       key: 'signatures',
-      label: t('Signatures'),
+      label: <HelpSectionTitle title={t('Signatures')} helpId="commercial.ventes.mandat.signatures" />,
       children: (
         <MandateSignatures kind="SALE_MANDATE" mandateId={mandate.id} fileLabel={`mandat-vente-${mandate.number}`} />
       )
@@ -484,8 +493,13 @@ export const SaleMandateDetail: React.FC = () => {
         }
       />
 
-      <Card style={{ marginBottom: 'var(--space-6)' }}>
-        <Descriptions column={{ xs: 1, md: 2 }} size="small" bordered>
+      <Card style={{ marginBottom: 'var(--space-6)' }} {...helpAnchor('mandat-fiche')}>
+        <Descriptions
+          column={{ xs: 1, md: 2 }}
+          size="small"
+          bordered
+          extra={<HelpButton helpId="commercial.ventes.mandat.fiche" size="small" />}
+        >
           <Descriptions.Item label={t('Bien')}>{mandate.propertyLabel}</Descriptions.Item>
           <Descriptions.Item label={t('Vendeur')}>{mandate.sellerName}</Descriptions.Item>
           <Descriptions.Item label={t('Type')}>{MANDATE_TYPE_LABELS[mandate.mandateType]}</Descriptions.Item>
@@ -545,11 +559,13 @@ export const SaleMandateDetail: React.FC = () => {
         )}
       </Card>
 
-      <Tabs activeKey={ongletActif} onChange={changerOnglet} items={onglets} />
+      <div {...helpAnchor('mandat-onglets')}>
+        <Tabs activeKey={ongletActif} onChange={changerOnglet} items={onglets} />
+      </div>
 
       {/* Révocation du mandat */}
       <Modal
-        title={t('Révoquer le mandat')}
+        title={<HelpSectionTitle title={t('Révoquer le mandat')} helpId="commercial.ventes.mandat.revoquer" />}
         open={revokeOpen}
         onCancel={() => setRevokeOpen(false)}
         onOk={revoquer}
@@ -569,7 +585,7 @@ export const SaleMandateDetail: React.FC = () => {
 
       {/* Nouvelle offre */}
       <Modal
-        title={t('Nouvelle offre')}
+        title={<HelpSectionTitle title={t('Nouvelle offre')} helpId="commercial.ventes.mandat.nouvelle-offre" />}
         open={offerModalOpen}
         onCancel={() => setOfferModalOpen(false)}
         onOk={() => offerForm.submit()}
@@ -627,8 +643,10 @@ export const SaleMandateDetail: React.FC = () => {
       {/* Décision sur une offre */}
       <Modal
         title={
-          decisionAction
-            ? t('{{action}} — offre {{number}}', {
+          decisionAction ? (
+            <HelpSectionTitle
+              helpId="commercial.ventes.mandat.decision"
+              title={t('{{action}} — offre {{number}}', {
                 action:
                   decisionAction === 'COUNTER'
                     ? t('Contre-offre')
@@ -638,8 +656,11 @@ export const SaleMandateDetail: React.FC = () => {
                         ? t('Refuser')
                         : t('Retirer'),
                 number: decisionOffer?.number ?? ''
-              })
-            : ''
+              })}
+            />
+          ) : (
+            ''
+          )
         }
         open={Boolean(decisionOffer && decisionAction)}
         onCancel={() => {
@@ -682,7 +703,7 @@ export const SaleMandateDetail: React.FC = () => {
 
       {/* Création du compromis */}
       <Modal
-        title={t('Créer le compromis')}
+        title={<HelpSectionTitle title={t('Créer le compromis')} helpId="commercial.ventes.mandat.creer-compromis" />}
         open={Boolean(agreementOffer)}
         onCancel={() => setAgreementOffer(null)}
         onOk={() => agreementForm.submit()}
