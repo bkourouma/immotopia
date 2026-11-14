@@ -8,6 +8,7 @@ import { apiErrorMessage } from '../patrimoine/patrimoine-labels';
 import { PropertyDocumentUpload } from './PropertyDocumentUpload';
 import { feedback } from '../../lib/feedback';
 import { t } from '../../i18n/t';
+import { HelpButton, HelpSectionTitle } from '../../help';
 
 interface Props {
   tenantId: string;
@@ -59,7 +60,9 @@ export const PropertyDocumentsTab: React.FC<Props> = ({ tenantId, propertyId }) 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       {adding && (
-        <Card title={t('Ajouter un document')}>
+        <Card
+          title={<HelpSectionTitle title={t('Ajouter un document')} helpId="commercial.biens.detail.documents.ajout" />}
+        >
           <PropertyDocumentUpload
             propertyId={propertyId}
             tenantId={tenantId}
@@ -79,9 +82,12 @@ export const PropertyDocumentsTab: React.FC<Props> = ({ tenantId, propertyId }) 
         deletingId={deletingId}
         searchPrefix="pdoc"
         extra={
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setAdding(open => !open)}>
-            {adding ? t('Annuler') : t('Ajouter un document')}
-          </Button>
+          <Space size="small">
+            <HelpButton size="small" helpId="commercial.biens.detail.documents" />
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setAdding(open => !open)}>
+              {adding ? t('Annuler') : t('Ajouter un document')}
+            </Button>
+          </Space>
         }
       />
     </Space>

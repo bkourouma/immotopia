@@ -9,6 +9,7 @@ import {
 import { Property } from '../../types/property-types';
 import { apiFieldErrors } from './property-api-errors';
 import { publishProperty, unpublishProperty } from '../../services/property-service';
+import { HelpSectionTitle } from '../../help';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
@@ -75,7 +76,7 @@ export const PropertyPublicationControls: React.FC<PropertyPublicationControlsPr
         <div className="it-toolbar it-toolbar--start">
           <div>
             <Typography.Title level={5} style={{ margin: 0, marginBottom: 4 }}>
-              {t('Publication')}
+              <HelpSectionTitle title={t('Publication')} helpId="commercial.biens.modifier.publication" />
             </Typography.Title>
             <Text type="secondary">
               {property.isPublished

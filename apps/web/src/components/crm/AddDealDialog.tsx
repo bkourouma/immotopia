@@ -4,6 +4,7 @@ import { DealForm } from './DealForm';
 import { CreateCrmDealRequest } from '../../types/crm-types';
 import { Briefcase, X } from 'lucide-react';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 interface AddDealDialogProps {
   tenantId: string;
@@ -36,7 +37,9 @@ export const AddDealDialog: React.FC<AddDealDialogProps> = ({
               <Briefcase className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <h2 className="text-xl font-semibold">{t('Nouvelle affaire')}</h2>
+              <h2 className="text-xl font-semibold">
+                <HelpSectionTitle title={t('Nouvelle affaire')} helpId="commercial.contacts.detail.nouvelle-affaire" />
+              </h2>
               <p className="text-sm text-gray-600">
                 {t('Pour')} {contactName}
               </p>

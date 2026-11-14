@@ -42,6 +42,7 @@ import { getOwnerClients, TenantClient } from '../../services/tenant-service';
 import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { useOwnAssetsOnly } from '../../hooks/useMenuAccess';
 import { apiErrorText, apiFieldErrors, fieldLabel } from './property-api-errors';
+import { HelpSectionTitle } from '../../help';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
@@ -412,7 +413,9 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
         )}
 
         {/* SECTION 1: IDENTIFICATION */}
-        <Card title={t('1. Identification')}>
+        <Card
+          title={<HelpSectionTitle title={t('1. Identification')} helpId="commercial.biens.modifier.identification" />}
+        >
           {!property && (
             <>
               <Form.Item
@@ -564,7 +567,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
         </Card>
 
         {/* SECTION 2: LOCALISATION */}
-        <Card title={t('2. Localisation')}>
+        <Card title={<HelpSectionTitle title={t('2. Localisation')} helpId="commercial.biens.modifier.localisation" />}>
           <Form.Item
             label={t('Localisation (Pays > Région > Commune)')}
             required
@@ -628,7 +631,14 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
         </Card>
 
         {/* SECTION 3: CARACTÉRISTIQUES GÉNÉRALES */}
-        <Card title={t('3. Caractéristiques générales')}>
+        <Card
+          title={
+            <HelpSectionTitle
+              title={t('3. Caractéristiques générales')}
+              helpId="commercial.biens.modifier.caracteristiques"
+            />
+          }
+        >
           <Row gutter={16}>
             {selectedType !== PropertyType.TERRAIN && (
               <Col xs={24} sm={12}>
@@ -678,7 +688,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
         </Card>
 
         {/* SECTION 4: PRIX & CONDITIONS */}
-        <Card title={t('4. Prix & Conditions')}>
+        <Card title={<HelpSectionTitle title={t('4. Prix & Conditions')} helpId="commercial.biens.modifier.prix" />}>
           {/* Un bien est mis en vente **ou** en location, pas les deux — même
               règle que l'écran de création. Les cases à cocher permettaient les
               deux à la fois, alors que le modèle n'a qu'une colonne `price` :
@@ -787,7 +797,14 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
 
         {/* SECTION 5: CARACTÉRISTIQUES PHYSIQUES */}
         {selectedType && shouldShowRooms(selectedType) && (
-          <Card title={t('5. Caractéristiques physiques')}>
+          <Card
+            title={
+              <HelpSectionTitle
+                title={t('5. Caractéristiques physiques')}
+                helpId="commercial.biens.modifier.caracteristiques"
+              />
+            }
+          >
             <Row gutter={16}>
               <Col xs={24} sm={12}>
                 <Form.Item label={t('Nombre de pièces')} name="rooms">
@@ -832,7 +849,14 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
 
         {/* SECTION 6: CARACTÉRISTIQUES SPÉCIFIQUES */}
         {template && template.sections && Array.isArray(template.sections) && template.sections.length > 0 && (
-          <Card title={t('6. Caractéristiques spécifiques')}>
+          <Card
+            title={
+              <HelpSectionTitle
+                title={t('6. Caractéristiques spécifiques')}
+                helpId="commercial.biens.modifier.caracteristiques"
+              />
+            }
+          >
             {loadingTemplate ? (
               <div style={{ textAlign: 'center', padding: '24px' }}>
                 <Spin />

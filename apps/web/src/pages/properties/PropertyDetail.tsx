@@ -56,6 +56,7 @@ import { API_URL } from '../../config/api';
 import { switchPropertyTab, withTabLifecycle } from './property-detail-tabs';
 
 import { PageHeader, StatusTag } from '../../components/primitives';
+import { HelpButton, HelpSectionTitle, helpAnchor } from '../../help';
 import { t } from '../../i18n/t';
 import { localizedRecord } from '../../i18n/localized';
 import { activeLocale } from '../../i18n/format';
@@ -431,7 +432,7 @@ export const PropertyDetail: React.FC = () => {
 
   const ongletApercu = (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      <Card title={t('Description')}>
+      <Card title={<HelpSectionTitle title={t('Description')} helpId="commercial.biens.detail.apercu" />}>
         <Text style={{ whiteSpace: 'pre-wrap' }}>
           {descriptionUtile(property.description) || t('Aucune description disponible')}
         </Text>
@@ -443,7 +444,7 @@ export const PropertyDetail: React.FC = () => {
         </Card>
       )}
 
-      <Card title={t('Informations')}>
+      <Card title={t('Informations')} {...helpAnchor('fiche-bien-informations')}>
         <Descriptions column={colonnes} size="small" bordered items={informations} />
       </Card>
 
@@ -475,6 +476,7 @@ export const PropertyDetail: React.FC = () => {
           <Space>
             <PictureOutlined aria-hidden="true" />
             {t('Photos')}
+            <HelpButton size="small" helpId="commercial.biens.detail.medias" />
           </Space>
         }
       >
@@ -668,7 +670,14 @@ export const PropertyDetail: React.FC = () => {
           children: (
             <Space direction="vertical" size="middle" style={{ width: '100%' }}>
               <PropertyVisitsList propertyId={id!} tenantId={effectiveTenantId} />
-              <Card title={t('Planifier une visite')}>
+              <Card
+                title={
+                  <HelpSectionTitle
+                    title={t('Planifier une visite')}
+                    helpId="commercial.biens.detail.planifier-visite"
+                  />
+                }
+              >
                 <PropertyVisitScheduler propertyId={id!} tenantId={effectiveTenantId} onVisitScheduled={() => {}} />
               </Card>
             </Space>
@@ -745,7 +754,7 @@ export const PropertyDetail: React.FC = () => {
 
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         {/* Bandeau de synthèse : hors onglets, parce qu'il identifie le bien. */}
-        <Card>
+        <Card {...helpAnchor('fiche-bien-synthese')}>
           <Row gutter={[24, 16]} align="middle">
             <Col xs={24} md={estImmeuble && !prix ? 24 : 10}>
               {prix && (
@@ -777,6 +786,7 @@ export const PropertyDetail: React.FC = () => {
         </Card>
 
         <Tabs
+          {...helpAnchor('fiche-bien-onglets')}
           // `destroyOnHidden` par onglet (withTabLifecycle) : les visites, qui portent un
           // formulaire en ligne, restent montées une fois ouvertes.
           activeKey={ongletActif}

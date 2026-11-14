@@ -41,6 +41,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { t as translate } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
+import { HelpSectionTitle, helpAnchor } from '../../help';
 const { Title, Text } = Typography;
 
 export const Contacts: React.FC = () => {
@@ -344,7 +345,7 @@ export const Contacts: React.FC = () => {
       key: 'actions',
       width: 200,
       render: (_, record) => (
-        <Space>
+        <Space {...helpAnchor('contacts-actions')}>
           <Tooltip title={translate('Ajouter une activité')}>
             <Button type="text" icon={<CalendarOutlined />} onClick={() => handleAddActivity(record)} />
           </Tooltip>
@@ -411,7 +412,12 @@ export const Contacts: React.FC = () => {
           </Col>
           <Col xs={24} sm={24} md={12}>
             <Space wrap>
-              <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowForm(true)}>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => setShowForm(true)}
+                {...helpAnchor('contacts-nouveau')}
+              >
                 {translate('Nouveau contact')}
               </Button>
             </Space>
@@ -419,7 +425,9 @@ export const Contacts: React.FC = () => {
         </Row>
 
         <Modal
-          title={translate('Créer un nouveau contact')}
+          title={
+            <HelpSectionTitle title={translate('Créer un nouveau contact')} helpId="commercial.contacts.nouveau" />
+          }
           open={showForm}
           onCancel={() => setShowForm(false)}
           footer={null}
@@ -438,7 +446,7 @@ export const Contacts: React.FC = () => {
         </Modal>
 
         <Modal
-          title={translate('Modifier le contact')}
+          title={<HelpSectionTitle title={translate('Modifier le contact')} helpId="commercial.contacts.modifier" />}
           open={!!editingContact}
           onCancel={() => setEditingContact(null)}
           footer={null}
@@ -523,55 +531,58 @@ export const Contacts: React.FC = () => {
 
         {/* Table View : la barre de recherche reste affichée même sans ligne. */}
         <Card>
-          <Table
-            search={search.searchProps}
-            exportFilename={translate('Contacts')}
-            // Export de TOUS les contacts, avec les mêmes critères que la liste affichée.
-            exportFetchAll={() =>
-              collectAllPages<CrmContact>(async (page, limit) => {
-                const reponse = await listContacts(
-                  tenantId as string,
-                  {
-                    ...search.filterParams,
-                    page,
-                    limit
-                  } as ContactFilters
-                );
-                return { items: reponse.contacts ?? [], total: reponse.pagination?.total ?? 0 };
-              })
-            }
-            columns={columns}
-            dataSource={contacts}
-            rowKey="id"
-            loading={loading}
-            rowSelection={rowSelection}
-            pagination={search.tablePagination(pagination.total)}
-            scroll={{ x: 'max-content' }}
-            rowClassName={record => (selectedContacts.includes(record.id) ? 'ant-table-row-selected' : '')}
-            // Sans critère : invitation à créer. Sous critère, la Table affiche seule « Aucun résultat ».
-            locale={
-              search.isFiltered || search.page > 1
-                ? undefined
-                : {
-                    emptyText: (
-                      <Empty
-                        image={<UserOutlined style={{ fontSize: 64, color: '#bfbfbf' }} />}
-                        imageStyle={{ height: 64 }}
-                        description={
-                          <Space direction="vertical" size="small">
-                            <Text strong>{translate('Aucun contact trouvé')}</Text>
-                            <Text type="secondary">{translate('Commencez par créer votre premier contact.')}</Text>
-                          </Space>
-                        }
-                      >
-                        <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowForm(true)}>
-                          {translate('Créer un contact')}
-                        </Button>
-                      </Empty>
-                    )
-                  }
-            }
-          />
+          <div {...helpAnchor('contacts-tableau')}>
+            <Table
+              helpId="commercial.contacts.liste.tableau"
+              search={search.searchProps}
+              exportFilename={translate('Contacts')}
+              // Export de TOUS les contacts, avec les mêmes critères que la liste affichée.
+              exportFetchAll={() =>
+                collectAllPages<CrmContact>(async (page, limit) => {
+                  const reponse = await listContacts(
+                    tenantId as string,
+                    {
+                      ...search.filterParams,
+                      page,
+                      limit
+                    } as ContactFilters
+                  );
+                  return { items: reponse.contacts ?? [], total: reponse.pagination?.total ?? 0 };
+                })
+              }
+              columns={columns}
+              dataSource={contacts}
+              rowKey="id"
+              loading={loading}
+              rowSelection={rowSelection}
+              pagination={search.tablePagination(pagination.total)}
+              scroll={{ x: 'max-content' }}
+              rowClassName={record => (selectedContacts.includes(record.id) ? 'ant-table-row-selected' : '')}
+              // Sans critère : invitation à créer. Sous critère, la Table affiche seule « Aucun résultat ».
+              locale={
+                search.isFiltered || search.page > 1
+                  ? undefined
+                  : {
+                      emptyText: (
+                        <Empty
+                          image={<UserOutlined style={{ fontSize: 64, color: '#bfbfbf' }} />}
+                          imageStyle={{ height: 64 }}
+                          description={
+                            <Space direction="vertical" size="small">
+                              <Text strong>{translate('Aucun contact trouvé')}</Text>
+                              <Text type="secondary">{translate('Commencez par créer votre premier contact.')}</Text>
+                            </Space>
+                          }
+                        >
+                          <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowForm(true)}>
+                            {translate('Créer un contact')}
+                          </Button>
+                        </Empty>
+                      )
+                    }
+              }
+            />
+          </div>
         </Card>
 
         {/* Bulk Tag Manager Modal */}

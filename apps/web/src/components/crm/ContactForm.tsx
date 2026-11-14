@@ -30,6 +30,7 @@ import { formatNumberWithSpaces, parseFormattedNumber } from '../../lib/utils';
 import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { t } from '../../i18n/t';
 import { PortalEmailNotice } from './PortalEmailNotice';
+import { HelpSectionTitle, helpAnchor } from '../../help';
 
 const { TextArea } = Input;
 const { TabPane } = Tabs;
@@ -384,459 +385,492 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
       }}
     >
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        <Tabs activeKey={activeTab} onChange={setActiveTab} type="card">
-          <TabPane forceRender tab="Basique" key="basic">
-            <Card>
-              <Form.Item
-                label={t('Type de contact')}
-                name="contactType"
-                rules={[{ required: true, message: t('Le type de contact est requis') }]}
-              >
-                <Radio.Group>
-                  <Radio value="PERSON">{t('Personne')}</Radio>
-                  <Radio value="COMPANY">{t('Entreprise')}</Radio>
-                </Radio.Group>
-              </Form.Item>
+        <div {...helpAnchor('contact-form-onglets')}>
+          <Tabs activeKey={activeTab} onChange={setActiveTab} type="card">
+            <TabPane
+              forceRender
+              tab={<HelpSectionTitle title="Basique" helpId="commercial.contacts.nouveau.basique" />}
+              key="basic"
+            >
+              <Card>
+                <Form.Item
+                  label={t('Type de contact')}
+                  name="contactType"
+                  rules={[{ required: true, message: t('Le type de contact est requis') }]}
+                >
+                  <Radio.Group>
+                    <Radio value="PERSON">{t('Personne')}</Radio>
+                    <Radio value="COMPANY">{t('Entreprise')}</Radio>
+                  </Radio.Group>
+                </Form.Item>
 
-              <Row gutter={16}>
-                <Col xs={24} sm={12}>
-                  <Form.Item
-                    label={t('Prénom')}
-                    name="firstName"
-                    rules={[{ required: true, message: t('Le prénom est requis') }]}
-                  >
-                    <Input placeholder={t('Prénom')} />
-                  </Form.Item>
-                </Col>
-                <Col xs={24} sm={12}>
-                  <Form.Item
-                    label={t('Nom')}
-                    name="lastName"
-                    rules={[{ required: true, message: t('Le nom est requis') }]}
-                  >
-                    <Input placeholder={t('Nom')} />
-                  </Form.Item>
-                </Col>
-              </Row>
+                <Row gutter={16}>
+                  <Col xs={24} sm={12}>
+                    <Form.Item
+                      label={t('Prénom')}
+                      name="firstName"
+                      rules={[{ required: true, message: t('Le prénom est requis') }]}
+                    >
+                      <Input placeholder={t('Prénom')} />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} sm={12}>
+                    <Form.Item
+                      label={t('Nom')}
+                      name="lastName"
+                      rules={[{ required: true, message: t('Le nom est requis') }]}
+                    >
+                      <Input placeholder={t('Nom')} />
+                    </Form.Item>
+                  </Col>
+                </Row>
 
-              <Row gutter={16}>
-                <Col xs={24} sm={12}>
-                  <Form.Item
-                    label={t('Email personnel')}
-                    name="email"
-                    rules={[
-                      { required: true, message: t("L'email est requis") },
-                      { type: 'email', message: t('Adresse email invalide') }
-                    ]}
-                  >
-                    <Input type="email" placeholder="email@example.com" />
-                  </Form.Item>
-                  <PortalEmailNotice notice={contact?.portalAccountEmailNotice} />
-                </Col>
-                <Col xs={24} sm={12}>
-                  <Form.Item label={t('Email professionnel')} name="emailSecondary">
-                    <Input type="email" placeholder="email@example.com" />
-                  </Form.Item>
-                </Col>
-              </Row>
+                <Row gutter={16}>
+                  <Col xs={24} sm={12}>
+                    <Form.Item
+                      label={t('Email personnel')}
+                      name="email"
+                      rules={[
+                        { required: true, message: t("L'email est requis") },
+                        { type: 'email', message: t('Adresse email invalide') }
+                      ]}
+                    >
+                      <Input type="email" placeholder="email@example.com" />
+                    </Form.Item>
+                    <PortalEmailNotice notice={contact?.portalAccountEmailNotice} />
+                  </Col>
+                  <Col xs={24} sm={12}>
+                    <Form.Item label={t('Email professionnel')} name="emailSecondary">
+                      <Input type="email" placeholder="email@example.com" />
+                    </Form.Item>
+                  </Col>
+                </Row>
 
-              <Row gutter={16}>
-                <Col xs={24} sm={12}>
-                  <Form.Item label={t('Téléphone principal')}>
-                    <Space direction="vertical" style={{ width: '100%' }}>
-                      <Form.Item name="phonePrimaryIsWhatsApp" valuePropName="checked" noStyle>
-                        <Checkbox>{'WhatsApp'}</Checkbox>
-                      </Form.Item>
-                      <Form.Item name="phonePrimary" noStyle>
-                        <Input
-                          type="tel"
-                          placeholder={t('Numéro principal')}
-                          addonBefore={
-                            <Form.Item name="phonePrimaryCountryCode" noStyle>
-                              <Select
-                                showSearch
-                                optionFilterProp="label"
-                                style={{ width: 130 }}
-                                options={COUNTRY_DIAL_CODES}
-                              />
+                <Row gutter={16}>
+                  <Col xs={24} sm={12}>
+                    <Form.Item label={t('Téléphone principal')}>
+                      <Space direction="vertical" style={{ width: '100%' }}>
+                        <Form.Item name="phonePrimaryIsWhatsApp" valuePropName="checked" noStyle>
+                          <Checkbox>{'WhatsApp'}</Checkbox>
+                        </Form.Item>
+                        <Form.Item name="phonePrimary" noStyle>
+                          <Input
+                            type="tel"
+                            placeholder={t('Numéro principal')}
+                            addonBefore={
+                              <Form.Item name="phonePrimaryCountryCode" noStyle>
+                                <Select
+                                  showSearch
+                                  optionFilterProp="label"
+                                  style={{ width: 130 }}
+                                  options={COUNTRY_DIAL_CODES}
+                                />
+                              </Form.Item>
+                            }
+                          />
+                        </Form.Item>
+                      </Space>
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} sm={12}>
+                    <Form.Item label={t('Téléphone secondaire')}>
+                      <Space direction="vertical" style={{ width: '100%' }}>
+                        <Form.Item name="phoneSecondaryIsWhatsApp" valuePropName="checked" noStyle>
+                          <Checkbox>{'WhatsApp'}</Checkbox>
+                        </Form.Item>
+                        <Form.Item name="phoneSecondary" noStyle>
+                          <Input
+                            type="tel"
+                            placeholder={t('Numéro secondaire')}
+                            addonBefore={
+                              <Form.Item name="phoneSecondaryCountryCode" noStyle>
+                                <Select
+                                  showSearch
+                                  optionFilterProp="label"
+                                  style={{ width: 130 }}
+                                  options={COUNTRY_DIAL_CODES}
+                                />
+                              </Form.Item>
+                            }
+                          />
+                        </Form.Item>
+                      </Space>
+                    </Form.Item>
+                  </Col>
+                </Row>
+              </Card>
+            </TabPane>
+
+            <TabPane
+              forceRender
+              tab={<HelpSectionTitle title={t('Identité')} helpId="commercial.contacts.nouveau.identite" />}
+              key="identification"
+            >
+              <Card>
+                <Form.Item
+                  noStyle
+                  shouldUpdate={(prevValues, currentValues) => prevValues.contactType !== currentValues.contactType}
+                >
+                  {({ getFieldValue }) =>
+                    getFieldValue('contactType') === 'PERSON' ? (
+                      <>
+                        <Row gutter={16}>
+                          <Col xs={24} sm={12}>
+                            <Form.Item label={t('Civilité')} name="civility">
+                              <Select showSearch optionFilterProp="children" placeholder={t('Sélectionner')}>
+                                <Select.Option value="MR">{t('Monsieur')}</Select.Option>
+                                <Select.Option value="MRS">{t('Madame')}</Select.Option>
+                                <Select.Option value="MS">{t('Mademoiselle')}</Select.Option>
+                                <Select.Option value="DR">{t('Docteur')}</Select.Option>
+                                <Select.Option value="PROF">{t('Professeur')}</Select.Option>
+                              </Select>
                             </Form.Item>
-                          }
-                        />
-                      </Form.Item>
-                    </Space>
-                  </Form.Item>
-                </Col>
-                <Col xs={24} sm={12}>
-                  <Form.Item label={t('Téléphone secondaire')}>
-                    <Space direction="vertical" style={{ width: '100%' }}>
-                      <Form.Item name="phoneSecondaryIsWhatsApp" valuePropName="checked" noStyle>
-                        <Checkbox>{'WhatsApp'}</Checkbox>
-                      </Form.Item>
-                      <Form.Item name="phoneSecondary" noStyle>
-                        <Input
-                          type="tel"
-                          placeholder={t('Numéro secondaire')}
-                          addonBefore={
-                            <Form.Item name="phoneSecondaryCountryCode" noStyle>
-                              <Select
-                                showSearch
-                                optionFilterProp="label"
-                                style={{ width: 130 }}
-                                options={COUNTRY_DIAL_CODES}
-                              />
+                          </Col>
+                          <Col xs={24} sm={12}>
+                            <Form.Item label={t('Date de naissance')} name="dateOfBirth">
+                              <DatePicker style={{ width: '100%' }} />
                             </Form.Item>
-                          }
-                        />
-                      </Form.Item>
-                    </Space>
-                  </Form.Item>
-                </Col>
-              </Row>
-            </Card>
-          </TabPane>
+                          </Col>
+                        </Row>
 
-          <TabPane forceRender tab={t('Identité')} key="identification">
-            <Card>
-              <Form.Item
-                noStyle
-                shouldUpdate={(prevValues, currentValues) => prevValues.contactType !== currentValues.contactType}
-              >
-                {({ getFieldValue }) =>
-                  getFieldValue('contactType') === 'PERSON' ? (
-                    <>
-                      <Row gutter={16}>
-                        <Col xs={24} sm={12}>
-                          <Form.Item label={t('Civilité')} name="civility">
-                            <Select showSearch optionFilterProp="children" placeholder={t('Sélectionner')}>
-                              <Select.Option value="MR">{t('Monsieur')}</Select.Option>
-                              <Select.Option value="MRS">{t('Madame')}</Select.Option>
-                              <Select.Option value="MS">{t('Mademoiselle')}</Select.Option>
-                              <Select.Option value="DR">{t('Docteur')}</Select.Option>
-                              <Select.Option value="PROF">{t('Professeur')}</Select.Option>
-                            </Select>
-                          </Form.Item>
-                        </Col>
-                        <Col xs={24} sm={12}>
-                          <Form.Item label={t('Date de naissance')} name="dateOfBirth">
-                            <DatePicker style={{ width: '100%' }} />
-                          </Form.Item>
-                        </Col>
-                      </Row>
+                        <Form.Item label={t('Nationalité')} name="nationality">
+                          <Input placeholder={t('ex: Ivoirienne, Française')} />
+                        </Form.Item>
 
-                      <Form.Item label={t('Nationalité')} name="nationality">
-                        <Input placeholder={t('ex: Ivoirienne, Française')} />
-                      </Form.Item>
+                        <Row gutter={16}>
+                          <Col xs={24} sm={8}>
+                            <Form.Item label={t('Type de pièce')} name="identityDocumentType">
+                              <Select showSearch optionFilterProp="children" placeholder={t('Sélectionner')}>
+                                <Select.Option value="CNI">CNI</Select.Option>
+                                <Select.Option value="PASSPORT">{t('Passeport')}</Select.Option>
+                                <Select.Option value="DRIVING_LICENSE">{t('Permis de conduire')}</Select.Option>
+                                <Select.Option value="OTHER">{t('Autre')}</Select.Option>
+                              </Select>
+                            </Form.Item>
+                          </Col>
+                          <Col xs={24} sm={8}>
+                            <Form.Item label={t('Numéro de pièce')} name="identityDocumentNumber">
+                              <Input placeholder={t('Numéro CNI, Passeport, etc.')} />
+                            </Form.Item>
+                          </Col>
+                          <Col xs={24} sm={8}>
+                            <Form.Item label={t("Date d'expiration")} name="identityDocumentExpiry">
+                              <DatePicker style={{ width: '100%' }} />
+                            </Form.Item>
+                          </Col>
+                        </Row>
 
-                      <Row gutter={16}>
-                        <Col xs={24} sm={8}>
-                          <Form.Item label={t('Type de pièce')} name="identityDocumentType">
-                            <Select showSearch optionFilterProp="children" placeholder={t('Sélectionner')}>
-                              <Select.Option value="CNI">CNI</Select.Option>
-                              <Select.Option value="PASSPORT">{t('Passeport')}</Select.Option>
-                              <Select.Option value="DRIVING_LICENSE">{t('Permis de conduire')}</Select.Option>
-                              <Select.Option value="OTHER">{t('Autre')}</Select.Option>
-                            </Select>
-                          </Form.Item>
-                        </Col>
-                        <Col xs={24} sm={8}>
-                          <Form.Item label={t('Numéro de pièce')} name="identityDocumentNumber">
-                            <Input placeholder={t('Numéro CNI, Passeport, etc.')} />
-                          </Form.Item>
-                        </Col>
-                        <Col xs={24} sm={8}>
-                          <Form.Item label={t("Date d'expiration")} name="identityDocumentExpiry">
-                            <DatePicker style={{ width: '100%' }} />
-                          </Form.Item>
-                        </Col>
-                      </Row>
-
-                      <Form.Item label={t('Photo de profil')} name="profilePhotoUrl">
-                        <Upload
-                          listType="picture-circle"
-                          fileList={fileList}
-                          onChange={handleUploadChange}
-                          beforeUpload={beforeUpload}
-                          maxCount={1}
-                        >
-                          {fileList.length === 0 && (
-                            <div>
-                              <div style={{ marginTop: 8 }}>
-                                <UploadOutlined />
-                                <div style={{ marginTop: 8 }}>{t('Télécharger')}</div>
+                        <Form.Item label={t('Photo de profil')} name="profilePhotoUrl">
+                          <Upload
+                            listType="picture-circle"
+                            fileList={fileList}
+                            onChange={handleUploadChange}
+                            beforeUpload={beforeUpload}
+                            maxCount={1}
+                          >
+                            {fileList.length === 0 && (
+                              <div>
+                                <div style={{ marginTop: 8 }}>
+                                  <UploadOutlined />
+                                  <div style={{ marginTop: 8 }}>{t('Télécharger')}</div>
+                                </div>
                               </div>
-                            </div>
-                          )}
-                        </Upload>
-                      </Form.Item>
-                    </>
-                  ) : (
-                    <>
-                      <Form.Item
-                        label={t('Raison sociale')}
-                        name="legalName"
-                        rules={[{ required: true, message: t('La raison sociale est requise') }]}
-                      >
-                        <Input placeholder={t('Raison sociale')} />
-                      </Form.Item>
+                            )}
+                          </Upload>
+                        </Form.Item>
+                      </>
+                    ) : (
+                      <>
+                        <Form.Item
+                          label={t('Raison sociale')}
+                          name="legalName"
+                          rules={[{ required: true, message: t('La raison sociale est requise') }]}
+                        >
+                          <Input placeholder={t('Raison sociale')} />
+                        </Form.Item>
 
-                      <Row gutter={16}>
-                        <Col xs={24} sm={12}>
-                          <Form.Item label={t('Forme juridique')} name="legalForm">
-                            <Select showSearch optionFilterProp="children" placeholder={t('Sélectionner')}>
-                              <Select.Option value="SARL">SARL</Select.Option>
-                              <Select.Option value="SA">SA</Select.Option>
-                              <Select.Option value="EI">EI</Select.Option>
-                              <Select.Option value="EURL">EURL</Select.Option>
-                              <Select.Option value="SAS">SAS</Select.Option>
-                              <Select.Option value="ASSOCIATION">{t('Association')}</Select.Option>
-                              <Select.Option value="OTHER">{t('Autre')}</Select.Option>
-                            </Select>
-                          </Form.Item>
-                        </Col>
-                        <Col xs={24} sm={12}>
-                          <Form.Item label="RCCM" name="rccm">
-                            <Input placeholder="RCCM" />
-                          </Form.Item>
-                        </Col>
-                      </Row>
+                        <Row gutter={16}>
+                          <Col xs={24} sm={12}>
+                            <Form.Item label={t('Forme juridique')} name="legalForm">
+                              <Select showSearch optionFilterProp="children" placeholder={t('Sélectionner')}>
+                                <Select.Option value="SARL">SARL</Select.Option>
+                                <Select.Option value="SA">SA</Select.Option>
+                                <Select.Option value="EI">EI</Select.Option>
+                                <Select.Option value="EURL">EURL</Select.Option>
+                                <Select.Option value="SAS">SAS</Select.Option>
+                                <Select.Option value="ASSOCIATION">{t('Association')}</Select.Option>
+                                <Select.Option value="OTHER">{t('Autre')}</Select.Option>
+                              </Select>
+                            </Form.Item>
+                          </Col>
+                          <Col xs={24} sm={12}>
+                            <Form.Item label="RCCM" name="rccm">
+                              <Input placeholder="RCCM" />
+                            </Form.Item>
+                          </Col>
+                        </Row>
 
-                      <Form.Item label={t('Numéro fiscal')} name="taxId">
-                        <Input placeholder={t('Numéro fiscal')} />
-                      </Form.Item>
+                        <Form.Item label={t('Numéro fiscal')} name="taxId">
+                          <Input placeholder={t('Numéro fiscal')} />
+                        </Form.Item>
 
-                      <Row gutter={16}>
-                        <Col xs={24} sm={12}>
-                          <Form.Item label={t('Nom du représentant')} name="representativeName">
-                            <Input placeholder={t('Nom du représentant')} />
-                          </Form.Item>
-                        </Col>
-                        <Col xs={24} sm={12}>
-                          <Form.Item label={t('Fonction du représentant')} name="representativeRole">
-                            <Input placeholder={t('Fonction du représentant')} />
-                          </Form.Item>
-                        </Col>
-                      </Row>
-                    </>
-                  )
-                }
-              </Form.Item>
-            </Card>
-          </TabPane>
+                        <Row gutter={16}>
+                          <Col xs={24} sm={12}>
+                            <Form.Item label={t('Nom du représentant')} name="representativeName">
+                              <Input placeholder={t('Nom du représentant')} />
+                            </Form.Item>
+                          </Col>
+                          <Col xs={24} sm={12}>
+                            <Form.Item label={t('Fonction du représentant')} name="representativeRole">
+                              <Input placeholder={t('Fonction du représentant')} />
+                            </Form.Item>
+                          </Col>
+                        </Row>
+                      </>
+                    )
+                  }
+                </Form.Item>
+              </Card>
+            </TabPane>
 
-          <TabPane forceRender tab="Contact" key="contact">
-            <Card>
-              <Form.Item label={t('Adresse complète')} name="address">
-                <Input placeholder={t('Adresse complète')} />
-              </Form.Item>
+            <TabPane
+              forceRender
+              tab={<HelpSectionTitle title="Contact" helpId="commercial.contacts.nouveau.coordonnees" />}
+              key="contact"
+            >
+              <Card>
+                <Form.Item label={t('Adresse complète')} name="address">
+                  <Input placeholder={t('Adresse complète')} />
+                </Form.Item>
 
-              <Form.Item
-                label={t('Commune')}
-                name="communeId"
-                // Obligatoire à la création seulement : une fiche existante sans
-                // commune (import, ancienne saisie) doit rester modifiable.
-                rules={contact ? [] : [{ required: true, message: t('La commune est requise') }]}
-              >
-                <LocationSelector
-                  value={form.getFieldValue('communeId')}
-                  onChange={loc => {
-                    setLocation(loc);
-                    form.setFieldsValue({ communeId: loc?.communeId || undefined });
-                  }}
-                  placeholder={t('Rechercher une commune (ex: Cocody)...')}
-                />
-              </Form.Item>
+                <Form.Item
+                  label={t('Commune')}
+                  name="communeId"
+                  // Obligatoire à la création seulement : une fiche existante sans
+                  // commune (import, ancienne saisie) doit rester modifiable.
+                  rules={contact ? [] : [{ required: true, message: t('La commune est requise') }]}
+                >
+                  <LocationSelector
+                    value={form.getFieldValue('communeId')}
+                    onChange={loc => {
+                      setLocation(loc);
+                      form.setFieldsValue({ communeId: loc?.communeId || undefined });
+                    }}
+                    placeholder={t('Rechercher une commune (ex: Cocody)...')}
+                  />
+                </Form.Item>
 
-              <Form.Item label={t('Quartier/Zone')} name="locationZone">
-                <Input placeholder={t('Quartier/Zone')} />
-              </Form.Item>
+                <Form.Item label={t('Quartier/Zone')} name="locationZone">
+                  <Input placeholder={t('Quartier/Zone')} />
+                </Form.Item>
 
-              <Row gutter={16}>
-                <Col xs={24} sm={12}>
-                  <Form.Item label={t('Langue préférée')} name="preferredLanguage">
-                    <Radio.Group>
-                      <Radio value={t('Français')}>{t('Français')}</Radio>
-                      <Radio value="Anglais">{t('Anglais')}</Radio>
-                      <Radio value="Autre">{t('Autre')}</Radio>
-                    </Radio.Group>
-                  </Form.Item>
-                </Col>
-                <Col xs={24} sm={12}>
-                  <Form.Item label={t('Canal de contact préféré')} name="preferredContactChannel">
-                    <Select showSearch optionFilterProp="children" placeholder={t('Sélectionner')}>
-                      <Select.Option value="CALL">{t('Appel')}</Select.Option>
-                      <Select.Option value="WHATSAPP">{'WhatsApp'}</Select.Option>
-                      <Select.Option value="EMAIL">{t('Email')}</Select.Option>
-                      <Select.Option value="SMS">SMS</Select.Option>
-                    </Select>
-                  </Form.Item>
-                </Col>
-              </Row>
-            </Card>
-          </TabPane>
+                <Row gutter={16}>
+                  <Col xs={24} sm={12}>
+                    <Form.Item label={t('Langue préférée')} name="preferredLanguage">
+                      <Radio.Group>
+                        <Radio value={t('Français')}>{t('Français')}</Radio>
+                        <Radio value="Anglais">{t('Anglais')}</Radio>
+                        <Radio value="Autre">{t('Autre')}</Radio>
+                      </Radio.Group>
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} sm={12}>
+                    <Form.Item label={t('Canal de contact préféré')} name="preferredContactChannel">
+                      <Select showSearch optionFilterProp="children" placeholder={t('Sélectionner')}>
+                        <Select.Option value="CALL">{t('Appel')}</Select.Option>
+                        <Select.Option value="WHATSAPP">{'WhatsApp'}</Select.Option>
+                        <Select.Option value="EMAIL">{t('Email')}</Select.Option>
+                        <Select.Option value="SMS">SMS</Select.Option>
+                      </Select>
+                    </Form.Item>
+                  </Col>
+                </Row>
+              </Card>
+            </TabPane>
 
-          <TabPane forceRender tab="Professionnel" key="professional">
-            <Card>
-              <Row gutter={16}>
-                <Col xs={24} sm={12}>
-                  <Form.Item label={t('Profession / Fonction')} name="profession">
-                    <Input placeholder={t('Poste ou fonction')} />
-                  </Form.Item>
-                </Col>
-                <Col xs={24} sm={12}>
-                  <Form.Item label={t("Secteur d'activité")} name="sectorOfActivity">
-                    <Select showSearch optionFilterProp="children" placeholder={t('Sélectionner un secteur')}>
-                      <Select.Option value="AGRICULTURE">{t('Agriculture')}</Select.Option>
-                      <Select.Option value="BANQUE_FINANCE">{t('Banque & Finance')}</Select.Option>
-                      <Select.Option value="COMMERCE">{t('Commerce')}</Select.Option>
-                      <Select.Option value="CONSTRUCTION">{t('Construction')}</Select.Option>
-                      <Select.Option value="EDUCATION">{t('Éducation')}</Select.Option>
-                      <Select.Option value="ENERGIE">{t('Énergie')}</Select.Option>
-                      <Select.Option value="INFORMATIQUE_TECHNOLOGIE">{t('Informatique & Technologie')}</Select.Option>
-                      <Select.Option value="IMMOBILIER">{t('Immobilier')}</Select.Option>
-                      <Select.Option value="INDUSTRIE">{t('Industrie')}</Select.Option>
-                      <Select.Option value="SANTE">{t('Santé')}</Select.Option>
-                      <Select.Option value="SERVICES">{t('Services')}</Select.Option>
-                      <Select.Option value="TELECOMMUNICATIONS">{t('Télécommunications')}</Select.Option>
-                      <Select.Option value="TOURISME_HOTELLERIE">{t('Tourisme & Hôtellerie')}</Select.Option>
-                      <Select.Option value="TRANSPORT_LOGISTIQUE">{t('Transport & Logistique')}</Select.Option>
-                      <Select.Option value="AUTRE">{t('Autre')}</Select.Option>
-                    </Select>
-                  </Form.Item>
-                </Col>
-              </Row>
-
-              <Form.Item label={t('Employeur')} name="employer">
-                <Input placeholder={t('Employeur')} />
-              </Form.Item>
-
-              <Row gutter={16}>
-                <Col xs={24} sm={12}>
-                  <Form.Item label={t('Revenus minimum (FCFA)')} name="incomeMin">
-                    <Input
-                      value={formatNumber(form.getFieldValue('incomeMin'))}
-                      onChange={e => handleNumberChange('incomeMin', e.target.value)}
-                      placeholder={t('Ex: 500 000')}
-                    />
-                  </Form.Item>
-                </Col>
-                <Col xs={24} sm={12}>
-                  <Form.Item label={t('Revenus maximum (FCFA)')} name="incomeMax">
-                    <Input
-                      value={formatNumber(form.getFieldValue('incomeMax'))}
-                      onChange={e => handleNumberChange('incomeMax', e.target.value)}
-                      placeholder={t('Ex: 1 000 000')}
-                    />
-                  </Form.Item>
-                </Col>
-              </Row>
-
-              <Row gutter={16}>
-                <Col xs={24} sm={12}>
-                  <Form.Item label={t('Salaire')} name="salaire">
-                    <InputNumber style={{ width: '100%' }} placeholder={t('Montant du salaire')} min={0} step={0.01} />
-                  </Form.Item>
-                </Col>
-                <Col xs={24} sm={12}>
-                  <Form.Item label={t('Stabilité professionnelle')} name="jobStability">
-                    <Select showSearch optionFilterProp="children" placeholder={t('Sélectionner')}>
-                      <Select.Option value="CDI">CDI</Select.Option>
-                      <Select.Option value="CDD">CDD</Select.Option>
-                      <Select.Option value="FREELANCE">{t('Freelance')}</Select.Option>
-                      <Select.Option value="INFORMAL">{t('Informel')}</Select.Option>
-                      <Select.Option value="RETIRED">{t('Retraité')}</Select.Option>
-                      <Select.Option value="STUDENT">{t('Étudiant')}</Select.Option>
-                      <Select.Option value="UNEMPLOYED">{t('Sans emploi')}</Select.Option>
-                      <Select.Option value="OTHER">{t('Autre')}</Select.Option>
-                    </Select>
-                  </Form.Item>
-                </Col>
-              </Row>
-
-              <Form.Item label={t("Capacité d'emprunt")} name="borrowingCapacity">
-                <Select placeholder={t('Sélectionner')}>
-                  <Select.Option value="YES">{t('Oui')}</Select.Option>
-                  <Select.Option value="NO">{t('Non')}</Select.Option>
-                  <Select.Option value="UNKNOWN">{t('Inconnu')}</Select.Option>
-                </Select>
-              </Form.Item>
-            </Card>
-          </TabPane>
-
-          <TabPane forceRender tab="CRM" key="crm">
-            <Card>
-              <Row gutter={16}>
-                <Col xs={24} sm={12}>
-                  <Form.Item label={t('Source (legacy)')} name="source">
-                    <Input placeholder={t('ex. : Site web, Recommandation, Visite')} />
-                  </Form.Item>
-                </Col>
-                <Col xs={24} sm={12}>
-                  <Form.Item label={t('Source du lead')} name="leadSource">
-                    <Select showSearch optionFilterProp="children" placeholder={t('Sélectionner')}>
-                      {Object.entries(leadSourceLabels()).map(([value, label]) => (
-                        <Select.Option key={value} value={value}>
-                          {label}
+            <TabPane
+              forceRender
+              tab={<HelpSectionTitle title="Professionnel" helpId="commercial.contacts.nouveau.professionnel" />}
+              key="professional"
+            >
+              <Card>
+                <Row gutter={16}>
+                  <Col xs={24} sm={12}>
+                    <Form.Item label={t('Profession / Fonction')} name="profession">
+                      <Input placeholder={t('Poste ou fonction')} />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} sm={12}>
+                    <Form.Item label={t("Secteur d'activité")} name="sectorOfActivity">
+                      <Select showSearch optionFilterProp="children" placeholder={t('Sélectionner un secteur')}>
+                        <Select.Option value="AGRICULTURE">{t('Agriculture')}</Select.Option>
+                        <Select.Option value="BANQUE_FINANCE">{t('Banque & Finance')}</Select.Option>
+                        <Select.Option value="COMMERCE">{t('Commerce')}</Select.Option>
+                        <Select.Option value="CONSTRUCTION">{t('Construction')}</Select.Option>
+                        <Select.Option value="EDUCATION">{t('Éducation')}</Select.Option>
+                        <Select.Option value="ENERGIE">{t('Énergie')}</Select.Option>
+                        <Select.Option value="INFORMATIQUE_TECHNOLOGIE">
+                          {t('Informatique & Technologie')}
                         </Select.Option>
-                      ))}
-                    </Select>
-                  </Form.Item>
-                </Col>
-              </Row>
+                        <Select.Option value="IMMOBILIER">{t('Immobilier')}</Select.Option>
+                        <Select.Option value="INDUSTRIE">{t('Industrie')}</Select.Option>
+                        <Select.Option value="SANTE">{t('Santé')}</Select.Option>
+                        <Select.Option value="SERVICES">{t('Services')}</Select.Option>
+                        <Select.Option value="TELECOMMUNICATIONS">{t('Télécommunications')}</Select.Option>
+                        <Select.Option value="TOURISME_HOTELLERIE">{t('Tourisme & Hôtellerie')}</Select.Option>
+                        <Select.Option value="TRANSPORT_LOGISTIQUE">{t('Transport & Logistique')}</Select.Option>
+                        <Select.Option value="AUTRE">{t('Autre')}</Select.Option>
+                      </Select>
+                    </Form.Item>
+                  </Col>
+                </Row>
 
-              <Row gutter={16}>
-                <Col xs={24} sm={8}>
-                  <Form.Item label={t('Niveau de maturité')} name="maturityLevel">
-                    <Select>
-                      <Select.Option value="COLD">{t('Froid')}</Select.Option>
-                      <Select.Option value="WARM">{t('Tiède')}</Select.Option>
-                      <Select.Option value="HOT">{t('Chaud')}</Select.Option>
-                    </Select>
-                  </Form.Item>
-                </Col>
-                <Col xs={24} sm={8}>
-                  <Form.Item label={t('Score (0-100)')} name="score">
-                    <InputNumber style={{ width: '100%' }} min={0} max={100} />
-                  </Form.Item>
-                </Col>
-                <Col xs={24} sm={8}>
-                  <Form.Item label={t('Priorité')} name="priorityLevel">
-                    <Select>
-                      <Select.Option value="LOW">{t('Basse')}</Select.Option>
-                      <Select.Option value="NORMAL">{t('Normale')}</Select.Option>
-                      <Select.Option value="HIGH">{t('Haute')}</Select.Option>
-                    </Select>
-                  </Form.Item>
-                </Col>
-              </Row>
-            </Card>
-          </TabPane>
+                <Form.Item label={t('Employeur')} name="employer">
+                  <Input placeholder={t('Employeur')} />
+                </Form.Item>
 
-          <TabPane forceRender tab="Consentements" key="consents">
-            <Card>
-              <Form.Item label={t('Consentements')}>
-                <Space direction="vertical">
-                  <Form.Item name="consentMarketing" valuePropName="checked" noStyle>
-                    <Checkbox>{t('Consentement marketing')}</Checkbox>
-                  </Form.Item>
-                  <Form.Item name="consentWhatsapp" valuePropName="checked" noStyle>
-                    <Checkbox>{t('Consentement WhatsApp')}</Checkbox>
-                  </Form.Item>
-                  <Form.Item name="consentEmail" valuePropName="checked" noStyle>
-                    <Checkbox>{t('Consentement Email')}</Checkbox>
-                  </Form.Item>
-                </Space>
-              </Form.Item>
+                <Row gutter={16}>
+                  <Col xs={24} sm={12}>
+                    <Form.Item label={t('Revenus minimum (FCFA)')} name="incomeMin">
+                      <Input
+                        value={formatNumber(form.getFieldValue('incomeMin'))}
+                        onChange={e => handleNumberChange('incomeMin', e.target.value)}
+                        placeholder={t('Ex: 500 000')}
+                      />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} sm={12}>
+                    <Form.Item label={t('Revenus maximum (FCFA)')} name="incomeMax">
+                      <Input
+                        value={formatNumber(form.getFieldValue('incomeMax'))}
+                        onChange={e => handleNumberChange('incomeMax', e.target.value)}
+                        placeholder={t('Ex: 1 000 000')}
+                      />
+                    </Form.Item>
+                  </Col>
+                </Row>
 
-              <Form.Item label={t('Source du consentement')} name="consentSource">
-                <Input placeholder={t('Comment le consentement a été obtenu')} />
-              </Form.Item>
+                <Row gutter={16}>
+                  <Col xs={24} sm={12}>
+                    <Form.Item label={t('Salaire')} name="salaire">
+                      <InputNumber
+                        style={{ width: '100%' }}
+                        placeholder={t('Montant du salaire')}
+                        min={0}
+                        step={0.01}
+                      />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} sm={12}>
+                    <Form.Item label={t('Stabilité professionnelle')} name="jobStability">
+                      <Select showSearch optionFilterProp="children" placeholder={t('Sélectionner')}>
+                        <Select.Option value="CDI">CDI</Select.Option>
+                        <Select.Option value="CDD">CDD</Select.Option>
+                        <Select.Option value="FREELANCE">{t('Freelance')}</Select.Option>
+                        <Select.Option value="INFORMAL">{t('Informel')}</Select.Option>
+                        <Select.Option value="RETIRED">{t('Retraité')}</Select.Option>
+                        <Select.Option value="STUDENT">{t('Étudiant')}</Select.Option>
+                        <Select.Option value="UNEMPLOYED">{t('Sans emploi')}</Select.Option>
+                        <Select.Option value="OTHER">{t('Autre')}</Select.Option>
+                      </Select>
+                    </Form.Item>
+                  </Col>
+                </Row>
 
-              <Form.Item label={t('Notes internes')} name="internalNotes">
-                <TextArea rows={6} placeholder={t('Notes internes sur le contact...')} />
-              </Form.Item>
-            </Card>
-          </TabPane>
-        </Tabs>
+                <Form.Item label={t("Capacité d'emprunt")} name="borrowingCapacity">
+                  <Select placeholder={t('Sélectionner')}>
+                    <Select.Option value="YES">{t('Oui')}</Select.Option>
+                    <Select.Option value="NO">{t('Non')}</Select.Option>
+                    <Select.Option value="UNKNOWN">{t('Inconnu')}</Select.Option>
+                  </Select>
+                </Form.Item>
+              </Card>
+            </TabPane>
+
+            <TabPane
+              forceRender
+              tab={<HelpSectionTitle title="CRM" helpId="commercial.contacts.nouveau.crm" />}
+              key="crm"
+            >
+              <Card>
+                <Row gutter={16}>
+                  <Col xs={24} sm={12}>
+                    <Form.Item label={t('Source (legacy)')} name="source">
+                      <Input placeholder={t('ex. : Site web, Recommandation, Visite')} />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} sm={12}>
+                    <Form.Item label={t('Source du lead')} name="leadSource">
+                      <Select showSearch optionFilterProp="children" placeholder={t('Sélectionner')}>
+                        {Object.entries(leadSourceLabels()).map(([value, label]) => (
+                          <Select.Option key={value} value={value}>
+                            {label}
+                          </Select.Option>
+                        ))}
+                      </Select>
+                    </Form.Item>
+                  </Col>
+                </Row>
+
+                <Row gutter={16}>
+                  <Col xs={24} sm={8}>
+                    <Form.Item label={t('Niveau de maturité')} name="maturityLevel">
+                      <Select>
+                        <Select.Option value="COLD">{t('Froid')}</Select.Option>
+                        <Select.Option value="WARM">{t('Tiède')}</Select.Option>
+                        <Select.Option value="HOT">{t('Chaud')}</Select.Option>
+                      </Select>
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} sm={8}>
+                    <Form.Item label={t('Score (0-100)')} name="score">
+                      <InputNumber style={{ width: '100%' }} min={0} max={100} />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} sm={8}>
+                    <Form.Item label={t('Priorité')} name="priorityLevel">
+                      <Select>
+                        <Select.Option value="LOW">{t('Basse')}</Select.Option>
+                        <Select.Option value="NORMAL">{t('Normale')}</Select.Option>
+                        <Select.Option value="HIGH">{t('Haute')}</Select.Option>
+                      </Select>
+                    </Form.Item>
+                  </Col>
+                </Row>
+              </Card>
+            </TabPane>
+
+            <TabPane
+              forceRender
+              tab={<HelpSectionTitle title="Consentements" helpId="commercial.contacts.nouveau.consentements" />}
+              key="consents"
+            >
+              <Card>
+                <Form.Item label={t('Consentements')}>
+                  <Space direction="vertical">
+                    <Form.Item name="consentMarketing" valuePropName="checked" noStyle>
+                      <Checkbox>{t('Consentement marketing')}</Checkbox>
+                    </Form.Item>
+                    <Form.Item name="consentWhatsapp" valuePropName="checked" noStyle>
+                      <Checkbox>{t('Consentement WhatsApp')}</Checkbox>
+                    </Form.Item>
+                    <Form.Item name="consentEmail" valuePropName="checked" noStyle>
+                      <Checkbox>{t('Consentement Email')}</Checkbox>
+                    </Form.Item>
+                  </Space>
+                </Form.Item>
+
+                <Form.Item label={t('Source du consentement')} name="consentSource">
+                  <Input placeholder={t('Comment le consentement a été obtenu')} />
+                </Form.Item>
+
+                <Form.Item label={t('Notes internes')} name="internalNotes">
+                  <TextArea rows={6} placeholder={t('Notes internes sur le contact...')} />
+                </Form.Item>
+              </Card>
+            </TabPane>
+          </Tabs>
+        </div>
 
         <div
           style={{
@@ -852,7 +886,14 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
               {t('Annuler')}
             </Button>
           )}
-          <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={loading} size="large">
+          <Button
+            type="primary"
+            htmlType="submit"
+            icon={<SaveOutlined />}
+            loading={loading}
+            size="large"
+            {...helpAnchor('contact-form-enregistrer')}
+          >
             {loading ? 'Enregistrement...' : contact ? t('Mettre à jour le contact') : t('Créer le contact')}
           </Button>
         </div>

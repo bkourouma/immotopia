@@ -10,6 +10,7 @@ import { useAuth } from '../../../hooks/useAuth';
 import { useListSearch } from '../../../hooks/useListSearch';
 import { ListSearch, useConfirmAction } from '../../../components/primitives';
 import { t } from '../../../i18n/t';
+import { HelpButton, HelpSectionTitle } from '../../../help';
 
 const { Title } = Typography;
 
@@ -170,7 +171,9 @@ export const TicketList: React.FC = () => {
     <>
       <div style={{ padding: '24px' }}>
         <div className="it-toolbar" style={{ marginBottom: 24 }}>
-          <Title level={2}>{t('Mes tickets de maintenance')}</Title>
+          <Title level={2}>
+            <HelpSectionTitle title={t('Mes tickets de maintenance')} helpId="commercial.maintenance.liste.tickets" />
+          </Title>
           <Button
             type="primary"
             icon={<PlusOutlined />}
@@ -181,7 +184,12 @@ export const TicketList: React.FC = () => {
         </div>
 
         <Card style={{ marginBottom: 24 }}>
-          <ListSearch {...search.searchProps} aria-label={t('Rechercher dans mes tickets')} resultCount={total} />
+          <ListSearch
+            {...search.searchProps}
+            aria-label={t('Rechercher dans mes tickets')}
+            resultCount={total}
+            extra={<HelpButton size="small" helpId="commercial.maintenance.liste.recherche" />}
+          />
         </Card>
 
         {tickets.length === 0 && search.isFiltered ? (

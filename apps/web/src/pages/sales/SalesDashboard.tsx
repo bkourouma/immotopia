@@ -147,33 +147,43 @@ export const SalesDashboard: React.FC = () => {
           }}
         >
           <StatCard
+            helpId="commercial.ventes.tableau-de-bord.indicateurs"
             label={t('Mandats actifs')}
             value={pipelineLoading ? '—' : (pipeline?.activeMandates ?? 0)}
             hint={pipeline ? <MoneyValue value={pipeline.activeMandatesValue} /> : undefined}
           />
           <StatCard
+            helpId="commercial.ventes.tableau-de-bord.indicateurs"
             label={t('Mandats expirés')}
             value={pipelineLoading ? '—' : (pipeline?.expiredMandates ?? 0)}
             tone="warning"
           />
-          <StatCard label={t('Offres ouvertes')} value={pipelineLoading ? '—' : (pipeline?.openOffers ?? 0)} />
           <StatCard
+            helpId="commercial.ventes.tableau-de-bord.indicateurs"
+            label={t('Offres ouvertes')}
+            value={pipelineLoading ? '—' : (pipeline?.openOffers ?? 0)}
+          />
+          <StatCard
+            helpId="commercial.ventes.tableau-de-bord.indicateurs"
             label={t('Compromis signés')}
             value={pipelineLoading ? '—' : (pipeline?.signedAgreements ?? 0)}
             hint={pipeline ? <MoneyValue value={pipeline.signedAgreementsValue} /> : undefined}
           />
           <StatCard
+            helpId="commercial.ventes.tableau-de-bord.indicateurs"
             label={t('Ventes ce mois-ci')}
             value={pipelineLoading ? '—' : (pipeline?.salesThisMonth ?? 0)}
             hint={pipeline ? <MoneyValue value={pipeline.salesThisMonthValue} /> : undefined}
             tone="positive"
           />
           <StatCard
+            helpId="commercial.ventes.tableau-de-bord.indicateurs"
             label={t('Commissions dues')}
             value={pipelineLoading ? '—' : <MoneyValue value={pipeline?.commissionsDue ?? 0} />}
             tone="warning"
           />
           <StatCard
+            helpId="commercial.ventes.tableau-de-bord.indicateurs"
             label={t('Commissions encaissées ce mois-ci')}
             value={pipelineLoading ? '—' : <MoneyValue value={pipeline?.commissionsCollectedThisMonth ?? 0} />}
             tone="positive"
@@ -182,6 +192,7 @@ export const SalesDashboard: React.FC = () => {
       )}
 
       <DataView<SaleMandateDto>
+        helpId="commercial.ventes.tableau-de-bord.mandats"
         items={rows}
         total={total}
         {...recherche.dataViewProps}

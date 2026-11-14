@@ -28,6 +28,7 @@ import { COMMISSION_PAYER_LABELS, SALE_PAYMENT_METHOD_LABELS, dateCourte } from 
 import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { t } from '../../i18n/t';
 import { SaleStatusTag } from './SaleStatusTag';
+import { HelpSectionTitle } from '../../help';
 
 import { localizedList } from '../../i18n/localized';
 const { Text } = Typography;
@@ -101,7 +102,12 @@ const CommissionPaymentModal: React.FC<{
 
   return (
     <Modal
-      title={t('Encaisser — {{number}}', { number: commission.number })}
+      title={
+        <HelpSectionTitle
+          title={t('Encaisser — {{number}}', { number: commission.number })}
+          helpId="commercial.ventes.commissions.encaisser"
+        />
+      }
       open
       onCancel={onClose}
       onOk={() => form.submit()}
@@ -354,9 +360,23 @@ export const SaleCommissions: React.FC = () => {
           marginBottom: 'var(--space-6)'
         }}
       >
-        <StatCard label={t('Total TTC')} value={<MoneyValue value={totals.amountInclTax} />} />
-        <StatCard label={t('Encaissé')} value={<MoneyValue value={totals.paidAmount} />} tone="positive" />
-        <StatCard label={t('Reste dû')} value={<MoneyValue value={totals.remainingAmount} />} tone="warning" />
+        <StatCard
+          helpId="commercial.ventes.commissions.indicateurs"
+          label={t('Total TTC')}
+          value={<MoneyValue value={totals.amountInclTax} />}
+        />
+        <StatCard
+          helpId="commercial.ventes.commissions.indicateurs"
+          label={t('Encaissé')}
+          value={<MoneyValue value={totals.paidAmount} />}
+          tone="positive"
+        />
+        <StatCard
+          helpId="commercial.ventes.commissions.indicateurs"
+          label={t('Reste dû')}
+          value={<MoneyValue value={totals.remainingAmount} />}
+          tone="warning"
+        />
       </div>
 
       {erreurRequete ? (
@@ -367,6 +387,7 @@ export const SaleCommissions: React.FC = () => {
         />
       ) : (
         <Table<SaleCommissionDto>
+          helpId="commercial.ventes.commissions.tableau"
           dataSource={data?.items ?? []}
           pagination={recherche.tablePagination(total)}
           search={recherche.searchProps}
@@ -423,7 +444,12 @@ export const SaleCommissions: React.FC = () => {
 
       {/* Annulation d'un règlement */}
       <Modal
-        title={t('Annuler le règlement')}
+        title={
+          <HelpSectionTitle
+            title={t('Annuler le règlement')}
+            helpId="commercial.ventes.commissions.annuler-reglement"
+          />
+        }
         open={Boolean(voidPayment)}
         onCancel={() => setVoidPayment(null)}
         onOk={annulerReglement}

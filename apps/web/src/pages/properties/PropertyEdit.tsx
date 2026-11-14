@@ -9,6 +9,7 @@ import { PropertyMediaGallery } from '../../components/properties/PropertyMediaG
 import { getProperty, updateProperty } from '../../services/property-service';
 import { Property, UpdatePropertyRequest, PropertyMediaType } from '../../types/property-types';
 import { useAuth } from '../../hooks/useAuth';
+import { HelpButton } from '../../help';
 import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
@@ -145,6 +146,7 @@ export const PropertyEdit: React.FC = () => {
             <Space>
               <PictureOutlined />
               {t('Photos et Vidéos')}
+              <HelpButton helpId="commercial.biens.modifier.medias" size="small" />
             </Space>
           }
         >
