@@ -235,6 +235,11 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
             }
           : undefined
       }
+      onRewriteSection={
+        conversationId && !streaming && !archivedThread
+          ? (artifactId, change) => copilotService.rewriteArtifactSection(tenantId, conversationId, artifactId, change)
+          : undefined
+      }
       onEditVersion={
         conversationId && !streaming && chat.replaceArtifact
           ? async (artifactId, change) => {

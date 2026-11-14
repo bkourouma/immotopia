@@ -401,6 +401,7 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
       ['GET', '/api/tenants/:tenantId/ai/conversations/:id/turns/:turnId/files/:position'],
       ['GET', '/api/tenants/:tenantId/ai/conversations/:id/artifacts/:artifactId'],
       ['POST', '/api/tenants/:tenantId/ai/conversations/:id/artifacts/:artifactId'],
+      ['POST', '/api/tenants/:tenantId/ai/conversations/:id/artifacts/:artifactId/rewrite'],
       ['GET', '/api/tenants/:tenantId/ai/conversations/:id/artifacts/:artifactId/:format'],
       ['PATCH', '/api/tenants/:tenantId/ai/conversations/:id'],
       ['DELETE', '/api/tenants/:tenantId/ai/conversations/:id'],

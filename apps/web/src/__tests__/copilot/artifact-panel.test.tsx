@@ -227,8 +227,24 @@ describe('ArtifactPanel — recalcul', () => {
       versions: [{ version: 2, createdAt: null }]
     });
     const onEditVersion = vi.fn().mockResolvedValue(undefined);
-    renderPanel([artifact], undefined, { onReadVersion, onEditVersion });
+    const onRewriteSection = vi.fn().mockResolvedValue('Proposition concise.');
+    renderPanel([artifact], undefined, { onReadVersion, onEditVersion, onRewriteSection });
     fireEvent.click(await screen.findByRole('button', { name: 'Modifier le texte' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Consigne de réécriture' }), {
+      target: { value: 'Raccourcis.' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Réécrire la section 1' }));
+    await waitFor(() =>
+      expect(screen.getByRole('textbox', { name: 'Section de texte 1' })).toHaveValue('Proposition concise.')
+    );
+    expect(onRewriteSection).toHaveBeenCalledWith('d1', {
+      expectedVersion: 2,
+      section: 0,
+      text: 'Introduction.',
+      instruction: 'Raccourcis.'
+    });
+    expect(onEditVersion).not.toHaveBeenCalled();
+
     const first = await screen.findByRole('textbox', { name: 'Section de texte 1' });
     fireEvent.change(first, { target: { value: 'Introduction corrigée.' } });
     fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));

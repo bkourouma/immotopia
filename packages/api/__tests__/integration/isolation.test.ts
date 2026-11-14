@@ -626,6 +626,32 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       expect(download.headers['content-type']).toMatch(/^application\/pdf/);
       expect(download.headers['cache-control']).toBe('private, no-store');
       const draftPath = `${baseA}/conversations/${conversationId}/artifacts/${artifactId}`;
+      const rewrite = { expectedVersion: 1, section: 0, text: 'Texte du brouillon.', instruction: 'Clarifie.' };
+      mockFakeScript = [{ text: 'Proposition concise.' }];
+      const proposal = await request(app)
+        .post(draftPath + '/rewrite')
+        .set(authed(adminA))
+        .send(rewrite);
+      expect(proposal.status).toBe(200);
+      expect(proposal.body.data).toEqual({ text: 'Proposition concise.' });
+      const unchanged = await request(app).get(draftPath).set(authed(adminA));
+      expect(unchanged.body.data).toMatchObject({ version: 1, artifact: { content: 'Résultat synthétique.' } });
+      expect(
+        (
+          await request(app)
+            .post(draftPath + '/rewrite')
+            .set(authed(colleague))
+            .send(rewrite)
+        ).status
+      ).toBe(404);
+      expect(
+        (
+          await request(app)
+            .post(draftPath + '/rewrite')
+            .set(authed(adminA))
+            .send({ ...rewrite, section: 1 })
+        ).status
+      ).toBe(422);
       const updated = await request(app)
         .post(draftPath)
         .set(authed(adminA))

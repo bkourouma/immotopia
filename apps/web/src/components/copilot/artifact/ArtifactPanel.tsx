@@ -36,6 +36,15 @@ export interface ArtifactPanelProps {
     versions: ArtifactVersionInfo[];
   }>;
   onRefresh?(artifactId: string, expectedVersion?: number): Promise<void>;
+  onRewriteSection?(
+    artifactId: string,
+    change: {
+      expectedVersion: number;
+      section: number;
+      text: string;
+      instruction: string;
+    }
+  ): Promise<string>;
   onEditVersion?(artifactId: string, change: ArtifactVersionChange): Promise<void>;
 }
 
@@ -146,6 +155,7 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
   onReadVersion,
   onFollowUp,
   onEditVersion,
+  onRewriteSection,
   onDownloadFile
 }) => {
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -157,6 +167,34 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
   const [loaded, setLoaded] = useState<Awaited<ReturnType<NonNullable<ArtifactPanelProps['onReadVersion']>>>>();
   const [revision, setRevision] = useState(0);
   const [versionEdit, setVersionEdit] = useState<{ id: string } & ArtifactVersionChange>();
+  const [rewriteInstruction, setRewriteInstruction] = useState('');
+  const [rewriting, setRewriting] = useState(false);
+  async function rewrite(section: number) {
+    const edit = versionEdit;
+    const text = edit?.textSections?.[section]?.trim();
+    const instruction = rewriteInstruction.trim();
+    if (!edit || !text || !instruction || rewriting || refreshing || !onRewriteSection) return;
+    setRewriting(true);
+    try {
+      const proposal = await onRewriteSection(edit.id, {
+        expectedVersion: edit.expectedVersion,
+        section,
+        text,
+        instruction
+      });
+      setVersionEdit(current => {
+        if (current !== edit || !current.textSections) return current;
+        return {
+          ...current,
+          textSections: current.textSections.map((value, index) => (index === section ? proposal : value))
+        };
+      });
+    } catch {
+      feedback.error(t('La proposition de réécriture est indisponible.'));
+    } finally {
+      setRewriting(false);
+    }
+  }
   const viewed = requested?.id === rootId ? requested?.version : undefined;
   useEffect(() => {
     if (!rootId || !onReadVersion) return;
@@ -314,9 +352,10 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
           editableSections.length > 0 && (
             <Button
               disabled={refreshing}
-              onClick={() =>
-                setVersionEdit({ id: root.id, expectedVersion: snapshot.latest, textSections: editableSections })
-              }
+              onClick={() => {
+                setRewriteInstruction('');
+                setVersionEdit({ id: root.id, expectedVersion: snapshot.latest, textSections: editableSections });
+              }}
             >
               {t('Modifier le texte')}
             </Button>
@@ -382,31 +421,55 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
         confirmLoading={refreshing}
         okButtonProps={{
           disabled: Boolean(
+            rewriting ||
             versionEdit?.textSections?.some(text => !text.trim()) ||
             (versionEdit?.title !== undefined && !versionEdit.title.trim())
           )
         }}
         onCancel={() => {
-          if (!refreshing) setVersionEdit(undefined);
+          if (!refreshing && !rewriting) setVersionEdit(undefined);
         }}
         onOk={() => void saveVersion()}
       >
         {versionEdit?.textSections ? (
-          versionEdit.textSections.map((text, index) => (
-            <Input.TextArea
-              key={index}
-              aria-label={t('Section de texte {{number}}', { number: index + 1 })}
-              value={text}
-              maxLength={artifact.kind === 'markdown' ? 20_000 : 4000}
-              autoSize={{ minRows: 3, maxRows: 8 }}
-              style={{ marginBlockEnd: 8 }}
-              onChange={event => {
-                const textSections = [...(versionEdit.textSections ?? [])];
-                textSections[index] = event.target.value;
-                setVersionEdit({ ...versionEdit, textSections });
-              }}
-            />
-          ))
+          <>
+            {onRewriteSection && (
+              <Input
+                aria-label={t('Consigne de réécriture')}
+                placeholder={t('Consigne de réécriture')}
+                value={rewriteInstruction}
+                disabled={rewriting}
+                maxLength={1000}
+                onChange={event => setRewriteInstruction(event.target.value)}
+              />
+            )}
+            {versionEdit.textSections.map((text, index) => (
+              <div key={index}>
+                <Input.TextArea
+                  disabled={rewriting}
+                  aria-label={t('Section de texte {{number}}', { number: index + 1 })}
+                  value={text}
+                  maxLength={artifact.kind === 'markdown' ? 20_000 : 4000}
+                  autoSize={{ minRows: 3, maxRows: 8 }}
+                  style={{ marginBlockEnd: 8 }}
+                  onChange={event => {
+                    const textSections = [...(versionEdit.textSections ?? [])];
+                    textSections[index] = event.target.value;
+                    setVersionEdit({ ...versionEdit, textSections });
+                  }}
+                />
+                {onRewriteSection && (
+                  <Button
+                    size="small"
+                    onClick={() => void rewrite(index)}
+                    disabled={rewriting || refreshing || !text.trim() || !rewriteInstruction.trim()}
+                  >
+                    {t('Réécrire la section {{number}}', { number: index + 1 })}
+                  </Button>
+                )}
+              </div>
+            ))}
+          </>
         ) : versionEdit?.title !== undefined ? (
           <Input
             aria-label={t('Titre du résultat')}

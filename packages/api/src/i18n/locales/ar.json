@@ -1502,6 +1502,7 @@
   "La prochaine échéance ne peut pas précéder la date d'intervention.": "لا يمكن أن يسبق الاستحقاق التالي تاريخ التدخل.",
   "La programmation est en pause : reprenez-la avant de l'exécuter.": "البرمجة متوقفة مؤقتًا: استأنفها قبل تنفيذها.",
   "La property liee au syndic doit etre de type IMMEUBLE": "يجب أن يكون العقار المرتبط بالملكية المشتركة من نوع «مبنى»",
+  "La proposition de réécriture est indisponible.": "اقتراح إعادة الصياغة غير متاح.",
   "La quantité comptée ne peut pas être négative.": "لا يمكن أن تكون الكمية المعدودة سالبة.",
   "La quantité doit être un entier positif.": "يجب أن تكون الكمية عددًا صحيحًا موجبًا.",
   "La quantité retournée dépasse ce qui a été reçu sur cette facture pour cet article, retours déjà faits compris.": "تتجاوز الكمية المرتجعة ما تم استلامه على هذه الفاتورة لهذا الصنف، بما في ذلك المرتجعات السابقة.",

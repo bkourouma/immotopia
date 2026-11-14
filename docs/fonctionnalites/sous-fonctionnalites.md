@@ -9,11 +9,11 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Finance | 196 |
 | CRM et Ventes | 70 |
 | Maintenance | 32 |
-| Communication et Documents | 91 |
+| Communication et Documents | 92 |
 | Syndic copropriete | 245 |
 | Administration plateforme | 141 |
 | Portails externes | 84 |
-| **Total** | **1236** |
+| **Total** | **1237** |
 
 ## Sous-fonctionnalités
 
@@ -812,6 +812,7 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Régénérer la dernière réponse | Relancer la dernière question enregistrée en conservant la réponse précédente jusqu’au succès. | Conversation et dernier tour | Réponse et résultats de remplacement | Conversation privée ouverte | Propriétaire du fil avec les droits correspondants | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | Accès à l’assistant et périmètre du fil | Disponible | Assistant > Régénérer la dernière réponse |
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Poser une question sur un résultat | Préparer une question modifiable sur la version affichée. La version reste associée à la question lors d’une régénération. | Conversation privée, résultat et version | Brouillon et référence vérifiée par le serveur | Résultat enregistré | Propriétaire du fil avec les droits correspondants | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | Accès à l’assistant et périmètre du fil | Disponible | Assistant > Résultats et documents |
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Modifier le texte d’un rapport | Corriger le Markdown ou les sections de texte d’un rapport et enregistrer une version. | Rapport, texte des sections et version attendue | Nouvelle version avec les mêmes tableaux liés | Résultat enregistré | Propriétaire du fil avec les droits correspondants | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/conversations/:id/artifacts/:artifactId | Accès à l’assistant et périmètre du fil | Disponible | Assistant > Résultats et documents > Modifier le texte |
+| Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Réécrire une section avec l’assistant | Appliquer une consigne à une section de texte et relire la proposition avant de créer une version. | Rapport, version, section, brouillon et consigne | Proposition de texte dans le brouillon | Résultat enregistré | Propriétaire du fil avec les droits correspondants | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/conversations/:id/artifacts/:artifactId/rewrite | Accès à l’assistant et périmètre du fil | Disponible | Assistant > Modifier le texte |
 
 ### Syndic copropriete
 

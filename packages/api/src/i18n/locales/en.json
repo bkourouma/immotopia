@@ -1502,6 +1502,7 @@
   "La prochaine échéance ne peut pas précéder la date d'intervention.": "The next due date cannot be earlier than the work date.",
   "La programmation est en pause : reprenez-la avant de l'exécuter.": "The schedule is paused: resume it before running it.",
   "La property liee au syndic doit etre de type IMMEUBLE": "The property linked to the co-ownership must be of type BUILDING",
+  "La proposition de réécriture est indisponible.": "The rewrite suggestion is unavailable.",
   "La quantité comptée ne peut pas être négative.": "The quantity counted cannot be negative.",
   "La quantité doit être un entier positif.": "The quantity must be a positive whole number.",
   "La quantité retournée dépasse ce qui a été reçu sur cette facture pour cet article, retours déjà faits compris.": "The quantity returned exceeds what was received on this invoice for this item, including returns already made.",

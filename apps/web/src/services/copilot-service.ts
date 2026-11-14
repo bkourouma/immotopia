@@ -188,6 +188,15 @@ async function updateArtifactVersion(
 
 export const copilotService = {
   updateArtifactVersion,
+  async rewriteArtifactSection(
+    tenantId: string,
+    conversationId: string,
+    artifactId: string,
+    change: { expectedVersion: number; section: number; text: string; instruction: string }
+  ) {
+    const response = await apiClient.post(artifactPath(tenantId, conversationId, artifactId) + '/rewrite', change);
+    return unwrap<{ text: string }>(response.data).text;
+  },
   getArtifactVersion,
   downloadArtifact,
   async transcribe(tenantId: string, audio: Blob, signal: AbortSignal) {

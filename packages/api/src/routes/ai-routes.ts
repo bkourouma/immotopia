@@ -26,6 +26,7 @@ import {
   listConversationsHandler,
   rejectActionHandler,
   requireAssistantTools,
+  rewriteArtifactSectionHandler,
   updateConversationHandler
 } from '../controllers/ai-controller';
 
@@ -61,6 +62,15 @@ router.post(
   requireAiStatusAccess,
   aiActionRateLimiter,
   updateArtifactVersionHandler
+);
+router.post(
+  '/conversations/:id/artifacts/:artifactId/rewrite',
+  requireAiAssistantAccess,
+  aiChatRateLimiter,
+  aiChatDailyLimiter,
+  aiTenantChatRateLimiter,
+  aiTenantDailyLimiter,
+  rewriteArtifactSectionHandler
 );
 router.get('/conversations/:id/artifacts/:artifactId/:format', requireAiStatusAccess, downloadArtifactHandler);
 router.patch('/conversations/:id', requireAiStatusAccess, updateConversationHandler);
