@@ -10,6 +10,7 @@ import { searchPropertiesTool } from './search-properties';
 import { showArtifactTool } from './show-artifact';
 import { rentalArrearsTool } from './rental-arrears';
 import { rentalReceiptsTool } from './rental-receipts';
+import { chartAnalysisTool } from './chart-analysis';
 
 /**
  * Registre des outils exposés au LLM. L'exécution d'un document
@@ -21,6 +22,7 @@ export const ALL_TOOLS: readonly CopilotToolDefinition[] = [
   searchLeasesTool,
   rentalArrearsTool,
   rentalReceiptsTool,
+  chartAnalysisTool,
   listLeaseDocumentsTool,
   listPropertyDocumentsTool,
   proposeRentalDocumentTool,

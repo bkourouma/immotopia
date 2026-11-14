@@ -12,7 +12,7 @@ import { saveBlob } from './save-blob';
 const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 function provenanceRows(artifact: CopilotArtifact): string[][] {
-  if (artifact.kind !== 'table' || !artifact.provenance) return [];
+  if (artifact.kind === 'markdown' || !artifact.provenance) return [];
   const provenance = artifact.provenance;
   return [
     [t('Source'), provenance.source],

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { t } from '../../i18n';
 import { ConflictError, NotFoundError } from '../../middleware/error-middleware';
@@ -38,6 +38,21 @@ export const conversationPatch = z
   .refine(value => Object.keys(value).length > 0);
 
 type ResultEvent = Extract<CopilotSseEvent, { type: 'artifact' }>;
+type AnalysisTable = Extract<ResultEvent['artifact'], { kind: 'table' }>;
+
+function storedAnalysisTables(results: (Prisma.JsonValue | null)[]): AnalysisTable[] {
+  const tables: AnalysisTable[] = [];
+  for (const result of results) {
+    if (!Array.isArray(result)) continue;
+    for (const event of result as unknown as ResultEvent[]) {
+      if (event.type === 'artifact' && event.artifact.kind === 'table' && event.artifact.provenance) {
+        tables.push(event.artifact);
+      }
+      if (tables.length === 12) return tables;
+    }
+  }
+  return tables;
+}
 
 export function assistantScope(permissions: Set<string>, toolNames: string[]): string {
   return createHash('sha256')
@@ -109,7 +124,7 @@ export async function beginAssistantTurn(
   owner: AssistantOwner,
   scopeKey: string,
   input: { conversationId?: string; turnId: string; question: string }
-): Promise<{ conversationId: string; messages: ChatRequest['messages'] }> {
+): Promise<{ conversationId: string; messages: ChatRequest['messages']; analysisTables: AnalysisTable[] }> {
   return prisma.$transaction(async tx => {
     let conversationId = input.conversationId;
     if (conversationId) {
@@ -158,7 +173,13 @@ export async function beginAssistantTurn(
       );
       remaining -= size;
     }
-    return { conversationId, messages };
+    const related = await tx.assistantTurn.findMany({
+      where: { ...owner, conversationId, outcome: 'end_turn', result: { not: Prisma.DbNull } },
+      orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
+      take: 6,
+      select: { result: true }
+    });
+    return { conversationId, messages, analysisTables: storedAnalysisTables(related.map(row => row.result)) };
   });
 }
 

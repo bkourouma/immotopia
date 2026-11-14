@@ -13,6 +13,7 @@ export type CopilotToolName =
   | 'search_leases'
   | 'rental_arrears'
   | 'rental_receipts'
+  | 'chart_analysis'
   | 'list_lease_documents'
   | 'list_property_documents'
   | 'propose_rental_document'
@@ -247,6 +248,7 @@ export type CopilotArtifact =
   | { kind: 'markdown'; id: string; title: string; content: string }
   | {
       kind: 'chart';
+      provenance?: { source: string; href: string; period: string; calculatedAt: string; rules: string[] };
       id: string;
       title: string;
       chartType: 'bar' | 'line' | 'pie';

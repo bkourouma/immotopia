@@ -8,6 +8,7 @@ import type {
   ChatRequest,
   CopilotErrorCode,
   CopilotSseEvent,
+  CopilotArtifact,
   CopilotToolContext,
   CopilotToolDefinition,
   LlmMessage,
@@ -43,6 +44,7 @@ export type ChatDoneReason = Extract<CopilotSseEvent, { type: 'done' }>['reason'
 
 export interface RunChatInput {
   deep?: boolean;
+  analysisTables?: Array<Extract<CopilotArtifact, { kind: 'table' }>>;
   provider: LlmProvider;
   tenantId: string;
   userId: string;
@@ -136,7 +138,19 @@ export async function runChat(input: RunChatInput): Promise<ChatDoneReason> {
   const maxRounds = input.deep ? 30 : env.AI_MAX_TOOL_ROUNDS;
 
   const system = buildSystemPrompt(currentLanguage(), input.tools);
-  const messages = toLlmMessages(input.messages, formatContextBlock(input.pageContext, input.now?.()));
+  const analysisTables = new Map(input.analysisTables?.map(table => [table.id, table]));
+  const sourceRefs = [...analysisTables.values()].map(table => ({
+    id: table.id,
+    period: table.provenance?.period,
+    columns: table.columns.map(column => column.key)
+  }));
+  const screenContext = formatContextBlock(input.pageContext, input.now?.());
+  const messages = toLlmMessages(
+    input.messages,
+    sourceRefs.length
+      ? `${screenContext}\n<analysis_sources>${JSON.stringify(sourceRefs)}</analysis_sources>`
+      : screenContext
+  );
   const toolSpecs = toLlmToolSpecs(input.tools);
   const ctx: CopilotToolContext = {
     tenantId,
@@ -147,6 +161,7 @@ export async function runChat(input: RunChatInput): Promise<ChatDoneReason> {
     signal,
     loopbackHeaders: input.loopbackHeaders,
     writePlansIssued: 0,
+    analysisTables,
     // Bail de l'écran vérifié côté serveur : seule source de confiance hors résultats d'outils.
     seenLeaseIds: new Set(input.pageContext?.entityType === 'LEASE' ? [input.pageContext.entityId] : [])
   };
@@ -313,6 +328,13 @@ async function runToolCall(
 
   try {
     const result = await tool.execute(parsed.data, ctx);
+    if (
+      result.uiEvent?.type === 'artifact' &&
+      result.uiEvent.artifact.kind === 'table' &&
+      result.uiEvent.artifact.provenance
+    ) {
+      ctx.analysisTables?.set(result.uiEvent.artifact.id, result.uiEvent.artifact);
+    }
     if (result.uiEvent) emit(result.uiEvent);
     emit({ type: 'tool_status', tool: tool.name, status: 'succeeded' });
     audit(AuditActionKey.AI_TOOL_CALLED, { status: 'ok', durationMs: Date.now() - startedAt });

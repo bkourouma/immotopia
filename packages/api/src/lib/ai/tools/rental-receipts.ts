@@ -89,6 +89,7 @@ export const rentalReceiptsTool: CopilotToolDefinition<typeof inputSchema> = {
     return outcome(
       {
         artifactId: artifact.id,
+        columns: artifact.columns.map(column => column.key),
         periods: bounds.map(([date]) => date.toISOString().slice(0, 7)),
         items: rows.slice(0, 30)
       },

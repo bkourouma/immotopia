@@ -128,6 +128,7 @@ export function sanitizeArtifact(raw: unknown): CopilotArtifact | null {
       if (series.length >= ARTIFACT_MAX_SERIES) break;
     }
     if (series.length === 0) return null;
+    const provenance = sanitizeProvenance(raw.provenance);
     return {
       kind: 'chart',
       id,
@@ -136,7 +137,8 @@ export function sanitizeArtifact(raw: unknown): CopilotArtifact | null {
       xKey,
       ...(str(raw.xLabel) ? { xLabel: str(raw.xLabel) } : {}),
       series,
-      data: cleanRows(raw.data, [xKey, ...series.map(s => s.key)], ARTIFACT_MAX_CHART_POINTS)
+      data: cleanRows(raw.data, [xKey, ...series.map(s => s.key)], ARTIFACT_MAX_CHART_POINTS),
+      ...(provenance ? { provenance } : {})
     };
   }
   return null;

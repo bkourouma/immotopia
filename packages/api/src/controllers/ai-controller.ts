@@ -210,6 +210,7 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
     const outcome = await runChat({
       provider,
       deep: body.deep,
+      analysisTables: saved?.analysisTables,
       tenantId,
       userId,
       permissions,

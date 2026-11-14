@@ -30,6 +30,7 @@ const TOOL_CAPABILITIES: Record<CopilotToolName, { group: string; text: string }
   search_leases: { group: 'leases', text: 'des baux' },
   rental_arrears: { group: 'rentalArrears', text: 'les échéances locatives non soldées par bien et par mois clos' },
   rental_receipts: { group: 'rentalReceipts', text: 'les encaissements locatifs par mois clos et devise' },
+  chart_analysis: { group: 'charts', text: 'des graphiques fondés sur les tableaux calculés par le serveur' },
   list_lease_documents: { group: 'documents', text: 'des documents' },
   list_property_documents: { group: 'documents', text: 'des documents' },
   propose_rental_document: { group: 'receipts', text: 'des quittances de loyer ou des relevés de compte' },
@@ -70,6 +71,11 @@ export function buildSystemPrompt(
   }
   const cards = ['biens', ...(hasLeases ? ['baux'] : []), 'documents', ...(canPropose ? ['propositions'] : [])];
   const help: string[] = [];
+  if (tools.some(tool => tool.name === 'chart_analysis')) {
+    help.push(
+      'Pour un graphique fondé sur une analyse locative, appelle chart_analysis avec le tableau de cette conversation et les clés retournées. Les séries sont calculées côté serveur.'
+    );
+  }
   if (tools.some(tool => tool.name === 'rental_arrears')) {
     help.push(
       'Pour une analyse des impayés par bien sur un mois clos, appelle rental_arrears en priorité. Le tableau et ses sources sont affichés automatiquement. Présente le résultat en une phrase et indique que le solde est calculé à la date de consultation.'

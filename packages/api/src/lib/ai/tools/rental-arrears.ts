@@ -117,7 +117,13 @@ export const rentalArrearsTool: CopilotToolDefinition<typeof inputSchema> = {
       }
     };
     return outcome(
-      { artifactId: artifact.id, period, count: rows.length, items: rows.slice(0, 8).map(({ href, ...row }) => row) },
+      {
+        artifactId: artifact.id,
+        period,
+        count: rows.length,
+        columns: artifact.columns.map(column => column.key),
+        items: rows.slice(0, 8).map(({ href, ...row }) => row)
+      },
       { type: 'artifact', artifact }
     );
   }

@@ -106,7 +106,7 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({ artifacts, selecte
           onClick={onClose}
         />
       </header>
-      {artifact.kind === 'table' && artifact.provenance && (
+      {artifact.kind !== 'markdown' && artifact.provenance && (
         <details style={{ marginBlock: 8 }}>
           <summary>{t('Comment j’ai calculé')}</summary>
           <p>

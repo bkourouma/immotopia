@@ -5,7 +5,7 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Domaine | Sous-fonctionnalités |
 | --- | --- |
 | Parc immobilier | 196 |
-| Gestion locative | 178 |
+| Gestion locative | 179 |
 | Finance | 196 |
 | CRM et Ventes | 70 |
 | Maintenance | 32 |
@@ -13,7 +13,7 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Syndic copropriete | 245 |
 | Administration plateforme | 141 |
 | Portails externes | 84 |
-| **Total** | **1218** |
+| **Total** | **1219** |
 
 ## Sous-fonctionnalités
 
@@ -400,6 +400,7 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Agence, Opérateur intégré, Patrimoine Essentiel, Patrimoine Pro | RENTAL | Encaisser — Relances de paiement | Consulter l'historique des relances | Retrouver les relances envoyées (niveau, canal, statut, auteur) pour l'agence ou pour une échéance | Query `installmentId?`, `leaseId?`, `channel?`, `status?`, `level?`, `from?`/`to?`, `page?`, `pageSize?` (100 au plus) ; ou chemin `installmentId` | Liste paginée du plus récent au plus ancien avec bail, locataire, période, montant dû, auteur ; ou, par échéance, toutes ses relances (50 au plus) ; 404 si l'échéance n'est pas de l'agence | Relancer une échéance impayée (e-mail ou WhatsApp) | Collaborateur (accès agence); Comptable en lecture seule (TENANT_ACCOUNTANT) | Agence (collaborateur) | GET /tenants/:tenantId/rental/payment-reminders ; GET /tenants/:tenantId/rental/installments/:installmentId/reminders | RENTAL_PAYMENTS_VIEW | Disponible | Gestion locative › Encaisser › Échéances (`pages/rental/Installments.tsx` : boutons « Relancer » et « Relancer en lot » ; historique dans la fiche d'échéance `InstallmentDetailPage.tsx`) |
 | Agence, Opérateur intégré, Patrimoine Essentiel, Patrimoine Pro | RENTAL | Assistant IA ImmoCopilot | Analyser les échéances locatives non soldées | Classer les biens selon le solde actuel des échéances d’un mois clos, par devise, avec provenance et lien vers le bien. | Mois clos facultatif | Tableau et exports Excel et CSV | Données locatives | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | RENTAL_INSTALLMENTS_VIEW et accès assistant | Disponible | Assistant > Résultats et documents |
 | Agence, Opérateur intégré, Patrimoine Essentiel, Patrimoine Pro | RENTAL | Assistant IA ImmoCopilot | Comparer les encaissements locatifs | Comparer les paiements réussis du mois clos, du mois précédent et du même mois de l’année précédente selon leur date d’encaissement et par devise. | Mois clos facultatif | Tableau et provenance | Données locatives | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | RENTAL_PAYMENTS_VIEW et accès assistant | Disponible | Assistant > Résultats et documents |
+| Agence, Opérateur intégré, Patrimoine Essentiel, Patrimoine Pro | RENTAL | Assistant IA ImmoCopilot | Tracer une analyse locative | Créer un graphique à partir des valeurs calculées d’un tableau de la conversation, avec provenance et séries par devise. | Tableau source, mesure, dimension et type | Graphique avec vue des données | Analyse locative accessible | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | PROPERTIES_VIEW et permissions de l’analyse source | Disponible | Assistant > Résultats et documents |
 
 ### Finance
 
