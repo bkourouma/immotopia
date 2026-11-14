@@ -161,6 +161,7 @@ function buildRouteLabels(): Record<string, string> {
     messages: t('Messagerie'),
     'roles-permissions': t('Rôles et permissions'),
     'ai-settings': t('Assistant IA'),
+    'help-feedback': t("Avis sur l'aide"),
 
     // Administration d'agence
     tenant: t('Agence'),
