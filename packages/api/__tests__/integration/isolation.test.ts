@@ -5331,6 +5331,7 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
     });
 
     it('la pagination par curseur ne perd ni ne répète une ligne', async () => {
+      await flushAuditEvents();
       const read = (await readAll(superAdmin, `&tenantId=${tenantA.id}`)).map(log => log.id);
       expect(new Set(read).size).toBe(read.length);
       const expected = await prisma.auditLog.findMany({
@@ -7232,8 +7233,12 @@ maybeDescribe('Espace particulier — création en libre-service et compteur d�
 
   const tenantIds: string[] = [];
   const userIds: string[] = [];
+  // Isole le quota HTTP de cette suite tout en partageant le client dans les scénarios concurrents.
+  const clientIp = '192.0.2.41';
 
-  async function verifiedUser(emailVerified = true): Promise<{ id: string; headers: { Authorization: string } }> {
+  async function verifiedUser(
+    emailVerified = true
+  ): Promise<{ id: string; headers: { Authorization: string; 'X-Forwarded-For': string } }> {
     const user = await prisma.user.create({
       data: {
         email: `ps-http-${randomUUID().slice(0, 8)}@isolation-test.local`,
@@ -7246,10 +7251,13 @@ maybeDescribe('Espace particulier — création en libre-service et compteur d�
     });
     userIds.push(user.id);
     const token = generateAccessToken({ userId: user.id, email: user.email, globalRole: user.globalRole });
-    return { id: user.id, headers: { Authorization: `Bearer ${token}` } };
+    return { id: user.id, headers: { Authorization: `Bearer ${token}`, 'X-Forwarded-For': clientIp } };
   }
 
-  async function createSpaceFor(user: { headers: { Authorization: string } }, displayName = 'Mon espace') {
+  async function createSpaceFor(
+    user: { headers: { Authorization: string; 'X-Forwarded-For': string } },
+    displayName = 'Mon espace'
+  ) {
     const res = await request(app).post('/api/personal-space').set(user.headers).send({ displayName, country: 'CI' });
     if (res.status === 201) tenantIds.push(res.body.data.tenantId);
     return res;
@@ -7415,9 +7423,7 @@ maybeDescribe('Espace particulier — création en libre-service et compteur d�
 
   it('6 POST concurrents du même utilisateur -> un 201, cinq 409, un seul tenant', async () => {
     const user = await verifiedUser();
-    // Le même client pour les six POST, avec un compteur IP indépendant du reste de cette suite.
-    const client = { ...user, headers: { ...user.headers, 'X-Forwarded-For': '192.0.2.41' } };
-    const responses = await Promise.all(Array.from({ length: 6 }, (_, i) => createSpaceFor(client, `Course ${i}`)));
+    const responses = await Promise.all(Array.from({ length: 6 }, (_, i) => createSpaceFor(user, `Course ${i}`)));
     const statuses = responses.map(r => r.status).sort();
     expect(statuses).toEqual([201, 409, 409, 409, 409, 409]);
     expect(await prisma.membership.count({ where: { userId: user.id } })).toBe(1);
