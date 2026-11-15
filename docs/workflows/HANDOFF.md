@@ -268,7 +268,7 @@ retour de focus d’une fermeture devenue obsolète. Les autres échecs API conc
 des mandats, du statut Assistant et du catalogue OpenRouter. Les 135 tests API ciblés et les quatre scénarios web
 du panneau passent. Les huit contrôles de la CI `43690072361` sur `e968a408` ont réussi.
 
-**Limites des imports (commit de cette passation)** — Le chat rejette d’avance une demande multipart dont la taille
+**Limites des imports (`07ac1830`)** — Le chat rejette d’avance une demande multipart dont la taille
 annoncée dépasse cinq fois 10 Mio, avec 64 Kio pour le formulaire. Une pièce au-delà de 10 Mio reçoit la même erreur
 localisée. Les noms sont relus en UTF-8 et raccourcis en conservant l’extension et les caractères Unicode entiers.
 La recette PostgreSQL en garde stricte vérifie la réouverture et le téléchargement d’un nom multilingue, le refus
@@ -276,6 +276,15 @@ anticipé, le sixième fichier, l’octet excédentaire et l’envoi valide de c
 utilise une agence et un compte dédiés pour éviter qu’un quota consommé par les autres cas masque le contrôle
 multipart. Les 38 scénarios PostgreSQL Assistant en garde stricte et les 57 tests ciblés passent. Le catalogue
 généré reste identique. Le plan indique les suites de recette et la vérification externe restant à réaliser.
+
+**Lien d’un résultat du tiroir (commit de cette passation)** — La pastille « Ouvrir » reprend le fil en pleine page
+et montre directement le résultat. « Source » transmet aussi la version citée. La page ouvre le panneau après la
+lecture du fil privé, quand le résultat figure dans ce fil. Fermer le panneau le laisse fermé. Choisir un autre fil
+retire la sélection du lien. Les 57 tests de la page et du tiroir passent. Sur le build web, la recette Chromium
+avec API simulée vérifie le parcours depuis le tableau de bord à 375 px, la version 2 citée en présence d’une
+version 3, la réouverture après rechargement et le retour du focus à « Résultats ». La taille initiale est de
+234 439 octets gzip pour un plafond de 234 496. Le wiki est synchronisé. La qualification auprès des fournisseurs
+actifs reste à faire.
 
 ## chore/deps-patch-minor — 2026-11-11
 

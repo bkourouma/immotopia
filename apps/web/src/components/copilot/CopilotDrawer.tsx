@@ -54,11 +54,15 @@ const CopilotDrawer: React.FC<CopilotDrawerProps> = ({ tenantId, status, open, o
     if (open) inputRef.current?.focus();
   }, [open]);
 
-  const openFullPage = () => {
+  const openFullPage = (artifactId?: string, version?: number) => {
+    const target = new URLSearchParams();
+    if (chat.conversationId) target.set('c', chat.conversationId);
+    if (artifactId) target.set('resultat', artifactId);
+    if (version !== undefined) target.set('version', String(version));
     handleClose();
     navigate({
       pathname: `/tenant/${tenantId}/assistant`,
-      search: chat.conversationId ? new URLSearchParams({ c: chat.conversationId }).toString() : ''
+      search: target.toString()
     });
   };
 
@@ -91,7 +95,7 @@ const CopilotDrawer: React.FC<CopilotDrawerProps> = ({ tenantId, status, open, o
                 icon={<ExpandOutlined aria-hidden />}
                 aria-label={t('Ouvrir en pleine page')}
                 disabled={streaming}
-                onClick={openFullPage}
+                onClick={() => openFullPage()}
               />
             </Tooltip>
           )}
@@ -121,6 +125,7 @@ const CopilotDrawer: React.FC<CopilotDrawerProps> = ({ tenantId, status, open, o
         visible={open}
         propertyId={propertyId}
         onSuggestion={submit}
+        onOpenArtifact={chat.conversationId && !streaming ? openFullPage : undefined}
       />
       {open && (
         <div style={{ padding: 'var(--space-3) var(--space-4)' }}>

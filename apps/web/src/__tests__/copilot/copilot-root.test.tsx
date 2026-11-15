@@ -211,55 +211,84 @@ describe('CopilotRoot — page plein écran', () => {
     expect(reset.textContent?.trim()).toBe('');
   });
 
-  it('joint un fichier au fil privé du tiroir et rouvre le même fil en pleine page', async () => {
-    getStatus.mockResolvedValue(ENABLED);
-    const conversationId = 'a26ca1bb-006a-4b80-8cb8-ec7050b85471';
-    const stream = vi.mocked(copilotService.streamChat);
-    stream.mockImplementation(async (_tenant, _payload, { onEvent }) => {
-      onEvent({ type: 'meta', conversationId, requestId: 'request-1' });
-      onEvent({ type: 'text_delta', text: 'Voici le montant.' });
-      onEvent({ type: 'done', reason: 'end_turn' });
-    });
-    const path = `/tenant/${TENANT}`;
-    render(
-      <LanguageProvider>
-        <MemoryRouter initialEntries={[`${path}/dashboard`]}>
-          <Routes>
-            <Route path={`${path}/dashboard`} element={<CopilotRoot tenantId={TENANT} />} />
-            <Route path={`${path}/assistant`} element={<LaunchDestination />} />
-          </Routes>
-        </MemoryRouter>
-      </LanguageProvider>
-    );
-    fireEvent.click(await screen.findByRole('button', BUTTON));
-    await screen.findByRole('button', { name: 'Joindre des fichiers' });
-    const file = new File(['Montant\n50'], 'loyers.csv', { type: 'text/csv' });
-    fireEvent.change(document.querySelector('input[type="file"]')!, { target: { files: [file] } });
-    expect(screen.getByRole('button', { name: 'Retirer loyers.csv' })).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Envoyer' }));
-    await screen.findByText('Voici le montant.');
-    expect(stream).toHaveBeenCalledWith(
-      TENANT,
-      expect.objectContaining({
-        turnId: expect.any(String),
-        messages: [{ role: 'user', content: 'Analyse les fichiers joints.' }]
-      }),
-      expect.objectContaining({ files: [file] })
-    );
+  it.each([false, true])(
+    'joint un fichier au fil privé et rouvre le tiroir en pleine page (avec source %s)',
+    async openSource => {
+      getStatus.mockResolvedValue(ENABLED);
+      const conversationId = 'a26ca1bb-006a-4b80-8cb8-ec7050b85471';
+      const artifactId = 'aa9d029e-eb04-4d55-abf5-a43364f25aeb';
+      const path = `/tenant/${TENANT}`;
+      const stream = vi.mocked(copilotService.streamChat);
+      stream.mockImplementation(async (_tenant, payload, { onEvent }) => {
+        onEvent({ type: 'meta', conversationId, requestId: 'request-1' });
+        if (payload.conversationId) {
+          onEvent({
+            type: 'artifact',
+            artifact: {
+              id: artifactId,
+              kind: 'table',
+              title: 'Montant',
+              columns: [{ key: 'montant', label: 'Montant', type: 'number' }],
+              rows: [{ montant: 50 }],
+              provenance: {
+                source: 'Échéances locatives',
+                href: `${path}/rental/installments`,
+                period: '2026-10',
+                calculatedAt: '2026-11-15T00:00:00Z',
+                rules: []
+              }
+            }
+          });
+          onEvent({ type: 'text_delta', text: `Voici le total. [[source:${artifactId}:2]]` });
+        } else {
+          onEvent({ type: 'text_delta', text: 'Voici le montant.' });
+        }
+        onEvent({ type: 'done', reason: 'end_turn' });
+      });
+      render(
+        <LanguageProvider>
+          <MemoryRouter initialEntries={[`${path}/dashboard`]}>
+            <Routes>
+              <Route path={`${path}/dashboard`} element={<CopilotRoot tenantId={TENANT} />} />
+              <Route path={`${path}/assistant`} element={<LaunchDestination />} />
+            </Routes>
+          </MemoryRouter>
+        </LanguageProvider>
+      );
+      fireEvent.click(await screen.findByRole('button', BUTTON));
+      await screen.findByRole('button', { name: 'Joindre des fichiers' });
+      const file = new File(['Montant\n50'], 'loyers.csv', { type: 'text/csv' });
+      fireEvent.change(document.querySelector('input[type="file"]')!, { target: { files: [file] } });
+      expect(screen.getByRole('button', { name: 'Retirer loyers.csv' })).toBeVisible();
+      fireEvent.click(screen.getByRole('button', { name: 'Envoyer' }));
+      await screen.findByText('Voici le montant.');
+      expect(stream).toHaveBeenCalledWith(
+        TENANT,
+        expect.objectContaining({
+          turnId: expect.any(String),
+          messages: [{ role: 'user', content: 'Analyse les fichiers joints.' }]
+        }),
+        expect.objectContaining({ files: [file] })
+      );
 
-    const input = screen.getByRole('textbox', { name: 'Votre message' });
-    fireEvent.change(input, { target: { value: 'Quel est le total ?' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Envoyer' }));
-    expect(stream).toHaveBeenLastCalledWith(
-      TENANT,
-      expect.objectContaining({ conversationId, messages: [{ role: 'user', content: 'Quel est le total ?' }] }),
-      expect.not.objectContaining({ files: expect.anything() })
-    );
-    const openPage = screen.getByRole('button', { name: 'Ouvrir en pleine page' });
-    await waitFor(() => expect(openPage).toBeEnabled());
-    fireEvent.click(openPage);
-    expect(await screen.findByRole('status')).toHaveTextContent(`?c=${conversationId}`);
-  });
+      const input = screen.getByRole('textbox', { name: 'Votre message' });
+      fireEvent.change(input, { target: { value: 'Quel est le total ?' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Envoyer' }));
+      expect(stream).toHaveBeenLastCalledWith(
+        TENANT,
+        expect.objectContaining({ conversationId, messages: [{ role: 'user', content: 'Quel est le total ?' }] }),
+        expect.not.objectContaining({ files: expect.anything() })
+      );
+      const openPage = await screen.findByRole('button', {
+        name: openSource ? 'Voir la source : Montant' : 'Ouvrir en pleine page'
+      });
+      await waitFor(() => expect(openPage).toBeEnabled());
+      fireEvent.click(openPage);
+      expect((await screen.findByRole('status')).textContent).toBe(
+        `?c=${conversationId}${openSource ? `&resultat=${artifactId}&version=2` : ''}`
+      );
+    }
+  );
 
   it('insère la transcription du micro dans la saisie du tiroir', async () => {
     getStatus.mockResolvedValue({ ...ENABLED, transcription: true });

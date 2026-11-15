@@ -113,9 +113,12 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
   const navigate = useNavigate();
   const dispatchedPrompt = useRef<string>();
   const chat = useCopilotChat(tenantId, true);
-  const { conversationId, restoreConversation, reset } = chat;
+  const { conversationId, restoreConversation, reset, selectArtifact, artifacts } = chat;
   const [params, setParams] = useSearchParams();
   const activeId = params.get('c');
+  const requestedArtifact = params.get('resultat');
+  const versionParam = Number(params.get('version'));
+  const requestedVersion = Number.isSafeInteger(versionParam) && versionParam > 0 ? versionParam : undefined;
   const sharedId = params.get('partage');
   const reportsOpen = params.get('rapports') === '1';
   const rentalAlertsOpen = params.get('alertes-locatives') === '1';
@@ -171,6 +174,8 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
       const next = new URLSearchParams(previous);
       if (id) next.set('c', id);
       else next.delete('c');
+      next.delete('resultat');
+      next.delete('version');
       return next;
     });
   };
@@ -253,7 +258,7 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
       setHistoryRefresh(value => value + 1)
     );
   }, [activeId, location.key, location.state, navigate, pathname, send, tenantId]);
-  const artifactCount = chat.artifacts.length;
+  const artifactCount = artifacts.length;
   const hasArtifacts = artifactCount > 0;
   const [desktopOpen, setDesktopOpen] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -311,7 +316,7 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
     const view = viewedVersion.current;
     if (view) setVersionLink(previous => ({ ...view, request: previous?.request ?? 0 }));
   };
-  const openResults = () => {
+  const openResults = useCallback(() => {
     const trigger = document.activeElement;
     triggerRef.current = trigger instanceof HTMLElement && trigger !== document.body ? trigger : undefined;
     if (dockResults) {
@@ -322,12 +327,27 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
         dockRef.current?.focus();
       });
     } else setDrawerOpen(true);
-  };
-  const openArtifact = (id: string, version?: number) => {
-    setVersionLink(previous => ({ id, version, request: (previous?.request ?? 0) + 1 }));
-    chat.selectArtifact(id);
-    openResults();
-  };
+  }, [dockResults]);
+  const openArtifact = useCallback(
+    (id: string, version?: number) => {
+      setVersionLink(previous => ({ id, version, request: (previous?.request ?? 0) + 1 }));
+      selectArtifact(id);
+      openResults();
+    },
+    [openResults, selectArtifact]
+  );
+  const openedResultLink = useRef<string>();
+  useEffect(() => {
+    if (!activeId || !requestedArtifact) {
+      openedResultLink.current = undefined;
+      return;
+    }
+    const link = JSON.stringify([activeId, requestedArtifact, requestedVersion]);
+    if (openedResultLink.current === link || conversationId !== activeId) return;
+    if (!artifacts.some(artifact => artifact.id === requestedArtifact)) return;
+    openedResultLink.current = link;
+    openArtifact(requestedArtifact, requestedVersion);
+  }, [activeId, artifacts, conversationId, openArtifact, requestedArtifact, requestedVersion]);
   const restorePanelFocus = (clear = true) => {
     const trigger = triggerRef.current;
     if (clear) triggerRef.current = undefined;

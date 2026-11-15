@@ -941,7 +941,7 @@ it('prépare une relance sur la version du résultat affichée', async () => {
   );
 });
 
-it('rouvre le fil et ses artefacts depuis le lien de conversation', async () => {
+it.each([false, true])('rouvre le fil et ses artefacts depuis un lien (avec source %s)', async direct => {
   getStatus.mockResolvedValue(ENABLED);
   const id = '5258bdd1-74d6-47ea-a37f-ab4d1e8eae45';
   const sourceId = 'fd0ca857-d4e6-44e1-98be-f5445573c9f1';
@@ -985,10 +985,19 @@ it('rouvre le fil et ses artefacts depuis le lien de conversation', async () => 
       }
     ]
   });
-  renderPage(`/tenant/t1/assistant?c=${id}`);
+  renderPage(`/tenant/t1/assistant?c=${id}${direct ? `&resultat=${sourceId}&version=1` : ''}`);
   expect(await screen.findByText('Voici le bilan.')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Ouvrir : Synthèse du mois' })).toBeInTheDocument();
   expect(getConversation).toHaveBeenCalledWith('t1', id);
+  if (direct) {
+    const linked = await screen.findByRole('dialog', { name: 'Résultats et documents' });
+    expect(await within(linked).findByText('Comment j’ai calculé')).toBeInTheDocument();
+    expect(copilotService.getArtifactVersion).toHaveBeenCalledWith('t1', id, sourceId, 1);
+    fireEvent.click(within(linked).getByRole('button', { name: 'Fermer le panneau' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Résultats et documents' })).not.toBeInTheDocument()
+    );
+  }
   const file = new Blob(['bilan']);
   vi.mocked(copilotService.downloadAttachment).mockResolvedValue({
     data: file,
