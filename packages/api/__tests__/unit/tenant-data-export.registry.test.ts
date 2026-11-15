@@ -112,6 +112,24 @@ describe('Export agence — classement des modeles du schema', () => {
     expect(attachmentFields).toEqual(expect.arrayContaining(['fileUrl', 'sha256', 'uploadedByUserId']));
   });
 
+  it('préserve le périmètre privé de l’assistant dans une archive d’agence', () => {
+    expect(plans.filter(model => model.model.startsWith('Assistant'))).toEqual([]);
+    expect(excluded.map(model => model.model)).toEqual(
+      expect.arrayContaining(['AssistantConversation', 'AssistantAttachment', 'AssistantAnalysisShare'])
+    );
+    const notification = planOf('UserNotification');
+    const delivery = planOf('NotificationDelivery');
+    if (!notification || !delivery) throw new Error('Modèles de notifications absents du registre.');
+    expect(buildTenantWhere(notification, 'agence-1')).toEqual({
+      tenantId: 'agence-1',
+      NOT: { key: { startsWith: 'ASSISTANT\\_' } }
+    });
+    expect(buildTenantWhere(delivery, 'agence-1')).toEqual({
+      tenantId: 'agence-1',
+      NOT: { notification: { key: { startsWith: 'ASSISTANT\\_' } } }
+    });
+  });
+
   it('chaque modele exporte a une cle d’identifiant pour la pagination', () => {
     for (const plan of plans) {
       const model = models.find(m => m.name === plan.model) as DmmfModel;

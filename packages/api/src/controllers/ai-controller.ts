@@ -928,6 +928,7 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
   const stream = openSseStream(res);
   const deadline = new AbortController();
   const persistent = Boolean(saved || regenerated);
+  const turnId = body.turnId;
   const timeout = persistent ? setTimeout(() => deadline.abort(), 300_000) : undefined;
   timeout?.unref();
   const signal = persistent ? AbortSignal.any([stream.signal, deadline.signal]) : stream.signal;
@@ -963,7 +964,7 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
       signal,
       loopbackHeaders: loopbackHeadersFor(req),
       proposeFollowUp:
-        saved && body.turnId
+        saved && turnId
           ? async action => {
               if (followUps >= 3) throw new AppError(t('Ce message comporte déjà trois propositions.'), 422);
               const artifact = action.artifactId
@@ -972,7 +973,7 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
                       event.type === 'artifact' && event.artifact.id === action.artifactId
                   )?.artifact ?? (await getStoredArtifact(owner, saved.conversationId, action.artifactId, scopeKey)))
                 : undefined;
-              const proposal = await proposeFollowUp(owner, body.turnId!, action, artifact);
+              const proposal = await proposeFollowUp(owner, turnId, action, artifact);
               followUps++;
               return proposal;
             }

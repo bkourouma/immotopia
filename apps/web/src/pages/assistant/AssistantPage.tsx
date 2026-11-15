@@ -265,10 +265,17 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
   const historyRef = useRef<HTMLElement>(null);
   const conversationRef = useRef<HTMLElement>(null);
   const triggerRef = useRef<HTMLElement>();
+  const desktopFocusFrame = useRef<number>();
   const resultsRef = useRef<HTMLButtonElement>(null);
   const expandRef = useRef<HTMLButtonElement>(null);
   const dockId = useId();
   const width = Math.min(savedWidth, maxWidth);
+  useEffect(
+    () => () => {
+      if (desktopFocusFrame.current !== undefined) cancelAnimationFrame(desktopFocusFrame.current);
+    },
+    []
+  );
   useEffect(() => {
     const locked = expanded || (!dockResults && drawerOpen);
     historyRef.current?.toggleAttribute('inert', locked);
@@ -308,8 +315,12 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
     const trigger = document.activeElement;
     triggerRef.current = trigger instanceof HTMLElement && trigger !== document.body ? trigger : undefined;
     if (dockResults) {
+      if (desktopFocusFrame.current !== undefined) cancelAnimationFrame(desktopFocusFrame.current);
       setDesktopOpen(true);
-      requestAnimationFrame(() => dockRef.current?.focus());
+      desktopFocusFrame.current = requestAnimationFrame(() => {
+        desktopFocusFrame.current = undefined;
+        dockRef.current?.focus();
+      });
     } else setDrawerOpen(true);
   };
   const openArtifact = (id: string, version?: number) => {
@@ -334,8 +345,12 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
     if (expanded) {
       collapse();
     } else if (dockResults) {
+      if (desktopFocusFrame.current !== undefined) cancelAnimationFrame(desktopFocusFrame.current);
       setDesktopOpen(false);
-      requestAnimationFrame(() => restorePanelFocus());
+      desktopFocusFrame.current = requestAnimationFrame(() => {
+        desktopFocusFrame.current = undefined;
+        restorePanelFocus();
+      });
     } else {
       setDrawerOpen(false);
       requestAnimationFrame(() => restorePanelFocus(false));

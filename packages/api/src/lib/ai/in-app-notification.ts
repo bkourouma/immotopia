@@ -10,7 +10,7 @@ export function writeAssistantNotification(
   language: AssistantLanguage,
   notice: {
     senderUserId?: string | null;
-    key: string;
+    key: `ASSISTANT_${string}`;
     title: string;
     body: string;
     link?: string;

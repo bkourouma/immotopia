@@ -255,8 +255,20 @@ describe('listOpenRouterModels', () => {
     const fetchMock = jest.fn().mockResolvedValue(
       okResponse({
         data: [
-          { id: 'openai/gpt-5', name: 'GPT-5', context_length: 400000, pricing: { prompt: '1' }, secret: 'x' },
-          { id: 'anthropic/claude-sonnet-4.5', name: 'Claude Sonnet 4.5' },
+          {
+            id: 'openai/gpt-5',
+            name: 'GPT-5',
+            context_length: 400000,
+            pricing: { prompt: '1' },
+            secret: 'x',
+            supported_parameters: ['tools', 'tool_choice']
+          },
+          {
+            id: 'anthropic/claude-sonnet-4.5',
+            name: 'Claude Sonnet 4.5',
+            supported_parameters: ['tools', 'tool_choice']
+          },
+          { id: 'google/text-only', name: 'Sans choix d’outil', supported_parameters: ['tools'] },
           { name: 'sans id' }
         ]
       })

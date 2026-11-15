@@ -253,12 +253,20 @@ sans divulguer les mandats dans la réponse. Deux parcours Assistant PostgreSQL 
 et le typecheck API passent. Les 37 cas PostgreSQL de l’Assistant passent sous garde stricte. Le job GitHub
 d’isolation et la compilation web du commit `13e5a6f1` sont réussis.
 
-**Tiroir et historique privé (commit de cette passation)** — Le tiroir envoie désormais les tours persistants
+**Tiroir et historique privé (`04f256fb`)** — Le tiroir envoie désormais les tours persistants
 et la page Assistant rouvre le même fil. Le tiroir accepte les pièces jointes et la transcription serveur
 déjà configurée pour la page. Fermer le tiroir arrête le micro. Un changement d’agence réinitialise le tiroir
 et empêche le transfert du brouillon ou des fichiers entre agences. Les 37 tests de la page et les 18 tests
 du lanceur et du tiroir passent. Les nouveaux scénarios utilisent le contrat du flux et une transcription
 simulée. Le wiki est synchronisé. La qualification avec les comptes actifs des fournisseurs reste à faire.
+
+**Garde d’export et CI (commit de cette passation)** — La CI `43687466169` valide l’infrastructure, le build web,
+l’isolation sur base dédiée et trois lots web. Elle relève cinq échecs API et un échec web. L’export global d’agence
+classe explicitement les données privées de l’Assistant hors du ZIP, y compris les notifications et leurs envois.
+Les lectures et exports individuels restent régis par les droits de l’Assistant. L’ouverture du panneau annule le
+retour de focus d’une fermeture devenue obsolète. Les autres échecs API concernent les fixtures des permissions,
+des mandats, du statut Assistant et du catalogue OpenRouter. Les 135 tests API ciblés et les quatre scénarios web
+du panneau passent. Le prochain contrôle complet porte sur ces corrections.
 
 ## chore/deps-patch-minor — 2026-11-11
 
