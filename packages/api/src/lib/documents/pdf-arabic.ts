@@ -1,6 +1,6 @@
 import { PDFDocument, StandardFonts, rgb, type PDFPage, type RGB } from 'pdf-lib';
 import { t } from '../../i18n';
-import { embedUnicodeFonts, TextFace } from '../signature/seal-text';
+import { embedUnicodeFonts, graphemes, TextFace } from '../signature/seal-text';
 import type { DocumentBranding } from './document-branding';
 
 export type ArabicFaces = { regular: TextFace; bold: TextFace };
@@ -60,7 +60,7 @@ export function drawArabicNumber(
   face.draw(page, full, { x, y: options.y, size, color: options.color ?? rgb(0.12, 0.15, 0.2) });
 }
 
-/** Coupe aux espaces sans perdre les libellés longs ; un mot trop large est scindé. */
+/** Coupe aux espaces, puis entre graphèmes si un mot dépasse la largeur disponible. */
 export function wrapArabicText(face: TextFace, value: string, size: number, maxWidth: number): string[] {
   const words = value
     .replace(/[\r\n\t]+/g, ' ')
@@ -79,7 +79,7 @@ export function wrapArabicText(face: TextFace, value: string, size: number, maxW
       current = '';
     }
     let segment = '';
-    for (const char of word) {
+    for (const char of graphemes(word)) {
       if (segment && face.width(`${segment}${char}`, size) > maxWidth) {
         lines.push(segment);
         segment = '';
@@ -90,6 +90,12 @@ export function wrapArabicText(face: TextFace, value: string, size: number, maxW
   }
   if (current) lines.push(current);
   return lines.length ? lines : [''];
+}
+
+export function withPdfEllipsis(face: TextFace, line: string, size: number, maxWidth: number): string {
+  const clusters = [...graphemes(line)];
+  while (clusters.length && face.width(clusters.join('') + '…', size) > maxWidth) clusters.pop();
+  return face.width('…', size) <= maxWidth ? clusters.join('') + '…' : '';
 }
 
 export function drawArabicHeader(

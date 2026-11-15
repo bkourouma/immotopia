@@ -1,8 +1,8 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { t, currentAssistantLanguage } from '../../i18n';
 import { AppError } from '../../middleware/error-middleware';
-import { wrapArabicText } from '../documents/pdf-arabic';
-import { embedUnicodeFonts, TextFace } from '../signature/seal-text';
+import { withPdfEllipsis, wrapArabicText } from '../documents/pdf-arabic';
+import { embedChineseUnicodeFonts, embedUnicodeFamily, embedUnicodeFonts, TextFace } from '../signature/seal-text';
 import { chartExportData } from './artifact-chart-data';
 import { chartHeight, drawArtifactChart, drawChartScene } from './artifact-chart-pdf';
 import type { ArtifactCell, ArtifactProvenance, CopilotArtifact } from './contracts';
@@ -146,12 +146,50 @@ export function artifactProvenanceLines(provenance: ArtifactProvenance): string[
 
 export async function buildArtifactPdf(artifact: CopilotArtifact, exportedAt = new Date()): Promise<Buffer> {
   const pdf = await PDFDocument.create();
-  const rtl = currentAssistantLanguage() === 'ar';
+  const language = currentAssistantLanguage();
+  const rtl = language === 'ar';
+  const text = JSON.stringify(artifact);
+  const sections = artifactExportSections(artifact);
+  const exportDate = formatExportDate(exportedAt);
+  const chineseCharacter = /[\p{Script=Han}\u3000-\u303f\uff00-\uffef]/u;
+  const needsChinese = language === 'zh' || chineseCharacter.test(text);
+  const needsDevanagari = language === 'hi' || /\p{Script=Devanagari}/u.test(text);
   const unicode = await embedUnicodeFonts(pdf);
   if (rtl && !unicode) throw new Error('Police arabe indisponible pour le PDF');
+  const faces = unicode ? [unicode] : [];
+  if (needsChinese) {
+    const systemText = sections.flatMap(section =>
+      section.kind === 'grid'
+        ? [...section.headers, ...(section.provenance ? artifactProvenanceLines(section.provenance) : [])]
+        : []
+    );
+    // Inclut les unités numériques compactes et les notes ajoutées lors du rendu.
+    systemText.push(
+      exportDate,
+      '万亿千兆',
+      t('Les données sont présentées en barres pour faciliter leur lecture.'),
+      t('Aucune valeur numérique à tracer.'),
+      t('Résultat tronqué : seules les premières lignes sont affichées.')
+    );
+    const characters = [...new Set([...text, ...systemText.join('')].filter(char => chineseCharacter.test(char)))].join(
+      ''
+    );
+    faces.push(await embedChineseUnicodeFonts(pdf, characters));
+  }
+  if (needsDevanagari) faces.push(await embedUnicodeFamily(pdf, 'devanagari'));
   const direction = rtl ? 'rtl' : 'ltr';
-  const regular = new TextFace(await pdf.embedFont(StandardFonts.Helvetica), unicode?.regular ?? null, direction);
-  const bold = new TextFace(await pdf.embedFont(StandardFonts.HelveticaBold), unicode?.bold ?? null, direction);
+  const regular = new TextFace(
+    await pdf.embedFont(StandardFonts.Helvetica),
+    faces.map(face => face.regular),
+    direction,
+    true
+  );
+  const bold = new TextFace(
+    await pdf.embedFont(StandardFonts.HelveticaBold),
+    faces.map(face => face.bold),
+    direction,
+    true
+  );
   pdf.setTitle(artifact.title);
   pdf.setCreator('ImmoTopia');
   pdf.setCreationDate(exportedAt);
@@ -189,7 +227,7 @@ export async function buildArtifactPdf(artifact: CopilotArtifact, exportedAt = n
       const wrap = (values: ArtifactCell[], face: TextFace) =>
         columns.map(index => wrapArabicText(face, String(values[index] ?? '—'), 9, cellWidth - 12));
       const header = wrap(headers, bold).map(lines =>
-        lines.length > 4 ? [...lines.slice(0, 3), lines[3] + '…'] : lines
+        lines.length > 4 ? [...lines.slice(0, 3), withPdfEllipsis(bold, lines[3], 9, cellWidth - 12)] : lines
       );
       const height = (cells: string[][]) => Math.max(...cells.map(cell => cell.length)) * lineHeight + 8;
       function draw(cells: string[][], face: TextFace, background: boolean) {
@@ -226,7 +264,7 @@ export async function buildArtifactPdf(artifact: CopilotArtifact, exportedAt = n
   }
 
   paragraph(artifact.title, bold, 21);
-  paragraph(formatExportDate(exportedAt), regular, 9);
+  paragraph(exportDate, regular, 9);
   y -= 12;
   if (artifact.kind === 'chart') {
     const chart = chartExportData(artifact);
@@ -243,7 +281,7 @@ export async function buildArtifactPdf(artifact: CopilotArtifact, exportedAt = n
       y -= chartHeight;
     } else paragraph(t('Aucune valeur numérique à tracer.'), regular, 10);
   }
-  for (const section of artifactExportSections(artifact)) {
+  for (const section of sections) {
     if (section.kind === 'text') {
       for (const line of section.text.split(/\r?\n/)) {
         const heading = /^#{1,6}\s+/.test(line);

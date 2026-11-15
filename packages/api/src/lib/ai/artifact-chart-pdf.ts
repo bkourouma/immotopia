@@ -1,6 +1,6 @@
 import { rgb, type PDFPage } from 'pdf-lib';
 import { currentAssistantLanguage } from '../../i18n';
-import { wrapArabicText } from '../documents/pdf-arabic';
+import { withPdfEllipsis, wrapArabicText } from '../documents/pdf-arabic';
 import type { TextFace } from '../signature/seal-text';
 import { chartColors, type chartExportData } from './artifact-chart-data';
 import type { ChartScene } from './contracts';
@@ -34,7 +34,7 @@ export function drawChartScene(
     } else {
       const size = Math.min(22 * ratio, h * 0.8);
       const lines = wrapArabicText(font, mark.text, size, w);
-      const label = lines.length > 1 ? lines[0] + '…' : (lines[0] ?? '');
+      const label = lines.length > 1 ? withPdfEllipsis(font, lines[0], size, w) : (lines[0] ?? '');
       const remaining = Math.max(0, w - font.width(label, size));
       const pos =
         mark.align === 'center' || !mark.align ? remaining / 2 : (mark.align === 'start') === area.rtl ? remaining : 0;
@@ -68,7 +68,7 @@ export function drawArtifactChart(
   const text = (value: string, at: number, y: number, maxWidth: number, align: 'start' | 'center' | 'end') => {
     const size = 9;
     const lines = wrapArabicText(font, value.replace(/\s+/g, ' ').trim(), size, maxWidth - 9);
-    const label = lines.length > 1 ? lines[0] + '…' : (lines[0] ?? '');
+    const label = lines.length > 1 ? withPdfEllipsis(font, lines[0], size, maxWidth - 9) : (lines[0] ?? '');
     if (!label) return;
     const w = font.width(label, size);
     const offset = align === 'center' ? w / 2 : (align === 'start') === rtl ? w : 0;

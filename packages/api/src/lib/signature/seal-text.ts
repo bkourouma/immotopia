@@ -1,3 +1,5 @@
+/// <reference lib="es2022.intl" />
+import 'regenerator-runtime/runtime'; // Utilisé par le moteur de composition devanagari de Fontkit.
 import { readFile } from 'fs/promises';
 import * as fontkit from '@pdf-lib/fontkit';
 import bidiFactory, { type Bidi } from 'bidi-js';
@@ -5,9 +7,13 @@ import {
   PDFDocument,
   PDFFont,
   PDFHexString,
+  PDFName,
+  PDFOperator,
+  PDFOperatorNames,
   PDFPage,
   RGB,
   beginText,
+  endMarkedContent,
   endText,
   popGraphicsState,
   pushGraphicsState,
@@ -44,22 +50,34 @@ import { logger } from '../../utils/logger';
 
 /** Chemins résolus par Node, quel que soit l'emplacement réel de `node_modules`. */
 const FONT_FILES = {
-  regular: '@expo-google-fonts/noto-sans-arabic/400Regular/NotoSansArabic_400Regular.ttf',
-  bold: '@expo-google-fonts/noto-sans-arabic/700Bold/NotoSansArabic_700Bold.ttf'
+  arabic: {
+    regular: '@expo-google-fonts/noto-sans-arabic/400Regular/NotoSansArabic_400Regular.ttf',
+    bold: '@expo-google-fonts/noto-sans-arabic/700Bold/NotoSansArabic_700Bold.ttf'
+  },
+  chinese: {
+    regular: '@expo-google-fonts/noto-sans-sc/400Regular/NotoSansSC_400Regular.ttf',
+    bold: '@expo-google-fonts/noto-sans-sc/700Bold/NotoSansSC_700Bold.ttf'
+  },
+  devanagari: {
+    regular: '@expo-google-fonts/noto-sans-devanagari/400Regular/NotoSansDevanagari_400Regular.ttf',
+    bold: '@expo-google-fonts/noto-sans-devanagari/700Bold/NotoSansDevanagari_700Bold.ttf'
+  }
 } as const;
 
-export type UnicodeWeight = keyof typeof FONT_FILES;
+export type UnicodeFamily = keyof typeof FONT_FILES;
+export type UnicodeWeight = keyof (typeof FONT_FILES)['arabic'];
 
-const fontBytesCache = new Map<UnicodeWeight, Promise<Buffer>>();
-const fontKitCache = new Map<UnicodeWeight, fontkit.Font>();
+const fontBytesCache = new Map<string, Promise<Buffer>>();
+const fontKitCache = new Map<string, fontkit.Font>();
 
 /** Octets de la police, lus une seule fois ; un échec n'est pas mémorisé. */
-export function loadUnicodeFontBytes(weight: UnicodeWeight): Promise<Buffer> {
-  let bytes = fontBytesCache.get(weight);
+export function loadUnicodeFontBytes(weight: UnicodeWeight, family: UnicodeFamily = 'arabic'): Promise<Buffer> {
+  const file = FONT_FILES[family][weight];
+  let bytes = fontBytesCache.get(file);
   if (!bytes) {
-    bytes = readFile(require.resolve(FONT_FILES[weight]));
-    fontBytesCache.set(weight, bytes);
-    bytes.catch(() => fontBytesCache.delete(weight));
+    bytes = readFile(require.resolve(file));
+    fontBytesCache.set(file, bytes);
+    bytes.catch(() => fontBytesCache.delete(file));
   }
   return bytes;
 }
@@ -68,6 +86,12 @@ let bidi: Bidi | null = null;
 
 /** Contrôles de sens et caractères de formatage, sans rendu : supprimés plutôt que remplacés par `?`. */
 const FORMAT_CHARS = /[\u200B\u200E\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/;
+const joinControls = new Set([0x200c, 0x200d]);
+const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+
+export function* graphemes(text: string): Iterable<string> {
+  for (const { segment } of segmenter.segment(text)) yield segment;
+}
 
 /** Vrai si la police standard sait écrire tout le texte (WinAnsi). */
 export function isEncodable(font: PDFFont, text: string): boolean {
@@ -109,29 +133,48 @@ type Run = { face: UnicodeFace | null; text: string };
 export class TextFace {
   private runsCache = new Map<string, Run[]>();
   private alternateDirection?: TextFace;
+  private readonly unicode: readonly UnicodeFace[];
 
   constructor(
     private readonly standard: PDFFont,
-    private readonly unicode: UnicodeFace | null,
-    private readonly direction: 'ltr' | 'rtl' = 'ltr'
-  ) {}
+    unicode: UnicodeFace | readonly UnicodeFace[] | null,
+    private readonly direction: 'ltr' | 'rtl' = 'ltr',
+    private readonly preserveText = false
+  ) {
+    this.unicode = !unicode ? [] : 'kit' in unicode ? [unicode] : unicode;
+  }
+
+  private coveringFace(text: string): UnicodeFace | undefined {
+    const codes = [...text].map(char => char.codePointAt(0)!);
+    return this.unicode.find(face =>
+      codes.every(code => joinControls.has(code) || face.kit.hasGlyphForCodePoint(code))
+    );
+  }
 
   /** Une cellule numerique reste LTR, meme avec des separateurs Unicode non WinAnsi. */
   withDirection(direction: 'ltr' | 'rtl'): TextFace {
     if (direction === this.direction) return this;
-    this.alternateDirection ??= new TextFace(this.standard, this.unicode, direction);
+    this.alternateDirection ??= new TextFace(this.standard, this.unicode, direction, this.preserveText);
     return this.alternateDirection;
   }
 
   /** Texte sur une ligne, sans caractère que ni l'une ni l'autre police ne sait écrire. */
   clean(text: string): string {
     const flat = text.replace(/[\r\n\t]+/g, ' ');
-    if (!this.unicode || isEncodable(this.standard, flat)) return safeText(this.standard, flat);
+    if (this.unicode.length === 0 || isEncodable(this.standard, flat)) return safeText(this.standard, flat);
+    if (this.unicode.length === 1) {
+      let out = '';
+      for (const char of flat) {
+        if (FORMAT_CHARS.test(char)) continue;
+        const code = char.codePointAt(0)!;
+        out += code <= 0xffff && this.unicode[0].kit.hasGlyphForCodePoint(code) ? char : '?';
+      }
+      return out;
+    }
     let out = '';
-    for (const ch of flat) {
-      if (FORMAT_CHARS.test(ch)) continue;
-      const code = ch.codePointAt(0) as number;
-      out += code <= 0xffff && this.unicode.kit.hasGlyphForCodePoint(code) ? ch : '?';
+    for (const cluster of graphemes(flat)) {
+      if (FORMAT_CHARS.test(cluster)) continue;
+      out += isEncodable(this.standard, cluster) || this.coveringFace(cluster) ? cluster : '?';
     }
     return out;
   }
@@ -141,10 +184,21 @@ export class TextFace {
     const cached = this.runsCache.get(text);
     if (cached) return cached;
     let runs: Run[];
-    if (!this.unicode || isEncodable(this.standard, text)) {
+    if (this.unicode.length === 0 || isEncodable(this.standard, text)) {
       runs = text ? [{ face: null, text }] : [];
+    } else if (this.unicode.length === 1) {
+      runs = visualRuns(text, this.direction).map(chunk => ({ face: this.unicode[0], text: chunk }));
     } else {
-      runs = visualRuns(text, this.direction).map(chunk => ({ face: this.unicode, text: chunk }));
+      runs = visualSegments(text, this.direction).flatMap(segment => {
+        const chunks: Run[] = [];
+        for (const cluster of graphemes(segment.text)) {
+          const face = isEncodable(this.standard, cluster) ? null : (this.coveringFace(cluster) ?? null);
+          const last = chunks[chunks.length - 1];
+          if (last && last.face === face) last.text += cluster;
+          else chunks.push({ text: cluster, face });
+        }
+        return segment.rtl ? chunks.reverse() : chunks;
+      });
     }
     this.runsCache.set(text, runs);
     return runs;
@@ -161,12 +215,25 @@ export class TextFace {
   }
 
   draw(page: PDFPage, text: string, options: { x: number; y: number; size: number; color: RGB }): void {
+    const clean = this.clean(text);
+    const runs = this.runs(clean);
+    const hasShapedText = this.preserveText && runs.some(run => run.face);
+    if (hasShapedText) {
+      // Les glyphes sont dans l'ordre visuel. ActualText restitue la ligne logique.
+      page.pushOperators(
+        PDFOperator.of(PDFOperatorNames.BeginMarkedContentSequence, [
+          PDFName.of('Span'),
+          `<< /ActualText ${PDFHexString.fromText(clean)} >>`
+        ])
+      );
+    }
     let x = options.x;
-    for (const run of this.runs(this.clean(text))) {
+    for (const run of runs) {
       if (run.face) drawShaped(page, run.face, run.text, { ...options, x });
       else page.drawText(run.text, { x, y: options.y, size: options.size, font: this.standard, color: options.color });
       x += this.runWidth(run, options.size);
     }
+    if (hasShapedText) page.pushOperators(endMarkedContent());
   }
 }
 
@@ -180,7 +247,7 @@ function drawShaped(
   const layout = face.kit.layout(text);
   // `encodeText` inscrit les glyphes dans le sous-ensemble et rend leurs numéros, dans l'ordre de `layout`.
   const ids = face.pdf.encodeText(text).asBytes();
-  if (ids.length !== layout.glyphs.length * 2) throw new Error('Signature : glyphes du PDF scellé incohérents');
+  if (ids.length !== layout.glyphs.length * 2) throw new Error('Glyphes du PDF incohérents');
   const key = page.node.newFontDictionary(face.pdf.name, face.pdf.ref);
   const scale = options.size / face.kit.unitsPerEm;
   const operators = [
@@ -208,19 +275,23 @@ function drawShaped(
  * lui-même les glyphes d'un segment arabe) et les parenthèses sont miroitées.
  */
 export function visualRuns(text: string, direction: 'ltr' | 'rtl' = 'ltr'): string[] {
+  return visualSegments(text, direction).map(segment => segment.text);
+}
+
+function visualSegments(text: string, direction: 'ltr' | 'rtl') {
   bidi ??= bidiFactory();
   // Mise en page toujours gauche-à-droite (étiquettes françaises ou anglaises, texte aligné à gauche).
   const result = bidi.getEmbeddingLevels(text, direction);
   const levels = result.levels;
   const mirrored = bidi.getMirroredCharactersMap(text, levels);
   const visual = bidi.getReorderedIndices(text, result);
-  const chunks: string[] = [];
+  const chunks: { text: string; rtl: boolean }[] = [];
   let group: number[] = [];
   const flush = (): void => {
     if (group.length === 0) return;
-    const level = levels[group[0]];
-    const logical = level % 2 === 1 ? [...group].reverse() : group;
-    chunks.push(logical.map(index => mirrored.get(index) ?? text[index]).join(''));
+    const rtl = levels[group[0]] % 2 === 1;
+    const logical = rtl ? [...group].reverse() : group;
+    chunks.push({ rtl, text: logical.map(index => mirrored.get(index) ?? text[index]).join('') });
     group = [];
   };
   for (const index of visual) {
@@ -232,24 +303,45 @@ export function visualRuns(text: string, direction: 'ltr' | 'rtl' = 'ltr'): stri
 }
 
 /** Copie fontkit d'une graisse, analysée une fois par processus. */
-function loadKit(weight: UnicodeWeight, bytes: Buffer): fontkit.Font {
-  let kit = fontKitCache.get(weight);
+function loadKit(file: string, bytes: Buffer): fontkit.Font {
+  let kit = fontKitCache.get(file);
   if (!kit) {
     kit = fontkit.create(new Uint8Array(bytes));
-    fontKitCache.set(weight, kit);
+    fontKitCache.set(file, kit);
   }
   return kit;
+}
+
+export async function embedUnicodeFamily(
+  doc: PDFDocument,
+  family: Exclude<UnicodeFamily, 'chinese'>
+): Promise<{ regular: UnicodeFace; bold: UnicodeFace }> {
+  doc.registerFontkit(fontkit);
+  const embed = async (weight: UnicodeWeight): Promise<UnicodeFace> => {
+    const bytes = await loadUnicodeFontBytes(weight, family);
+    return { pdf: await doc.embedFont(bytes, { subset: true }), kit: loadKit(FONT_FILES[family][weight], bytes) };
+  };
+  return { regular: await embed('regular'), bold: await embed('bold') };
+}
+
+/** Le sous-ensemble HarfBuzz conserve les glyphes chinois que le sous-ensemble
+ * TrueType de Fontkit peut omettre. Le PDF incorpore le résultat sans le redécouper.
+ */
+export async function embedChineseUnicodeFonts(doc: PDFDocument, characters: string) {
+  doc.registerFontkit(fontkit);
+  const { default: subsetFont } = await import('subset-font');
+  const embed = async (weight: UnicodeWeight): Promise<UnicodeFace> => {
+    const bytes = await subsetFont(await loadUnicodeFontBytes(weight, 'chinese'), characters, { targetFormat: 'sfnt' });
+    return { pdf: await doc.embedFont(bytes), kit: fontkit.create(bytes) };
+  };
+  const [regular, bold] = await Promise.all([embed('regular'), embed('bold')]);
+  return { regular, bold };
 }
 
 /** Embarque les deux graisses Unicode ; en cas d'échec, le scellement continue avec des `?`. */
 export async function embedUnicodeFonts(doc: PDFDocument): Promise<{ regular: UnicodeFace; bold: UnicodeFace } | null> {
   try {
-    doc.registerFontkit(fontkit);
-    const embed = async (weight: UnicodeWeight): Promise<UnicodeFace> => {
-      const bytes = await loadUnicodeFontBytes(weight);
-      return { pdf: await doc.embedFont(bytes, { subset: true }), kit: loadKit(weight, bytes) };
-    };
-    return { regular: await embed('regular'), bold: await embed('bold') };
+    return await embedUnicodeFamily(doc, 'arabic');
   } catch (error) {
     logger.error('Signature : police Unicode du PDF scellé indisponible, repli sur les polices standard', {
       error: error instanceof Error ? error.message : String(error)

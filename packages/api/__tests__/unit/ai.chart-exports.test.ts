@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
+import * as fontkit from '@pdf-lib/fontkit';
 import JSZip from 'jszip';
-import { PDFArray, PDFDocument, PDFRawStream, decodePDFRawStream } from 'pdf-lib';
-import { runWithLanguage } from '../../src/i18n';
+import { PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFRawStream, decodePDFRawStream } from 'pdf-lib';
+import { runWithAssistantLanguage, runWithLanguage } from '../../src/i18n';
 import type { ChartArtifact } from '../../src/lib/ai/artifact-chart-data';
 import { buildArtifactPdf } from '../../src/lib/ai/artifact-pdf';
 import { chartScene } from '../../src/lib/ai/artifact-chart-scene';
@@ -85,6 +86,48 @@ it('rend des courbes vectorielles en PDF et conserve la mise en page arabe', asy
   });
   expect(segments.join('\n')).toMatch(/ c\r?\n/); // courbes de Bézier des marqueurs
 });
+
+it('incorpore les contours chinois et garde le texte logique hindi dans un export mixte', async () => {
+  const title = '租金收入概览';
+  const label = 'किराये की आय (XOF)';
+  const bytes = await runWithAssistantLanguage('zh', () =>
+    buildArtifactPdf({
+      ...line,
+      title,
+      xLabel: '月份',
+      series: [{ key: 'xof', label }],
+      data: [{ month: '一月', xof: 350_000 }]
+    })
+  );
+  expect(bytes.length).toBeLessThan(250_000);
+  const pdf = await PDFDocument.load(bytes);
+  const fontStreams = pdf.context.enumerateIndirectObjects().flatMap(([, object]) => {
+    if (!(object instanceof PDFDict)) return [];
+    const name = object.get(PDFName.of('FontName'))?.toString() ?? '';
+    const stream = pdf.context.lookup(object.get(PDFName.of('FontFile2')));
+    return stream instanceof PDFRawStream ? [{ name, stream }] : [];
+  });
+  const font = fontStreams.find(item => item.name.includes('NotoSansSC-Bold'));
+  expect(font).toBeDefined();
+  const embedded = fontkit.create(decodePDFRawStream(font!.stream).decode());
+  for (const character of title) {
+    const code = character.codePointAt(0)!;
+    expect(embedded.hasGlyphForCodePoint(code)).toBe(true);
+    expect(embedded.glyphForCodePoint(code).path.toSVG()).not.toBe('');
+  }
+  expect(fontStreams.some(item => item.name.includes('NotoSansDevanagari'))).toBe(true);
+
+  const contents = pdf.getPage(0).node.Contents() as PDFArray;
+  const drawing = contents
+    .asArray()
+    .map(ref => {
+      const stream = pdf.context.lookup(ref);
+      if (!(stream instanceof PDFRawStream)) throw new Error('Flux PDF absent');
+      return Buffer.from(decodePDFRawStream(stream).decode()).toString('latin1');
+    })
+    .join('\n');
+  expect(drawing).toContain('/ActualText ' + PDFHexString.fromText(label).toString());
+}, 20_000);
 
 it('exporte un graphique modifiable avec données, lacunes et axe arabe', async () => {
   const bytes = buildPowerPoint(line, 'ar');
