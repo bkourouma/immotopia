@@ -1,6 +1,6 @@
 import React, { Suspense, useEffect, useRef, useState } from 'react';
 import { CloseOutlined, DownloadOutlined, FullscreenOutlined } from '@ant-design/icons';
-import { Button, Dropdown, Input, Modal, Select, Skeleton, Typography } from 'antd';
+import { Button, Dropdown, Input, Modal, Select, Skeleton, Typography, type MenuProps } from 'antd';
 import { feedback } from '../../../lib/feedback';
 import { useAssistantTranslation } from '../../../i18n/useAssistantTranslation';
 import type { ArtifactVersionChange } from '../../../types/copilot';
@@ -28,6 +28,7 @@ export interface ArtifactPanelProps {
   expandButtonRef?: React.Ref<HTMLButtonElement>;
   onViewVersion?(id: string, version?: number): void;
   serverDownloadsOnly?: boolean;
+  requireServerForData?: boolean;
   onSaveAnalysis?(artifactId: string): Promise<void>;
   onFollowUp?(artifact: CopilotArtifact, version: number): void;
   onDownloadFile?(artifactId: string, format: ArtifactDownloadFormat, version?: number): Promise<void>;
@@ -181,6 +182,7 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
   expandButtonRef,
   onViewVersion,
   serverDownloadsOnly,
+  requireServerForData,
   onSaveAnalysis,
   onRefresh,
   onReadVersion,
@@ -318,51 +320,47 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
 
   const csv = () => run(() => (onDownloadFile ? downloadFile('csv') : downloadCsv(artifact, exportLocale)));
   const xlsx = () => run(() => (onDownloadFile ? downloadFile('xlsx') : downloadXlsx(artifact, exportLocale)));
-  const downloadOptions =
-    artifact.kind === 'table' || artifact.kind === 'indicators'
-      ? [
-          { key: 'csv', label: t('CSV'), onClick: csv },
-          { key: 'xlsx', label: t('Excel (.xlsx)'), onClick: xlsx }
-        ]
-      : artifact.kind === 'chart'
-        ? [
-            {
-              key: 'png',
-              label: t('Image (.png)'),
-              onClick: () => run(() => downloadChartPng(bodyRef.current, artifact.title))
-            },
-            { key: 'csv', label: t('Données (.csv)'), onClick: csv },
-            { key: 'xlsx', label: t('Excel (.xlsx)'), onClick: xlsx }
-          ]
-        : [
-            {
-              key: 'md',
-              label: t('Markdown (.md)'),
-              onClick: () => run(() => downloadMarkdown(artifact, exportLocale))
-            }
-          ];
-  const downloads = serverDownloadsOnly
-    ? downloadOptions.filter(option => option.key !== 'png' && option.key !== 'md')
-    : downloadOptions;
-  if (serverDownloadsOnly && onDownloadFile && artifact.kind === 'document') {
-    downloads.push({ key: 'xlsx', label: t('Excel (.xlsx)'), onClick: xlsx });
-    if (artifact.blocks.length === 1 && artifact.blocks[0].kind === 'table') {
-      downloads.push({ key: 'csv', label: t('CSV'), onClick: csv });
-    }
+  const localData = !serverDownloadsOnly && !requireServerForData;
+  const dataDownload = Boolean(onDownloadFile) || localData;
+  const markdown = () => run(() => downloadMarkdown(artifact, exportLocale));
+  const downloads: NonNullable<MenuProps['items']> = [];
+  if (artifact.kind === 'chart' && !serverDownloadsOnly) {
+    downloads.push({
+      key: 'png',
+      label: t('Image (.png)'),
+      onClick: () => run(() => downloadChartPng(bodyRef.current, artifact.title))
+    });
   }
-  if (onDownloadFile)
+  const numeric = artifact.kind === 'table' || artifact.kind === 'chart' || artifact.kind === 'indicators';
+  if (dataDownload && numeric) {
     downloads.push({
-      key: 'pdf',
-      label: t('PDF (.pdf)'),
-      onClick: () => run(() => downloadFile('pdf'))
+      key: 'csv',
+      label: artifact.kind === 'chart' ? t('Données (.csv)') : t('CSV'),
+      onClick: csv
     });
-
-  if (onDownloadFile)
-    downloads.push({
-      key: 'pptx',
-      label: t('PowerPoint (.pptx)'),
-      onClick: () => run(() => downloadFile('pptx'))
-    });
+  }
+  if ((dataDownload && numeric) || (onDownloadFile && artifact.kind === 'document')) {
+    downloads.push({ key: 'xlsx', label: t('Excel (.xlsx)'), onClick: xlsx });
+  }
+  if (
+    serverDownloadsOnly &&
+    onDownloadFile &&
+    artifact.kind === 'document' &&
+    artifact.blocks.length === 1 &&
+    artifact.blocks[0].kind === 'table'
+  ) {
+    downloads.push({ key: 'csv', label: t('CSV'), onClick: csv });
+  }
+  const textResult = artifact.kind === 'document' || artifact.kind === 'markdown';
+  if (!serverDownloadsOnly && (onDownloadFile || localData) && textResult) {
+    downloads.push({ key: 'md', label: t('Markdown (.md)'), onClick: markdown });
+  }
+  if (onDownloadFile) {
+    downloads.push(
+      { key: 'pdf', label: t('PDF (.pdf)'), onClick: () => run(() => downloadFile('pdf')) },
+      { key: 'pptx', label: t('PowerPoint (.pptx)'), onClick: () => run(() => downloadFile('pptx')) }
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
@@ -443,11 +441,8 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
             {t('Recalculer')}
           </Button>
         )}
-        {!onDownloadFile && (artifact.kind === 'markdown' || artifact.kind === 'document') ? (
-          <Button
-            icon={<DownloadOutlined aria-hidden />}
-            onClick={() => void run(() => downloadMarkdown(artifact, exportLocale))}
-          >
+        {!onDownloadFile && localData && textResult ? (
+          <Button icon={<DownloadOutlined aria-hidden />} onClick={() => void markdown()}>
             {t('Télécharger')}
           </Button>
         ) : (
@@ -455,7 +450,7 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
             <Button
               icon={<DownloadOutlined aria-hidden />}
               loading={busy}
-              disabled={versionPending || (!!onReadVersion && !snapshot)}
+              disabled={!downloads.length || versionPending || (!!onReadVersion && !snapshot)}
             >
               {t('Télécharger')}
             </Button>

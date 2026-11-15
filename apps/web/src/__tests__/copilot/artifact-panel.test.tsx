@@ -466,6 +466,14 @@ describe('ArtifactPanel — recalcul', () => {
 });
 
 describe('ArtifactPanel — téléchargements', () => {
+  it('conserve le PNG du graphique affiché quand les exports de données attendent le serveur', async () => {
+    renderPanel([chart], undefined, { requireServerForData: true });
+    fireEvent.click(await screen.findByRole('button', { name: 'Télécharger' }));
+    expect(await screen.findByRole('menuitem', { name: 'Image (.png)' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Données (.csv)' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Excel (.xlsx)' })).not.toBeInTheDocument();
+  });
+
   it('télécharge un CSV UTF-8 avec BOM, « ; » en français et neutralise les formules', async () => {
     renderPanel([table]);
     fireEvent.click(screen.getByRole('button', { name: /Télécharger/ }));

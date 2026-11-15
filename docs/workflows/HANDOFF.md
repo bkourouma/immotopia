@@ -220,7 +220,7 @@ l’outil. Le wiki décrit la qualification. Le catalogue public annonce des mod
 Les variables de connexion fournisseur ne sont pas disponibles dans le processus ni dans la configuration locale
 d’ImmoTopia inspectée. Un appel authentifié auprès des fournisseurs reste à qualifier.
 
-**Traçabilité des exports (commit de cette passation)** — PDF, PowerPoint, Excel et CSV indiquent la date UTC de
+**Traçabilité des exports (`79cf6800`)** — PDF, PowerPoint, Excel et CSV indiquent la date UTC de
 génération en plus de la date de calcul. Le téléchargement utilise le nom du compte courant. L’attachement d’un
 rapport envoyé utilise le nom du destinataire. L’identifiant et l’adresse ne figurent pas dans ces métadonnées. Les
 classeurs gardent leurs onglets de données et ajoutent une feuille Provenance. Le nom du fichier téléchargé inclut le
@@ -229,6 +229,13 @@ celui préparé par le job après une réduction des droits. Le wiki est synchro
 La CI au commit `ae217498` a rencontré quatre 429 dans des scénarios après le bloc Assistant. Chaque scénario
 Assistant utilise désormais une adresse de test dédiée avec les limiteurs en place. Les 166 cas d’isolation
 repassent dans le mode warn de la CI. Les trois scénarios de rapports passent aussi avec la garde stricte.
+
+**Menu des exports (commit de cette passation)** — Dans le fil privé, les formats serveur deviennent disponibles
+à la lecture de la version enregistrée. Pendant le flux ou la lecture, les exports CSV/Excel locaux ne prennent plus
+le relais. Le PNG du graphique affiché reste disponible, et le Markdown local reste proposé pour un texte enregistré.
+Les rapports structurés proposent Excel dans le fil et dans Mes analyses. Le test du parcours maintient séparément
+le flux et la lecture de version en attente, puis vérifie le téléchargement du classeur de la version 2. Un autre
+test contrôle que le graphique conserve le PNG quand les exports de données attendent. Le wiki est synchronisé.
 
 ## chore/deps-patch-minor — 2026-11-11
 

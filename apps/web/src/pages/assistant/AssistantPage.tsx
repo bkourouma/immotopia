@@ -353,6 +353,7 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
   );
   const panel = (
     <ArtifactPanel
+      requireServerForData
       key={`${conversationId ?? ''}:${versionLink?.request ?? 0}`}
       initialVersion={versionLink?.id === chat.selectedArtifactId ? versionLink?.version : undefined}
       onReadVersion={conversationId && !streaming ? readVersion : undefined}

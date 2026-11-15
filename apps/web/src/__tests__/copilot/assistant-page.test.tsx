@@ -18,6 +18,7 @@ vi.mock('../../services/copilot-service', () => {
     getConversation: vi.fn(),
     saveResponseFeedback: vi.fn(),
     getArtifactVersion: vi.fn(),
+    downloadArtifact: vi.fn(),
     listSavedAnalyses: vi.fn(),
     listScheduledReports: vi.fn(),
     createScheduledReport: vi.fn(),
@@ -536,6 +537,75 @@ describe('AssistantPage — artefacts', () => {
     fireEvent.change(input, { target: { value: 'synthèse' } });
     fireEvent.keyDown(input, { key: 'Enter' });
   }
+
+  it('attend l’enregistrement avant de télécharger le classeur du rapport depuis le serveur', async () => {
+    setDesktop(true);
+    getStatus.mockResolvedValue(ENABLED);
+    const conversationId = '5258bdd1-74d6-47ea-a37f-ab4d1e8eae45';
+    const document = {
+      id: 'report-1',
+      title: 'Bilan avec tableau',
+      kind: 'document' as const,
+      blocks: [
+        { kind: 'text' as const, content: 'Résumé du rapport' },
+        {
+          kind: 'table' as const,
+          table: {
+            id: 'table-1',
+            title: 'Encaissements',
+            kind: 'table' as const,
+            columns: [{ key: 'month', label: 'Mois' }],
+            rows: [{ month: '2026-10' }]
+          }
+        }
+      ]
+    };
+    let finishStream!: () => void;
+    const streamPending = new Promise<void>(resolve => {
+      finishStream = resolve;
+    });
+    type Version = Awaited<ReturnType<typeof copilotService.getArtifactVersion>>;
+    let finishRead!: (version: Version) => void;
+    const readPending = new Promise<Version>(resolve => {
+      finishRead = resolve;
+    });
+    streamChat.mockImplementationOnce(async (_tenantId, _body, options) => {
+      options.onEvent({ type: 'meta', conversationId, requestId: 'request-1' });
+      options.onEvent({ type: 'artifact', artifact: document });
+      await streamPending;
+      options.onEvent({ type: 'done', reason: 'end_turn' });
+    });
+    vi.mocked(copilotService.getArtifactVersion).mockReturnValueOnce(readPending);
+    const bytes = new Blob(['classeur']);
+    vi.mocked(copilotService.downloadArtifact).mockResolvedValueOnce({
+      data: bytes,
+      headers: { 'content-disposition': 'attachment; filename="bilan.xlsx"' },
+      status: 200,
+      statusText: 'OK',
+      config: { headers: new AxiosHeaders() }
+    });
+    renderPage();
+    const input = await screen.findByLabelText('Votre message');
+    fireEvent.change(input, { target: { value: 'Affiche le bilan' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    const panel = await screen.findByRole('complementary', { name: 'Résultats et documents' });
+    const download = () => within(panel).getByRole('button', { name: 'Télécharger' });
+    expect(download()).toBeDisabled();
+    expect(saveBlob).not.toHaveBeenCalled();
+
+    finishStream();
+    await waitFor(() =>
+      expect(copilotService.getArtifactVersion).toHaveBeenCalledWith('t1', conversationId, document.id, undefined)
+    );
+    expect(download()).toBeDisabled();
+    finishRead({ artifact: document, version: 2, latest: 2, versions: [{ version: 2, createdAt: null }] });
+    await waitFor(() => expect(download()).toBeEnabled());
+    fireEvent.click(download());
+    expect(screen.queryByRole('menuitem', { name: 'CSV' })).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Excel (.xlsx)' }));
+    await waitFor(() => expect(saveBlob).toHaveBeenCalledWith(bytes, 'bilan.xlsx'));
+    expect(copilotService.downloadArtifact).toHaveBeenCalledWith('t1', conversationId, document.id, 'xlsx', 2);
+  });
 
   it('ordinateur : le panneau apparaît seul et peut être refermé', async () => {
     setDesktop(true);
