@@ -34,6 +34,8 @@ describe('Analyse des échéances locatives', () => {
     expect(closedMonthBounds(undefined, new Date('2026-01-01T12:00:00Z'))).toEqual({
       start: new Date('2025-12-01T00:00:00Z'),
       end: new Date('2026-01-01T00:00:00Z'),
+      firstDay: '2025-12-01',
+      lastDay: '2025-12-31',
       period: '2025-12'
     });
     expect(() => closedMonthBounds('2026-01', new Date('2026-01-09T12:00:00Z'))).toThrow();

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { t } from '../../../i18n';
+import { settledRentalPaymentWhere } from '../../rental/payment-list-filters';
 import { prisma } from '../../../utils/database';
 import type { CopilotArtifact, CopilotToolDefinition } from '../contracts';
 import { assertToolPermission, outcome } from './tool-utils';
@@ -26,7 +27,8 @@ export const rentalReceiptsTool: CopilotToolDefinition<typeof inputSchema> = {
   async execute(input, ctx) {
     assertToolPermission(ctx, PERMISSION);
     const now = new Date();
-    const { start, end, period } = closedMonthBounds(input.month, now);
+    const { start, end, period, firstDay, lastDay } = closedMonthBounds(input.month, now);
+    const filters = new URLSearchParams({ receivedFrom: firstDay, receivedTo: lastDay });
     const previous = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() - 1, 1));
     const lastYear = new Date(Date.UTC(start.getUTCFullYear() - 1, start.getUTCMonth(), 1));
     const lastYearEnd = new Date(Date.UTC(start.getUTCFullYear() - 1, start.getUTCMonth() + 1, 1));
@@ -39,7 +41,7 @@ export const rentalReceiptsTool: CopilotToolDefinition<typeof inputSchema> = {
       bounds.map(([gte, lt]) =>
         prisma.rentalPayment.groupBy({
           by: ['currency'],
-          where: { tenant_id: ctx.tenantId, status: 'SUCCESS', succeeded_at: { gte, lt } },
+          where: { tenant_id: ctx.tenantId, ...settledRentalPaymentWhere({ gte, lt }) },
           _sum: { amount: true },
           _count: { _all: true }
         })
@@ -78,7 +80,7 @@ export const rentalReceiptsTool: CopilotToolDefinition<typeof inputSchema> = {
       truncated: rows.length > 500,
       provenance: {
         source: t('Paiements locatifs'),
-        href: `/tenant/${encodeURIComponent(ctx.tenantId)}/rental/payments`,
+        href: `/tenant/${encodeURIComponent(ctx.tenantId)}/rental/payments?${filters}`,
         period,
         calculatedAt: now.toISOString(),
         rules: [

@@ -575,12 +575,29 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         updateDue(agency.id, canceled.installmentId, { due_date: currentDue, status: 'CANCELED' }),
         updateDue(tenantB.id, foreign.installmentId, { due_date: currentDue, status: 'OVERDUE', amount_paid: 0 }),
         updatePayment(agency.id, current.paymentId, {
-          succeeded_at: new Date('2025-10-31T18:00:00Z'),
+          created_at: new Date('2025-11-01'),
+          succeeded_at: new Date('2025-10-31T23:59:59.999Z'),
           amount: 85,
           currency: 'EUR'
         }),
         updatePayment(agency.id, prior.paymentId, { succeeded_at: new Date('2024-10-03'), amount: 80 }),
-        updatePayment(agency.id, canceled.paymentId, { succeeded_at: new Date('2025-11-01'), amount: 250 }),
+        updatePayment(agency.id, canceled.paymentId, {
+          created_at: new Date('2025-10-31'),
+          succeeded_at: new Date('2025-11-01'),
+          amount: 250
+        }),
+        prisma.rentalPayment.create({
+          data: {
+            tenant_id: agency.id,
+            lease_id: current.leaseId,
+            method: 'CASH',
+            status: 'FAILED',
+            amount: 100,
+            currency: 'EUR',
+            succeeded_at: currentDue,
+            idempotency_key: randomUUID()
+          }
+        }),
         updatePayment(tenantB.id, foreign.paymentId, { succeeded_at: currentDue }),
         prisma.rentalLease.updateMany({ where: { tenant_id: agency.id, id: current.leaseId }, data: { end_date: now } })
       ]);
@@ -619,6 +636,52 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       expect(leases.rows).toEqual([
         expect.objectContaining({ property: expect.stringContaining(current.propertyReference), ending: 1 })
       ]);
+      const businessBase = `/api/tenants/${agency.id}/rental`;
+      const receiptQuery = new URL(receipts.provenance.href, 'http://test.local').search;
+      const dueQuery = new URL(dues.provenance.href, 'http://test.local').search;
+      expect(receiptQuery).toBe('?receivedFrom=2025-10-01&receivedTo=2025-10-31');
+      expect(dueQuery).toBe('?dueFrom=2025-10-01&dueTo=2025-10-31');
+      const [paymentList, installmentList, creationPeriod, invalidRange, foreignAccess] = await Promise.all([
+        request(app)
+          .get(businessBase + '/payments' + receiptQuery)
+          .set(authed(admin)),
+        request(app)
+          .get(businessBase + '/installments' + dueQuery)
+          .set(authed(admin)),
+        request(app)
+          .get(businessBase + '/payments?startDate=2025-10-01&endDate=2025-10-31')
+          .set(authed(admin)),
+        request(app)
+          .get(businessBase + '/payments?receivedFrom=2025-11-01&receivedTo=2025-10-31')
+          .set(authed(admin)),
+        request(app)
+          .get(businessBase + '/payments' + receiptQuery)
+          .set(authed(adminB))
+      ]);
+      expect(paymentList.status).toBe(200);
+      expect(paymentList.body.data).toEqual([
+        expect.objectContaining({ id: current.paymentId, currency: receipts.rows[0].currency })
+      ]);
+      expect(Number(paymentList.body.data[0].amount)).toBe(receipts.rows[0].amount);
+      expect(paymentList.body.pagination.total).toBe(receipts.rows[0].count);
+      expect(installmentList.status).toBe(200);
+      expect(installmentList.body.data.map((item: { id: string }) => item.id).sort()).toEqual(
+        [current.installmentId, canceled.installmentId].sort()
+      );
+      const partial = installmentList.body.data.find((item: { id: string }) => item.id === current.installmentId);
+      expect(partial.status).toBe('PARTIAL');
+      const expected = [partial.amount_rent, partial.amount_service, partial.amount_other_fees, partial.penalty_amount]
+        .map(Number)
+        .reduce((total, amount) => total + amount, 0);
+      expect(dues.rows[0]).toMatchObject({
+        expected,
+        allocated: Number(partial.amount_paid),
+        overdue: expected - Number(partial.amount_paid)
+      });
+      expect(creationPeriod.status).toBe(200);
+      expect(creationPeriod.body.data).toEqual([expect.objectContaining({ id: canceled.paymentId })]);
+      expect(invalidRange.status).toBe(400);
+      expect(foreignAccess.status).toBe(403);
       mockFakeScript = [
         {
           toolCalls: [

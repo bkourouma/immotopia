@@ -89,7 +89,8 @@ export const rentalDueComparisonTool: CopilotToolDefinition<typeof inputSchema> 
   async execute(input, ctx) {
     assertToolPermission(ctx, PERMISSION);
     const now = new Date();
-    const { start, end, period } = closedMonthBounds(input.month, now);
+    const { start, end, period, firstDay, lastDay } = closedMonthBounds(input.month, now);
+    const filters = new URLSearchParams({ dueFrom: firstDay, dueTo: lastDay });
     const previous = new Date(start);
     previous.setUTCFullYear(start.getUTCFullYear() - 1);
     const previousEnd = new Date(end);
@@ -117,7 +118,7 @@ export const rentalDueComparisonTool: CopilotToolDefinition<typeof inputSchema> 
       truncated: rows.length > 500,
       provenance: {
         source: t('Échéances locatives'),
-        href: `/tenant/${encodeURIComponent(ctx.tenantId)}/rental/installments`,
+        href: `/tenant/${encodeURIComponent(ctx.tenantId)}/rental/installments?${filters}`,
         period: `${period} / ${previousPeriod}`,
         calculatedAt: now.toISOString(),
         rules: [

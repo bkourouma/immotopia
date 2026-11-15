@@ -21,7 +21,8 @@ export function closedMonthBounds(month: string | undefined, now: Date) {
     : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
   const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1));
   if (end > firstCurrent) throw new BadRequestError(t('Choisissez un mois terminé.'));
-  return { start, end, period: start.toISOString().slice(0, 7) };
+  const lastDay = new Date(end.getTime() - 1).toISOString().slice(0, 10);
+  return { start, end, period: start.toISOString().slice(0, 7), firstDay: start.toISOString().slice(0, 10), lastDay };
 }
 
 export function grossInstallmentAmount(item: {
@@ -49,7 +50,8 @@ export const rentalArrearsTool: CopilotToolDefinition<typeof inputSchema> = {
   async execute(input, ctx) {
     assertToolPermission(ctx, PERMISSION);
     const now = new Date();
-    const { start, end, period } = closedMonthBounds(input.month, now);
+    const { start, end, period, firstDay, lastDay } = closedMonthBounds(input.month, now);
+    const filters = new URLSearchParams({ dueFrom: firstDay, dueTo: lastDay, overdue: '1' });
     const installments = await prisma.rentalInstallment.findMany({
       where: {
         tenant_id: ctx.tenantId,
@@ -117,7 +119,7 @@ export const rentalArrearsTool: CopilotToolDefinition<typeof inputSchema> = {
       truncated: rows.length > 500,
       provenance: {
         source: t('Échéances locatives'),
-        href: `/tenant/${encodeURIComponent(ctx.tenantId)}/rental/installments`,
+        href: `/tenant/${encodeURIComponent(ctx.tenantId)}/rental/installments?${filters}`,
         period,
         calculatedAt: now.toISOString(),
         rules: [

@@ -470,6 +470,8 @@ export interface PaymentFilters {
   method?: RentalPaymentMethod;
   startDate?: string;
   endDate?: string;
+  receivedFrom?: string;
+  receivedTo?: string;
   page?: number;
   limit?: number;
 }

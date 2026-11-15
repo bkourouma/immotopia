@@ -130,6 +130,17 @@ describe('Paiements : recherche multicritères', () => {
     expect(screen.getByTestId('url').textContent).toContain('q=angré');
   });
 
+  it('reprend la période effective de la source d’encaissements dans l’écran Paiements', async () => {
+    renderPage('/tenant/agence-1/rental/payments?receivedFrom=2025-10-01&receivedTo=2025-10-31');
+    expect(await screen.findByText('BAIL-2026-0001', undefined, T)).toBeInTheDocument();
+    expect(listPayments).toHaveBeenLastCalledWith('agence-1', {
+      receivedFrom: '2025-10-01',
+      receivedTo: '2025-10-31',
+      page: 1,
+      limit: 50
+    });
+  });
+
   it('applique les critères d’une URL partagée', async () => {
     renderPage(
       '/tenant/agence-1/rental/payments?status=SUCCESS&method=CASH&periodeFrom=2026-01-01&periodeTo=2026-01-31&montantMin=1000&renterClientId=cli-2'

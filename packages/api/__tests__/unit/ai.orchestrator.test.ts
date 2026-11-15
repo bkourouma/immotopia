@@ -708,10 +708,16 @@ describe('orchestrateur — contexte d’écran', () => {
     });
 
     it('normalise les dates et montants des encaissements et rejette les intervalles inversés', async () => {
-      const currentPath = `/tenant/${TENANT}/rental/payments?method=CASH&montantMin=20.5&montantMax=100&periodeFrom=2026-10-31&periodeTo=2026-10-01`;
+      const currentPath = `/tenant/${TENANT}/rental/payments?method=CASH&montantMin=20.5&montantMax=100&periodeFrom=2026-10-31&periodeTo=2026-10-01&receivedFrom=2026-09-01&receivedTo=2026-09-30`;
       expect(await resolvePageContext({ currentPath }, TENANT, new Set(['RENTAL_PAYMENTS_VIEW']))).toEqual({
         screen: 'rental_payments',
-        filters: { method: 'CASH', minAmount: 20.5, maxAmount: 100 }
+        filters: {
+          method: 'CASH',
+          receivedFrom: '2026-09-01',
+          receivedTo: '2026-09-30',
+          minAmount: 20.5,
+          maxAmount: 100
+        }
       });
     });
     const perms = new Set(ALL_PERMS);

@@ -89,10 +89,16 @@ export function artifactInternalLink(value: unknown): string | undefined {
   return typeof value === 'string' && /^\/tenant\/[A-Za-z0-9_-]+\/[A-Za-z0-9_/-]+$/.test(value) ? value : undefined;
 }
 
+// Ces liens de provenance reproduisent les filtres de la liste métier. Les
+// valeurs libres et les paramètres propres aux autres routes restent exclus.
+const RENTAL_PROVENANCE =
+  /^\/tenant\/[A-Za-z0-9_-]+\/rental\/(?:payments\?receivedFrom=\d{4}-\d{2}-\d{2}&receivedTo=\d{4}-\d{2}-\d{2}|installments\?dueFrom=\d{4}-\d{2}-\d{2}&dueTo=\d{4}-\d{2}-\d{2}(?:&overdue=1)?)$/;
+
 function sanitizeProvenance(raw: unknown): ArtifactProvenance | undefined {
   if (!isRecord(raw)) return undefined;
   const { source, period, calculatedAt, rules } = raw;
-  const href = artifactInternalLink(raw.href);
+  const href =
+    typeof raw.href === 'string' && RENTAL_PROVENANCE.test(raw.href) ? raw.href : artifactInternalLink(raw.href);
   if (
     typeof source !== 'string' ||
     typeof period !== 'string' ||

@@ -156,6 +156,13 @@ function resolveListContext(
     addRange(filters, 'startDate', 'endDate', readDay(search.get('periodeFrom')), readDay(search.get('periodeTo')));
     addRange(
       filters,
+      'receivedFrom',
+      'receivedTo',
+      readDay(search.get('receivedFrom')),
+      readDay(search.get('receivedTo'))
+    );
+    addRange(
+      filters,
       'minAmount',
       'maxAmount',
       readAmount(search.get('montantMin')),

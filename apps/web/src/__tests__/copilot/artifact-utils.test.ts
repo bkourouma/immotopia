@@ -11,6 +11,31 @@ import {
 } from '../../utils/copilot-artifact';
 
 describe('sanitizeArtifact', () => {
+  it('conserve les liens de provenance locatifs filtrés et rejette les paramètres libres', () => {
+    const provenance = {
+      source: 'Paiements locatifs',
+      period: '2025-10',
+      calculatedAt: '2025-11-01T00:00:00Z',
+      rules: []
+    };
+    const artifact = {
+      kind: 'table',
+      id: 't',
+      title: 'Bilan',
+      columns: [{ key: 'amount', label: 'Montant' }],
+      rows: [{ amount: 80 }]
+    };
+    const payments = '/tenant/t1/rental/payments?receivedFrom=2025-10-01&receivedTo=2025-10-31';
+    const overdue = '/tenant/t1/rental/installments?dueFrom=2025-10-01&dueTo=2025-10-31&overdue=1';
+    for (const href of [payments, overdue]) {
+      expect(sanitizeArtifact({ ...artifact, provenance: { ...provenance, href } })).toMatchObject({
+        provenance: { href }
+      });
+    }
+    expect(
+      sanitizeArtifact({ ...artifact, provenance: { ...provenance, href: payments + '&redirect=//example.invalid' } })
+    ).not.toHaveProperty('provenance');
+  });
   it('conserve le dessin et la seconde dimension sans accepter une couleur arbitraire', () => {
     const item = sanitizeArtifact({
       kind: 'chart',

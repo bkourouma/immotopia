@@ -6,7 +6,10 @@ const LEASE_PATH = '/tenant/:tenantId/rental/leases/:leaseId/*';
 const LIST_FILTERS = new Map<string, readonly string[]>([
   ['properties', ['propertyType', 'transactionMode', 'status', 'minPrice', 'maxPrice', 'minBedrooms', 'maxBedrooms']],
   ['rental/installments', ['status', 'overdue', 'dueFrom', 'dueTo']],
-  ['rental/payments', ['status', 'periodeFrom', 'periodeTo', 'method', 'montantMin', 'montantMax']],
+  [
+    'rental/payments',
+    ['status', 'periodeFrom', 'periodeTo', 'receivedFrom', 'receivedTo', 'method', 'montantMin', 'montantMax']
+  ],
   ['rental/leases', ['status']],
   ['sales/mandates', ['status']]
 ]);
