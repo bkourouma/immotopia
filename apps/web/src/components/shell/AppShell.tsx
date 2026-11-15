@@ -418,7 +418,7 @@ export const AppShell: React.FC = () => {
             // le masque, geste ni découvrable ni accessible au clavier (§4.2).
             closable
             title={t('Navigation')}
-            width={288}
+            size={288}
             styles={{
               body: { padding: 0, background: 'var(--surface-nav)' },
               header: { background: 'var(--surface-nav)', borderBottom: 'none' }

@@ -4,12 +4,16 @@ import type { FeatureAccessMap } from '../../navigation/feature-access';
 import { HelpContext, type HelpContextValue } from '../help-context';
 import { getHelpEntry, resolvePageHelpId } from '../registry';
 import { canAutoStartTour } from '../tour-storage';
+import type { HelpEntry } from '../types';
 
-const HelpDrawer = React.lazy(() => import('./HelpDrawer'));
-const HelpTour = React.lazy(() => import('./HelpTour'));
+const HelpDrawer = /* @__PURE__ */ React.lazy(() => import('./HelpDrawer'));
+const HelpTour = /* @__PURE__ */ React.lazy(() => import('./HelpTour'));
 
 /** Delai avant de proposer une visite automatique : laisse l'ecran se stabiliser. */
 const AUTO_TOUR_DELAY_MS = 800;
+/** Reessais tant que l'ecran est occupe ou que la cible de la 1re etape n'est pas montee. */
+const AUTO_TOUR_RETRY_MS = 500;
+const AUTO_TOUR_MAX_WAIT_MS = 10_000;
 
 export interface HelpProviderProps {
   children: React.ReactNode;
@@ -48,7 +52,10 @@ export function HelpProvider({
   const pageRef = useRef(pageHelpId);
   pageRef.current = pageHelpId;
 
+  const openedSincePageRef = useRef(false);
+
   const openHelp = useCallback((helpId?: string) => {
+    openedSincePageRef.current = true;
     setBlockHelpId(helpId && helpId !== pageRef.current ? helpId : null);
     setEverOpened(true);
     setOpen(true);
@@ -96,20 +103,40 @@ export function HelpProvider({
   }, [openHelp]);
 
   // Proposition automatique de visite, une fois la page stabilisee.
+  // Reessaie tant que la page n'a pas change : un ecran charge directement par son URL
+  // est encore `aria-busy`, ou n'a pas encore monte ses ancres, au premier essai.
   useEffect(() => {
     if (!pageHelpId) return undefined;
     let cancelled = false;
-    const timer = window.setTimeout(() => {
+    let timer: number | undefined;
+    let entry: HelpEntry | null = null;
+    const startedAt = Date.now();
+    openedSincePageRef.current = false;
+
+    const attempt = () => {
+      if (cancelled || tourRef.current || openedSincePageRef.current || openRef.current) return;
+      if (entry && canAutoStartTour(entry)) {
+        setTourHelpId(entry.id);
+        return;
+      }
+      if (Date.now() - startedAt >= AUTO_TOUR_MAX_WAIT_MS) return;
+      timer = window.setTimeout(attempt, AUTO_TOUR_RETRY_MS);
+    };
+
+    timer = window.setTimeout(() => {
       void getHelpEntry(pageHelpId)
         .then(found => {
-          if (cancelled || !found || tourRef.current) return;
-          if (canAutoStartTour(found.entry)) setTourHelpId(found.entry.id);
+          if (cancelled || !found) return;
+          // Pas de visite automatique pour une fiche sans visite : inutile de reessayer.
+          if (!found.entry.tour?.autoStart) return;
+          entry = found.entry;
+          attempt();
         })
         .catch(() => undefined);
     }, AUTO_TOUR_DELAY_MS);
     return () => {
       cancelled = true;
-      window.clearTimeout(timer);
+      if (timer !== undefined) window.clearTimeout(timer);
     };
   }, [pageHelpId]);
 

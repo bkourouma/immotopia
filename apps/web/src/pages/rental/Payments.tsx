@@ -417,8 +417,14 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
         }
       />
 
-      <div {...helpAnchor('paiements-onglets')}>
+      <div>
         <Tabs
+          // L'ancre de visite ne couvre que la barre d'onglets, pas leur contenu (le tableau).
+          renderTabBar={(barProps, DefaultTabBar) => (
+            <div {...helpAnchor('paiements-onglets')}>
+              <DefaultTabBar {...barProps} />
+            </div>
+          )}
           activeKey={onglet}
           // L'onglet actif vit dans l'URL : revenir depuis le détail d'un
           // paiement retrouve l'onglet d'où l'on venait, et un lien vers les

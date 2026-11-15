@@ -23,6 +23,14 @@ export function markTourSeen(helpId: string): void {
   }
 }
 
+/** La cible de la 1re etape de la visite est-elle presente dans le DOM ? */
+export function firstAnchorMounted(entry: Pick<HelpEntry, 'tour'>): boolean {
+  const first = entry.tour?.steps[0];
+  if (!first || typeof document === 'undefined') return false;
+  const escaped = first.target.replace(/["\\]/g, char => `\\${char}`);
+  return document.querySelector(`[data-help-anchor="${escaped}"]`) !== null;
+}
+
 /**
  * Une visite marquee `autoStart` se propose-t-elle maintenant ? Une seule fois
  * par fiche et par navigateur, jamais pendant un chargement (`aria-busy`), ni
@@ -33,5 +41,6 @@ export function canAutoStartTour(entry: Pick<HelpEntry, 'id' | 'tour'>): boolean
   if (hasSeenTour(entry.id)) return false;
   if (typeof window === 'undefined' || window.innerWidth < TOUR_AUTOSTART_MIN_WIDTH) return false;
   if (document.querySelector('[aria-busy="true"]')) return false;
-  return true;
+  // Ecran charge directement par son URL : la cible de la 1re etape peut ne pas etre montee.
+  return firstAnchorMounted(entry);
 }

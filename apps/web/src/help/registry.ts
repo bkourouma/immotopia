@@ -240,6 +240,12 @@ export async function getAllHelpEntries(
   return perModule.flat();
 }
 
+function wordForms(word: string): string[] {
+  if (word.length > 3 && word.endsWith('ail')) return [word, `${word.slice(0, -3)}aux`];
+  if (word.length > 3 && word.endsWith('aux')) return [word, `${word.slice(0, -3)}ail`];
+  return [word];
+}
+
 function scoreEntry(entry: HelpEntry, words: string[]): number {
   const title = normalizeForSearch(entry.title);
   const keywords = normalizeForSearch((entry.keywords ?? []).join(' '));
@@ -251,11 +257,20 @@ function scoreEntry(entry: HelpEntry, words: string[]): number {
   );
   const haystack = `${title} ${summary} ${keywords} ${rest}`;
   if (!words.every(w => haystack.includes(w))) return 0;
+  const isPage = entry.kind === 'page';
   let score = 1;
   for (const w of words) {
-    if (title.includes(w)) {
+    // « bail » doit aussi trouver le titre « Liste des baux » (pluriel irregulier en -aux).
+    const forms = wordForms(w);
+    const inTitle = forms.find(form => title.includes(form));
+    if (inTitle) {
       score += 10;
-      if (title.startsWith(w)) score += 5;
+      if (title.startsWith(inTitle)) score += 5;
+      else if (title.split(' ').some(word => word.startsWith(inTitle))) score += 3;
+      // Une fiche de page dont le titre contient le terme passe avant toute simple mention.
+      if (isPage) score += 50;
+    } else if (isPage) {
+      score += 5;
     }
     if (keywords.includes(w)) score += 6;
     if (summary.includes(w)) score += 3;

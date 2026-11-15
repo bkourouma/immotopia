@@ -10,6 +10,7 @@ import {
   type HelpFeedbackQuestion
 } from '../../services/help-feedback-admin-service';
 import { t } from '../../i18n/t';
+import { getHelpEntry } from '../../help/registry';
 import { safeFormatDate } from '../../utils/date-utils';
 
 const { Text } = Typography;
@@ -51,6 +52,31 @@ export default function HelpFeedbackPage({ scope = 'platform' }: { scope?: Scope
 
   const isPlatform = scope === 'platform';
 
+  // Titres des fiches (langue courante), charges a la demande ; repli : l'identifiant.
+  const [titles, setTitles] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let cancelled = false;
+    const missing = items.map(item => item.helpId).filter(id => !(id in titles));
+    if (missing.length === 0) return undefined;
+    void Promise.all(
+      missing.map(async id => {
+        try {
+          const found = await getHelpEntry(id);
+          return found ? ([id, found.entry.title] as const) : null;
+        } catch {
+          return null;
+        }
+      })
+    ).then(pairs => {
+      if (cancelled) return;
+      const found = pairs.filter((pair): pair is readonly [string, string] => pair !== null);
+      if (found.length > 0) setTitles(previous => ({ ...previous, ...Object.fromEntries(found) }));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [items, titles]);
+
   useEffect(() => {
     if (!isPlatform && !tenantId) return;
     let cancelled = false;
@@ -74,7 +100,23 @@ export default function HelpFeedbackPage({ scope = 'platform' }: { scope?: Scope
   }, [isPlatform, tenantId, days, reloadKey]);
 
   const columns: ColumnsType<HelpFeedbackItem> = [
-    { title: t('Fiche'), dataIndex: 'helpId', key: 'helpId' },
+    {
+      title: t('Fiche'),
+      dataIndex: 'helpId',
+      key: 'helpId',
+      render: (helpId: string) => {
+        const title = titles[helpId];
+        if (!title) return helpId;
+        return (
+          <div>
+            <div>{title}</div>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {helpId}
+            </Text>
+          </div>
+        );
+      }
+    },
     { title: t('Utile'), dataIndex: 'useful', key: 'useful', align: 'end' },
     { title: t('Pas utile'), dataIndex: 'notUseful', key: 'notUseful', align: 'end' },
     { title: t('Questions'), dataIndex: 'questionsCount', key: 'questionsCount', align: 'end' },

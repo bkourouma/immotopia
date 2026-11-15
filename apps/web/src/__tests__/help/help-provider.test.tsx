@@ -162,6 +162,58 @@ describe('HelpProvider', () => {
     expect(ctx.tourHelpId).toBeNull();
   });
 
+  it('réessaie quand l’écran est encore occupé ou sans ancre, puis propose la visite', async () => {
+    vi.useFakeTimers();
+    const entry = { id: 'locatif.baux.liste', tour: { autoStart: true, steps: [{ target: 'a' }] } };
+    getHelpEntry.mockResolvedValue({ entry, language: 'fr', fallback: false });
+    canAutoStartTour.mockReturnValue(false);
+    setup();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(ctx.tourHelpId).toBeNull();
+    // L'ancre se monte (ou aria-busy se lève) tard : le prochain essai propose la visite.
+    canAutoStartTour.mockReturnValue(true);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600);
+    });
+    expect(ctx.tourHelpId).toBe('locatif.baux.liste');
+  });
+
+  it('cesse de réessayer après 10 s', async () => {
+    vi.useFakeTimers();
+    const entry = { id: 'locatif.baux.liste', tour: { autoStart: true, steps: [{ target: 'a' }] } };
+    getHelpEntry.mockResolvedValue({ entry, language: 'fr', fallback: false });
+    canAutoStartTour.mockReturnValue(false);
+    setup();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(11_500);
+    });
+    canAutoStartTour.mockReturnValue(true);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(ctx.tourHelpId).toBeNull();
+  });
+
+  it('ne propose rien si le panneau a été ouvert entre-temps', async () => {
+    vi.useFakeTimers();
+    const entry = { id: 'locatif.baux.liste', tour: { autoStart: true, steps: [{ target: 'a' }] } };
+    getHelpEntry.mockResolvedValue({ entry, language: 'fr', fallback: false });
+    canAutoStartTour.mockReturnValue(false);
+    setup();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    act(() => ctx.openHelp());
+    act(() => ctx.closeHelp());
+    canAutoStartTour.mockReturnValue(true);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(ctx.tourHelpId).toBeNull();
+  });
+
   it('annule la proposition si la page change avant le délai', async () => {
     vi.useFakeTimers();
     getHelpEntry.mockResolvedValue({ entry: { id: 'x' }, language: 'fr', fallback: false });

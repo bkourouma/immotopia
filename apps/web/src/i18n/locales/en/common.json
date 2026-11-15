@@ -163,6 +163,7 @@
   "Agrandir": "Enlarge",
   "Agrandir le QR {{institution}}": "Enlarge the {{institution}} QR",
   "Aide": "Help",
+  "Aide : {{titre}}": "Help: {{titre}}",
   "aide manquante": "help missing",
   "Ajout d'un colocataire au bail": "A co-tenant was added to the lease",
   "Ajout d'un compte de réception (QR ou alias de paiement)": "Receiving account added (payment QR or alias)",

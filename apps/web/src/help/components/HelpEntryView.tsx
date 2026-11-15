@@ -6,6 +6,7 @@ import { requestCopilotOpen } from '../copilot-bridge';
 import { helpEntryToPlainText } from '../excerpt';
 import { useHelp } from '../help-context';
 import { useHelpEntry } from '../registry';
+import { firstAnchorMounted } from '../tour-storage';
 import type { HelpEntry } from '../types';
 import { HelpFeedback } from './HelpFeedback';
 
@@ -220,8 +221,11 @@ function EntryBody({ entry }: { entry: HelpEntry }) {
 }
 
 function EntryActions({ entry }: { entry: HelpEntry }) {
-  const { copilotAvailable, startTour, closeHelp } = useHelp();
-  if (!entry.tour && !copilotAvailable) return null;
+  const { copilotAvailable, startTour, closeHelp, pageHelpId } = useHelp();
+  // La visite n'a de sens que si son ecran est affiche : fiche de la page courante,
+  // ou 1re cible presente dans le DOM (ex. fiche de bloc ouverte depuis la page).
+  const canTour = Boolean(entry.tour) && (entry.id === pageHelpId || firstAnchorMounted(entry));
+  if (!canTour && !copilotAvailable) return null;
   const askCopilot = () => {
     requestCopilotOpen({
       draft: t('Pouvez-vous m’expliquer « {{titre}} » ?', { titre: entry.title }),
@@ -232,7 +236,7 @@ function EntryActions({ entry }: { entry: HelpEntry }) {
   };
   return (
     <Space wrap style={{ marginBlockEnd: 'var(--space-4)' }}>
-      {entry.tour && (
+      {canTour && (
         <Button
           onClick={() => {
             startTour(entry.id);
