@@ -7,6 +7,7 @@ import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { useCopilotChat } from '../../hooks/useCopilotChat';
 import { useAssistantTranslation } from '../../i18n/useAssistantTranslation';
 import { useLanguage } from '../../i18n/useLanguage';
+import copilotService from '../../services/copilot-service';
 import type { CopilotStatus } from '../../types/copilot';
 import { CopilotComposer } from './CopilotComposer';
 import { CopilotThread } from './CopilotThread';
@@ -27,9 +28,11 @@ const CopilotDrawer: React.FC<CopilotDrawerProps> = ({ tenantId, status, open, o
   const navigate = useNavigate();
   const { rtl: isRtl } = useLanguage();
   const { isMobile } = useBreakpoint();
-  const chat = useCopilotChat(tenantId);
+  const chat = useCopilotChat(tenantId, true);
   const { stop } = chat;
   const [draft, setDraft] = useState('');
+  const [files, setFiles] = useState<File[]>([]);
+  const [composerVersion, setComposerVersion] = useState(0);
   const inputRef = useRef<TextAreaRef>(null);
   const onAssistantPage = /\/assistant\/?$/.test(pathname);
   const streaming = chat.status === 'streaming';
@@ -51,17 +54,20 @@ const CopilotDrawer: React.FC<CopilotDrawerProps> = ({ tenantId, status, open, o
     if (open) inputRef.current?.focus();
   }, [open]);
 
-  // Le tiroir cède la place à la page : la conversation du tiroir ne la suit pas.
   const openFullPage = () => {
     handleClose();
-    navigate(`/tenant/${tenantId}/assistant`);
+    navigate({
+      pathname: `/tenant/${tenantId}/assistant`,
+      search: chat.conversationId ? new URLSearchParams({ c: chat.conversationId }).toString() : ''
+    });
   };
 
   const submit = (text: string) => {
-    const value = text.trim();
+    const value = text.trim() || (files.length ? t('Analyse les fichiers joints.') : '');
     if (!value || streaming) return;
     setDraft('');
-    void chat.send(value, context);
+    setFiles([]);
+    void chat.send(value, context, false, files);
   };
 
   return (
@@ -84,6 +90,7 @@ const CopilotDrawer: React.FC<CopilotDrawerProps> = ({ tenantId, status, open, o
                 type="text"
                 icon={<ExpandOutlined aria-hidden />}
                 aria-label={t('Ouvrir en pleine page')}
+                disabled={streaming}
                 onClick={openFullPage}
               />
             </Tooltip>
@@ -93,8 +100,13 @@ const CopilotDrawer: React.FC<CopilotDrawerProps> = ({ tenantId, status, open, o
               type="text"
               icon={<ClearOutlined aria-hidden />}
               aria-label={t('Nouvelle conversation')}
-              disabled={chat.messages.length === 0}
-              onClick={() => chat.reset()}
+              disabled={chat.messages.length === 0 && !draft && files.length === 0}
+              onClick={() => {
+                chat.reset();
+                setDraft('');
+                setFiles([]);
+                setComposerVersion(version => version + 1);
+              }}
             />
           </Tooltip>
         </Space>
@@ -110,18 +122,29 @@ const CopilotDrawer: React.FC<CopilotDrawerProps> = ({ tenantId, status, open, o
         propertyId={propertyId}
         onSuggestion={submit}
       />
-      <div style={{ padding: 'var(--space-3) var(--space-4)' }}>
-        <CopilotComposer
-          inputRef={inputRef}
-          value={draft}
-          onChange={setDraft}
-          onSubmit={submit}
-          onStop={() => stop()}
-          streaming={streaming}
-          maxChars={maxChars}
-          maxRows={5}
-        />
-      </div>
+      {open && (
+        <div style={{ padding: 'var(--space-3) var(--space-4)' }}>
+          <CopilotComposer
+            key={composerVersion}
+            inputRef={inputRef}
+            value={draft}
+            onChange={setDraft}
+            files={files}
+            onFilesChange={setFiles}
+            transcribe={
+              status.transcription
+                ? (audio, signal, durationSeconds) =>
+                    copilotService.transcribe(tenantId, audio, signal, durationSeconds)
+                : undefined
+            }
+            onSubmit={submit}
+            onStop={() => stop()}
+            streaming={streaming}
+            maxChars={maxChars}
+            maxRows={5}
+          />
+        </div>
+      )}
     </Drawer>
   );
 };

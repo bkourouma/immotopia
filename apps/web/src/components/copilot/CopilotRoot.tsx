@@ -176,7 +176,13 @@ const CopilotRoot: React.FC<CopilotRootProps> = ({
         </Modal>
         {everOpened && (
           <Suspense fallback={null}>
-            <CopilotDrawer tenantId={tenantId} status={status} open={open} onClose={() => setOpen(false)} />
+            <CopilotDrawer
+              key={tenantId}
+              tenantId={tenantId}
+              status={status}
+              open={open}
+              onClose={() => setOpen(false)}
+            />
           </Suspense>
         )}
       </ConfigProvider>

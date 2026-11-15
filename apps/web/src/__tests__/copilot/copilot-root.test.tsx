@@ -8,6 +8,7 @@ import CopilotRoot from '../../components/copilot/CopilotRoot';
 import { selectAssistantLanguage } from '../../i18n/assistant-language';
 import { LanguageProvider } from '../../i18n/LanguageProvider';
 import { resetCopilotStatusCache } from '../../utils/copilot-status-cache';
+import copilotService from '../../services/copilot-service';
 import type { CopilotStatus } from '../../types/copilot';
 
 vi.mock('../../services/copilot-service', () => ({
@@ -17,6 +18,7 @@ vi.mock('../../services/copilot-service', () => ({
       return statusImpl();
     },
     streamChat: vi.fn(),
+    transcribe: vi.fn(),
     executeProposal: vi.fn()
   },
   copilotService: {}
@@ -67,12 +69,13 @@ function renderRoot() {
 
 function LaunchDestination() {
   const location = useLocation();
-  return <output>{JSON.stringify(location.state)}</output>;
+  return <output>{location.search || JSON.stringify(location.state)}</output>;
 }
 
 beforeEach(() => {
   resetCopilotStatusCache();
   getStatus.mockReset();
+  vi.mocked(copilotService.streamChat).mockReset();
 });
 
 describe('CopilotRoot', () => {
@@ -161,7 +164,7 @@ describe('CopilotRoot', () => {
     fireEvent.click(await screen.findByRole('button', BUTTON));
     const input = await screen.findByLabelText('Votre message');
     fireEvent.keyDown(input, { key: 'Escape', keyCode: 27, code: 'Escape' });
-    await waitFor(() => expect(screen.queryByLabelText('Votre message')).not.toBeVisible());
+    await waitFor(() => expect(screen.queryByLabelText('Votre message')).not.toBeInTheDocument());
   });
 });
 
@@ -206,6 +209,101 @@ describe('CopilotRoot — page plein écran', () => {
     const reset = screen.getByRole('button', { name: 'Nouvelle conversation' });
     expect(full.textContent?.trim()).toBe('');
     expect(reset.textContent?.trim()).toBe('');
+  });
+
+  it('joint un fichier au fil privé du tiroir et rouvre le même fil en pleine page', async () => {
+    getStatus.mockResolvedValue(ENABLED);
+    const conversationId = 'a26ca1bb-006a-4b80-8cb8-ec7050b85471';
+    const stream = vi.mocked(copilotService.streamChat);
+    stream.mockImplementation(async (_tenant, _payload, { onEvent }) => {
+      onEvent({ type: 'meta', conversationId, requestId: 'request-1' });
+      onEvent({ type: 'text_delta', text: 'Voici le montant.' });
+      onEvent({ type: 'done', reason: 'end_turn' });
+    });
+    const path = `/tenant/${TENANT}`;
+    render(
+      <LanguageProvider>
+        <MemoryRouter initialEntries={[`${path}/dashboard`]}>
+          <Routes>
+            <Route path={`${path}/dashboard`} element={<CopilotRoot tenantId={TENANT} />} />
+            <Route path={`${path}/assistant`} element={<LaunchDestination />} />
+          </Routes>
+        </MemoryRouter>
+      </LanguageProvider>
+    );
+    fireEvent.click(await screen.findByRole('button', BUTTON));
+    await screen.findByRole('button', { name: 'Joindre des fichiers' });
+    const file = new File(['Montant\n50'], 'loyers.csv', { type: 'text/csv' });
+    fireEvent.change(document.querySelector('input[type="file"]')!, { target: { files: [file] } });
+    expect(screen.getByRole('button', { name: 'Retirer loyers.csv' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Envoyer' }));
+    await screen.findByText('Voici le montant.');
+    expect(stream).toHaveBeenCalledWith(
+      TENANT,
+      expect.objectContaining({
+        turnId: expect.any(String),
+        messages: [{ role: 'user', content: 'Analyse les fichiers joints.' }]
+      }),
+      expect.objectContaining({ files: [file] })
+    );
+
+    const input = screen.getByRole('textbox', { name: 'Votre message' });
+    fireEvent.change(input, { target: { value: 'Quel est le total ?' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Envoyer' }));
+    expect(stream).toHaveBeenLastCalledWith(
+      TENANT,
+      expect.objectContaining({ conversationId, messages: [{ role: 'user', content: 'Quel est le total ?' }] }),
+      expect.not.objectContaining({ files: expect.anything() })
+    );
+    const openPage = screen.getByRole('button', { name: 'Ouvrir en pleine page' });
+    await waitFor(() => expect(openPage).toBeEnabled());
+    fireEvent.click(openPage);
+    expect(await screen.findByRole('status')).toHaveTextContent(`?c=${conversationId}`);
+  });
+
+  it('insère la transcription du micro dans la saisie du tiroir', async () => {
+    getStatus.mockResolvedValue({ ...ENABLED, transcription: true });
+    const stopTrack = vi.fn();
+    const getUserMedia = vi.fn(async () => ({ getTracks: () => [{ stop: stopTrack }] }));
+    const mediaDevices = Object.getOwnPropertyDescriptor(navigator, 'mediaDevices');
+    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia } });
+    class Recorder {
+      static isTypeSupported = () => true;
+      readonly mimeType = 'audio/webm;codecs=opus';
+      state = 'inactive';
+      ondataavailable?: (event: { data: Blob }) => void;
+      onstop?: () => void;
+
+      start() {
+        this.state = 'recording';
+      }
+
+      stop() {
+        this.state = 'inactive';
+        this.ondataavailable?.({ data: new Blob(['audio'], { type: 'audio/webm' }) });
+        this.onstop?.();
+      }
+    }
+    vi.stubGlobal('MediaRecorder', Recorder);
+    const transcribe = vi.mocked(copilotService.transcribe).mockResolvedValue('les encaissements');
+    try {
+      renderRoot();
+      fireEvent.click(await screen.findByRole('button', BUTTON));
+      fireEvent.change(await screen.findByRole('textbox', { name: 'Votre message' }), { target: { value: 'Résume' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Dicter un message' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Arrêter la dictée' }));
+      await waitFor(() =>
+        expect(screen.getByRole('textbox', { name: 'Votre message' })).toHaveValue('Résume les encaissements')
+      );
+      expect(transcribe).toHaveBeenCalledWith(TENANT, expect.any(Blob), expect.any(AbortSignal), expect.any(Number));
+      expect(transcribe.mock.calls[0][1].type).toBe('audio/webm');
+      expect(stopTrack).toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+      if (mediaDevices) Object.defineProperty(navigator, 'mediaDevices', mediaDevices);
+      else Reflect.deleteProperty(navigator, 'mediaDevices');
+      transcribe.mockReset();
+    }
   });
 });
 

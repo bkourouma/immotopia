@@ -246,11 +246,19 @@ fil, télécharge la version 1, vérifie le refus du même fil au second compte,
 l’analyse épinglée. Un rapport mensuel recalcule le solde après un règlement supplémentaire et prépare le CSV
 selon les droits du destinataire. Transport e-mail simulé. Deux scénarios PostgreSQL et 41 tests unitaires passent.
 
-**Lien vers la fiche du bien (commit de cette passation)** — La lecture filtre d’abord le bien par agence.
+**Lien vers la fiche du bien (`13e5a6f1`)** — La lecture filtre d’abord le bien par agence.
 Un mandat actif vérifié dans le périmètre de l’agence donne accès à la fiche si le bien y a été confié.
 L’appel HTTP réel vérifie les réponses pour le bien de l’agence, le bien externe, le mandat actif puis révoqué,
 sans divulguer les mandats dans la réponse. Deux parcours Assistant PostgreSQL en garde stricte, 25 tests unitaires
-et le typecheck API passent. Restent le résultat complet de la CI et la qualification des fournisseurs réels.
+et le typecheck API passent. Les 37 cas PostgreSQL de l’Assistant passent sous garde stricte. Le job GitHub
+d’isolation et la compilation web du commit `13e5a6f1` sont réussis.
+
+**Tiroir et historique privé (commit de cette passation)** — Le tiroir envoie désormais les tours persistants
+et la page Assistant rouvre le même fil. Le tiroir accepte les pièces jointes et la transcription serveur
+déjà configurée pour la page. Fermer le tiroir arrête le micro. Un changement d’agence réinitialise le tiroir
+et empêche le transfert du brouillon ou des fichiers entre agences. Les 37 tests de la page et les 18 tests
+du lanceur et du tiroir passent. Les nouveaux scénarios utilisent le contrat du flux et une transcription
+simulée. Le wiki est synchronisé. La qualification avec les comptes actifs des fournisseurs reste à faire.
 
 ## chore/deps-patch-minor — 2026-11-11
 
