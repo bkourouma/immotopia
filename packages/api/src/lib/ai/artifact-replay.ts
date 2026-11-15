@@ -22,6 +22,8 @@ import { leasePortfolioTool, propertyPortfolioTool } from './tools/portfolio';
 import { constructionBudgetTool, crmPipelineTool, saleMandatesTool } from './tools/commercial-analysis';
 import { ownerBalancesTool, ownerPayoutsTool, ownerStatementsTool } from './tools/owner-financial-analysis';
 import { patrimonyHistoryTool, patrimonyNetWorthTool } from './tools/patrimoine-analysis';
+import { maintenanceLogTool } from './tools/maintenance-log';
+import { reservedPropertiesTool } from './tools/reserved-properties';
 import { rentalDueComparisonTool } from './tools/rental-monthly-review';
 
 const querySchema = z.discriminatedUnion('tool', [
@@ -45,7 +47,9 @@ const querySchema = z.discriminatedUnion('tool', [
     .extend({ tool: z.literal('owner_payouts') }),
   ownerBalancesTool.inputSchema.extend({ tool: z.literal('owner_balances') }),
   patrimonyNetWorthTool.inputSchema.required({ asOf: true }).extend({ tool: z.literal('patrimony_net_worth') }),
-  patrimonyHistoryTool.inputSchema.required({ to: true }).extend({ tool: z.literal('patrimony_history') })
+  patrimonyHistoryTool.inputSchema.required({ to: true }).extend({ tool: z.literal('patrimony_history') }),
+  maintenanceLogTool.inputSchema.required({ to: true }).extend({ tool: z.literal('maintenance_log') }),
+  reservedPropertiesTool.inputSchema.extend({ tool: z.literal('reserved_sale_properties') })
 ]);
 
 const analysisTools: Record<BaseAnalysisQuery['tool'], CopilotToolDefinition> = {
@@ -65,7 +69,9 @@ const analysisTools: Record<BaseAnalysisQuery['tool'], CopilotToolDefinition> = 
   owner_payouts: ownerPayoutsTool,
   owner_balances: ownerBalancesTool,
   patrimony_net_worth: patrimonyNetWorthTool,
-  patrimony_history: patrimonyHistoryTool
+  patrimony_history: patrimonyHistoryTool,
+  maintenance_log: maintenanceLogTool,
+  reserved_sale_properties: reservedPropertiesTool
 };
 
 export function canReplayArtifact(artifact: CopilotArtifact): boolean {

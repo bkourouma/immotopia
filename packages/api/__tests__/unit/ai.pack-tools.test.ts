@@ -108,8 +108,14 @@ describe('ImmoCopilot — outils et prompt par pack', () => {
       'patrimony_net_worth',
       'patrimony_history'
     ]);
-    expect(toolsForUser(['PROPERTIES_VIEW'], ['PATRIMOINE'])).toEqual([]);
+    expect(toolsForUser(['PROPERTIES_VIEW'], ['PATRIMOINE']).map(tool => tool.name)).toEqual(['maintenance_log']);
     expect(toolsForUser(['PATRIMOINE_PERSONAL_VIEW'], ['CORE'])).toEqual([]);
+  });
+  it('exige le module Ventes pour les biens réservés à la vente', () => {
+    expect(toolsForUser(['PROPERTIES_VIEW'], ['SALES']).map(tool => tool.name)).toEqual(['reserved_sale_properties']);
+    expect(toolsForUser(['CRM_DEALS_VIEW'], ['SALES']).map(tool => tool.name)).not.toContain(
+      'reserved_sale_properties'
+    );
   });
   it('expose chaque analyse commerciale uniquement avec son module et son droit de lecture', () => {
     const permissions = ['CRM_DEALS_VIEW', 'FINANCE_REPORTS_READ'];

@@ -980,10 +980,122 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       }
     });
 
+    it('distingue les réservations de vente et les échéances déclarées du carnet d’entretien', async () => {
+      const programId = await createPropertyDirect(tenantA.id, 'Programme de recette');
+      const reservedId = await createPropertyDirect(tenantA.id, 'Lot réservé à la vente');
+      const rentalId = await createPropertyDirect(tenantA.id, 'Lot réservé à la location');
+      const foreignId = await createPropertyDirect(tenantB.id, 'Lot réservé privé');
+      for (const item of [
+        { tenantId: tenantA.id, id: reservedId, modes: ['SALE'] as const, containerParentId: programId },
+        { tenantId: tenantA.id, id: rentalId, modes: ['RENTAL'] as const, containerParentId: programId },
+        { tenantId: tenantB.id, id: foreignId, modes: ['SALE'] as const }
+      ]) {
+        await prisma.property.updateMany({
+          where: { tenantId: item.tenantId, id: item.id },
+          data: { status: 'RESERVED', transactionModes: [...item.modes], containerParentId: item.containerParentId }
+        });
+      }
+      const past = new Date('2026-08-01');
+      await prisma.maintenanceLogEntry.createMany({
+        data: [
+          {
+            tenantId: tenantA.id,
+            propertyId: reservedId,
+            performedAt: past,
+            category: 'PLUMBING',
+            description: 'Recette',
+            cost: 50,
+            currency: 'EUR',
+            nextDueDate: new Date('2026-09-01')
+          },
+          {
+            tenantId: tenantA.id,
+            propertyId: reservedId,
+            performedAt: past,
+            category: 'PAINTING',
+            description: 'Recette',
+            nextDueDate: new Date('2026-09-03')
+          },
+          {
+            tenantId: tenantA.id,
+            propertyId: reservedId,
+            performedAt: past,
+            category: 'PAINTING',
+            description: 'À venir',
+            cost: 100,
+            nextDueDate: new Date('2027-01-01')
+          },
+          {
+            tenantId: tenantB.id,
+            propertyId: foreignId,
+            performedAt: past,
+            category: 'PLUMBING',
+            description: 'Privé',
+            cost: 5000,
+            nextDueDate: new Date('2026-09-01')
+          }
+        ]
+      });
+      const base = `/api/tenants/${tenantA.id}`;
+      try {
+        const overdueAsOf = '2026-10-01';
+        mockFakeScript = [
+          {
+            toolCalls: [
+              { name: 'reserved_sale_properties', input: { programId } },
+              { name: 'reserved_sale_properties', input: {} },
+              { name: 'maintenance_log', input: { overdueAsOf } },
+              { name: 'maintenance_log', input: { propertyId: foreignId, overdueAsOf } }
+            ]
+          },
+          { text: 'Inventaire et carnet.' }
+        ];
+        const response = await request(app)
+          .post(base + '/ai/chat')
+          .set(authed(adminA))
+          .send({
+            turnId: randomUUID(),
+            messages: [{ role: 'user', content: 'Affiche les lots réservés et les échéances du carnet.' }]
+          });
+        expect(response.status).toBe(200);
+        const events = response.text
+          .split('\n')
+          .filter(line => line.startsWith('data: {'))
+          .map(line => JSON.parse(line.slice(6)));
+        const artifacts = events.filter(event => event.type === 'artifact').map(event => event.artifact);
+        const reservations = artifacts.filter(artifact => artifact.query.tool === 'reserved_sale_properties');
+        const logs = artifacts.filter(artifact => artifact.query.tool === 'maintenance_log');
+        expect(reservations).toHaveLength(2);
+        for (const result of reservations) {
+          expect(result.rows).toEqual([
+            expect.objectContaining({ name: 'Lot réservé à la vente', program: 'Programme de recette' })
+          ]);
+        }
+        expect(logs).toHaveLength(1);
+        expect(logs[0].rows).toEqual([
+          expect.objectContaining({ cost: 50, currency: 'EUR', nextDueDate: '2026-09-01' }),
+          expect.objectContaining({ cost: null, currency: 'XOF', nextDueDate: '2026-09-03' })
+        ]);
+        const conversationId = events.find(event => event.type === 'meta').conversationId;
+        const replay = await request(app)
+          .post(`${base}/ai/conversations/${conversationId}/artifacts/${logs[0].id}`)
+          .set(authed(adminA))
+          .send({ expectedVersion: 1 });
+        expect(replay.status).toBe(201);
+        expect(replay.body.data.artifact.rows).toEqual(logs[0].rows);
+      } finally {
+        mockFakeScript = undefined;
+        await prisma.maintenanceLogEntry.deleteMany({ where: { tenantId: tenantA.id, propertyId: reservedId } });
+        await prisma.maintenanceLogEntry.deleteMany({ where: { tenantId: tenantB.id, propertyId: foreignId } });
+        await prisma.property.deleteMany({
+          where: { tenantId: tenantA.id, id: { in: [reservedId, rentalId, programId] } }
+        });
+        await prisma.property.deleteMany({ where: { tenantId: tenantB.id, id: foreignId } });
+      }
+    });
+
     it('calcule la valorisation et l’historique du patrimoine selon les mêmes règles que l’écran', async () => {
-      const actor = await createTenantMemberUser(tenantA, 'valuation-assistant', 'TEST_ASSISTANT_VALUATION', [
-        'PATRIMOINE_PERSONAL_VIEW'
-      ]);
+      const actor = adminA;
       const assets = await Promise.all([
         prisma.asset.create({ data: { tenantId: tenantA.id, name: 'Trésorerie de recette', assetClass: 'CASH' } }),
         prisma.asset.create({ data: { tenantId: tenantB.id, name: 'Trésorerie privée', assetClass: 'CASH' } })
@@ -1501,6 +1613,8 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
                 'owner_balances',
                 'patrimony_net_worth',
                 'patrimony_history',
+                'maintenance_log',
+                'reserved_sale_properties',
                 'rental_due_comparison',
                 'rental_monthly_review'
               ].includes(name)

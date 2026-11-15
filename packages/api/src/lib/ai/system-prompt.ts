@@ -37,6 +37,11 @@ const TOOL_CAPABILITIES: Record<CopilotToolName, { group: string; text: string }
   owner_statements: { group: 'ownerStatements', text: 'les montants des relevés de gérance' },
   owner_payouts: { group: 'ownerPayouts', text: 'les reversements propriétaires validés' },
   owner_balances: { group: 'ownerBalances', text: 'les soldes comptabilisés à reverser aux propriétaires' },
+  maintenance_log: {
+    group: 'maintenanceLog',
+    text: 'les interventions, coûts et échéances inscrits au carnet d’entretien'
+  },
+  reserved_sale_properties: { group: 'saleReservations', text: 'les biens et lots mis en vente au statut réservé' },
   patrimony_net_worth: {
     group: 'patrimony',
     text: 'la valorisation du patrimoine et l’évolution mensuelle de sa valeur nette'

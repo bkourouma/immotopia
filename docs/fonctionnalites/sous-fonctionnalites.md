@@ -9,11 +9,11 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Finance | 198 |
 | CRM et Ventes | 72 |
 | Maintenance | 34 |
-| Communication et Documents | 119 |
+| Communication et Documents | 121 |
 | Syndic copropriete | 247 |
 | Administration plateforme | 145 |
 | Portails externes | 84 |
-| **Total** | **1280** |
+| **Total** | **1282** |
 
 ## Sous-fonctionnalités
 
@@ -850,6 +850,8 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Patrimoine, Opérateur intégré, extension Patrimoine | PATRIMOINE | Assistant IA ImmoCopilot | Analyser la valorisation du patrimoine | Consulter la valeur des actifs, des dettes actives et la valeur nette à une date selon le calcul de l’écran Patrimoine. | Date de valorisation facultative | Tableau recalculable en XOF, part peu fiable ou inconnue et nombres d’exclusions | Module Patrimoine | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | PATRIMOINE_PERSONAL_VIEW | Disponible | Assistant > Résultats et documents |
 | Patrimoine, Opérateur intégré, extension Patrimoine | PATRIMOINE | Assistant IA ImmoCopilot | Analyser l’évolution mensuelle de la valeur nette | Consulter jusqu’à 60 points mensuels selon le calcul de l’écran Patrimoine. Les dettes sont celles des prêts actuellement actifs. | Bornes facultatives | Série mensuelle recalculable en XOF avec provenance et exports | Module Patrimoine | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | PATRIMOINE_PERSONAL_VIEW | Disponible | Assistant > Résultats et documents |
 | Agence, Opérateur intégré et packs compatibles avec la gestion pour tiers | RENTAL | Assistant IA ImmoCopilot | Consulter les soldes comptabilisés à reverser | Consulter par propriétaire et devise les soldes positifs des comptes déjà comptabilisés, en lecture seule. | Compte client propriétaire facultatif | Tableau recalculable avec lien vers le compte, montant et devise | Comptes propriétaires et gestion pour tiers autorisée | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | FINANCE_ACCOUNTS_READ | Disponible | Assistant > Résultats et documents |
+| Packs ouvrant Patrimoine | PATRIMOINE | Assistant IA ImmoCopilot | Analyser les interventions du carnet d’entretien | Lire les coûts saisis et les échéances déclarées du carnet. Une échéance passée ne donne pas le statut de l’intervention suivante. | Bien, catégorie, prestataire, période d’intervention ou date de référence facultatifs | Tableau recalculable, liens vers les carnets, coûts et devises | Carnet d’entretien et module Patrimoine | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | PROPERTIES_VIEW | Disponible | Assistant > Résultats et documents |
+| Packs ouvrant Ventes | SALES | Assistant IA ImmoCopilot | Lister les biens et lots réservés à la vente | Lire le statut Réservé actuel des biens mis en vente et des lots d’un programme. | Programme ou immeuble parent facultatif | Tableau recalculable avec références, prix affichés et devises | Fiches des biens et module Ventes | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | PROPERTIES_VIEW | Disponible | Assistant > Résultats et documents |
 
 ### Syndic copropriete
 

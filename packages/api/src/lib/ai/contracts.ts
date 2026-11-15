@@ -4,6 +4,7 @@ import type {
   BudgetStatus,
   ConstructionSiteStatus,
   CrmDealStage,
+  MaintenanceLogCategory,
   MaintenanceTicketPriority,
   MaintenanceTicketStatus,
   PropertyType,
@@ -54,6 +55,8 @@ export type CopilotToolName =
   | 'owner_balances'
   | 'patrimony_net_worth'
   | 'patrimony_history'
+  | 'maintenance_log'
+  | 'reserved_sale_properties'
   | 'chart_analysis'
   | 'pivot_analysis'
   | 'show_indicators'
@@ -440,7 +443,17 @@ export type BaseAnalysisQuery =
   | { tool: 'owner_payouts'; periodFrom: string; periodTo: string; ownerClientId?: string }
   | { tool: 'owner_balances'; ownerClientId?: string }
   | { tool: 'patrimony_net_worth'; asOf: string }
-  | { tool: 'patrimony_history'; from?: string; to: string };
+  | { tool: 'patrimony_history'; from?: string; to: string }
+  | {
+      tool: 'maintenance_log';
+      propertyId?: string;
+      vendorId?: string;
+      category?: MaintenanceLogCategory;
+      from?: string;
+      to: string;
+      overdueAsOf?: string;
+    }
+  | { tool: 'reserved_sale_properties'; programId?: string };
 
 export type AnalysisQuery = BaseAnalysisQuery | { tool: 'pivot_analysis'; source: BaseAnalysisQuery; input: unknown };
 
