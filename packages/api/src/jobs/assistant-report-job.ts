@@ -14,7 +14,7 @@ import { getLlmProvider } from '../lib/ai/providers';
 import { evaluateFeatureAccess } from '../lib/subscription/feature-access';
 import { getSubscriptionEnforcement } from '../lib/subscription/enforcement';
 import { getEntitlements } from '../services/subscription-v2-service';
-import { notify } from '../lib/notifications/notify';
+import { writeAssistantNotification } from '../lib/ai/in-app-notification';
 import { emailService, isEmailDeliveryConfigured } from '../services/email-service';
 import { prisma } from '../utils/database';
 import { withJobLock } from '../utils/job-lock';
@@ -184,19 +184,20 @@ async function processReport(report: AssistantScheduledReport, now: Date) {
     if (!(error instanceof AppError) || error.statusCode >= 500) throw error;
     nextRunAt = null;
   }
-  const currentResult = await prisma.assistantScheduledReport.updateMany({
-    where: current,
-    data: { active: nextRunAt !== null, nextRunAt, lastRunAt: now, lastStatus: status }
-  });
-  if (currentResult.count) {
-    const owner = await prisma.user.findFirst({
-      where: { id: report.ownerId },
-      select: { preferredLanguage: true, preferredAssistantLanguage: true }
+  await prisma.$transaction(async tx => {
+    const currentResult = await tx.assistantScheduledReport.updateMany({
+      where: current,
+      data: { active: nextRunAt !== null, nextRunAt, lastRunAt: now, lastStatus: status }
     });
+    if (!currentResult.count) return;
+    const owner = await tx.user.findUnique({
+      where: { id: report.ownerId },
+      select: { id: true, fullName: true, preferredLanguage: true, preferredAssistantLanguage: true }
+    });
+    if (!owner) return;
     const language = assistantLanguageFor(owner);
-    await notify({
-      tenantId,
-      recipients: [{ userId: report.ownerId }],
+    await writeAssistantNotification(tx, { tenantId, ownerId: owner.id }, owner, language, {
+      senderUserId: null,
       key: 'ASSISTANT_REPORT_RESULT',
       title: report.immediateKey
         ? t('Envoi d’un rapport ImmoTopia', undefined, language)
@@ -206,9 +207,10 @@ async function processReport(report: AssistantScheduledReport, now: Date) {
           ? t('Le rapport a été envoyé.', undefined, language)
           : t('Certains envois du rapport restent à vérifier.', undefined, language),
       link: `/tenant/${encodeURIComponent(tenantId)}/assistant?rapports=1`,
-      relatedEntity: { type: 'AssistantScheduledReport', id }
+      relatedEntityType: 'AssistantScheduledReport',
+      relatedEntityId: id
     });
-  }
+  });
 }
 
 export async function runAssistantReports(now = new Date()) {

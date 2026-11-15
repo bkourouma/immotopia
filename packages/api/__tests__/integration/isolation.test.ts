@@ -35,6 +35,7 @@ import { signProposal } from '../../src/lib/ai/proposal-token';
 import { runAssistantReports } from '../../src/jobs/assistant-report-job';
 import { runAssistantRentalAlerts } from '../../src/jobs/assistant-rental-alert-job';
 import * as reportEmail from '../../src/services/email-service';
+import * as assistantNotice from '../../src/lib/ai/in-app-notification';
 import { assistantScope, getConversation } from '../../src/lib/ai/conversations';
 import { toolsForUser } from '../../src/lib/ai/tools/registry';
 import { getUserPermissions } from '../../src/services/permission-service';
@@ -3001,6 +3002,191 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       } finally {
         configured.mockRestore();
         send.mockRestore();
+      }
+    });
+
+    it('rejoue un rapport après interruption dans les droits courants de chaque destinataire', async () => {
+      const agency = await createTestTenant('Recette rapports');
+      createdTenantIds.push(agency.id);
+      const manager = await createTenantAdminUser(agency, 'report-restart-manager');
+      const permissions = ['PROPERTIES_VIEW', 'RENTAL_PAYMENTS_VIEW', 'RENTAL_LEASES_VIEW', 'RENTAL_INSTALLMENTS_VIEW'];
+      const owner = await createTenantMemberUser(
+        agency,
+        'report-restart-owner',
+        'TEST_REPORT_RESTART_OWNER',
+        permissions
+      );
+      const full = await createTenantMemberUser(agency, 'report-restart-full', 'TEST_REPORT_RESTART_FULL', permissions);
+      const partial = await createTenantMemberUser(
+        agency,
+        'report-restart-reduced',
+        'TEST_REPORT_RESTART_REDUCED',
+        permissions
+      );
+      await prisma.user.updateMany({
+        where: { id: { in: [full.id, partial.id] } },
+        data: { preferredLanguage: 'fr' }
+      });
+      const paymentsRoleKey = 'TEST_REPORT_RESTART_PAYMENTS_ONLY';
+      await createTenantMemberUser(agency, 'report-restart-payments', paymentsRoleKey, ['RENTAL_PAYMENTS_VIEW']);
+      const paymentsRole = await prisma.role.findUniqueOrThrow({
+        where: { key: paymentsRoleKey },
+        select: { id: true }
+      });
+      const base = `/api/tenants/${agency.id}/ai`;
+      const configured = jest.spyOn(reportEmail, 'isEmailDeliveryConfigured').mockReturnValue(true);
+      const send = jest.spyOn(reportEmail.emailService, 'sendEmail').mockResolvedValue({ sent: true });
+      let reportId: string | undefined;
+      try {
+        mockFakeScript = [
+          { toolCalls: [{ name: 'rental_monthly_review', input: { month: '2025-06' } }] },
+          { text: 'Voici le bilan.' }
+        ];
+        const stream = await request(app)
+          .post(base + '/chat')
+          .set(authed(owner))
+          .send({
+            turnId: randomUUID(),
+            messages: [{ role: 'user', content: 'Prépare le bilan locatif de juin 2025.' }]
+          });
+        expect(stream.status).toBe(200);
+        const events = stream.text
+          .split('\n')
+          .filter(line => line.startsWith('data: {'))
+          .map(line => JSON.parse(line.slice(6)));
+        const { conversationId } = events.find(event => event.type === 'meta');
+        const { artifact } = events.find(event => event.type === 'artifact' && event.artifact.kind === 'document');
+        const artifactId = artifact.id;
+        expect(artifact.blocks.filter(block => block.kind === 'table')).toHaveLength(3);
+        expect(
+          (await request(app).put(`${base}/analyses/${conversationId}/${artifactId}`).set(authed(owner))).status
+        ).toBe(200);
+        const draft = await request(app)
+          .post(base + '/reports')
+          .set(authed(owner))
+          .send({
+            conversationId,
+            artifactId,
+            recipientIds: [full.id, partial.id],
+            formats: ['xlsx'],
+            schedule: { frequency: 'daily', time: '08:15', timeZone: 'UTC' }
+          });
+        expect(draft.status).toBe(201);
+        const id = draft.body.data.id as string;
+        reportId = id;
+        expect(
+          (await request(app).patch(`${base}/reports/${id}`).set(authed(owner)).send({ active: true, share: true }))
+            .status
+        ).toBe(204);
+        const shares = (
+          await request(app)
+            .get(base + '/shares?direction=incoming')
+            .set(authed(partial))
+        ).body.data.items;
+        expect(shares).toHaveLength(1);
+        const sharePath = `${base}/shares/${shares[0].id}`;
+        const stringsInWorkbook = (buffer: Buffer) => new PizZip(buffer).file('xl/sharedStrings.xml')?.asText();
+        const downloadSharedWorkbook = () =>
+          request(app)
+            .get(sharePath + '/xlsx')
+            .set(authed(partial))
+            .set('Accept-Language', 'fr')
+            .buffer(true)
+            .parse((res, callback) => {
+              const chunks: Buffer[] = [];
+              res.on('data', (chunk: Buffer) => chunks.push(chunk));
+              res.on('end', () => callback(null, Buffer.concat(chunks)));
+            });
+        const before = await downloadSharedWorkbook();
+        expect(before.status).toBe(200);
+        expect(stringsInWorkbook(before.body)).toContain('Baux actifs');
+        expect(stringsInWorkbook(before.body)).toContain('Montant encaissé');
+
+        await updateMemberRoles(partial.id, agency.id, { roleIds: [paymentsRole.id] }, manager.id);
+        const reduced = await downloadSharedWorkbook();
+        expect(reduced.status).toBe(200);
+        const reducedStrings = stringsInWorkbook(reduced.body);
+        expect(reducedStrings).toContain('Montant encaissé');
+        expect(reducedStrings).not.toContain('Baux actifs');
+        expect(reducedStrings).not.toContain('Montant attendu');
+
+        const dueAt = new Date('2034-01-10T08:15:00Z');
+        const nextRunAt = new Date('2034-01-11T08:15:00Z');
+        const identity = { tenantId: agency.id, id };
+        await prisma.assistantScheduledReport.updateMany({ where: identity, data: { nextRunAt: dueAt } });
+        // État durable laissé par un processus interrompu entre la réservation et l’accusé SMTP.
+        await prisma.assistantReportDelivery.create({
+          data: { tenantId: agency.id, reportId: id, dueAt, recipientId: full.id, status: 'UNKNOWN' }
+        });
+        const notices = () =>
+          prisma.userNotification.count({
+            where: {
+              tenantId: agency.id,
+              recipientUserId: owner.id,
+              key: 'ASSISTANT_REPORT_RESULT',
+              relatedEntityId: id
+            }
+          });
+        const writeNotice = jest.spyOn(assistantNotice, 'writeAssistantNotification');
+        try {
+          writeNotice.mockRejectedValueOnce(new Error('Panne à l’écriture de la notification'));
+          await runAssistantReports(dueAt);
+          expect(writeNotice).toHaveBeenCalledTimes(1);
+          expect(await notices()).toBe(0);
+          expect(await prisma.assistantScheduledReport.findFirst({ where: identity })).toMatchObject({
+            active: true,
+            nextRunAt: dueAt,
+            lastStatus: null
+          });
+        } finally {
+          writeNotice.mockRestore();
+        }
+        await runAssistantReports(dueAt);
+        await runAssistantReports(dueAt);
+        expect(await notices()).toBe(1);
+        expect(send).toHaveBeenCalledTimes(1);
+        const [first] = send.mock.calls[0];
+        expect(first.to).toBe(partial.email);
+        const attachment = first.attachments?.[0];
+        expect(attachment?.filename).toBe('ImmoTopia.xlsx');
+        expect(Buffer.isBuffer(attachment?.content)).toBe(true);
+        const sentStrings = stringsInWorkbook(attachment?.content as Buffer);
+        expect(sentStrings).toContain('Montant encaissé');
+        expect(sentStrings).not.toContain('Montant attendu');
+        expect(sentStrings).not.toContain('Baux actifs');
+        const attempts = await prisma.assistantReportDelivery.findMany({
+          where: { tenantId: agency.id, reportId: id, dueAt },
+          select: { recipientId: true, status: true }
+        });
+        expect(attempts).toHaveLength(2);
+        expect(attempts).toEqual(
+          expect.arrayContaining([
+            { recipientId: full.id, status: 'UNKNOWN' },
+            { recipientId: partial.id, status: 'SENT' }
+          ])
+        );
+        expect(await prisma.assistantScheduledReport.findFirst({ where: identity })).toMatchObject({
+          active: true,
+          nextRunAt,
+          lastStatus: 'PARTIAL'
+        });
+
+        await runAssistantReports(nextRunAt);
+        expect(await notices()).toBe(2);
+        expect(send).toHaveBeenCalledTimes(3);
+        const fullDelivery = send.mock.calls.slice(1).find(([delivery]) => delivery.to === full.email)?.[0];
+        const fullWorkbook = fullDelivery?.attachments?.[0]?.content;
+        expect(Buffer.isBuffer(fullWorkbook)).toBe(true);
+        expect(stringsInWorkbook(fullWorkbook as Buffer)).toContain('Baux actifs');
+        expect(await prisma.assistantScheduledReport.findFirst({ where: identity })).toMatchObject({
+          lastStatus: 'SENT'
+        });
+      } finally {
+        mockFakeScript = undefined;
+        configured.mockRestore();
+        send.mockRestore();
+        if (reportId)
+          await prisma.assistantScheduledReport.deleteMany({ where: { tenantId: agency.id, id: reportId } });
       }
     });
 

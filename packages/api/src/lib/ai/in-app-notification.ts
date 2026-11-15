@@ -9,6 +9,7 @@ export function writeAssistantNotification(
   recipient: { id: string; fullName: string | null },
   language: AssistantLanguage,
   notice: {
+    senderUserId?: string | null;
     key: string;
     title: string;
     body: string;
@@ -22,7 +23,7 @@ export function writeAssistantNotification(
     data: {
       ...notice,
       tenantId: owner.tenantId,
-      senderUserId: owner.ownerId,
+      senderUserId: notice.senderUserId === undefined ? owner.ownerId : notice.senderUserId,
       recipientUserId: recipient.id,
       recipientLabel: recipient.fullName || t('Collaborateur', undefined, language),
       status: 'SENT',

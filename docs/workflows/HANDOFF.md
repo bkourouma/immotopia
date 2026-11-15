@@ -198,9 +198,18 @@ La recette PostgreSQL couvre l’ordre des cartes, un compte limité aux baux, d
 lorsque le contrat est révoqué, le paiement soldé ou l’échéance déplacée. Le wiki est synchronisé. Restent la
 qualification des fournisseurs actifs et les derniers contrôles transversaux du plan.
 
-**Crédits IA (commit de cette passation)** — Le plan rapproche le journal d’un tour et les mesures par appel au
+**Crédits IA (`34d1d43c`)** — Le plan rapproche le journal d’un tour et les mesures par appel au
 fournisseur des exigences FR-001 à FR-009 de la spécification 028. Il indique les écarts de granularité, d’idempotence
 et de coût avant un raccordement de la facturation.
+
+**Reprise des rapports (commit de cette passation)** — Le statut du rapport, sa prochaine échéance et la notification
+interne de résultat valident ensemble. En cas d’échec d’écriture, l’occurrence reste à traiter et les réservations SMTP
+déjà écrites empêchent un renvoi. La recette PostgreSQL stricte a rejoué une occurrence avec un accusé incertain, un
+autre envoi réussi, puis une panne de notification. Elle vérifie le statut partiel, une seule notification à la reprise
+et les envois de l’occurrence suivante. Le même bilan locatif passe de trois jeux à un seul après changement de rôle
+du destinataire. Le classeur téléchargé et celui envoyé depuis le job ne contiennent que les encaissements pour ce
+destinataire, tandis que le second destinataire conserve son périmètre complet. Transport SMTP simulé. Restent la
+qualification des fournisseurs actifs et les derniers contrôles transversaux du plan.
 
 ## chore/deps-patch-minor — 2026-11-11
 
