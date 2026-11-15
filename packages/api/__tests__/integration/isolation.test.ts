@@ -1347,16 +1347,21 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         const saleResponse = await request(app)
           .post(base + '/ai/chat')
           .set(authed(actor))
+          .set('Accept-Language', 'es-ES')
           .send({
             turnId: randomUUID(),
-            messages: [{ role: 'user', content: 'Montre les compromis de vente dont la date prévue est passée.' }]
+            messages: [{ role: 'user', content: 'Muestra los contratos preliminares cuyo plazo ya venció.' }]
           });
         expect(saleResponse.status).toBe(200);
+        expect(saleResponse.headers['content-language']).toBe('es');
         const saleEvents = saleResponse.text
           .split('\n')
           .filter(line => line.startsWith('data: {'))
           .map(line => JSON.parse(line.slice(6)));
         const saleArtifact = saleEvents.find(event => event.type === 'artifact').artifact;
+        expect(saleArtifact.title).toBe('Contratos preliminares de compraventa firmados y vigentes');
+        const cutoff = saleArtifact.provenance.calculatedAt.slice(0, 10);
+        expect(saleArtifact.provenance.rules).toContain(`La fecha prevista de la escritura es anterior al ${cutoff}.`);
         const source = await request(app).get(`${base}/sales/agreements/${signed.id}`).set(authed(actor));
         expect(source.status).toBe(200);
         expect(saleArtifact.rows).toEqual([
@@ -1367,17 +1372,34 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
             href: `/tenant/${tenantA.id}/sales/agreements/${signed.id}`
           })
         ]);
+        const saleConversationId = saleEvents.find(event => event.type === 'meta').conversationId;
+        const salePath = `${base}/ai/conversations/${saleConversationId}/artifacts/${saleArtifact.id}`;
+        const csv = await request(app)
+          .get(salePath + '/csv')
+          .set(authed(actor))
+          .set('Accept-Language', 'hi-IN');
+        expect(csv.status).toBe(200);
+        expect(csv.headers['content-language']).toBe('hi');
+        expect(csv.text).toContain('"सहमत कीमत","निर्धारित जमा राशि","मुद्रा"');
+        expect(csv.text).toContain('500,50,"XOF"');
+        expect(csv.text).toContain('प्रारंभिक बिक्री समझौते');
+
         await prisma.saleAgreement.updateMany({
           where: { tenantId: tenantA.id, id: signed.id },
           data: { status: 'CANCELLED' }
         });
-        const saleConversationId = saleEvents.find(event => event.type === 'meta').conversationId;
         const refreshedSale = await request(app)
-          .post(`${base}/ai/conversations/${saleConversationId}/artifacts/${saleArtifact.id}`)
+          .post(salePath)
           .set(authed(actor))
+          .set('Accept-Language', 'zh-CN')
           .send({ expectedVersion: 1 });
         expect(refreshedSale.status).toBe(201);
-        expect(refreshedSale.body.data.artifact.rows).toEqual([]);
+        expect(refreshedSale.body.data.artifact).toMatchObject({
+          title: saleArtifact.title,
+          columns: expect.arrayContaining([expect.objectContaining({ key: 'deposit', label: '约定订金' })]),
+          rows: [],
+          provenance: { source: '房产买卖预备协议' }
+        });
       } finally {
         mockFakeScript = undefined;
         await prisma.saleAgreement.deleteMany({ where: { tenantId: tenantA.id, propertyId: rental.propertyId } });
