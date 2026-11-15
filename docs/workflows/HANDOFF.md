@@ -50,9 +50,7 @@ La démo tourne sur `68e29d51`. Elle contient 4 avis d'aide de recette dans l'ag
 
 **Reste**
 
-- La CI échoue sur l'étape « Budget du chunk d'entrée » : 235 720 o pour 234 496 o.
-  - Le relèvement du plafond (+2 Kio, motif daté dans `apps/web/scripts/measure-entry.mjs`) a été refusé par le classifieur de permissions quand un agent l'a tenté. Il attend la décision de l'utilisateur.
-  - L'autre voie est un réglage global de `build.modulePreload`.
+- Budget du chunk d'entrée relevé à 236 544 o (+2 Kio, accord de l'utilisateur le 2026-11-15, marge 824 o). Fusion automatique (squash) activée sur la PR 222 le 2026-11-15, à la demande de l'utilisateur : elle fusionne dès que la CI est verte. Après fusion, supprimer la section de cette branche et le worktree `.claude/worktrees/aide-integration`.
 - Relecture de l'arabe par un arabophone.
 - Test d'isolation `HelpFeedback` en base réelle.
 - AI-13, AI-14 et AI-18 à rejouer avec des comptes adaptés.
