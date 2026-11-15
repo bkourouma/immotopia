@@ -8,6 +8,7 @@ import {
   runWithLanguage,
   t
 } from '../../src/i18n';
+import { extractAssistantFile } from '../../src/lib/ai/assistant-files';
 import { buildSystemPrompt } from '../../src/lib/ai/system-prompt';
 
 describe('Langues de l’assistant', () => {
@@ -29,5 +30,26 @@ describe('Langues de l’assistant', () => {
       })
     );
     expect(currentAssistantLanguage()).toBe('fr');
+  });
+
+  test.each([
+    ['es', 'Archivo importado', 'Se aceptan archivos adjuntos CSV, TXT, XLSX y PDF.'],
+    ['zh', '导入的文件', '支持的附件格式为 CSV、TXT、XLSX 和 PDF。'],
+    ['hi', 'आयात की गई फ़ाइल', 'CSV, TXT, XLSX और PDF अटैचमेंट स्वीकार किए जाते हैं।']
+  ] as const)('localise la provenance et les erreurs d’import en %s', async (language, source, error) => {
+    const csv = {
+      originalname: 'loyers.csv',
+      buffer: Buffer.from('Immeuble;Loyer\nAtrium;50000')
+    } as Express.Multer.File;
+    await runWithAssistantLanguage(language, async () => {
+      const result = await extractAssistantFile(csv, 't1');
+      expect(result.table).toMatchObject({
+        title: 'loyers.csv',
+        columns: [expect.objectContaining({ label: 'Immeuble' }), expect.objectContaining({ label: 'Loyer' })],
+        rows: [{ column1: 'Atrium', column2: 50000 }],
+        provenance: { source }
+      });
+      await expect(extractAssistantFile({ ...csv, originalname: 'loyers.zip' }, 't1')).rejects.toThrow(error);
+    });
   });
 });
