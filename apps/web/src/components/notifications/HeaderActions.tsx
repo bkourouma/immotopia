@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Badge, Button } from 'antd';
-import { MessageOutlined } from '@ant-design/icons';
+import { MessageOutlined, RobotOutlined } from '@ant-design/icons';
 import { useVisiblePolling } from '../../hooks/useVisiblePolling';
 import { getMessagingUnreadCount } from '../../services/messaging-service';
 import { NotificationBell, NOTIFICATION_POLL_MS } from './NotificationBell';
@@ -15,7 +15,7 @@ import { t } from '../../i18n/t';
  * Sert l'agence et les trois portails (scope de `useNotificationScope`) ; rien n'est
  * rendu pour un compte sans scope (super-administrateur, compte non rattaché).
  */
-const HeaderActions: React.FC = () => {
+const HeaderActions: React.FC<{ showAssistant: boolean; isDesktop: boolean }> = ({ showAssistant, isDesktop }) => {
   const scope = useNotificationScope();
   const navigate = useNavigate();
   const [unread, setUnread] = useState(0);
@@ -46,6 +46,17 @@ const HeaderActions: React.FC = () => {
 
   return (
     <>
+      {showAssistant && (
+        <Button
+          type="text"
+          icon={<RobotOutlined />}
+          aria-label={t('Demander à ImmoCopilot')}
+          aria-keyshortcuts="Control+K Meta+K"
+          onClick={() => window.dispatchEvent(new Event('immotopia:ask-assistant'))}
+        >
+          {isDesktop ? t('Demander à ImmoCopilot') : undefined}
+        </Button>
+      )}
       <NotificationBell scope={scope} />
       <Badge count={unread} size="small" overflowCount={99} offset={[-4, 4]}>
         <Button

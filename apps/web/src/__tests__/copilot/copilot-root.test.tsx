@@ -94,21 +94,25 @@ describe('CopilotRoot', () => {
   it.each([
     ['Ctrl+J', { ctrlKey: true }],
     ['Cmd+J', { metaKey: true }]
-  ])('%s ouvre le tiroir', async (_label, mod) => {
-    getStatus.mockResolvedValue(ENABLED);
-    renderRoot();
-    await screen.findByRole('button', BUTTON);
-    // Le bouton est commité dans le DOM avant l'effet passif qui pose
-    // l'écouteur `keydown` : `findByRole` peut rendre la main entre les deux
-    // (rare, mais fréquent sous charge en CI). On renvoie donc la touche
-    // jusqu'à ce que l'écouteur la prenne (`preventDefault`). Sans écouteur,
-    // l'envoi est sans effet ; une fois pris, le tiroir s'ouvre une seule fois.
-    await waitFor(() => {
-      const notPrevented = fireEvent.keyDown(window, { key: 'j', ...mod });
-      expect(notPrevented).toBe(false);
-    });
-    expect(await screen.findByLabelText('Votre message')).toBeInTheDocument();
-  });
+  ])(
+    '%s ouvre le tiroir',
+    async (_label, mod) => {
+      getStatus.mockResolvedValue(ENABLED);
+      renderRoot();
+      await screen.findByRole('button', BUTTON);
+      // Le bouton est commité dans le DOM avant l'effet passif qui pose
+      // l'écouteur `keydown` : `findByRole` peut rendre la main entre les deux
+      // (rare, mais fréquent sous charge en CI). On renvoie donc la touche
+      // jusqu'à ce que l'écouteur la prenne (`preventDefault`). Sans écouteur,
+      // l'envoi est sans effet ; une fois pris, le tiroir s'ouvre une seule fois.
+      await waitFor(() => {
+        const notPrevented = fireEvent.keyDown(window, { key: 'j', ...mod });
+        expect(notPrevented).toBe(false);
+      });
+      expect(await screen.findByLabelText('Votre message', {}, { timeout: 5000 })).toBeInTheDocument();
+    },
+    10_000
+  );
 
   it('ouvre le tiroir au clic et le ferme avec Échap', async () => {
     getStatus.mockResolvedValue(ENABLED);
@@ -224,8 +228,11 @@ describe('AppShell — montage de l’assistant', () => {
       }),
       `/tenant/${TENANT}/rental/leases`
     );
-    expect(await screen.findByRole('button', { name: 'Demander à ImmoCopilot' })).toBeInTheDocument();
-  });
+    expect(await screen.findByRole('button', { name: 'Demander à ImmoCopilot' }, { timeout: 5000 })).toHaveAttribute(
+      'aria-keyshortcuts',
+      'Control+K Meta+K'
+    );
+  }, 10_000);
 
   it.each([
     [

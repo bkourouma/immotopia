@@ -3417,6 +3417,8 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
 
     it("un jeton signe pour l'agence A, presente sur /tenants/<B>, est refuse : PROPOSAL_INVALID", async () => {
       const token = signProposal({ userId: adminB.id, tenantId: tenantA.id, args: statementArgs }).token;
+      const where = { tenant_id: { in: [tenantA.id, tenantB.id] } };
+      const before = await prisma.rentalDocument.count({ where });
 
       const res = await request(app)
         .post(`/api/tenants/${tenantB.id}/ai/actions/execute`)
@@ -3425,7 +3427,7 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
 
       expect(res.status).toBe(400);
       expect(res.body.code).toBe('PROPOSAL_INVALID');
-      expect(await prisma.rentalDocument.count({ where: { tenant_id: { in: [tenantA.id, tenantB.id] } } })).toBe(0);
+      expect(await prisma.rentalDocument.count({ where })).toBe(before);
     });
 
     it("le jeton d'un administrateur de A, presente par celui de B sur B : PROPOSAL_INVALID", async () => {
@@ -4325,15 +4327,18 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
     });
 
     it('la pagination ne perd ni ne répète une ligne, du plus récent au plus ancien', async () => {
-      const read = await readAll(adminA, tenantA.id);
-      const readIds = read.map(log => log.id);
-      expect(new Set(readIds).size).toBe(readIds.length);
-
+      // Réserver la comparaison aux événements semés par ce bloc : d'autres
+      // scénarios écrivent dans le journal de cette agence de façon asynchrone.
       const expected = await prisma.auditLog.findMany({
-        where: { tenantId: tenantA.id, visibility: 'TENANT' },
+        where: { tenantId: tenantA.id, visibility: 'TENANT', entityId: { contains: marker } },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         select: { id: true }
       });
+      const read = await readAll(adminA, tenantA.id, `&search=${marker}`);
+      const readIds = read.map(log => log.id);
+      expect(expected.length).toBeGreaterThan(2);
+      expect(new Set(readIds).size).toBe(readIds.length);
+
       expect(readIds).toEqual(expected.map(row => row.id));
     });
 

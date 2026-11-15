@@ -26,8 +26,9 @@ function invalidFile() {
 
 function readText(buffer: Buffer) {
   try {
+    if (buffer.some(byte => byte < 32 && byte !== 9 && byte !== 10 && byte !== 13)) throw invalidFile();
     const text = new TextDecoder('utf-8', { fatal: true }).decode(buffer);
-    if (/[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(text) || !text.trim()) throw invalidFile();
+    if (!text.trim()) throw invalidFile();
     return text;
   } catch (error) {
     if (error instanceof BadRequestError) throw error;
@@ -60,7 +61,12 @@ async function readCsv(text: string): Promise<string[][]> {
 }
 
 export async function extractAssistantFile(file: Express.Multer.File, tenantId: string): Promise<AssistantFileExtract> {
-  const name = file.originalname.replace(/[\x00-\x1F\x7F/\\]/g, '').slice(0, 180);
+  const name = file.originalname
+    .replace(/[/\\]/g, '')
+    .split('')
+    .filter(character => character >= ' ' && character.charCodeAt(0) !== 127)
+    .join('')
+    .slice(0, 180);
   const extension = name.split('.').at(-1)?.toLowerCase();
   if (extension === 'pdf') return { name, excerpt: await readAssistantPdf(file.buffer, MAX_EXCERPT) };
   if (extension === 'txt') return { name, excerpt: readText(file.buffer).slice(0, MAX_EXCERPT) };

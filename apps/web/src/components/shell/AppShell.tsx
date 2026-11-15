@@ -1,7 +1,6 @@
 import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { App as AntApp, Button, Drawer, Layout } from 'antd';
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { RobotOutlined } from '@ant-design/icons';
 import { useAuth } from '../../hooks/useAuth';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import {
@@ -41,7 +40,6 @@ import { installSubscriptionDenialInterceptor } from '../../utils/subscription-d
 
 // Assistant ImmoCopilot : chargé à part, hors du bundle d'entrée.
 const CopilotRoot = lazy(() => import('../copilot/CopilotRoot'));
-const ASSISTANT_LAUNCH_KEYSHORTCUTS = 'Control+K Meta+K';
 // Cloche de notifications et icône Messagerie : chargées à part, hors du bundle d'entrée.
 const HeaderActions = lazy(() => import('../notifications/HeaderActions'));
 
@@ -310,22 +308,12 @@ export const AppShell: React.FC = () => {
             persona === 'proprietaire' ||
             persona === 'locataire' ||
             persona === 'coproprietaire' ? (
-              <>
-                {persona === 'collaborateur' && !assistantPage && copilotStatus?.enabled && navContext.tenantId && (
-                  <Button
-                    type="text"
-                    icon={<RobotOutlined />}
-                    aria-label={t('Demander à ImmoCopilot')}
-                    aria-keyshortcuts={ASSISTANT_LAUNCH_KEYSHORTCUTS}
-                    onClick={() => window.dispatchEvent(new Event('immotopia:ask-assistant'))}
-                  >
-                    {isDesktop ? t('Demander à ImmoCopilot') : undefined}
-                  </Button>
-                )}
-                <Suspense fallback={null}>
-                  <HeaderActions />
-                </Suspense>
-              </>
+              <Suspense fallback={null}>
+                <HeaderActions
+                  showAssistant={Boolean(persona === 'collaborateur' && !assistantPage && copilotStatus?.enabled)}
+                  isDesktop={isDesktop}
+                />
+              </Suspense>
             ) : null
           }
           onOpenNavigation={
