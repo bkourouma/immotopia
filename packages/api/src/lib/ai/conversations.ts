@@ -328,7 +328,7 @@ export async function deleteConversation(owner: AssistantOwner, id: string) {
 const TURN_ORDER = [{ startedAt: 'desc' }, { id: 'desc' }] satisfies Prisma.AssistantTurnOrderByWithRelationInput[];
 
 async function* previousSuccessfulTurns(
-  db: Prisma.TransactionClient,
+  db: Pick<typeof prisma, 'assistantTurn'>,
   owner: AssistantOwner,
   conversationId: string,
   scopeKey: string,

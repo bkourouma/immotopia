@@ -17,7 +17,7 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 
 Modèle de section : voir le bloc « Modèle de section » plus bas.
 
-## feat/assistant-immotopia — 2026-11-14
+## feat/assistant-immotopia — 2026-11-15
 
 **Base** — `origin/main` à `af33a6da`. Plan de parité dans [PLAN_PARITE_IMMOCOPILOT_MEDIC_ASSIST.md](../architecture/PLAN_PARITE_IMMOCOPILOT_MEDIC_ASSIST.md).
 
@@ -117,7 +117,7 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 **Reprise des étapes de chat (`fb8797eb`)** — Pour Anthropic et OpenRouter, trois reprises au plus à 2, 4 et 8 s avec une gigue de ±25 %, y compris une surcharge au début du flux. Un délai dépassé, une annulation ou le premier contenu reçu met fin aux reprises. Un fragment d’outil compte aussi. Le SDK Anthropic ne rejoue plus ses requêtes. Chaque appel reste compté dans les usages, y compris ceux qui échouent.
 
-**Contexte des fils longs (commit de cette passation)** — Le chat pleine page et la régénération lisent les tours réussis du même propriétaire et du même périmètre. La lecture par lots s’arrête au budget de 400 000 caractères sérialisés. Les huit derniers échanges, question courante comprise, gardent leur texte utile tant qu’ils tiennent dans le budget. Les plus anciens sont ramenés à 1 500 caractères par message. Les références de jeux transmises au modèle décrivent les colonnes, la provenance courte et le nombre de lignes disponibles sans envoyer d’aperçu. Les résultats d’outils intermédiaires, le raisonnement et les lignes hors aperçu ne sont pas stockés avec les messages. Aucun changement de migration et aucun changement du texte affiché. Prochain lot possible sur le pivot des tableaux et les visualisations manquantes. La transcription, les six langues et l’essai des fournisseurs réels restent à qualifier.
+**Contexte des fils longs (`ffcf654a` et correctif de typage de cette passation)** — Le chat pleine page et la régénération lisent les tours réussis du même propriétaire et du même périmètre. La lecture par lots s’arrête au budget de 400 000 caractères sérialisés. Les huit derniers échanges, question courante comprise, gardent leur texte utile tant qu’ils tiennent dans le budget. Les plus anciens sont ramenés à 1 500 caractères par message. Les références de jeux transmises au modèle décrivent les colonnes, la provenance courte et le nombre de lignes disponibles sans envoyer d’aperçu. Les résultats d’outils intermédiaires, le raisonnement et les lignes hors aperçu ne sont pas stockés avec les messages. Aucun changement de migration et aucun changement du texte affiché. Prochain lot possible sur le pivot des tableaux et les visualisations manquantes. La transcription, les six langues et l’essai des fournisseurs réels restent à qualifier.
 
 ## chore/deps-patch-minor — 2026-11-11
 
