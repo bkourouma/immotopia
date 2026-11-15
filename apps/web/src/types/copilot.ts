@@ -346,6 +346,8 @@ export interface ChartScene {
 }
 
 export interface ArtifactProvenance {
+  scope?: 'agency' | 'shared' | 'attachment';
+  filters?: Array<{ label: string; value?: string }>;
   source: string;
   href: string;
   period: string;

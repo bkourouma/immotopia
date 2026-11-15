@@ -1,4 +1,10 @@
 {
+  "Périmètre": "दायरा",
+  "Filtre": "फ़िल्टर",
+  "Filtres appliqués": "लागू फ़िल्टर",
+  "Données accessibles dans l’agence": "एजेंसी में उपलब्ध डेटा",
+  "Droits communs de l’expéditeur et du destinataire": "प्रेषक और प्राप्तकर्ता की साझा पहुँच",
+  "Pièce jointe du fil": "बातचीत का संलग्नक",
   "Agrandir le panneau de résultats": "परिणाम पैनल बड़ा करें",
   "Redimensionner le panneau de résultats": "परिणाम पैनल का आकार बदलें",
   "Voir la source : {{title}}": "स्रोत देखें: {{title}}",

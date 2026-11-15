@@ -136,10 +136,17 @@ function formatPeriod(period: string): string {
 }
 
 export function artifactProvenanceLines(provenance: ArtifactProvenance): string[] {
+  const scopes = {
+    agency: t('Données accessibles dans l’agence'),
+    shared: t('Droits communs de l’expéditeur et du destinataire'),
+    attachment: t('Pièce jointe du fil')
+  };
   return [
     `${t('Source des données')} — ${provenance.source}`,
     `${t('Période')} — ${formatPeriod(provenance.period)}`,
     `${t('Date de calcul')} — ${formatExportDate(new Date(provenance.calculatedAt))}`,
+    ...(provenance.scope ? [`${t('Périmètre')} — ${scopes[provenance.scope]}`] : []),
+    ...(provenance.filters ?? []).map(({ label, value }) => `${t('Filtre')} — ${label}${value ? ` · ${value}` : ''}`),
     ...provenance.rules
   ];
 }

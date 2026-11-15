@@ -720,6 +720,17 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         expect.objectContaining({ property: expect.stringContaining(current.propertyReference), ending: 1 })
       ]);
       const businessBase = `/api/tenants/${agency.id}/rental`;
+      expect(receipts.provenance).toMatchObject({
+        scope: 'agency',
+        filters: expect.arrayContaining([
+          { label: 'Mois', value: period },
+          { label: 'Statut', value: 'Réussi' }
+        ])
+      });
+      expect(dues.provenance).toMatchObject({
+        scope: 'agency',
+        filters: expect.arrayContaining([{ label: 'Échéances non annulées' }])
+      });
       const receiptQuery = new URL(receipts.provenance.href, 'http://test.local').search;
       const dueQuery = new URL(dues.provenance.href, 'http://test.local').search;
       expect(receiptQuery).toBe('?receivedFrom=2025-10-01&receivedTo=2025-10-31');
@@ -3131,14 +3142,17 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
           artifactId
         ]);
         expect(view.text).not.toMatch(/confidentiel|Voici le tableau|Fais le bilan|"query"/);
-        expect(
-          (
-            await request(app)
-              .get(threadLink + '/csv')
-              .query({ artifactId })
-              .set(authed(secondRecipient))
-          ).status
-        ).toBe(200);
+        expect(view.body.data.conversation.turns[0].artifacts[0].provenance).toMatchObject({
+          scope: 'shared',
+          filters: expect.arrayContaining([{ label: 'Statut', value: 'Réussi' }])
+        });
+        const exported = await request(app)
+          .get(threadLink + '/csv')
+          .query({ artifactId })
+          .set(authed(secondRecipient));
+        expect(exported.status).toBe(200);
+        expect(exported.text).toContain('Périmètre — Droits communs de l’expéditeur et du destinataire');
+        expect(exported.text).toContain('Filtre — Statut · Réussi');
         const privateId = events.find(event => event.type === 'artifact' && event.artifact.kind === 'markdown').artifact
           .id;
         expect(
@@ -3711,7 +3725,7 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         expect(artifact).toMatchObject({
           title: 'recettes.csv',
           rows: [{ column1: 'Lot; 5', column2: 123.5 }],
-          provenance: { source: 'Fichier importé' }
+          provenance: { source: 'Fichier importé', scope: 'attachment' }
         });
         const providerInput = JSON.stringify(mockProviderRequests.at(-1)?.messages);
         expect(providerInput).toContain('Contexte privé');

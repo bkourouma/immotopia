@@ -5,7 +5,7 @@ import { AppError, ForbiddenError } from '../../middleware/error-middleware';
 import { logAuditEvent } from '../../services/audit-service';
 import { AuditActionKey } from '../../types/audit-types';
 import { logger } from '../../utils/logger';
-import { analysisSources, withoutSourceMarkers } from './artifact-sources';
+import { analysisSources, withAnalysisProvenance, withoutSourceMarkers } from './artifact-sources';
 import type {
   ChatRequest,
   CopilotErrorCode,
@@ -187,10 +187,13 @@ export async function runChat(input: RunChatInput): Promise<ChatDoneReason> {
 
   const system = buildSystemPrompt(currentAssistantLanguage(), input.tools);
   const analysisTables = new Map(
-    [...(input.analysisTables ?? []), ...(input.importedTables ?? [])].map(table => [table.id, table])
+    [...(input.analysisTables ?? []), ...(input.importedTables ?? [])].map(table => [
+      table.id,
+      withAnalysisProvenance(table, 'agency')
+    ])
   );
   const focus = input.focusedArtifact;
-  const focusedSources = focus ? analysisSources(focus) : [];
+  const focusedSources = focus ? analysisSources(withAnalysisProvenance(focus, 'agency')) : [];
   for (const table of focusedSources) analysisTables.set(table.id, table);
   const sourceRefs = [...analysisTables.values()].map(table => ({
     id: table.id,
@@ -421,9 +424,11 @@ async function runToolCall(
 
   try {
     const result = await tool.execute(parsed.data, ctx);
-    if (result.uiEvent?.type === 'artifact')
-      for (const table of analysisSources(result.uiEvent.artifact)) ctx.analysisTables?.set(table.id, table);
-    if (result.uiEvent) emit(result.uiEvent);
+    if (result.uiEvent?.type === 'artifact') {
+      const artifact = withAnalysisProvenance(result.uiEvent.artifact, 'agency');
+      for (const table of analysisSources(artifact)) ctx.analysisTables?.set(table.id, table);
+      emit({ ...result.uiEvent, artifact });
+    } else if (result.uiEvent) emit(result.uiEvent);
     emit({ type: 'tool_status', tool: tool.name, status: 'succeeded' });
     audit(AuditActionKey.AI_TOOL_CALLED, { status: 'ok', durationMs: Date.now() - startedAt });
     return { type: 'tool_result', toolUseId: call.id, content: JSON.stringify(result.modelResult) };

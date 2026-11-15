@@ -94,11 +94,21 @@ export function artifactInternalLink(value: unknown): string | undefined {
 const RENTAL_PROVENANCE =
   /^\/tenant\/[A-Za-z0-9_-]+\/rental\/(?:payments\?receivedFrom=\d{4}-\d{2}-\d{2}&receivedTo=\d{4}-\d{2}-\d{2}|installments\?dueFrom=\d{4}-\d{2}-\d{2}&dueTo=\d{4}-\d{2}-\d{2}(?:&overdue=1)?)$/;
 
+const OWNER_BALANCES_PROVENANCE = /^\/tenant\/[A-Za-z0-9_-]+\/finance\/owner-accounts\?soldeDu=1$/;
+
+export const artifactScopeLabels = {
+  agency: 'Données accessibles dans l’agence',
+  shared: 'Droits communs de l’expéditeur et du destinataire',
+  attachment: 'Pièce jointe du fil'
+} as const;
+
 function sanitizeProvenance(raw: unknown): ArtifactProvenance | undefined {
   if (!isRecord(raw)) return undefined;
-  const { source, period, calculatedAt, rules } = raw;
+  const { source, period, calculatedAt, rules, scope } = raw;
   const href =
-    typeof raw.href === 'string' && RENTAL_PROVENANCE.test(raw.href) ? raw.href : artifactInternalLink(raw.href);
+    typeof raw.href === 'string' && (RENTAL_PROVENANCE.test(raw.href) || OWNER_BALANCES_PROVENANCE.test(raw.href))
+      ? raw.href
+      : artifactInternalLink(raw.href);
   if (
     typeof source !== 'string' ||
     typeof period !== 'string' ||
@@ -108,11 +118,25 @@ function sanitizeProvenance(raw: unknown): ArtifactProvenance | undefined {
     !Array.isArray(rules)
   )
     return undefined;
+  const filters = Array.isArray(raw.filters)
+    ? raw.filters.slice(0, 24).flatMap(filter =>
+        isRecord(filter) && typeof filter.label === 'string'
+          ? [
+              {
+                label: filter.label.slice(0, 160),
+                value: typeof filter.value === 'string' ? filter.value.slice(0, 200) : undefined
+              }
+            ]
+          : []
+      )
+    : undefined;
   return {
     source,
     href,
     period,
     calculatedAt,
+    ...(scope === 'agency' || scope === 'shared' || scope === 'attachment' ? { scope } : {}),
+    ...(filters?.length ? { filters } : {}),
     rules: rules.filter((rule): rule is string => typeof rule === 'string').slice(0, 20)
   };
 }

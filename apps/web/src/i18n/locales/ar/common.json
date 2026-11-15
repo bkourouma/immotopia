@@ -1,4 +1,10 @@
 {
+  "Périmètre": "النطاق",
+  "Filtre": "عامل التصفية",
+  "Filtres appliqués": "عوامل التصفية المطبّقة",
+  "Données accessibles dans l’agence": "البيانات المتاحة في الوكالة",
+  "Droits communs de l’expéditeur et du destinataire": "صلاحيات الوصول المشتركة بين المرسل والمستلم",
+  "Pièce jointe du fil": "مرفق المحادثة",
   "Agrandir le panneau de résultats": "تكبير لوحة النتائج",
   "Redimensionner le panneau de résultats": "تغيير حجم لوحة النتائج",
   "Voir la source : {{title}}": "عرض المصدر: {{title}}",

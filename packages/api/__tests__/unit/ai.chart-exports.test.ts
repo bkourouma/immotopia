@@ -8,7 +8,8 @@ import { runWithAssistantLanguage, runWithLanguage } from '../../src/i18n';
 import type { ChartArtifact } from '../../src/lib/ai/artifact-chart-data';
 import { buildArtifactPdf } from '../../src/lib/ai/artifact-pdf';
 import { chartScene } from '../../src/lib/ai/artifact-chart-scene';
-import { buildArtifactCsv } from '../../src/lib/ai/artifact-spreadsheet';
+import { withAnalysisProvenance } from '../../src/lib/ai/artifact-sources';
+import { buildArtifactCsv, buildArtifactXlsx } from '../../src/lib/ai/artifact-spreadsheet';
 
 const line: ChartArtifact = {
   id: randomUUID(),
@@ -73,6 +74,50 @@ function buildPowerPoint(artifact: ChartArtifact, language: 'ar' | 'fr'): Buffer
   if (run.status !== 0) throw new Error(run.stderr.toString('utf8'));
   return run.stdout;
 }
+
+it('exporte le périmètre et les filtres sans reprendre les identifiants ou le SQL', async () => {
+  const provenance = line.provenance!;
+  const scoped = runWithLanguage('fr', () =>
+    withAnalysisProvenance(
+      {
+        id: randomUUID(),
+        kind: 'table' as const,
+        title: 'Contrôle de provenance',
+        columns: [{ key: 'total', label: 'Total' }],
+        rows: [{ total: 100 }],
+        query: { tool: 'syndicate_charges' as const, syndicateId: 'id-privé', year: 2026, month: '2026-10' },
+        provenance
+      },
+      'shared'
+    )
+  );
+  expect(scoped.provenance).toMatchObject({
+    scope: 'shared',
+    filters: [
+      { label: 'Copropriété sélectionnée' },
+      { label: 'Année', value: '2026' },
+      { label: 'Mois', value: '2026-10' }
+    ]
+  });
+  expect(JSON.stringify(scoped.provenance)).not.toContain('id-privé');
+  const sql = withAnalysisProvenance(
+    { ...scoped, query: { tool: 'rental_receipts_sql', sql: 'SELECT valeur_confidentielle' } },
+    'agency'
+  );
+  expect(JSON.stringify(sql.provenance)).not.toContain('valeur_confidentielle');
+
+  const grid = await JSZip.loadAsync(await runWithLanguage('fr', () => buildArtifactXlsx(scoped)));
+  const sheet = await grid.file('xl/sharedStrings.xml')?.async('string');
+  expect(sheet).toContain('Droits communs de l’expéditeur et du destinataire');
+  expect(sheet).toContain('Filtre — Année · 2026');
+
+  const slides = await JSZip.loadAsync(buildPowerPoint({ ...line, provenance: scoped.provenance }, 'fr'));
+  const content = (
+    await Promise.all(slides.file(/^ppt\/slides\/slide\d+\.xml$/).map(file => file.async('string')))
+  ).join('');
+  expect(content).toContain('Droits communs de l’expéditeur et du destinataire');
+  expect(content).toContain('Filtre — Année · 2026');
+}, 25_000);
 
 it('rend des courbes vectorielles en PDF et conserve la mise en page arabe', async () => {
   const bytes = await runWithLanguage('ar', () => buildArtifactPdf(line));

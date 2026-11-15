@@ -116,6 +116,7 @@ export async function extractAssistantFile(file: Express.Multer.File, tenantId: 
     truncated: records.length > rows.length,
     provenance: {
       source: t('Fichier importé'),
+      scope: 'attachment',
       href: '/tenant/' + encodeURIComponent(tenantId) + '/assistant',
       period: calculatedAt.slice(0, 10),
       calculatedAt,

@@ -1,4 +1,10 @@
 {
+  "Périmètre": "Scope",
+  "Filtre": "Filter",
+  "Filtres appliqués": "Applied filters",
+  "Données accessibles dans l’agence": "Data accessible in the agency",
+  "Droits communs de l’expéditeur et du destinataire": "Access shared by the sender and recipient",
+  "Pièce jointe du fil": "Conversation attachment",
   "Agrandir le panneau de résultats": "Expand results panel",
   "Redimensionner le panneau de résultats": "Resize results panel",
   "Voir la source : {{title}}": "View source: {{title}}",

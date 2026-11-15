@@ -27,7 +27,8 @@ describe('sanitizeArtifact', () => {
     };
     const payments = '/tenant/t1/rental/payments?receivedFrom=2025-10-01&receivedTo=2025-10-31';
     const overdue = '/tenant/t1/rental/installments?dueFrom=2025-10-01&dueTo=2025-10-31&overdue=1';
-    for (const href of [payments, overdue]) {
+    const balances = '/tenant/t1/finance/owner-accounts?soldeDu=1';
+    for (const href of [payments, overdue, balances]) {
       expect(sanitizeArtifact({ ...artifact, provenance: { ...provenance, href } })).toMatchObject({
         provenance: { href }
       });

@@ -1,4 +1,10 @@
 {
+  "Périmètre": "Alcance",
+  "Filtre": "Filtro",
+  "Filtres appliqués": "Filtros aplicados",
+  "Données accessibles dans l’agence": "Datos accesibles en la agencia",
+  "Droits communs de l’expéditeur et du destinataire": "Permisos comunes del remitente y del destinatario",
+  "Pièce jointe du fil": "Archivo adjunto de la conversación",
   "Agrandir le panneau de résultats": "Ampliar el panel de resultados",
   "Redimensionner le panneau de résultats": "Cambiar el tamaño del panel de resultados",
   "Voir la source : {{title}}": "Ver fuente: {{title}}",

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { t } from '../../i18n';
+import { withAnalysisProvenance } from './artifact-sources';
 import { AppError, ForbiddenError } from '../../middleware/error-middleware';
 import type {
   AnalysisQuery,
@@ -130,7 +131,7 @@ export async function replayArtifact(
     if (existing) return existing;
     const operation = analysisTools[tool].execute(input, ctx).then(result => {
       if (result.uiEvent?.type !== 'artifact' || result.uiEvent.artifact.kind !== 'table') throw unavailable();
-      return result.uiEvent.artifact;
+      return withAnalysisProvenance(result.uiEvent.artifact, shared ? 'shared' : 'agency');
     });
     calculations.set(key, operation);
     return operation;

@@ -166,6 +166,8 @@ describe('ArtifactPanel — rendus', () => {
         provenance: {
           source: 'Source de test',
           href: '/test',
+          scope: 'shared',
+          filters: [{ label: 'स्थिति', value: 'सफल' }],
           period: '2026-03',
           calculatedAt: '2026-03-06T00:00:00Z',
           rules: []
@@ -175,12 +177,17 @@ describe('ArtifactPanel — rendus', () => {
     expect(screen.getByText('लंबित')).toBeVisible();
     expect(screen.getByText('12,34,567.50')).toBeVisible();
     expect(screen.getByText('गणना कैसे हुई')).toBeVisible();
+    fireEvent.click(screen.getByText('गणना कैसे हुई'));
+    expect(screen.getByText('दायरा · प्रेषक और प्राप्तकर्ता की साझा पहुँच')).toBeVisible();
+    expect(screen.getByText('स्थिति · सफल')).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: /डाउनलोड करें/ }));
     fireEvent.click(await screen.findByRole('menuitem', { name: 'CSV' }));
     await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
     const csv = await blobText(save.mock.calls[0][0]);
     expect(csv).toContain('PENDING,1234567.5,2026-03-05');
     expect(csv).toContain('स्रोत विवरण,मान');
+    expect(csv).toContain('प्रेषक और प्राप्तकर्ता की साझा पहुँच');
+    expect(csv).toContain('स्थिति · सफल');
   });
 
   it('traduit la description et le tableau accessible du graphique en chinois', async () => {

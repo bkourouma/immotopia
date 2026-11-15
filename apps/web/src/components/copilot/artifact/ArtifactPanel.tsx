@@ -13,7 +13,7 @@ import type {
 import { downloadChartPng, downloadCsv, downloadMarkdown, downloadXlsx } from '../../../utils/copilot-artifact-export';
 import { SafeMarkdown } from '../SafeMarkdown';
 import { ArtifactTable } from './ArtifactTable';
-import { formatArtifactAmount } from '../../../utils/copilot-artifact';
+import { artifactScopeLabels, formatArtifactAmount } from '../../../utils/copilot-artifact';
 
 // recharts reste hors du bundle de la page : chargé à l'affichage d'un graphique.
 const ArtifactChart = React.lazy(() => import('./ArtifactChart'));
@@ -61,6 +61,24 @@ function ArtifactSource({ provenance }: { provenance: ArtifactProvenance }) {
       <p>
         <a href={provenance.href}>{provenance.source}</a> · {provenance.period}
       </p>
+      {provenance.scope && (
+        <p>
+          {t('Périmètre')} · {t(artifactScopeLabels[provenance.scope])}
+        </p>
+      )}
+      {!!provenance.filters?.length && (
+        <>
+          <p>{t('Filtres appliqués')}</p>
+          <ul>
+            {provenance.filters.map(({ label, value }, index) => (
+              <li key={index}>
+                {label}
+                {value ? ` · ${value}` : ''}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
       <ul>
         {provenance.rules.map((rule, index) => (
           <li key={index}>{rule}</li>

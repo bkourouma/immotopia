@@ -1,4 +1,10 @@
 {
+  "Périmètre": "范围",
+  "Filtre": "筛选条件",
+  "Filtres appliqués": "已应用的筛选条件",
+  "Données accessibles dans l’agence": "机构内可访问的数据",
+  "Droits communs de l’expéditeur et du destinataire": "发送方与接收方共有的访问权限",
+  "Pièce jointe du fil": "对话附件",
   "Agrandir le panneau de résultats": "放大结果面板",
   "Redimensionner le panneau de résultats": "调整结果面板大小",
   "Voir la source : {{title}}": "查看来源：{{title}}",

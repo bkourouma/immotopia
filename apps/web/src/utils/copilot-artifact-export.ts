@@ -1,6 +1,13 @@
 import type { CopilotArtifact } from '../types/copilot';
 import { t } from '../i18n/t';
-import { csvSeparator, exportableTable, neutralizeFormula, safeFilename, toCsv } from './copilot-artifact';
+import {
+  artifactScopeLabels,
+  csvSeparator,
+  exportableTable,
+  neutralizeFormula,
+  safeFilename,
+  toCsv
+} from './copilot-artifact';
 import { saveBlob } from './save-blob';
 
 /**
@@ -28,6 +35,11 @@ function provenanceRows(artifact: CopilotArtifact, translate: typeof t): string[
     [translate('Source'), provenance.source],
     [translate('Période'), provenance.period],
     [translate('Date de calcul'), provenance.calculatedAt],
+    ...(provenance.scope ? [[translate('Périmètre'), translate(artifactScopeLabels[provenance.scope])]] : []),
+    ...(provenance.filters ?? []).map(({ label, value }) => [
+      translate('Filtre'),
+      value ? `${label} · ${value}` : label
+    ]),
     ...provenance.rules.map(rule => [translate('Règle de calcul'), rule])
   ];
 }

@@ -313,6 +313,10 @@ export const pivotAnalysisTool: CopilotToolDefinition<typeof pivotInputSchema> =
       dimensionColumns: input.rows.length,
       provenance: {
         ...source.provenance,
+        filters: [
+          ...(source.provenance.filters ?? []),
+          ...input.filters.map(filter => ({ label: byKey.get(filter.key)?.label ?? filter.key }))
+        ],
         rules: [
           ...source.provenance.rules,
           t('Le total reprend les lignes source après filtrage.'),

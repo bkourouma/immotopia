@@ -467,6 +467,8 @@ export type BaseAnalysisQuery =
 export type AnalysisQuery = BaseAnalysisQuery | { tool: 'pivot_analysis'; source: BaseAnalysisQuery; input: unknown };
 
 export interface ArtifactProvenance {
+  scope?: 'agency' | 'shared' | 'attachment';
+  filters?: Array<{ label: string; value?: string }>;
   source: string;
   href: string;
   period: string;
