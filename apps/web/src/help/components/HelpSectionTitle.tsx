@@ -1,19 +1,4 @@
-import React from 'react';
-import { HelpButton } from './HelpButton';
-
-export interface HelpSectionTitleProps {
-  title: React.ReactNode;
-  helpId: string;
-}
-
-/** Titre de section suivi du « ? » de sa fiche d'aide. */
-export function HelpSectionTitle({ title, helpId }: HelpSectionTitleProps) {
-  return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-      {title}
-      <HelpButton size="small" helpId={helpId} />
-    </span>
-  );
-}
-
-export default HelpSectionTitle;
+// Reexport : le code vit dans HelpButton.tsx pour que le « ? » et ses derives
+// forment un seul chunk partage (moins d'indices de prechargement dans l'entree).
+export { HelpSectionTitle, default } from './HelpButton';
+export type { HelpSectionTitleProps } from './HelpButton';
