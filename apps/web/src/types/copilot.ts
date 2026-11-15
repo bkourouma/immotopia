@@ -10,13 +10,72 @@ export const COPILOT_MAX_TOTAL_CHARS = 24000;
 
 export type CopilotToolName =
   | 'search_properties'
+  | 'search_syndicates'
+  | 'search_syndicate_lots'
+  | 'search_sale_mandates'
+  | 'search_construction_sites'
   | 'search_leases'
+  | 'rental_arrears'
+  | 'rental_receipts'
+  | 'rental_due_comparison'
+  | 'rental_monthly_review'
+  | 'maintenance_overview'
+  | 'syndicate_maintenance'
+  | 'syndicate_charges'
+  | 'syndicate_budget'
+  | 'property_portfolio'
+  | 'lease_portfolio'
+  | 'crm_pipeline'
+  | 'sale_mandates'
+  | 'construction_budget'
+  | 'owner_statements'
+  | 'owner_payouts'
+  | 'chart_analysis'
+  | 'pivot_analysis'
+  | 'show_indicators'
+  | 'compose_report'
   | 'list_lease_documents'
   | 'list_property_documents'
   | 'propose_rental_document'
   | 'show_artifact'
   | 'list_capabilities'
-  | 'call_read';
+  | 'list_datasets'
+  | 'call_read'
+  | 'propose_follow_up'
+  | 'prepare_budget_alert'
+  | 'prepare_lease_expiry_alert'
+  | 'prepare_declaration_alert'
+  | 'prepare_rent_arrears_alert';
+
+export type RentalAlertRule = { propertyId?: string; days: number } & (
+  { kind: 'lease_expiry' | 'declaration_pending' } | { kind: 'overdue_rent'; minimumAmount: number; currency: string }
+);
+
+export type PreparedAlert =
+  | {
+      kind: 'construction_budget';
+      siteId: string;
+      siteName: string;
+      thresholdPercent: number;
+    }
+  | { kind: 'rental'; rule: RentalAlertRule; propertyLabel?: string };
+
+export interface FollowUpProposal {
+  id: string;
+  kind: 'notify' | 'task' | 'email' | 'schedule';
+  status: 'PENDING' | 'CONFIRMED' | 'DECLINED' | 'FAILED';
+  display: {
+    recipients: string[];
+    artifactTitle?: string;
+    sharesAnalysis?: boolean;
+    title?: string;
+    message?: string;
+    priority?: 'low' | 'normal' | 'high';
+    dueDate?: string;
+    formats?: string[];
+    schedule?: { frequency: 'daily' | 'weekly' | 'monthly'; time: string; timeZone: string; day?: number };
+  };
+}
 
 export type CopilotErrorCode =
   | 'AI_DISABLED'
@@ -33,7 +92,49 @@ export type CopilotErrorCode =
 
 // --- Requêtes --------------------------------------------------------------
 
+export interface AssistantBriefingItem {
+  id: string;
+  title: string;
+  description: string;
+  href: string;
+  occurredAt: string;
+  severity: 'danger' | 'warning' | 'info';
+}
+
+export interface AssistantConversationSummary {
+  id: string;
+  title: string;
+  pinned: boolean;
+  archived: boolean;
+  updatedAt: string;
+}
+
+export interface ResponseFeedback {
+  revision: number;
+  helpful: boolean;
+  comment: string;
+}
+
+export interface AssistantConversation extends AssistantConversationSummary {
+  turns: Array<{
+    id: string;
+    question: string;
+    files?: string[];
+    attachments?: Array<{ name: string; position: number }>;
+    response: string;
+    responseRevision?: number;
+    feedback?: ResponseFeedback | null;
+    result: Array<Extract<CopilotSseEvent, { type: 'artifact' | 'prepared_alert' }>> | null;
+    followUps?: FollowUpProposal[];
+    outcome: string | null;
+  }>;
+}
+
 export interface ChatRequest {
+  focus?: { artifactId: string; version: number };
+  regenerateTurnId?: string;
+  turnId?: string;
+  deep?: boolean;
   conversationId?: string;
   messages: Array<{ role: 'user' | 'assistant'; content: string }>;
   context?: {
@@ -197,6 +298,9 @@ export function isCapabilityExecuted(r: ExecuteActionResult | undefined): r is C
 }
 
 export interface CopilotStatus {
+  agencyTimeZone?: string;
+  preferredAssistantLanguage?: import('../i18n/assistant-language').AssistantLanguage | null;
+  transcription?: boolean;
   enabled: boolean;
   /**
    * `NOT_CONFIGURED` / `NO_TOOLS` : renvoyés par l'API. `FORBIDDEN` / `NOT_FOUND` : posés par
@@ -212,31 +316,125 @@ export interface CopilotStatus {
 
 export type ArtifactCell = string | number | null;
 
-export type CopilotArtifact =
+export const ANALYSIS_CHART_TYPES = [
+  'bar',
+  'stacked_bar',
+  'horizontal_bar',
+  'line',
+  'area',
+  'stacked_area',
+  'pie',
+  'donut',
+  'scatter',
+  'combo',
+  'heatmap',
+  'treemap',
+  'funnel',
+  'gauge'
+] as const;
+
+export interface AnalysisChartSeries {
+  key: string;
+  label: string;
+  form?: 'bar' | 'line';
+  axis?: 'primary' | 'secondary';
+}
+
+export type ChartMark =
+  | { kind: 'rect'; x: number; y: number; w: number; h: number; color: string; tip?: string }
+  | {
+      kind: 'text';
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      color: string;
+      text: string;
+      align?: 'start' | 'center' | 'end';
+    };
+
+export interface ChartScene {
+  width: number;
+  height: number;
+  marks: ChartMark[];
+}
+
+export interface ArtifactProvenance {
+  scope?: 'agency' | 'shared' | 'attachment';
+  filters?: Array<{ label: string; value?: string }>;
+  source: string;
+  href: string;
+  period: string;
+  calculatedAt: string;
+  rules: string[];
+}
+
+export interface ArtifactIndicator {
+  label: string;
+  value: number;
+  currency?: string;
+  comparison?: { label: string; value: number; change?: number };
+}
+
+export type ArtifactDocumentBlock = { kind: 'text'; content: string } | { kind: 'table'; table: AnalysisTable };
+
+export interface ArtifactVersionChange {
+  expectedVersion: number;
+  restoreVersion?: number;
+  title?: string;
+  textSections?: string[];
+}
+
+export interface ArtifactVersionInfo {
+  version: number;
+  createdAt: string | null;
+}
+
+export interface ArtifactVersionPayload {
+  artifact: unknown;
+  version: number;
+  latest: number;
+  versions: ArtifactVersionInfo[];
+}
+
+export type ArtifactDownloadFormat = 'pdf' | 'pptx' | 'csv' | 'xlsx';
+
+export type CopilotArtifact = { canRefresh?: boolean } & (
+  | { kind: 'document'; id: string; title: string; blocks: ArtifactDocumentBlock[] }
+  | { kind: 'indicators'; id: string; title: string; cards: ArtifactIndicator[]; provenance?: ArtifactProvenance }
   | {
       kind: 'table';
       id: string;
       title: string;
-      columns: { key: string; label: string; type?: 'text' | 'number' | 'currency' | 'date' }[];
+      columns: { key: string; label: string; linkKey?: string; type?: 'text' | 'number' | 'currency' | 'date' }[];
+      provenance?: ArtifactProvenance;
       rows: Record<string, ArtifactCell>[];
+      totals?: Record<string, ArtifactCell>;
       truncated?: boolean;
     }
   | { kind: 'markdown'; id: string; title: string; content: string }
   | {
       kind: 'chart';
+      provenance?: ArtifactProvenance;
       id: string;
       title: string;
-      chartType: 'bar' | 'line' | 'pie';
+      chartType: (typeof ANALYSIS_CHART_TYPES)[number];
       xKey: string;
       /** Libellé de l'axe des abscisses, si le serveur en fournit un ; sinon la clé rendue lisible. */
       xLabel?: string;
-      series: { key: string; label: string }[];
+      groupKey?: string;
+      groupLabel?: string;
+      scene?: ChartScene;
+      notices?: string[];
+      series: AnalysisChartSeries[];
       data: Record<string, ArtifactCell>[];
-    };
+    }
+);
 
 /** Limites de l'API ; le front les réapplique à l'affichage (défensif). */
 export const ARTIFACT_MAX_ROWS = 500;
 export const ARTIFACT_MAX_COLUMNS = 20;
+export const ARTIFACT_MAX_PIVOT_COLUMNS = 50;
 export const ARTIFACT_MAX_MARKDOWN_CHARS = 20000;
 export const ARTIFACT_MAX_CHART_POINTS = 200;
 export const ARTIFACT_MAX_SERIES = 6;
@@ -246,6 +444,7 @@ export const ARTIFACT_MAX_SERIES = 6;
 // "event: <type>\ndata: <JSON de l'objet>\n\n" ; commentaire ": ping" toutes les 15 s
 export type CopilotSseEvent =
   | { type: 'meta'; conversationId: string; requestId: string }
+  | { type: 'conversation_title'; conversationId: string; title: string }
   | { type: 'text_delta'; text: string }
   | {
       type: 'tool_status';
@@ -260,6 +459,8 @@ export type CopilotSseEvent =
       items: DocumentCardItem[];
     }
   | { type: 'action_proposal'; proposal: ActionProposal }
+  | { type: 'follow_up'; proposal: FollowUpProposal }
+  | { type: 'prepared_alert'; alert: PreparedAlert }
   | { type: 'write_plan'; plan: WritePlan }
   | { type: 'artifact'; artifact: CopilotArtifact }
   | {
@@ -291,6 +492,8 @@ export type CopilotAttachment =
   | { kind: 'leases'; items: LeaseCardItem[] }
   | { kind: 'documents'; scope: 'lease' | 'property'; items: DocumentCardItem[] }
   | { kind: 'artifact'; artifactId: string; title: string; artifactKind: CopilotArtifact['kind'] }
+  | { kind: 'follow_up'; proposal: FollowUpProposal }
+  | { kind: 'prepared_alert'; alert: PreparedAlert }
   | {
       kind: 'proposal';
       proposal: ActionProposal;
@@ -308,10 +511,14 @@ export type CopilotAttachment =
       decidedAt?: string;
     };
 
+export type AnalysisTable = Extract<CopilotArtifact, { kind: 'table' }>;
+
 export interface CopilotUiMessage {
   id: string;
   role: 'user' | 'assistant';
   text: string;
+  rating?: { turnId: string; revision: number; previous?: ResponseFeedback | null };
+  files?: Array<{ name: string; position?: number }>;
   attachments: CopilotAttachment[];
 }
 
@@ -326,7 +533,13 @@ export interface UseCopilotChatResult {
   selectArtifact(id: string): void;
   status: CopilotChatStatus;
   error?: { code: string; message: string };
-  send(text: string, ctx: CopilotPageContext): Promise<void>;
+  send(
+    text: string,
+    ctx: CopilotPageContext,
+    deep?: boolean,
+    files?: readonly File[],
+    focus?: ChatRequest['focus']
+  ): Promise<void>;
   stop(): void;
   confirmProposal(proposalId: string): Promise<void>;
   cancelProposal(proposalId: string): void;
@@ -339,4 +552,7 @@ export interface UseCopilotChatResult {
    */
   refuseWritePlan(proposalId: string): void;
   reset(): void;
+  restoreConversation?(conversation: AssistantConversation): void;
+  replaceArtifact?(artifact: CopilotArtifact, conversationId: string): void;
+  conversationId?: string;
 }

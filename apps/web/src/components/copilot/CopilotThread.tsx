@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Alert, Button, Space } from 'antd';
+import { useAssistantTranslation } from '../../i18n/useAssistantTranslation';
 import type { CopilotStatus, UseCopilotChatResult } from '../../types/copilot';
 import { CopilotMessageList } from './CopilotMessageList';
 import { getCopilotSuggestions, getCopilotWelcome } from './copilot-suggestions';
@@ -9,13 +10,14 @@ export interface CopilotThreadProps {
   tenantId: string;
   status: CopilotStatus;
   pathname: string;
+  visible?: boolean;
   propertyId?: string;
   /** Envoie le texte d'une suggestion. */
   onSuggestion(text: string): void;
   /** Largeur maximale de la colonne de lecture (la page) ; sans limite dans le tiroir. */
   maxWidth?: number;
   /** Ouvre un artefact dans le panneau (page plein écran). */
-  onOpenArtifact?(artifactId: string): void;
+  onOpenArtifact?(artifactId: string, version?: number): void;
 }
 
 /**
@@ -27,14 +29,16 @@ export const CopilotThread: React.FC<CopilotThreadProps> = ({
   tenantId,
   status,
   pathname,
+  visible,
   propertyId,
   onSuggestion,
   maxWidth,
   onOpenArtifact
 }) => {
+  const { language, t } = useAssistantTranslation();
   const scrollRef = useRef<HTMLDivElement>(null);
   const streaming = chat.status === 'streaming';
-  const suggestions = getCopilotSuggestions(pathname, status.tools);
+  const suggestions = getCopilotSuggestions(pathname, status.tools, t);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -46,13 +50,14 @@ export const CopilotThread: React.FC<CopilotThreadProps> = ({
       ref={scrollRef}
       style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 'var(--space-4)' }}
       role="log"
+      lang={language}
       aria-live="polite"
       aria-busy={streaming}
     >
       <div style={{ maxWidth, marginInline: maxWidth ? 'auto' : undefined }}>
         {chat.messages.length === 0 && (
           <div>
-            <p>{getCopilotWelcome(status.tools)}</p>
+            <p>{getCopilotWelcome(status.tools, t)}</p>
             <Space wrap>
               {suggestions.map(s => (
                 <Button key={s.id} size="small" onClick={() => onSuggestion(s.text)}>
@@ -64,6 +69,10 @@ export const CopilotThread: React.FC<CopilotThreadProps> = ({
         )}
         <CopilotMessageList
           messages={chat.messages}
+          artifacts={chat.artifacts}
+          streaming={streaming}
+          conversationId={chat.conversationId}
+          visible={visible}
           tenantId={tenantId}
           propertyId={propertyId}
           onConfirm={id => void chat.confirmProposal(id)}

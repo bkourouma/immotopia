@@ -11,6 +11,7 @@ import type {
   LlmProvider,
   LlmToolSpec,
   LlmTurnResult,
+  LlmUsage,
   ProviderRuntimeConfig
 } from '../contracts';
 
@@ -37,13 +38,22 @@ export const SERVER_SIDE_FALLBACK_BETA = 'server-side-fallback-2026-07-01';
 export class LlmProviderError extends AppError {
   readonly copilotCode: CopilotErrorCode;
   readonly retryable: boolean;
+  readonly automaticRetry: boolean;
   readonly upstreamStatus?: number;
+  readonly model?: string;
+  readonly usage?: LlmUsage;
 
-  constructor(message: string, options: { retryable: boolean; upstreamStatus?: number }) {
+  constructor(
+    message: string,
+    options: { retryable: boolean; automaticRetry?: boolean; upstreamStatus?: number; model?: string; usage?: LlmUsage }
+  ) {
     super(message, 503, 'PROVIDER_UNAVAILABLE');
     this.copilotCode = 'PROVIDER_UNAVAILABLE';
     this.retryable = options.retryable;
+    this.automaticRetry = options.automaticRetry ?? false;
     this.upstreamStatus = options.upstreamStatus;
+    this.model = options.model;
+    this.usage = options.usage;
   }
 }
 
@@ -138,19 +148,19 @@ export class AnthropicProvider implements LlmProvider {
   private getClient(): Anthropic {
     if (!this.client) {
       // Clé passée explicitement : jamais lue implicitement par le SDK.
-      this.client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+      this.client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, maxRetries: 0 });
     }
     return this.client;
   }
 
   async runTurn(
-    req: { system: string; messages: LlmMessage[]; tools: LlmToolSpec[]; maxOutputTokens: number },
+    req: { system: string; messages: LlmMessage[]; tools: LlmToolSpec[]; maxOutputTokens: number; deep?: boolean },
     onTextDelta: (text: string) => void,
     signal: AbortSignal
   ): Promise<LlmTurnResult> {
     if (signal.aborted) throw createAbortError();
 
-    // Modèle, effort et repli relus à chaque tour : un changement d'admin s'applique à chaud.
+    // Le contrôleur fournit le profil du mode choisi pour cette requête.
     const config = await this.getConfig();
     if (signal.aborted) throw createAbortError(); // coupé pendant la lecture de la configuration
     const useFallback = config.refusalFallback;
@@ -167,24 +177,27 @@ export class AnthropicProvider implements LlmProvider {
       // chaque tour d'outils relit tout ce qui précède au lieu de le retraiter.
       ...(useCache ? { cache_control: { type: 'ephemeral' as const } } : {}),
       messages: toAnthropicMessages(req.messages),
-      tools: req.tools.map(tool => ({
-        name: tool.name,
-        description: tool.description,
-        input_schema: tool.inputSchema as Anthropic.Beta.Messages.BetaTool.InputSchema,
-        eager_input_streaming: true
-      })),
-      tool_choice: { type: 'auto' },
-      output_config: { effort: config.effort },
+      ...(req.tools.length > 0 && {
+        tools: req.tools.map(tool => ({
+          name: tool.name,
+          description: tool.description,
+          input_schema: tool.inputSchema as Anthropic.Beta.Messages.BetaTool.InputSchema,
+          eager_input_streaming: true
+        })),
+        tool_choice: { type: 'auto' as const }
+      }),
+      output_config: { effort: req.deep ? 'high' : config.effort },
       ...(useFallback ? { fallbacks: 'default' as const, betas: [SERVER_SIDE_FALLBACK_BETA] } : {})
     };
 
     // Abandon relié au signal de l'appelant et au délai global.
     const controller = new AbortController();
+    const timeoutMs = config.timeoutMs ?? env.AI_REQUEST_TIMEOUT_MS;
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
       controller.abort();
-    }, env.AI_REQUEST_TIMEOUT_MS);
+    }, timeoutMs);
     const onCallerAbort = () => controller.abort();
     signal.addEventListener('abort', onCallerAbort, { once: true });
 
@@ -194,8 +207,12 @@ export class AnthropicProvider implements LlmProvider {
     // Évite un « unhandled rejection » si l'appel réussit avant l'abandon.
     aborted.catch(() => undefined);
 
+    let receivedContent = false;
     try {
       const stream = this.getClient().beta.messages.stream(params, { signal: controller.signal });
+      stream.on('streamEvent', event => {
+        if (event.type === 'content_block_start' || event.type === 'content_block_delta') receivedContent = true;
+      });
       stream.on('text', (delta: string) => {
         if (delta) onTextDelta(delta);
       });
@@ -212,8 +229,19 @@ export class AnthropicProvider implements LlmProvider {
       }
 
       const assistantContent = fromAnthropicContent(message.content);
+      const usage = message.usage;
       return {
         stopReason: translateStopReason(message.stop_reason),
+        model: message.model || config.model,
+        ...(usage && {
+          usage: {
+            inputTokens:
+              usage.input_tokens + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0),
+            outputTokens: usage.output_tokens,
+            cacheReadTokens: usage.cache_read_input_tokens ?? undefined,
+            cacheWriteTokens: usage.cache_creation_input_tokens ?? undefined
+          }
+        }),
         assistantContent,
         toolCalls: assistantContent
           .filter((block): block is Extract<LlmBlock, { type: 'tool_use' }> => block.type === 'tool_use')
@@ -221,8 +249,11 @@ export class AnthropicProvider implements LlmProvider {
       };
     } catch (error) {
       if (timedOut) {
-        logger.warn('ImmoCopilot : délai dépassé côté fournisseur', { timeoutMs: env.AI_REQUEST_TIMEOUT_MS });
-        throw new LlmProviderError(t("L'assistant a mis trop de temps à répondre. Réessayez."), { retryable: true });
+        logger.warn('ImmoCopilot : délai dépassé côté fournisseur', { timeoutMs });
+        throw new LlmProviderError(t("L'assistant a mis trop de temps à répondre. Réessayez."), {
+          retryable: true,
+          model: config.model
+        });
       }
       if (signal.aborted || isAbortError(error)) throw createAbortError();
 
@@ -233,9 +264,12 @@ export class AnthropicProvider implements LlmProvider {
         errorName: error instanceof Error ? error.name : typeof error,
         status
       });
+      const retryable = status === undefined || status === 429 || status >= 500;
       throw new LlmProviderError(t("L'assistant est momentanément indisponible. Réessayez dans un instant."), {
-        retryable: status === undefined || status === 429 || status >= 500,
-        upstreamStatus: status
+        retryable,
+        automaticRetry: retryable && !receivedContent,
+        upstreamStatus: status,
+        model: config.model
       });
     } finally {
       clearTimeout(timer);

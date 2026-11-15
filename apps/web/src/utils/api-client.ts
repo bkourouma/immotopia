@@ -82,7 +82,7 @@ apiClient.interceptors.request.use(
     // Pose ici plutot que dans `headers` a la creation de l'instance : cette
     // valeur-la serait figee a la langue du premier rendu, et ne suivrait pas
     // un changement de langue en cours de session.
-    config.headers.set('Accept-Language', i18next.resolvedLanguage ?? i18next.language);
+    config.headers.set('Accept-Language', i18next.resolvedLanguage ?? i18next.language, false);
 
     // Portail (locataire/propriétaire) : un client rattaché à plusieurs
     // agences dit laquelle. La clé n'existe en stockage que si

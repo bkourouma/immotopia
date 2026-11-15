@@ -1,5 +1,5 @@
-import { activeLocale, formatNumber } from '../../i18n/format';
-import { t } from '../../i18n/t';
+import { activeLocale } from '../../i18n/format';
+import { t as applicationTranslation } from '../../i18n/t';
 import { looksLikeUuid } from '../../utils/copilot-artifact';
 import type { CapabilityExecutedPayload, PlanScalar, WritePlan } from '../../types/copilot';
 
@@ -14,46 +14,54 @@ const ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:
  * Valeur d'un champ affichée dans la langue active (Intl). `undefined` = pas de
  * valeur avant (création) : « — ». « [masqué] » et tout autre texte restent tels quels.
  */
-export function formatPlanValue(value: PlanScalar | undefined): string {
+export function formatPlanValue(
+  value: PlanScalar | undefined,
+  t: typeof applicationTranslation = applicationTranslation,
+  locale = activeLocale()
+): string {
   if (value === undefined) return '—';
   if (value === null) return t('(vide)');
   if (typeof value === 'boolean') return value ? t('Oui') : t('Non');
-  if (typeof value === 'number') return Number.isFinite(value) ? formatNumber(value) : String(value);
+  if (typeof value === 'number')
+    return Number.isFinite(value) ? new Intl.NumberFormat(locale).format(value) : String(value);
   if (ISO_DATE.test(value)) {
     const d = new Date(`${value}T00:00:00Z`);
     if (!Number.isNaN(d.getTime())) {
-      return new Intl.DateTimeFormat(activeLocale(), { dateStyle: 'medium', timeZone: 'UTC' }).format(d);
+      return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeZone: 'UTC' }).format(d);
     }
   }
   if (ISO_DATE_TIME.test(value)) {
     const d = new Date(value);
     if (!Number.isNaN(d.getTime())) {
-      return new Intl.DateTimeFormat(activeLocale(), { dateStyle: 'medium', timeStyle: 'short' }).format(d);
+      return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(d);
     }
   }
   return value;
 }
 
 /** Enregistrement visé : un identifiant brut n'est jamais affiché seul, il est qualifié. */
-export function targetLabelText(label: string): string {
+export function targetLabelText(label: string, t: typeof applicationTranslation = applicationTranslation): string {
   return looksLikeUuid(label) ? t('Enregistrement (identifiant {{id}})', { id: label.trim() }) : label;
 }
 
-export function formatDecisionTime(iso: string | undefined): string {
+export function formatDecisionTime(iso: string | undefined, locale = activeLocale()): string {
   const d = iso ? new Date(iso) : null;
   if (!d || Number.isNaN(d.getTime())) return '';
-  return new Intl.DateTimeFormat(activeLocale(), { dateStyle: 'medium', timeStyle: 'short' }).format(d);
+  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(d);
 }
 
 /** Heure « HH:MM » de lecture de l'état (langue active) ; vide si la date est illisible. */
-export function formatStateReadTime(iso: string | undefined): string {
+export function formatStateReadTime(iso: string | undefined, locale = activeLocale()): string {
   const d = iso ? new Date(iso) : null;
   if (!d || Number.isNaN(d.getTime())) return '';
-  return new Intl.DateTimeFormat(activeLocale(), { hour: '2-digit', minute: '2-digit' }).format(d);
+  return new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }).format(d);
 }
 
 /** Décompte lisible « 4 min 05 s » ; `null` une fois le délai écoulé. */
-export function formatCountdown(msLeft: number): string | null {
+export function formatCountdown(
+  msLeft: number,
+  t: typeof applicationTranslation = applicationTranslation
+): string | null {
   if (msLeft <= 0) return null;
   const total = Math.ceil(msLeft / 1000);
   const minutes = Math.floor(total / 60);
@@ -61,7 +69,10 @@ export function formatCountdown(msLeft: number): string | null {
   return t('{{minutes}} min {{seconds}} s', { minutes, seconds });
 }
 
-export function recordKindLabel(kind: WritePlan['recordKind']): string {
+export function recordKindLabel(
+  kind: WritePlan['recordKind'],
+  t: typeof applicationTranslation = applicationTranslation
+): string {
   const labels: Record<WritePlan['recordKind'], string> = {
     create: t('Création'),
     update: t('Modification'),
@@ -70,7 +81,10 @@ export function recordKindLabel(kind: WritePlan['recordKind']): string {
   return labels[kind] ?? kind;
 }
 
-export function methodLabel(method: WritePlan['method']): string {
+export function methodLabel(
+  method: WritePlan['method'],
+  t: typeof applicationTranslation = applicationTranslation
+): string {
   const labels: Record<WritePlan['method'], string> = {
     POST: t('Envoi de données (POST)'),
     PUT: t('Remplacement (PUT)'),
@@ -84,7 +98,7 @@ export function methodLabel(method: WritePlan['method']): string {
  * `contacts`, `properties`, `leases`…) en langage clair ; valeur inconnue :
  * affichée telle quelle.
  */
-export function planModuleLabel(module: string): string {
+export function planModuleLabel(module: string, t: typeof applicationTranslation = applicationTranslation): string {
   switch (module.trim().toLowerCase()) {
     case 'core':
       return t('Général');

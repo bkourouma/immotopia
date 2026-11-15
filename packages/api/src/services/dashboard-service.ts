@@ -1,4 +1,9 @@
+import { currentAssistantLanguage, t } from '../i18n';
+import { mandateNumber } from '../lib/sales/numbering';
+import { propertyTenantWhere } from '../utils/property-tenant-guard';
+import { OPEN_TICKET_STATUSES } from '../utils/maintenance-ticket-status';
 import { prisma } from '../utils/database';
+import { isOccupiedPropertyStatus, propertyOccupancyRate } from '../utils/property-occupancy';
 import { getUserPermissions } from './permission-service';
 import { getEntitlements } from './subscription-v2-service';
 import { evaluateFeatureAccess } from '../lib/subscription/feature-access';
@@ -78,6 +83,11 @@ export interface DashboardTask {
   severity: 'danger' | 'warning' | 'info';
   href: string;
 }
+
+export type AssistantBriefingItem = Pick<
+  DashboardTask,
+  'id' | 'title' | 'description' | 'severity' | 'occurredAt' | 'href'
+>;
 
 export interface DashboardActivity {
   id: string;
@@ -199,11 +209,6 @@ const TICKET_PRIORITY_ORDER: string[] = [
 const WORK_PROGRAM_STATUS_ORDER: string[] = ['PLANNED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'];
 
 /** Statuts de ticket qui comptent comme « ouvert » : ni résolu, ni annulé. */
-const OPEN_TICKET_STATUSES: MaintenanceTicketStatus[] = [
-  MaintenanceTicketStatus.DECLARED,
-  MaintenanceTicketStatus.IN_PROGRESS,
-  MaintenanceTicketStatus.ASSIGNED
-];
 
 /** Premier instant du mois courant, en heure locale du serveur. */
 function startOfCurrentMonth(now: Date): Date {
@@ -258,14 +263,15 @@ function orderBuckets(
 /**
  * Fonctionnalités ouvertes par le pack de l'agence. En mode `enforce`
  * seulement (`warn` et `off` ne masquent rien, comme les gardes de routes) ;
- * une panne du calcul des droits laisse tout passer.
+ * en cas de panne, le tableau de bord conserve son repli habituel et le briefing échoue.
  */
-async function loadFeatureGate(tenantId: string): Promise<(feature: Feature) => boolean> {
+async function loadFeatureGate(tenantId: string, strict = false): Promise<(feature: Feature) => boolean> {
   try {
-    const entitlements = await getEntitlements(tenantId);
+    const entitlements = await getEntitlements(tenantId, { fresh: strict });
     if (entitlements.enforcement !== 'enforce') return () => true;
     return feature => evaluateFeatureAccess(entitlements, feature, false).allowed;
   } catch (error) {
+    if (strict) throw error;
     logger.error('Dashboard: entitlements unavailable, sections not filtered', {
       tenantId,
       error: error instanceof Error ? error.message : String(error)
@@ -404,10 +410,10 @@ async function getProperties(tenantId: string, base: string): Promise<TenantDash
   // brouillons comptent au dénominateur — un bien saisi et jamais publié est du
   // parc immobilisé, et c'est précisément ce que le chiffre doit dire.
   const occupe = byStatus
-    .filter(bucket => bucket.key === 'RENTED' || bucket.key === 'SOLD')
+    .filter(bucket => isOccupiedPropertyStatus(bucket.key))
     .reduce((somme, bucket) => somme + bucket.count, 0);
 
-  return { total, published, occupancyRate: part(occupe, total), byStatus, byType };
+  return { total, published, occupancyRate: propertyOccupancyRate(occupe, total), byStatus, byType };
 }
 
 /** Portefeuille de contacts, réparti entre prospects, clients et archives. */
@@ -999,7 +1005,9 @@ async function getWorkQueue(
             OR: [
               { status: RentalInstallmentStatus.OVERDUE },
               {
-                status: { in: [RentalInstallmentStatus.DRAFT, RentalInstallmentStatus.DUE] },
+                status: {
+                  in: [RentalInstallmentStatus.DRAFT, RentalInstallmentStatus.DUE, RentalInstallmentStatus.PARTIAL]
+                },
                 due_date: { lt: new Date(now.getFullYear(), now.getMonth(), now.getDate()) }
               }
             ]
@@ -1073,8 +1081,8 @@ async function getWorkQueue(
       return {
         id: `installment:${echeance.id}`,
         kind: 'OVERDUE_INSTALLMENT' as const,
-        title: [echeance.lease?.lease_number, bien].filter(Boolean).join(' · ') || 'Échéance en retard',
-        description: `${retard} j de retard`,
+        title: [echeance.lease?.lease_number, bien].filter(Boolean).join(' · ') || t('Échéance en retard'),
+        description: t('{{days}} j de retard', { days: retard }),
         amount: reste,
         occurredAt: echeance.due_date.toISOString(),
         severity: 'danger' as const,
@@ -1085,8 +1093,8 @@ async function getWorkQueue(
       id: `declaration:${declaration.id}`,
       kind: 'PENDING_DECLARATION' as const,
       title: declaration.lease?.lease_number
-        ? `Déclaration à valider · ${declaration.lease.lease_number}`
-        : 'Déclaration à valider',
+        ? t('Déclaration à valider · {{number}}', { number: declaration.lease.lease_number })
+        : t('Déclaration à valider'),
       description: declaration.payment_method,
       amount: toNumber(declaration.amount),
       occurredAt: declaration.payment_date.toISOString(),
@@ -1099,7 +1107,7 @@ async function getWorkQueue(
       id: `ticket:${ticket.id}`,
       kind: 'URGENT_TICKET' as const,
       title: ticket.title,
-      description: ticket.property?.title || ticket.property?.address || 'Bien non renseigné',
+      description: ticket.property?.title || ticket.property?.address || t('Bien non renseigné'),
       amount: null,
       occurredAt: ticket.declared_at.toISOString(),
       severity: ticket.priority === MaintenanceTicketPriority.URGENT ? ('danger' as const) : ('warning' as const),
@@ -1108,11 +1116,131 @@ async function getWorkQueue(
     ...stockAlerts
   ];
 
-  // Le plus urgent d'abord : la gravité prime, puis l'ancienneté.
-  const poids: Record<DashboardTask['severity'], number> = { danger: 0, warning: 1, info: 2 };
-  return taches
-    .sort((a, b) => poids[a.severity] - poids[b.severity] || a.occurredAt.localeCompare(b.occurredAt))
-    .slice(0, WORK_QUEUE_LIMIT);
+  return taches.sort(compareQueueItems).slice(0, WORK_QUEUE_LIMIT);
+}
+
+const queuePriority = { danger: 0, warning: 1, info: 2 };
+function compareQueueItems(a: AssistantBriefingItem, b: AssistantBriefingItem): number {
+  return queuePriority[a.severity] - queuePriority[b.severity] || a.occurredAt.localeCompare(b.occurredAt);
+}
+
+/** File du tableau de bord et alertes d’échéance propres à l’espace Assistant. */
+export async function getAssistantBriefing(tenantId: string, userId: string): Promise<AssistantBriefingItem[]> {
+  const [permissions, hasFeature] = await Promise.all([
+    getUserPermissions(userId, tenantId, { fresh: true }),
+    loadFeatureGate(tenantId, true)
+  ]);
+  const hasRental = hasFeature('RENTAL');
+  const base = '/tenant/' + encodeURIComponent(tenantId);
+  const now = new Date();
+  const today = new Date(now.toISOString().slice(0, 10));
+  const horizon = new Date(today);
+  horizon.setUTCDate(today.getUTCDate() + 31);
+  const dueWithin30Days = { gte: today, lt: horizon };
+  const [queue, leases, mandates, charges] = await Promise.all([
+    getWorkQueue(tenantId, base, now, {
+      canViewInstallments: hasRental && permissions.includes('RENTAL_INSTALLMENTS_VIEW'),
+      canViewPayments: hasRental && permissions.includes('RENTAL_PAYMENTS_VIEW'),
+      canViewMaintenance: hasFeature('CORE') && permissions.includes('MAINTENANCE_ADMIN'),
+      canViewStockAlerts:
+        hasFeature('CONSTRUCTION') &&
+        permissions.includes('STOCK_ALERTS_VIEW') &&
+        permissions.includes('STOCK_VALUES_VIEW')
+    }),
+    hasRental && permissions.includes('RENTAL_LEASES_VIEW')
+      ? prisma.rentalLease.findMany({
+          where: {
+            tenant_id: tenantId,
+            status: RentalLeaseStatus.ACTIVE,
+            end_date: dueWithin30Days,
+            property: propertyTenantWhere(tenantId)
+          },
+          select: { id: true, lease_number: true, end_date: true },
+          orderBy: [{ end_date: 'asc' }, { id: 'asc' }],
+          take: WORK_QUEUE_PER_SOURCE
+        })
+      : [],
+    hasFeature('SALES') && permissions.includes('CRM_DEALS_VIEW')
+      ? prisma.saleMandate.findMany({
+          where: { tenantId, status: 'ACTIVE', endDate: dueWithin30Days, property: propertyTenantWhere(tenantId) },
+          select: { id: true, year: true, sequence: true, endDate: true },
+          orderBy: [{ endDate: 'asc' }, { id: 'asc' }],
+          take: WORK_QUEUE_PER_SOURCE
+        })
+      : [],
+    hasFeature('SYNDIC') && permissions.includes('SYNDIC_VIEW')
+      ? prisma.chargeCall.findMany({
+          where: {
+            syndicate: { tenantId, status: { not: 'IN_LIQUIDATION' } },
+            lot: { syndicate: { tenantId } },
+            status: { in: ['PENDING', 'PARTIAL'] },
+            dueDate: { lt: now },
+            amount: { gt: 0 }
+          },
+          select: {
+            id: true,
+            dueDate: true,
+            syndicateId: true,
+            lotId: true,
+            syndicate: { select: { name: true } },
+            lot: { select: { lotNumber: true } }
+          },
+          orderBy: [{ dueDate: 'asc' }, { id: 'asc' }],
+          take: WORK_QUEUE_PER_SOURCE
+        })
+      : []
+  ]);
+  const date = new Intl.DateTimeFormat(currentAssistantLanguage(), { dateStyle: 'medium', timeZone: 'UTC' });
+  const additional: AssistantBriefingItem[] = [
+    ...leases.flatMap(lease =>
+      lease.end_date
+        ? [
+            {
+              id: `lease-expiry:${lease.id}`,
+              title: t('Bail arrivant à échéance · {{number}}', { number: lease.lease_number }),
+              description: date.format(lease.end_date),
+              occurredAt: lease.end_date.toISOString(),
+              severity: 'warning' as const,
+              href: `${base}/rental/leases/${lease.id}`
+            }
+          ]
+        : []
+    ),
+    ...mandates.flatMap(mandate =>
+      mandate.endDate
+        ? [
+            {
+              id: `mandate-expiry:${mandate.id}`,
+              title: t('Mandat arrivant à échéance · {{number}}', {
+                number: mandateNumber(mandate.year, mandate.sequence)
+              }),
+              description: date.format(mandate.endDate),
+              occurredAt: mandate.endDate.toISOString(),
+              severity: 'warning' as const,
+              href: `${base}/sales/mandates/${mandate.id}`
+            }
+          ]
+        : []
+    ),
+    ...charges.map(call => ({
+      id: `charge-overdue:${call.id}`,
+      title: t('Appel de fonds en retard · {{name}}', { name: call.syndicate.name }),
+      description: `${t('Lot {{number}}', { number: call.lot.lotNumber })} · ${date.format(call.dueDate)}`,
+      occurredAt: call.dueDate.toISOString(),
+      severity: 'danger' as const,
+      href: `${base}/syndics/${call.syndicateId}/charges?status=OVERDUE&lotId=${call.lotId}`
+    }))
+  ];
+  return [...queue, ...additional]
+    .sort(compareQueueItems)
+    .map(({ id, title, description, occurredAt, severity, href }) => ({
+      id,
+      title,
+      description,
+      occurredAt,
+      severity,
+      href
+    }));
 }
 
 /**

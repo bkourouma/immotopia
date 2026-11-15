@@ -1,10 +1,10 @@
-import React from 'react';
-import { AudioOutlined, SendOutlined, StopOutlined } from '@ant-design/icons';
-import { Button, Input } from 'antd';
+import React, { useRef, useState } from 'react';
+import { AudioOutlined, PaperClipOutlined, SendOutlined, StopOutlined } from '@ant-design/icons';
+import { Button, Input, Space } from 'antd';
 import type { TextAreaRef } from 'antd/es/input/TextArea';
 import { appendDictation, useSpeechDictation } from '../../hooks/useSpeechDictation';
-import { t } from '../../i18n/t';
-import { useLanguage } from '../../i18n/useLanguage';
+import { useRecordedDictation } from '../../hooks/useRecordedDictation';
+import { useAssistantTranslation } from '../../i18n/useAssistantTranslation';
 
 export interface CopilotComposerProps {
   value: string;
@@ -13,6 +13,9 @@ export interface CopilotComposerProps {
   onSubmit(value: string): void;
   onStop(): void;
   streaming: boolean;
+  transcribe?(audio: Blob, signal: AbortSignal, durationSeconds: number): Promise<string>;
+  files?: File[];
+  onFilesChange?(files: File[]): void;
   maxChars?: number;
   maxRows?: number;
   inputRef?: React.Ref<TextAreaRef>;
@@ -29,15 +32,43 @@ export const CopilotComposer: React.FC<CopilotComposerProps> = ({
   onSubmit,
   onStop,
   streaming,
+  transcribe,
+  files = [],
+  onFilesChange,
   maxChars,
   maxRows = 8,
   inputRef
 }) => {
-  const { language } = useLanguage();
+  const { language, t } = useAssistantTranslation();
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [fileError, setFileError] = useState('');
+  function addFiles(selection: FileList | null) {
+    if (!selection?.length) return;
+    const pending = [...files, ...Array.from(selection)];
+    if (
+      pending.length > 5 ||
+      pending.some(file => file.size === 0 || file.size > 10 * 1024 * 1024 || !/\.(csv|txt|xlsx|pdf)$/i.test(file.name))
+    ) {
+      setFileError(t('Ajoutez jusqu’à cinq fichiers CSV, TXT, XLSX ou PDF de 10 Mo chacun.'));
+      return;
+    }
+    setFileError('');
+    onFilesChange?.(pending);
+  }
   const dictation = useSpeechDictation({
     language,
+    translate: t,
     onFinal: text => onChange(appendDictation(value, text))
   });
+  const recorded = useRecordedDictation(
+    dictation.supported ? undefined : transcribe,
+    text => onChange(appendDictation(value, text).slice(0, maxChars)),
+    t
+  );
+  const listening = dictation.listening || recorded.phase === 'recording';
+  const recordingBusy = recorded.phase !== 'idle';
+  const dictationError = dictation.error || recorded.error;
+  const microphoneLabel = listening ? t('Arrêter la dictée') : t('Dicter un message');
   // Le texte provisoire s'affiche à la suite de la saisie, sans y être encore écrit.
   const shown = dictation.interim ? appendDictation(value, dictation.interim) : value;
 
@@ -51,6 +82,7 @@ export const CopilotComposer: React.FC<CopilotComposerProps> = ({
       }}
     >
       <Input.TextArea
+        dir="auto"
         ref={inputRef}
         variant="borderless"
         value={shown}
@@ -61,7 +93,7 @@ export const CopilotComposer: React.FC<CopilotComposerProps> = ({
         onKeyDown={e => {
           if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
             e.preventDefault();
-            if (!streaming) onSubmit(value);
+            if (!streaming && !recordingBusy && (value.trim() || files.length)) onSubmit(value);
           }
         }}
         maxLength={maxChars}
@@ -70,29 +102,76 @@ export const CopilotComposer: React.FC<CopilotComposerProps> = ({
         aria-label={t('Votre message')}
         style={{ resize: 'none', padding: 'var(--space-1) 0' }}
       />
+      {onFilesChange && (
+        <>
+          <input
+            ref={fileInput}
+            type="file"
+            accept=".csv,.txt,.xlsx,.pdf"
+            multiple
+            hidden
+            onChange={event => {
+              addFiles(event.currentTarget.files);
+              event.currentTarget.value = '';
+            }}
+          />
+          {fileError && <div role="alert">{fileError}</div>}
+          {files.length > 0 && (
+            <Space wrap style={{ marginBlockEnd: 8 }}>
+              {files.map((file, index) => (
+                <Button
+                  key={index}
+                  size="small"
+                  disabled={streaming}
+                  onClick={() => {
+                    setFileError('');
+                    onFilesChange(files.filter((_, i) => i !== index));
+                  }}
+                  aria-label={t('Retirer {{name}}', { name: file.name })}
+                >
+                  <span dir="auto">{file.name}</span> ×
+                </Button>
+              ))}
+            </Space>
+          )}
+        </>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          {dictation.listening && (
+          {listening && (
             <span role="status" style={{ color: 'var(--color-danger, #cf1322)', fontSize: 'var(--text-sm, 13px)' }}>
               {t('Écoute en cours…')}
             </span>
           )}
-          {!dictation.listening && dictation.error && (
+          {recorded.phase === 'processing' && <span role="status">{t('Transcription en cours…')}</span>}
+          {!listening && dictationError && (
             <span role="status" style={{ color: 'var(--text-secondary, #8c8c8c)', fontSize: 'var(--text-sm, 13px)' }}>
-              {dictation.error}
+              {dictationError}
             </span>
           )}
         </div>
-        {dictation.supported && (
+        {onFilesChange && (
           <Button
-            type={dictation.listening ? 'primary' : 'text'}
-            danger={dictation.listening}
+            type="text"
+            shape="circle"
+            icon={<PaperClipOutlined aria-hidden />}
+            onClick={() => fileInput.current?.click()}
+            disabled={streaming || files.length >= 5}
+            aria-label={t('Joindre des fichiers')}
+            title={t('Joindre des fichiers')}
+          />
+        )}
+        {(dictation.supported || recorded.supported) && (
+          <Button
+            type={listening ? 'primary' : 'text'}
+            danger={listening}
             shape="circle"
             icon={<AudioOutlined />}
-            onClick={dictation.toggle}
-            aria-pressed={dictation.listening}
-            aria-label={dictation.listening ? t('Arrêter la dictée') : t('Dicter un message')}
-            title={dictation.listening ? t('Arrêter la dictée') : t('Dicter un message')}
+            onClick={dictation.supported ? dictation.toggle : () => void recorded.toggle()}
+            disabled={streaming || (recordingBusy && !listening)}
+            aria-pressed={listening}
+            aria-label={microphoneLabel}
+            title={microphoneLabel}
           />
         )}
         {streaming ? (
@@ -102,7 +181,7 @@ export const CopilotComposer: React.FC<CopilotComposerProps> = ({
             type="primary"
             shape="circle"
             icon={<SendOutlined />}
-            disabled={!value.trim()}
+            disabled={recordingBusy || (!value.trim() && files.length === 0)}
             onClick={() => onSubmit(value)}
             aria-label={t('Envoyer')}
           />

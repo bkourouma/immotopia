@@ -8,6 +8,7 @@ import type {
   LlmProvider,
   LlmToolSpec,
   LlmTurnResult,
+  LlmUsage,
   ProviderRuntimeConfig
 } from '../contracts';
 import { LlmProviderError, createAbortError, isAbortError } from './anthropic-provider';
@@ -112,10 +113,20 @@ interface ToolCallAccumulator {
 }
 
 interface StreamChunk {
+  model?: string;
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    cost?: number;
+    prompt_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number };
+  };
   error?: { code?: unknown; message?: unknown };
   choices?: Array<{
     delta?: {
       content?: string | null;
+      reasoning?: string | null;
+      reasoning_details?: unknown[];
+      refusal?: string | null;
       tool_calls?: Array<{
         index?: number;
         id?: string;
@@ -128,10 +139,24 @@ interface StreamChunk {
 
 /** Erreur de flux OpenRouter (statut HTTP amont ou code d'erreur en cours de flux). */
 class UpstreamStatusError extends Error {
-  constructor(readonly status: number | undefined) {
+  constructor(
+    readonly status: number | undefined,
+    readonly model?: string,
+    readonly usage?: LlmUsage
+  ) {
     super('upstream error');
     this.name = 'UpstreamStatusError';
   }
+}
+
+function readUsage(usage: NonNullable<StreamChunk['usage']>): LlmUsage {
+  return {
+    inputTokens: usage.prompt_tokens,
+    outputTokens: usage.completion_tokens,
+    cacheReadTokens: usage.prompt_tokens_details?.cached_tokens,
+    cacheWriteTokens: usage.prompt_tokens_details?.cache_write_tokens,
+    costUsd: usage.cost
+  };
 }
 
 function parseToolInput(raw: string): unknown {
@@ -146,13 +171,16 @@ function parseToolInput(raw: string): unknown {
 
 async function consumeStream(
   body: ReadableStream<Uint8Array>,
-  onTextDelta: (text: string) => void
+  onTextDelta: (text: string) => void,
+  onContent: () => void
 ): Promise<LlmTurnResult> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   const calls = new Map<number, ToolCallAccumulator>();
   let text = '';
   let finishReason: string | null | undefined;
+  let model: string | undefined;
+  let usage: LlmUsage | undefined;
   let buffer = '';
   let done = false;
 
@@ -167,18 +195,23 @@ async function consumeStream(
     } catch {
       return; // ligne SSE illisible : ignorée
     }
+    if (chunk.model) model = chunk.model;
+    if (chunk.usage) usage = readUsage(chunk.usage);
     if (chunk.error) {
       const code = Number(chunk.error.code);
-      throw new UpstreamStatusError(Number.isFinite(code) ? code : undefined);
+      throw new UpstreamStatusError(Number.isFinite(code) ? code : undefined, model, usage);
     }
     const choice = chunk.choices?.[0];
     if (!choice) return;
     const delta = choice.delta;
+    if (delta?.reasoning || delta?.reasoning_details?.length || delta?.refusal) onContent();
     if (delta?.content) {
+      onContent();
       text += delta.content;
       onTextDelta(delta.content);
     }
     for (const fragment of delta?.tool_calls ?? []) {
+      onContent();
       const index = fragment.index ?? 0;
       const acc = calls.get(index) ?? { id: '', name: '', args: '' };
       if (fragment.id) acc.id = fragment.id;
@@ -229,7 +262,13 @@ async function consumeStream(
   // Certains modèles terminent par `stop` tout en ayant émis des appels d'outils.
   if (toolCalls.length > 0 && stopReason === 'end_turn') stopReason = 'tool_use';
 
-  return { stopReason, assistantContent, toolCalls };
+  return {
+    stopReason,
+    assistantContent,
+    toolCalls,
+    model,
+    ...(usage && { usage })
+  };
 }
 
 // --- Fournisseur ------------------------------------------------------------
@@ -269,6 +308,7 @@ export class OpenRouterProvider implements LlmProvider {
       model,
       max_tokens: req.maxOutputTokens,
       stream: true,
+      usage: { include: true },
       messages: toOpenAiMessages(req.system, req.messages),
       ...(req.tools.length > 0
         ? {
@@ -276,7 +316,8 @@ export class OpenRouterProvider implements LlmProvider {
               type: 'function',
               function: { name: tool.name, description: tool.description, parameters: tool.inputSchema }
             })),
-            tool_choice: 'auto'
+            tool_choice: 'auto',
+            provider: { require_parameters: true }
           }
         : {})
     };
@@ -300,18 +341,19 @@ export class OpenRouterProvider implements LlmProvider {
   ): Promise<LlmTurnResult> {
     if (signal.aborted) throw createAbortError();
 
-    // Modèle relu à chaque tour : un changement d'admin s'applique à chaud.
+    // Le contrôleur fournit le profil du mode choisi pour cette requête.
     const config = await this.getConfig();
     if (signal.aborted) throw createAbortError(); // coupé pendant la lecture de la configuration
     const request = this.buildRequest(req, config.model);
 
     // Abandon relié au signal de l'appelant et au délai global.
     const controller = new AbortController();
+    const timeoutMs = config.timeoutMs ?? env.AI_REQUEST_TIMEOUT_MS;
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
       controller.abort();
-    }, env.AI_REQUEST_TIMEOUT_MS);
+    }, timeoutMs);
     const onCallerAbort = () => controller.abort();
     signal.addEventListener('abort', onCallerAbort, { once: true });
 
@@ -320,6 +362,7 @@ export class OpenRouterProvider implements LlmProvider {
     });
     aborted.catch(() => undefined);
 
+    let receivedContent = false;
     try {
       const work = (async () => {
         const response = await this.fetchImpl(request.url, {
@@ -330,28 +373,39 @@ export class OpenRouterProvider implements LlmProvider {
         });
         if (!response.ok) throw new UpstreamStatusError(response.status);
         if (!response.body) throw new UpstreamStatusError(undefined);
-        return consumeStream(response.body, onTextDelta);
+        return consumeStream(response.body, onTextDelta, () => {
+          receivedContent = true;
+        });
       })();
       work.catch(() => undefined);
-      return await Promise.race([work, aborted]);
+      const result = await Promise.race([work, aborted]);
+      return { ...result, model: result.model || config.model };
     } catch (error) {
       if (timedOut) {
-        logger.warn('ImmoCopilot : délai dépassé côté fournisseur', { timeoutMs: env.AI_REQUEST_TIMEOUT_MS });
-        throw new LlmProviderError(t("L'assistant a mis trop de temps à répondre. Réessayez."), { retryable: true });
+        logger.warn('ImmoCopilot : délai dépassé côté fournisseur', { timeoutMs });
+        throw new LlmProviderError(t("L'assistant a mis trop de temps à répondre. Réessayez."), {
+          retryable: true,
+          model: config.model
+        });
       }
       if (signal.aborted || isAbortError(error)) throw createAbortError();
       if (error instanceof LlmProviderError) throw error;
 
-      const status = error instanceof UpstreamStatusError ? error.status : undefined;
+      const upstream = error instanceof UpstreamStatusError ? error : undefined;
+      const status = upstream?.status;
       // Jamais le message amont à l'utilisateur ; on journalise seulement le type et le statut.
       logger.warn('ImmoCopilot : erreur du fournisseur', {
         provider: 'openrouter',
         errorName: error instanceof Error ? error.name : typeof error,
         status
       });
+      const retryable = status === undefined || status === 429 || status >= 500;
       throw new LlmProviderError(t("L'assistant est momentanément indisponible. Réessayez dans un instant."), {
-        retryable: status === undefined || status === 429 || status >= 500,
-        upstreamStatus: status
+        retryable,
+        automaticRetry: retryable && !receivedContent,
+        upstreamStatus: status,
+        model: upstream?.model || config.model,
+        usage: upstream?.usage
       });
     } finally {
       clearTimeout(timer);

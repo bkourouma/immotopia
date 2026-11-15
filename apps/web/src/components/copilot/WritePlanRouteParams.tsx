@@ -1,7 +1,7 @@
 import React, { useId } from 'react';
 import { SafetyCertificateOutlined } from '@ant-design/icons';
 import { Space, Tag } from 'antd';
-import { t } from '../../i18n/t';
+import { useAssistantTranslation } from '../../i18n/useAssistantTranslation';
 import type { WritePlanPathParam, WritePlanQueryParam } from '../../types/copilot';
 import { Value } from './WritePlanChangesTable';
 
@@ -17,6 +17,7 @@ const headingStyle: React.CSSProperties = { margin: 0, fontSize: 14, fontWeight:
 const mono: React.CSSProperties = { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace' };
 
 function Heading({ id, children }: { id: string; children: React.ReactNode }): React.ReactElement {
+  const { t } = useAssistantTranslation();
   return (
     <Space wrap size={8}>
       <h4 id={id} style={headingStyle}>
@@ -31,6 +32,7 @@ function Heading({ id, children }: { id: string; children: React.ReactNode }): R
 
 /** « Paramètres envoyés à la route » : tableau Clé | Valeur. Rien si la liste est vide. */
 export function WritePlanQuery({ query }: { query?: WritePlanQueryParam[] }): React.ReactElement | null {
+  const { t } = useAssistantTranslation();
   const id = useId();
   if (!query || query.length === 0) return null;
   return (
@@ -74,6 +76,7 @@ export function WritePlanPathParams({
   pathParams?: WritePlanPathParam[];
   hasTarget: boolean;
 }): React.ReactElement | null {
+  const { t } = useAssistantTranslation();
   const id = useId();
   if (!pathParams || pathParams.length === 0) return null;
   return (

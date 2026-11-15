@@ -39,6 +39,11 @@ function buildChart(): HTMLElement {
 }
 
 describe('findChartSvg', () => {
+  it('trouve aussi la surface SVG d’une carte de chaleur ou d’une jauge', () => {
+    const root = document.createElement('div');
+    root.innerHTML = '<svg id="scene" data-chart-surface="true" viewBox="0 0 640 300"></svg>';
+    expect(findChartSvg(root)?.id).toBe('scene');
+  });
   afterEach(() => (document.body.innerHTML = ''));
 
   it('cible le graphe, pas la première icône de légende', () => {

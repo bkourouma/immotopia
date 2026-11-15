@@ -11,7 +11,32 @@ const ALL: CopilotToolName[] = [
   'propose_rental_document'
 ];
 
+it('propose le catalogue au compte qui peut utiliser les jeux métier', () => {
+  const path = '/tenant/t1/assistant';
+  expect(getCopilotSuggestions(path, ['list_datasets']).map(item => item.text)).toEqual([
+    'Quels jeux de données puis-je analyser ?'
+  ]);
+  expect(getCopilotSuggestions(path, ['search_properties']).map(item => item.id)).not.toContain('default-datasets');
+});
+
 describe('getCopilotPageContext', () => {
+  it('transmet les filtres de liste reconnus sans la recherche libre ni la pagination', () => {
+    expect(
+      getCopilotPageContext(
+        '/tenant/t1/rental/installments',
+        '?status=PARTIAL&overdue=1&dueFrom=2026-10-01&q=Camille&page=3&token=prive'
+      )
+    ).toEqual({ currentPath: '/tenant/t1/rental/installments?status=PARTIAL&overdue=1&dueFrom=2026-10-01' });
+    expect(
+      getCopilotPageContext('/tenant/t1/rental/payments', '?receivedFrom=2026-09-01&receivedTo=2026-09-30')
+    ).toEqual({
+      currentPath: '/tenant/t1/rental/payments?receivedFrom=2026-09-01&receivedTo=2026-09-30'
+    });
+    expect(getCopilotPageContext('/tenant/t1/dashboard', '?status=ACTIVE')).toEqual({
+      currentPath: '/tenant/t1/dashboard'
+    });
+  });
+
   it('reconnaît la fiche bien', () => {
     expect(getCopilotPageContext('/tenant/t1/properties/p1')).toEqual({
       currentPath: '/tenant/t1/properties/p1',
@@ -34,6 +59,12 @@ describe('getCopilotPageContext', () => {
 });
 
 describe('getCopilotSuggestions', () => {
+  it('propose le bilan locatif seulement avec l’outil autorisé', () => {
+    expect(getCopilotSuggestions('/tenant/t1/assistant', ['rental_monthly_review'])).toEqual([
+      expect.objectContaining({ id: 'default-monthly-review', requires: 'rental_monthly_review' })
+    ]);
+    expect(getCopilotSuggestions('/tenant/t1/rental', ['rental_due_comparison'])).toEqual([]);
+  });
   it('propose des actions de bail sur la fiche bail', () => {
     const ids = getCopilotSuggestions('/tenant/t1/rental/leases/l1', ALL).map(s => s.id);
     expect(ids).toEqual(['lease-receipt', 'lease-statement', 'lease-documents']);

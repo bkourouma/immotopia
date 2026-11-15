@@ -100,6 +100,7 @@ export const TenantSettings: React.FC = () => {
           contactPhone: tenantData.contactPhone || '',
           address: tenantData.address || '',
           city: tenantData.city || '',
+          timeZone: tenantData.timeZone ?? 'UTC',
           country: tenantData.country || '',
           website: tenantData.website || '',
           brandingPrimaryColor: tenantData.brandingPrimaryColor || ''
@@ -129,6 +130,7 @@ export const TenantSettings: React.FC = () => {
         contactPhone: values.contactPhone || undefined,
         address: values.address || undefined,
         city: values.city || undefined,
+        timeZone: values.timeZone?.trim() || undefined,
         country: values.country || undefined,
         website: values.website || undefined,
         brandingPrimaryColor: values.brandingPrimaryColor || undefined
@@ -281,6 +283,7 @@ export const TenantSettings: React.FC = () => {
             contactPhone: '',
             address: '',
             city: '',
+            timeZone: 'UTC',
             country: '',
             website: '',
             brandingPrimaryColor: ''
@@ -471,6 +474,11 @@ export const TenantSettings: React.FC = () => {
               <Col xs={24} md={12}>
                 <Form.Item label={t('Pays')} name="country">
                   <Input placeholder={t('Pays')} />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={12}>
+                <Form.Item label={t('Fuseau horaire')} name="timeZone">
+                  <Input placeholder="Africa/Abidjan" maxLength={100} />
                 </Form.Item>
               </Col>
             </Row>

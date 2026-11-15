@@ -478,9 +478,8 @@ const TenantEdit = lazy(() =>
 const Statistics = lazy(() =>
   import(/* webpackChunkName: "admin" */ './pages/admin/Statistics').then(m => ({ default: m.Statistics }))
 );
-const AiSettingsPage = lazy(() =>
-  import(/* webpackChunkName: "admin" */ './pages/admin/AiSettings').then(m => ({ default: m.AiSettingsPage }))
-);
+const assistantPages = () => import('./pages/assistant/assistant-pages');
+const AiSettingsPage = lazy(() => assistantPages().then(module => module.loadAiSettings()));
 const AuditLogs = lazy(() =>
   import(/* webpackChunkName: "admin" */ './pages/admin/AuditLogs').then(m => ({ default: m.AuditLogs }))
 );
@@ -560,7 +559,7 @@ const DealFormPage = lazy(() =>
 const Activities = lazy(() =>
   import(/* webpackChunkName: "crm" */ './pages/crm/Activities').then(m => ({ default: m.Activities }))
 );
-const AssistantPage = lazy(() => import('./pages/assistant/AssistantPage'));
+const AssistantPage = lazy(() => assistantPages().then(module => module.loadAssistantPage()));
 const CrmDashboard = lazy(() =>
   import(/* webpackChunkName: "crm" */ './pages/crm/Dashboard').then(m => ({ default: m.CrmDashboard }))
 );

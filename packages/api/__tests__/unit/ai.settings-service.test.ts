@@ -36,6 +36,7 @@ import {
   isProviderUsable,
   listOpenRouterModels,
   resetAiSettingsCaches,
+  resolveAiMode,
   updateAiSettings
 } from '../../src/services/ai-settings-service';
 import { getLlmProvider, resetLlmProviderCache } from '../../src/lib/ai/providers';
@@ -75,6 +76,7 @@ beforeEach(() => {
     AI_MODEL: 'claude-opus-5-5',
     AI_EFFORT: 'low',
     AI_REFUSAL_FALLBACK: 'on',
+    AI_REQUEST_TIMEOUT_MS: 60_000,
     OPENROUTER_API_KEY: SECRET,
     ANTHROPIC_API_KEY: ANTHROPIC_SECRET,
     OPENROUTER_BASE_URL: 'https://openrouter.ai/api/v1'
@@ -84,6 +86,22 @@ beforeEach(() => {
 });
 
 describe('getEffectiveAiConfig', () => {
+  it('sélectionne les modèles et budgets distincts, avec héritage du modèle standard', async () => {
+    mockPrisma.platformAiSettings.findUnique.mockResolvedValue(
+      dbRow({
+        modelsByMode: { deep: 'openai/profondeur', fast: 'openai/rapide' }
+      })
+    );
+    const config = await getEffectiveAiConfig();
+    expect(resolveAiMode(config, 'standard')).toMatchObject({ model: 'openai/gpt-5', timeoutMs: 60_000 });
+    expect(resolveAiMode(config, 'deep')).toMatchObject({
+      model: 'openai/profondeur',
+      effort: 'high',
+      timeoutMs: 120_000
+    });
+    expect(resolveAiMode(config, 'fast')).toMatchObject({ model: 'openai/rapide', effort: 'low', timeoutMs: 45_000 });
+    expect(resolveAiMode({ ...config, modelsByMode: {} }, 'fast').model).toBe('openai/gpt-5');
+  });
   it("sans ligne en base : valeurs d'environnement, source environment", async () => {
     mockEnv.AI_PROVIDER = 'anthropic';
     mockEnv.AI_EFFORT = 'high';
@@ -237,8 +255,20 @@ describe('listOpenRouterModels', () => {
     const fetchMock = jest.fn().mockResolvedValue(
       okResponse({
         data: [
-          { id: 'openai/gpt-5', name: 'GPT-5', context_length: 400000, pricing: { prompt: '1' }, secret: 'x' },
-          { id: 'anthropic/claude-sonnet-4.5', name: 'Claude Sonnet 4.5' },
+          {
+            id: 'openai/gpt-5',
+            name: 'GPT-5',
+            context_length: 400000,
+            pricing: { prompt: '1' },
+            secret: 'x',
+            supported_parameters: ['tools', 'tool_choice']
+          },
+          {
+            id: 'anthropic/claude-sonnet-4.5',
+            name: 'Claude Sonnet 4.5',
+            supported_parameters: ['tools', 'tool_choice']
+          },
+          { id: 'google/text-only', name: 'Sans choix d’outil', supported_parameters: ['tools'] },
           { name: 'sans id' }
         ]
       })

@@ -1,5 +1,12 @@
 import { Request, Response, NextFunction } from 'express';
-import { DEFAULT_LANGUAGE, Language, negotiateLanguage, runWithLanguage } from '../i18n';
+import {
+  DEFAULT_LANGUAGE,
+  Language,
+  negotiateAssistantLanguage,
+  negotiateLanguage,
+  runWithAssistantLanguage,
+  runWithLanguage
+} from '../i18n';
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -38,4 +45,11 @@ export function resolveLanguage(req: Request, res: Response, next: NextFunction)
   res.setHeader('Content-Language', language);
 
   runWithLanguage(language, () => next());
+}
+
+export function resolveAssistantLanguage(req: Request, res: Response, next: NextFunction): void {
+  const language = negotiateAssistantLanguage(req.headers['accept-language']);
+  if (!language) return next();
+  res.setHeader('Content-Language', language);
+  runWithAssistantLanguage(language, next);
 }

@@ -1,0 +1,224 @@
+import React, { useEffect, useState } from 'react';
+import { Alert, Button, Drawer, Empty, Popconfirm, Segmented, Spin } from 'antd';
+import { useAssistantTranslation } from '../../i18n/useAssistantTranslation';
+import { feedback } from '../../lib/feedback';
+import { copilotService, type AnalysisShare } from '../../services/copilot-service';
+import type { CopilotArtifact } from '../../types/copilot';
+import { sanitizeArtifact } from '../../utils/copilot-artifact';
+import { filenameFromDisposition, saveBlob } from '../../utils/save-blob';
+import { ArtifactPanel } from './artifact/ArtifactPanel';
+
+export function AnalysisShares({
+  tenantId,
+  onClose,
+  initialShareId
+}: {
+  tenantId: string;
+  onClose(): void;
+  initialShareId?: string;
+}) {
+  const { language, locale, t } = useAssistantTranslation();
+  const [direction, setDirection] = useState<'incoming' | 'outgoing'>('incoming');
+  const [items, setItems] = useState<AnalysisShare[]>([]);
+  const [cursor, setCursor] = useState<string>();
+  const [next, setNext] = useState<string>();
+  const [revision, setRevision] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+  const [selection, setSelection] = useState<string | undefined>(initialShareId);
+  const [artifact, setArtifact] = useState<CopilotArtifact>();
+  const [threadArtifacts, setThreadArtifacts] = useState<CopilotArtifact[]>();
+  const [selectedArtifactId, setSelectedArtifactId] = useState<string>();
+  const [unavailable, setUnavailable] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setFailed(false);
+    void copilotService
+      .listAnalysisShares(tenantId, direction, cursor)
+      .then(page => {
+        if (!active) return;
+        setItems(previous => (cursor ? [...previous, ...page.items] : page.items));
+        setNext(page.nextCursor);
+      })
+      .catch(() => {
+        if (active) setFailed(true);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [tenantId, direction, cursor, revision]);
+
+  useEffect(() => {
+    if (!selection) return;
+    let active = true;
+    setArtifact(undefined);
+    setThreadArtifacts(undefined);
+    setUnavailable(false);
+    void copilotService
+      .getSharedAnalysis(tenantId, selection)
+      .then(payload => {
+        if (!active) return;
+        if (payload && typeof payload === 'object' && 'turns' in payload && Array.isArray(payload.turns)) {
+          setThreadArtifacts(
+            payload.turns.flatMap(turn =>
+              Array.isArray(turn?.artifacts)
+                ? (turn.artifacts as unknown[])
+                    .map(sanitizeArtifact)
+                    .filter((item): item is CopilotArtifact => item !== null)
+                : []
+            )
+          );
+          return;
+        }
+        const result = sanitizeArtifact(payload);
+        if (!result) throw new Error();
+        if (active) setArtifact(result);
+      })
+      .catch(() => {
+        if (active) setUnavailable(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [tenantId, selection, language]);
+
+  async function revoke(id: string) {
+    try {
+      await copilotService.revokeAnalysisShare(tenantId, id);
+      setItems(previous => previous.filter(item => item.id !== id));
+      setCursor(undefined);
+      setNext(undefined);
+      setRevision(value => value + 1);
+    } catch {
+      feedback.error(t('Impossible de révoquer le partage.'));
+    }
+  }
+
+  return (
+    <Drawer open title={t('Partages')} size="min(780px, 100vw)" onClose={onClose}>
+      {selection ? (
+        <>
+          <Button onClick={() => setSelection(undefined)}>{t('Retour aux partages')}</Button>
+          {artifact || threadArtifacts?.length ? (
+            <ArtifactPanel
+              serverDownloadsOnly
+              artifacts={artifact ? [artifact] : (threadArtifacts ?? [])}
+              selectedId={selectedArtifactId}
+              onSelect={setSelectedArtifactId}
+              onClose={() => setSelection(undefined)}
+              onDownloadFile={async (id, format) => {
+                const result = await copilotService.downloadSharedAnalysis(
+                  tenantId,
+                  selection,
+                  format,
+                  threadArtifacts ? id : undefined
+                );
+                saveBlob(
+                  result.data,
+                  filenameFromDisposition(result.headers['content-disposition'], `ImmoTopia.${format}`)
+                );
+              }}
+            />
+          ) : threadArtifacts ? (
+            <Empty description={t('Aucun résultat consultable dans cette conversation.')} />
+          ) : unavailable ? (
+            <Alert type="error" message={t('Cette analyse partagée est indisponible.')} />
+          ) : (
+            <Spin />
+          )}
+        </>
+      ) : (
+        <>
+          <Segmented<'incoming' | 'outgoing'>
+            value={direction}
+            onChange={value => {
+              setItems([]);
+              setCursor(undefined);
+              setNext(undefined);
+              setDirection(value);
+            }}
+            options={[
+              { value: 'incoming', label: t('Reçus') },
+              { value: 'outgoing', label: t('Envoyés') }
+            ]}
+          />
+          {failed && <Alert type="error" message={t('Impossible de charger les partages.')} />}
+          {loading && <Spin />}
+          {!loading && !failed && !items.length && <Empty description={t('Aucun partage.')} />}
+          <ul style={{ listStyle: 'none', padding: 0 }}>
+            {items.map(row => (
+              <li
+                key={row.id}
+                style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, paddingBlock: 8 }}
+              >
+                <span>
+                  {row.title && (
+                    <>
+                      <strong>{row.title}</strong> ·{' '}
+                    </>
+                  )}
+                  {row.colleague || t('Collaborateur')} · {new Date(row.createdAt).toLocaleDateString(locale)}
+                  {row.message && (
+                    <span style={{ display: 'block', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                      {row.message}
+                    </span>
+                  )}
+                </span>
+                {direction === 'incoming' ? (
+                  <>
+                    <Button
+                      onClick={() => {
+                        setArtifact(undefined);
+                        setThreadArtifacts(undefined);
+                        setSelectedArtifactId(undefined);
+                        setUnavailable(false);
+                        setSelection(row.id);
+                      }}
+                    >
+                      {t('Ouvrir')}
+                    </Button>
+                    {row.kind !== 'conversation' && (
+                      <Button
+                        onClick={async () => {
+                          try {
+                            await copilotService.setAnalysisPin(tenantId, row.id, !row.pinned);
+                            setItems(previous =>
+                              previous.map(item => (item.id === row.id ? { ...item, pinned: !row.pinned } : item))
+                            );
+                          } catch {
+                            feedback.error(t('Impossible de modifier l’épingle.'));
+                          }
+                        }}
+                      >
+                        {row.pinned ? t('Désépingler') : t('Épingler au tableau de bord')}
+                      </Button>
+                    )}
+                    <Popconfirm title={t('Retirer cette analyse de la liste ?')} onConfirm={() => revoke(row.id)}>
+                      <Button danger type="text">
+                        {t('Retirer')}
+                      </Button>
+                    </Popconfirm>
+                  </>
+                ) : (
+                  <Popconfirm title={t('Révoquer ce partage ?')} onConfirm={() => revoke(row.id)}>
+                    <Button danger>{t('Révoquer')}</Button>
+                  </Popconfirm>
+                )}
+              </li>
+            ))}
+          </ul>
+          {next && !failed && (
+            <Button disabled={loading} onClick={() => setCursor(next)}>
+              {t('Afficher plus')}
+            </Button>
+          )}
+        </>
+      )}
+    </Drawer>
+  );
+}

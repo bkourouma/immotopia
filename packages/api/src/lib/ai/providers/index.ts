@@ -1,5 +1,10 @@
 import type { LlmProvider } from '../contracts';
-import { getEffectiveAiConfig, isProviderUsable } from '../../../services/ai-settings-service';
+import {
+  getEffectiveAiConfig,
+  isProviderUsable,
+  resolveAiMode,
+  type AiMode
+} from '../../../services/ai-settings-service';
 import { AnthropicProvider } from './anthropic-provider';
 import { FakeProvider } from './fake-provider';
 import { OpenRouterProvider } from './openrouter-provider';
@@ -10,30 +15,33 @@ import { OpenRouterProvider } from './openrouter-provider';
  * invalidé à chaque mise à jour). Renvoie `null` quand l'assistant est
  * désactivé OU que le fournisseur désigné ne peut pas servir (clé absente,
  * `fake` en production) : le contrôleur répond alors 503 `AI_DISABLED`.
- * L'instance est réutilisée tant que fournisseur et modèle ne changent pas.
+ * Le profil est sélectionné au début de la requête et réutilisé pendant ses tours.
  */
-let cached: { key: string; provider: LlmProvider } | null = null;
+const cached = new Map<AiMode, { key: string; provider: LlmProvider }>();
 
-export async function getLlmProvider(): Promise<LlmProvider | null> {
+export async function getLlmProvider(mode: AiMode = 'standard'): Promise<LlmProvider | null> {
   const config = await getEffectiveAiConfig();
-  if (!isProviderUsable(config)) return null;
+  const profile = resolveAiMode(config, mode);
+  if (!isProviderUsable({ provider: config.provider, model: profile.model })) return null;
 
-  const key = `${config.provider}:${config.model}`;
-  if (cached?.key === key) return cached.provider;
+  const key = JSON.stringify([config.provider, profile]);
+  const entry = cached.get(mode);
+  if (entry?.key === key) return entry.provider;
 
+  const getConfig = async () => profile;
   const provider: LlmProvider =
     config.provider === 'fake'
       ? new FakeProvider()
       : config.provider === 'openrouter'
-        ? new OpenRouterProvider()
-        : new AnthropicProvider();
-  cached = { key, provider };
+        ? new OpenRouterProvider({ getConfig })
+        : new AnthropicProvider({ getConfig });
+  cached.set(mode, { key, provider });
   return provider;
 }
 
 /** Oublie l'instance en cache (tests). */
 export function resetLlmProviderCache(): void {
-  cached = null;
+  cached.clear();
 }
 
 export { AnthropicProvider, LlmProviderError, isAbortError } from './anthropic-provider';

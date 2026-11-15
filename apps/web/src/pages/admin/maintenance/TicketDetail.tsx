@@ -97,6 +97,7 @@ export const TicketDetail: React.FC = () => {
           status: response.data.status,
           priority: response.data.priority,
           assignedVendorId: response.data.assignedVendorId,
+          contractDueDate: response.data.contractDueDate ?? '',
           resolutionNotes: response.data.resolutionNotes
         });
       }
@@ -117,6 +118,10 @@ export const TicketDetail: React.FC = () => {
         status: values.status,
         priority: values.priority,
         assignedVendorId: values.assignedVendorId,
+        contractDueDate:
+          (values.contractDueDate || null) === (ticket?.contractDueDate ?? null)
+            ? undefined
+            : values.contractDueDate || null,
         resolutionNotes: values.resolutionNotes
       });
       message.success(t('Ticket mis à jour avec succès'));
@@ -263,6 +268,18 @@ export const TicketDetail: React.FC = () => {
 
                   <Form.Item name="assignedVendorId" label={t('Prestataire assigné')}>
                     <VendorSelect tenantId={effectiveTenantId || ''} />
+                  </Form.Item>
+
+                  <Form.Item
+                    name="contractDueDate"
+                    label={t('Échéance contractuelle')}
+                    extra={
+                      ticket.contractOverdue ? (
+                        <Text type="danger">{t('Échéance contractuelle dépassée')}</Text>
+                      ) : undefined
+                    }
+                  >
+                    <Input type="date" />
                   </Form.Item>
 
                   <Form.Item name="resolutionNotes" label={t('Notes de résolution')}>

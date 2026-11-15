@@ -455,6 +455,13 @@ enum PropertyVisitStatus {
 
 // User entity
 model User {
+  assistantConversations AssistantConversation[]
+  assistantProviderUsage AssistantProviderUsage[]
+  assistantAnalysisShares AssistantAnalysisShare[] @relation("AssistantAnalysisRecipient")
+  createdAssistantTasks AssistantTask[] @relation("AssistantTaskCreator")
+  assignedAssistantTasks AssistantTask[] @relation("AssistantTaskAssignee")
+  assistantNotificationRequests AssistantNotificationRequest[]
+  assistantRentalAlerts AssistantRentalAlert[]
   id                        String               @id @default(uuid())
   platformAiSettingsUpdated PlatformAiSettings[] @relation("PlatformAiSettingsUpdatedBy")
   email                     String               @unique
@@ -471,7 +478,8 @@ model User {
   /// et laisse le navigateur trancher au premier rendu. Une colonne
   /// `DEFAULT 'fr'` aurait rendu ce cas indistinguable d'un choix explicite du
   /// francais, et impose le francais a un utilisateur arabophone.
-  preferredLanguage String?  @map("preferred_language")
+  preferredLanguage          String? @map("preferred_language")
+  preferredAssistantLanguage String? @map("preferred_assistant_language")
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
 
@@ -593,6 +601,11 @@ model User {
 
 // Tenant entity (Agency/Operator)
 model Tenant {
+  assistantConversations AssistantConversation[]
+  assistantProviderUsage AssistantProviderUsage[]
+  assistantTasks AssistantTask[]
+  assistantNotificationRequests AssistantNotificationRequest[]
+  assistantRentalAlerts AssistantRentalAlert[]
   id        String     @id @default(uuid())
   name      String
   slug      String     @unique
@@ -610,6 +623,7 @@ model Tenant {
   contactPhone          String?      @map("contact_phone")
   country               String?
   city                  String?
+  timeZone              String       @default("UTC") @map("time_zone")
   address               String?
   brandingPrimaryColor  String?      @map("branding_primary_color")
   subdomain             String?      @unique
@@ -1458,6 +1472,8 @@ model PlatformAiSettings {
   model           String
   effort          String   @default("low")
   refusalFallback Boolean  @default(true) @map("refusal_fallback")
+  modelsByMode    Json     @default("{}") @map("models_by_mode")
+  transcription   Json?
   updatedById     String?  @map("updated_by_id")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
@@ -3505,6 +3521,7 @@ model MaintenanceTicket {
   assigned_to_user_id String? @map("assigned_to_user_id")
 
   resolution_notes String? @map("resolution_notes") @db.Text
+  contract_due_date DateTime? @map("contract_due_date") @db.Date
 
   // Status timestamps
   declared_at    DateTime  @default(now()) @map("declared_at")
@@ -11513,4 +11530,282 @@ model JobLock {
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   @@map("job_locks")
+}
+
+model AssistantConversation {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  ownerId   String   @map("owner_id")
+  title     String
+  titlePending Boolean @default(false) @map("title_pending")
+  pinned    Boolean  @default(false)
+  archived  Boolean  @default(false)
+  scopeKey  String   @map("scope_key")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  owner  User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  turns  AssistantTurn[]
+  artifactVersions AssistantArtifactVersion[]
+  savedAnalyses    AssistantSavedAnalysis[]
+  shares           AssistantAnalysisShare[]
+
+  @@unique([tenantId, ownerId, id])
+  @@index([tenantId, ownerId, archived, pinned, updatedAt, id], map: "assistant_conversations_history_idx")
+  @@map("assistant_conversations")
+}
+
+model AssistantTurn {
+  id               String   @default(uuid())
+  tenantId         String   @map("tenant_id")
+  ownerId          String   @map("owner_id")
+  conversationId   String   @map("conversation_id")
+  question         String
+  files            String[] @default([])
+  response         String   @default("")
+  responseRevision Int      @default(0) @map("response_revision")
+  focus            Json?
+  result           Json?
+  outcome          String?
+  startedAt        DateTime @default(now()) @map("started_at")
+
+  conversation AssistantConversation @relation(fields: [tenantId, ownerId, conversationId], references: [tenantId, ownerId, id], onDelete: Cascade, map: "assistant_turns_conversation_fkey")
+  attachments  AssistantAttachment[]
+  feedback     AssistantResponseFeedback[]
+  followUps    AssistantFollowUp[]
+
+  @@id([tenantId, ownerId, id])
+  @@index([tenantId, ownerId, conversationId, startedAt, id], map: "assistant_turns_history_idx")
+  @@map("assistant_turns")
+}
+
+model AssistantResponseFeedback {
+  tenantId  String @map("tenant_id")
+  ownerId   String @map("owner_id")
+  turnId    String @map("turn_id")
+  revision  Int
+  helpful   Boolean
+  comment   String
+  excerpt   String
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  turn AssistantTurn @relation(fields: [tenantId, ownerId, turnId], references: [tenantId, ownerId, id], onDelete: Cascade, map: "assistant_response_feedback_turn_fkey")
+
+  @@id([tenantId, ownerId, turnId, revision])
+  @@map("assistant_response_feedback")
+}
+
+/// Métadonnées d'un appel effectivement envoyé au fournisseur, hors contenu.
+model AssistantProviderUsage {
+  id               String   @id @default(uuid()) @db.Uuid
+  tenantId         String   @map("tenant_id")
+  userId           String?  @map("user_id")
+  provider         String   @db.VarChar(20)
+  model            String?  @db.VarChar(200)
+  mode             String   @db.VarChar(20)
+  status           String   @db.VarChar(20)
+  upstreamStatus   Int?     @map("upstream_status")
+  durationMs       Int      @map("duration_ms")
+  audioSeconds     Int?     @map("audio_seconds")
+  inputTokens      Int?     @map("input_tokens")
+  outputTokens     Int?     @map("output_tokens")
+  cacheReadTokens  Int?     @map("cache_read_tokens")
+  cacheWriteTokens Int?     @map("cache_write_tokens")
+  costUsd          Decimal? @map("cost_usd") @db.Decimal(20, 12)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([tenantId, createdAt])
+  @@index([userId])
+  @@map("assistant_provider_usage")
+}
+
+model AssistantAttachment {
+  tenantId   String  @map("tenant_id")
+  ownerId    String  @map("owner_id")
+  turnId     String  @map("turn_id")
+  position   Int
+  name       String
+  excerpt    String
+  artifactId String? @map("artifact_id")
+  bytes      Bytes
+
+  turn AssistantTurn @relation(fields: [tenantId, ownerId, turnId], references: [tenantId, ownerId, id], onDelete: Cascade)
+
+  @@id([tenantId, ownerId, turnId, position])
+  @@map("assistant_attachments")
+}
+
+model AssistantArtifactVersion {
+  tenantId       String   @map("tenant_id")
+  ownerId        String   @map("owner_id")
+  conversationId String   @map("conversation_id")
+  artifactId     String   @map("artifact_id")
+  version        Int
+  snapshot       Json
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  conversation AssistantConversation @relation(fields: [tenantId, ownerId, conversationId], references: [tenantId, ownerId, id], onDelete: Cascade, map: "assistant_artifact_versions_conversation_fkey")
+
+  @@id([tenantId, ownerId, conversationId, artifactId, version])
+  @@map("assistant_artifact_versions")
+}
+
+model AssistantSavedAnalysis {
+  tenantId       String   @map("tenant_id")
+  ownerId        String   @map("owner_id")
+  conversationId String   @map("conversation_id")
+  artifactId     String   @map("artifact_id")
+  title          String
+  original       Json
+  createdAt      DateTime @default(now()) @map("created_at")
+  pinnedAt       DateTime? @map("pinned_at")
+
+  conversation AssistantConversation @relation(fields: [tenantId, ownerId, conversationId], references: [tenantId, ownerId, id], onDelete: Cascade, map: "assistant_saved_analyses_conversation_fkey")
+  shares AssistantAnalysisShare[]
+  scheduledReports AssistantScheduledReport[]
+
+  @@id([tenantId, ownerId, conversationId, artifactId])
+  @@index([tenantId, ownerId, createdAt(sort: Desc), conversationId, artifactId], map: "assistant_saved_analyses_list_idx")
+  @@map("assistant_saved_analyses")
+}
+
+model AssistantAnalysisShare {
+  id             String   @id @default(uuid())
+  tenantId       String   @map("tenant_id")
+  ownerId        String   @map("owner_id")
+  conversationId String   @map("conversation_id")
+  artifactId     String?  @map("artifact_id")
+  recipientId    String   @map("recipient_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  pinnedAt       DateTime? @map("pinned_at")
+  message        String?   @db.VarChar(2000)
+
+  analysis AssistantSavedAnalysis? @relation(fields: [tenantId, ownerId, conversationId, artifactId], references: [tenantId, ownerId, conversationId, artifactId], onDelete: Cascade, map: "assistant_analysis_shares_analysis_fkey")
+  conversation AssistantConversation @relation(fields: [tenantId, ownerId, conversationId], references: [tenantId, ownerId, id], onDelete: Cascade, map: "assistant_analysis_shares_conversation_fkey")
+  recipient User @relation("AssistantAnalysisRecipient", fields: [recipientId], references: [id], onDelete: Cascade, map: "assistant_analysis_shares_recipient_fkey")
+
+  @@unique([tenantId, ownerId, conversationId, artifactId, recipientId], map: "assistant_analysis_shares_recipient_key")
+  // Les partages de fil sans artefact sont dédupliqués par un index partiel SQL.
+  @@index([tenantId, recipientId, createdAt(sort: Desc), id], map: "assistant_analysis_shares_inbox_idx")
+  @@map("assistant_analysis_shares")
+}
+
+model AssistantScheduledReport {
+  id             String    @id @default(uuid())
+  tenantId       String    @map("tenant_id")
+  ownerId        String    @map("owner_id")
+  conversationId String    @map("conversation_id")
+  artifactId     String    @map("artifact_id")
+  schedule       Json?
+  immediateKey   String?   @map("immediate_key")
+  message        String?
+  sharesCreated  Boolean   @default(false) @map("shares_created")
+  recipientIds   String[]  @map("recipient_ids")
+  formats        String[]
+  active         Boolean   @default(false)
+  nextRunAt      DateTime? @map("next_run_at")
+  lastRunAt      DateTime? @map("last_run_at")
+  lastStatus     String?   @map("last_status")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  analysis AssistantSavedAnalysis @relation(fields: [tenantId, ownerId, conversationId, artifactId], references: [tenantId, ownerId, conversationId, artifactId], onDelete: Cascade, map: "assistant_scheduled_reports_analysis_fkey")
+  deliveries AssistantReportDelivery[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, ownerId, immediateKey], map: "assistant_reports_immediate_key")
+  @@index([tenantId, ownerId, createdAt(sort: Desc), id], map: "assistant_scheduled_reports_list_idx")
+  @@index([active, nextRunAt], map: "assistant_scheduled_reports_due_idx")
+  @@map("assistant_scheduled_reports")
+}
+
+model AssistantReportDelivery {
+  tenantId    String   @map("tenant_id")
+  reportId    String   @map("report_id")
+  dueAt       DateTime @map("due_at")
+  recipientId String   @map("recipient_id")
+  status      String
+
+  report AssistantScheduledReport @relation(fields: [tenantId, reportId], references: [tenantId, id], onDelete: Cascade, map: "assistant_report_deliveries_report_fkey")
+
+  @@id([tenantId, reportId, dueAt, recipientId])
+  @@map("assistant_report_deliveries")
+}
+
+model AssistantTask {
+  id                 String    @id @default(uuid())
+  tenantId           String    @map("tenant_id")
+  creatorId          String    @map("creator_id")
+  assigneeId         String    @map("assignee_id")
+  requestId          String    @map("request_id")
+  title              String
+  description        String?
+  priority           String
+  dueDate            DateTime? @map("due_date") @db.Date
+  completedAt        DateTime? @map("completed_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  conversationId     String?   @map("conversation_id")
+  artifactId         String?   @map("artifact_id")
+  shareId            String?   @map("share_id")
+
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  creator  User   @relation("AssistantTaskCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  assignee User   @relation("AssistantTaskAssignee", fields: [assigneeId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, creatorId, requestId], map: "assistant_tasks_request_key")
+  @@index([tenantId, creatorId, createdAt(sort: Desc), id], map: "assistant_tasks_created_idx")
+  @@index([tenantId, assigneeId, createdAt(sort: Desc), id], map: "assistant_tasks_assigned_idx")
+  @@map("assistant_tasks")
+}
+
+model AssistantNotificationRequest {
+  tenantId   String   @map("tenant_id")
+  senderId   String   @map("sender_id")
+  requestId  String   @map("request_id")
+  inputHash  String   @map("input_hash")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sender User   @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, senderId, requestId])
+  @@map("assistant_notification_requests")
+}
+
+model AssistantFollowUp {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  ownerId   String   @map("owner_id")
+  turnId    String   @map("turn_id")
+  kind      String
+  status    String   @default("PENDING")
+  payload   Json
+  display   Json
+  createdAt DateTime @default(now()) @map("created_at")
+
+  turn AssistantTurn @relation(fields: [tenantId, ownerId, turnId], references: [tenantId, ownerId, id], onDelete: Cascade, map: "assistant_follow_ups_turn_fkey")
+
+  @@index([tenantId, ownerId, turnId], map: "assistant_follow_ups_turn_idx")
+  @@map("assistant_follow_ups")
+}
+
+model AssistantRentalAlert {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  ownerId     String   @map("owner_id")
+  rule        Json
+  matched     Boolean  @default(false)
+  nextCheckAt DateTime @default(now()) @map("next_check_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([nextCheckAt, id], map: "assistant_rental_alerts_due_idx")
+  @@index([tenantId, ownerId, createdAt(sort: Desc), id], map: "assistant_rental_alerts_owner_idx")
+  @@map("assistant_rental_alerts")
 }

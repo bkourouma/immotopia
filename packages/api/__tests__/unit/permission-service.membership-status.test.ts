@@ -38,7 +38,7 @@ describe("getUserPermissions : statut de l'appartenance", () => {
     prismaMock.membership.findUnique.mockResolvedValue({ status: MembershipStatus.ACTIVE });
     await expect(getUserPermissions('u1', 't1')).resolves.toEqual(['USERS_EDIT', 'USERS_DISABLE']);
     expect(prismaMock.membership.findUnique).toHaveBeenCalledWith({
-      where: { userId_tenantId: { userId: 'u1', tenantId: 't1' } },
+      where: { tenantId: 't1', userId_tenantId: { userId: 'u1', tenantId: 't1' } },
       select: { status: true }
     });
   });

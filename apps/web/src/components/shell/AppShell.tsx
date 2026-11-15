@@ -260,10 +260,11 @@ export const AppShell: React.FC = () => {
   // Tant que le persona n'est pas tranché, on rend la coquille sans menu
   // plutôt qu'un menu faux : afficher le menu public à un collaborateur, même
   // une seconde, est pire que de n'afficher aucun menu.
-  const showSidebar = Boolean(nav) && isDesktop;
-  const showRail = Boolean(nav) && isTablet;
+  const assistantPage = /\/assistant\/?$/.test(location.pathname);
+  const showSidebar = Boolean(nav) && isDesktop && !assistantPage;
+  const showRail = Boolean(nav) && isTablet && !assistantPage;
   const showTabs = Boolean(nav) && !isDesktop && (nav?.tabs.length ?? 0) > 0;
-  const canOpenDrawer = Boolean(nav) && !isDesktop;
+  const canOpenDrawer = Boolean(nav) && (!isDesktop || assistantPage);
 
   const sidebarWidth = showSidebar ? 256 : showRail ? 72 : 0;
 
@@ -308,7 +309,10 @@ export const AppShell: React.FC = () => {
             persona === 'locataire' ||
             persona === 'coproprietaire' ? (
               <Suspense fallback={null}>
-                <HeaderActions />
+                <HeaderActions
+                  showAssistant={Boolean(persona === 'collaborateur' && !assistantPage && copilotStatus?.enabled)}
+                  isDesktop={isDesktop}
+                />
               </Suspense>
             ) : null
           }

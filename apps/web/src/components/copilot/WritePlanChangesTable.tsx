@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { CheckCircleOutlined, LockOutlined } from '@ant-design/icons';
 import { Button } from 'antd';
-import { t } from '../../i18n/t';
+import { useAssistantTranslation } from '../../i18n/useAssistantTranslation';
 import type { WritePlanChange } from '../../types/copilot';
 import { planFieldLabel } from './copilot-labels';
 import { formatPlanValue, LONG_VALUE_CHARS } from './write-plan-format';
@@ -31,10 +31,11 @@ const visuallyHidden: React.CSSProperties = {
  * texte lisible par les lecteurs d'écran (jamais la valeur seule).
  */
 export function MaskedValue(): React.ReactElement {
+  const { t } = useAssistantTranslation();
   return (
     <span>
       <LockOutlined aria-hidden="true" style={{ marginInlineEnd: 4 }} />
-      <span>{MASKED_VALUE}</span>
+      <span>{t('[masqué]')}</span>
       <span style={visuallyHidden}> ({t("champ protégé : la valeur n'est pas affichée")})</span>
     </span>
   );
@@ -42,6 +43,7 @@ export function MaskedValue(): React.ReactElement {
 
 /** Valeur longue repliable ; le texte est rendu tel quel (jamais en HTML). */
 export function Value({ text }: { text: string }): React.ReactElement {
+  const { t } = useAssistantTranslation();
   const [open, setOpen] = useState(false);
   if (text === MASKED_VALUE) return <MaskedValue />;
   if (text.length <= LONG_VALUE_CHARS) {
@@ -66,6 +68,7 @@ export function Value({ text }: { text: string }): React.ReactElement {
  * une flèche et le gras (jamais la couleur seule). Création : « — » en « Avant ».
  */
 export function WritePlanChangesTable({ changes }: { changes: WritePlanChange[] }): React.ReactElement {
+  const { locale, t } = useAssistantTranslation();
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -88,14 +91,14 @@ export function WritePlanChangesTable({ changes }: { changes: WritePlanChange[] 
               <th scope="row" style={{ ...cellStyle, fontWeight: 600 }}>
                 {/* Le nom technique reste en infobulle ; l'affichage est lisible. */}
                 <span title={c.field}>
-                  <bdi>{planFieldLabel(c.field)}</bdi>
+                  <bdi>{planFieldLabel(c.field, t)}</bdi>
                 </span>
               </th>
               <td style={{ ...cellStyle, color: 'var(--ant-color-text-secondary, #666)' }}>
                 {c.before === undefined ? (
                   <span aria-label={t('Aucune valeur avant : nouvel enregistrement')}>—</span>
                 ) : (
-                  <Value text={formatPlanValue(c.before)} />
+                  <Value text={formatPlanValue(c.before, t, locale)} />
                 )}
               </td>
               <td
@@ -106,7 +109,7 @@ export function WritePlanChangesTable({ changes }: { changes: WritePlanChange[] 
                 }}
               >
                 <CheckCircleOutlined aria-hidden="true" style={{ marginInlineEnd: 6 }} />
-                <Value text={formatPlanValue(c.after)} />
+                <Value text={formatPlanValue(c.after, t, locale)} />
               </td>
             </tr>
           ))}

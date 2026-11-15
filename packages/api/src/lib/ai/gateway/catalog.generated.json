@@ -783,6 +783,17 @@
       "sensitive": false
     },
     {
+      "id": "GET /api/tenants/:tenantId/finance/sites/:siteId/budget-alert-threshold",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/finance/sites/:siteId/budget-alert-threshold",
+      "pathParams": ["siteId"],
+      "module": "finance",
+      "summary": "finance / sites / {siteId} / budget-alert-threshold",
+      "permissions": ["FINANCE_SITES_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
       "id": "GET /api/tenants/:tenantId/finance/sites/:siteId/budgets",
       "method": "GET",
       "path": "/api/tenants/:tenantId/finance/sites/:siteId/budgets",
@@ -4210,6 +4221,17 @@
       "module": "email-notifications",
       "summary": "update (email-notifications / {key})",
       "permissions": ["COMMUNICATION_VIEW", "TENANT_SETTINGS_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "PATCH /api/tenants/:tenantId/finance/sites/:siteId/budget-alert-threshold",
+      "method": "PATCH",
+      "path": "/api/tenants/:tenantId/finance/sites/:siteId/budget-alert-threshold",
+      "pathParams": ["siteId"],
+      "module": "finance",
+      "summary": "finance / sites / {siteId} / budget-alert-threshold",
+      "permissions": ["FINANCE_SITES_MANAGE"],
       "anyOfPermissions": null,
       "sensitive": false
     },

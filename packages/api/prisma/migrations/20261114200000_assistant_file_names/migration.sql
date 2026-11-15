@@ -1,0 +1,1 @@
+ALTER TABLE "assistant_turns" ADD COLUMN "files" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];

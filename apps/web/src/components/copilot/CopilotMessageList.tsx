@@ -1,15 +1,30 @@
-import React from 'react';
-import type { CopilotAttachment, CopilotUiMessage } from '../../types/copilot';
+import React, { useEffect } from 'react';
+import { Button, Card, Space, message as antMessage } from 'antd';
+import { Link } from 'react-router-dom';
+import { CopyOutlined, SoundOutlined, StopOutlined } from '@ant-design/icons';
+import { useCopilotSpeech } from '../../hooks/useCopilotSpeech';
+import { useAssistantTranslation } from '../../i18n/useAssistantTranslation';
+import { assistantLanguages } from '../../i18n/assistant-language';
+import { ResponseFeedbackButton } from './ResponseFeedbackButton';
+import { copilotService } from '../../services/copilot-service';
+import { filenameFromDisposition, saveBlob } from '../../utils/save-blob';
+import type { CopilotArtifact, CopilotAttachment, CopilotUiMessage } from '../../types/copilot';
 import { ActionProposalCard } from './ActionProposalCard';
 import { ArtifactChip } from './artifact/ArtifactChip';
 import { DocumentListCard } from './DocumentListCard';
 import { LeaseResultCard } from './LeaseResultCard';
 import { PropertyResultCard } from './PropertyResultCard';
-import { SafeMarkdown } from './SafeMarkdown';
+import { SafeMarkdown, withoutSourceMarkers } from './SafeMarkdown';
 import { WritePlanCard } from './WritePlanCard';
+import { FollowUpCard } from './FollowUpCard';
+import { rentalAlertDescription, rentalAlertLabels, rentalAlertParams } from './rental-alert-labels';
 
 export interface CopilotMessageListProps {
   messages: CopilotUiMessage[];
+  artifacts?: readonly CopilotArtifact[];
+  streaming?: boolean;
+  conversationId?: string;
+  visible?: boolean;
   tenantId: string;
   onConfirm(proposalId: string): void;
   onCancel(proposalId: string): void;
@@ -19,7 +34,34 @@ export interface CopilotMessageListProps {
   /** Bien affiché à l'écran : nécessaire au téléchargement des pièces d'un bien. */
   propertyId?: string;
   /** Ouvre un artefact dans le panneau ; sans lui (tiroir), la pastille n'est pas cliquable. */
-  onOpenArtifact?(artifactId: string): void;
+  onOpenArtifact?(artifactId: string, version?: number): void;
+}
+
+function conversationSources(messages: CopilotUiMessage[], artifacts: readonly CopilotArtifact[]) {
+  const byId = new Map(artifacts.map(artifact => [artifact.id, artifact]));
+  const sources = new Map<string, { index: number; artifactId: string; title: string }>();
+  messages.forEach((message, index) => {
+    if (message.role !== 'assistant') return;
+    for (const attachment of message.attachments) {
+      if (attachment.kind !== 'artifact') continue;
+      const artifact = byId.get(attachment.artifactId);
+      if (!artifact || artifact.kind === 'markdown') continue;
+      const add = (id: string, title: string) => {
+        const key = id.toLowerCase();
+        if (!sources.has(key)) sources.set(key, { index, artifactId: artifact.id, title });
+      };
+      if (artifact.kind === 'document') {
+        for (const block of artifact.blocks) {
+          if (block.kind !== 'table' || !block.table.provenance) continue;
+          add(artifact.id, artifact.title);
+          add(block.table.id, block.table.title);
+        }
+      } else if (artifact.provenance) {
+        add(artifact.id, artifact.title);
+      }
+    }
+  });
+  return sources;
 }
 
 function Attachment({
@@ -30,8 +72,11 @@ function Attachment({
   onCancel,
   onApprovePlan,
   onRefusePlan,
-  onOpenArtifact
+  onOpenArtifact,
+  streaming,
+  conversationId
 }: { attachment: CopilotAttachment } & Omit<CopilotMessageListProps, 'messages'>): React.ReactElement {
+  const { t } = useAssistantTranslation();
   switch (attachment.kind) {
     case 'properties':
       return (
@@ -90,11 +135,48 @@ function Attachment({
           onRefuse={id => onRefusePlan?.(id)}
         />
       );
+    case 'follow_up':
+      return (
+        <FollowUpCard
+          key={attachment.proposal.id}
+          tenantId={tenantId}
+          proposal={attachment.proposal}
+          streaming={streaming}
+        />
+      );
+    case 'prepared_alert': {
+      if (attachment.alert.kind === 'rental') {
+        const { rule, propertyLabel } = attachment.alert;
+        return (
+          <Card title={rentalAlertLabels(t)[rule.kind]} size="small">
+            <p>{rentalAlertDescription(rule, t)}</p>
+            {propertyLabel && <p>{propertyLabel}</p>}
+            <Link to={`/tenant/${encodeURIComponent(tenantId)}/assistant?${rentalAlertParams(rule, conversationId)}`}>
+              {t('Ouvrir le formulaire d’alerte')}
+            </Link>
+          </Card>
+        );
+      }
+      const { siteId, siteName, thresholdPercent } = attachment.alert;
+      const path = `/tenant/${encodeURIComponent(tenantId)}/finance/chantiers/${encodeURIComponent(siteId)}/budget`;
+      return (
+        <Card title={t('Alerte budgétaire préparée')} size="small">
+          <p>
+            {t('{{site}} · Seuil de {{threshold}} % du budget révisé', { site: siteName, threshold: thresholdPercent })}
+          </p>
+          <Link to={`${path}?alerte-budget=${thresholdPercent}`}>{t('Ouvrir le formulaire d’alerte')}</Link>
+        </Card>
+      );
+    }
   }
 }
 
 export function CopilotMessageList({
   messages,
+  artifacts = [],
+  streaming,
+  conversationId,
+  visible = true,
   tenantId,
   onConfirm,
   onCancel,
@@ -103,9 +185,37 @@ export function CopilotMessageList({
   propertyId,
   onOpenArtifact
 }: CopilotMessageListProps): React.ReactElement {
+  const [notifications, notificationContext] = antMessage.useMessage();
+  const { language, t } = useAssistantTranslation();
+  const { supported, activeId, read, stop } = useCopilotSpeech(assistantLanguages[language].speech, tenantId);
+  const sources = conversationSources(messages, artifacts);
+
+  useEffect(() => {
+    if (activeId && (!visible || !messages.some(message => message.id === activeId))) stop();
+  }, [activeId, messages, stop, visible]);
+
+  async function downloadFile(threadId: string, turnId: string, position: number, name: string) {
+    try {
+      const { data, headers } = await copilotService.downloadAttachment(tenantId, threadId, turnId, position);
+      saveBlob(data, filenameFromDisposition(headers['content-disposition'], name));
+    } catch {
+      void notifications.error(t('Impossible de télécharger la pièce jointe.'));
+    }
+  }
+
+  async function copy(text: string) {
+    try {
+      await navigator.clipboard.writeText(withoutSourceMarkers(text));
+      void notifications.success(t('Réponse copiée'));
+    } catch {
+      void notifications.error(t('Impossible de copier la réponse'));
+    }
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {messages.map(message => {
+      {notificationContext}
+      {messages.map((message, index) => {
         const isUser = message.role === 'user';
         return (
           <div
@@ -115,6 +225,8 @@ export function CopilotMessageList({
           >
             {message.text ? (
               <div
+                data-copilot-answer
+                dir="auto"
                 style={{
                   padding: '8px 12px',
                   borderRadius: 8,
@@ -127,10 +239,46 @@ export function CopilotMessageList({
                 {isUser ? (
                   <span style={{ whiteSpace: 'pre-wrap' }}>{message.text}</span>
                 ) : (
-                  <SafeMarkdown text={message.text} />
+                  <SafeMarkdown
+                    text={message.text}
+                    renderSource={(id, version) => {
+                      const source = sources.get(id);
+                      if (!onOpenArtifact || !source || source.index > index) return null;
+                      return (
+                        <Button
+                          type="link"
+                          size="small"
+                          style={{ paddingInline: 4, height: 'auto', verticalAlign: 'baseline' }}
+                          aria-label={t('Voir la source : {{title}}', { title: source.title || t('Résultat') })}
+                          onClick={() => onOpenArtifact(source.artifactId, version)}
+                        >
+                          {t('Source')}
+                        </Button>
+                      );
+                    }}
+                  />
                 )}
               </div>
             ) : null}
+            {!!message.files?.length && (
+              <ul style={{ marginBlock: 4, paddingInlineStart: 20 }}>
+                {message.files.map(({ name, position }, index) => (
+                  <li key={index} dir="auto">
+                    {conversationId && position !== undefined ? (
+                      <Button
+                        type="link"
+                        size="small"
+                        onClick={() => void downloadFile(conversationId, message.id, position, name)}
+                      >
+                        {name}
+                      </Button>
+                    ) : (
+                      name
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
             {message.attachments.map((attachment, index) => (
               <div
                 key={`${message.id}-a${index}`}
@@ -138,6 +286,8 @@ export function CopilotMessageList({
               >
                 <Attachment
                   attachment={attachment}
+                  streaming={streaming}
+                  conversationId={conversationId}
                   tenantId={tenantId}
                   propertyId={propertyId}
                   onConfirm={onConfirm}
@@ -148,6 +298,55 @@ export function CopilotMessageList({
                 />
               </div>
             ))}
+            {!isUser && message.text.trim() && !(streaming && index === messages.length - 1) && (
+              <Space wrap style={{ marginBlockStart: 4 }}>
+                {conversationId && message.rating && (
+                  <ResponseFeedbackButton
+                    key={message.rating.revision}
+                    tenantId={tenantId}
+                    conversationId={conversationId}
+                    rating={message.rating}
+                  />
+                )}
+                {typeof navigator.clipboard?.writeText === 'function' && (
+                  <Button
+                    size="small"
+                    type="text"
+                    icon={<CopyOutlined aria-hidden="true" />}
+                    onClick={() => void copy(message.text)}
+                  >
+                    {t('Copier la réponse')}
+                  </Button>
+                )}
+                {supported && (
+                  <Button
+                    size="small"
+                    type="text"
+                    icon={
+                      activeId === message.id ? (
+                        <StopOutlined aria-hidden="true" />
+                      ) : (
+                        <SoundOutlined aria-hidden="true" />
+                      )
+                    }
+                    onClick={event => {
+                      if (activeId === message.id) {
+                        stop();
+                        return;
+                      }
+                      const answer = event.currentTarget
+                        .closest('[data-role]')
+                        ?.querySelector<HTMLElement>('[data-copilot-answer]');
+                      read(message.id, withoutSourceMarkers(answer?.innerText || message.text), () => {
+                        void notifications.error(t('La lecture à voix haute a échoué'));
+                      });
+                    }}
+                  >
+                    {activeId === message.id ? t('Arrêter la lecture') : t('Lire à voix haute')}
+                  </Button>
+                )}
+              </Space>
+            )}
           </div>
         );
       })}

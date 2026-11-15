@@ -1,4 +1,4 @@
-import { t } from '../../i18n/t';
+import { t as applicationTranslation } from '../../i18n/t';
 import type { CopilotToolName } from '../../types/copilot';
 
 export interface CopilotSuggestion {
@@ -14,7 +14,11 @@ const PROPERTY_PATH = /\/properties\/(?!new(?:\/|$))[^/]+/;
 const RENTAL_PATH = /\/rental(\/|$)/;
 
 /** Suggestions selon la route courante, filtrées par les outils autorisés. */
-export function getCopilotSuggestions(pathname: string, tools: readonly CopilotToolName[]): CopilotSuggestion[] {
+export function getCopilotSuggestions(
+  pathname: string,
+  tools: readonly CopilotToolName[],
+  t: typeof applicationTranslation = applicationTranslation
+): CopilotSuggestion[] {
   let candidates: CopilotSuggestion[];
 
   if (LEASE_PATH.test(pathname)) {
@@ -30,12 +34,43 @@ export function getCopilotSuggestions(pathname: string, tools: readonly CopilotT
     ];
   } else if (RENTAL_PATH.test(pathname)) {
     candidates = [
+      {
+        id: 'rental-monthly-review',
+        text: t('Prépare le bilan locatif du dernier mois clos'),
+        requires: 'rental_monthly_review'
+      },
       { id: 'rental-search', text: t('Montre-moi les baux en cours'), requires: 'search_leases' },
       { id: 'rental-receipt', text: t('Génère une quittance de loyer'), requires: 'propose_rental_document' }
     ];
   } else {
     candidates = [
+      {
+        id: 'default-monthly-review',
+        text: t('Prépare le bilan locatif du dernier mois clos'),
+        requires: 'rental_monthly_review'
+      },
       { id: 'default-properties', text: t('Montre-moi les biens disponibles'), requires: 'search_properties' },
+      {
+        id: 'default-arrears',
+        text: t('Quels biens ont le plus d’échéances en retard au dernier mois clos ?'),
+        requires: 'rental_arrears'
+      },
+      {
+        id: 'default-portfolio',
+        text: t('Quel est le taux d’occupation du parc par type de bien ?'),
+        requires: 'property_portfolio'
+      },
+      {
+        id: 'default-lease-end',
+        text: t('Quels baux se terminent dans les 30 prochains jours ?'),
+        requires: 'lease_portfolio'
+      },
+      {
+        id: 'default-maintenance',
+        text: t('Quels tickets de maintenance sont encore ouverts ou urgents ?'),
+        requires: 'maintenance_overview'
+      },
+      { id: 'default-datasets', text: t('Quels jeux de données puis-je analyser ?'), requires: 'list_datasets' },
       { id: 'default-leases', text: t('Cherche un bail par numéro'), requires: 'search_leases' },
       { id: 'default-receipt', text: t('Génère une quittance de loyer'), requires: 'propose_rental_document' }
     ];
@@ -45,7 +80,10 @@ export function getCopilotSuggestions(pathname: string, tools: readonly CopilotT
 }
 
 /** Invitation d'accueil : ne cite que les capacités que les outils autorisés couvrent. */
-export function getCopilotWelcome(tools: readonly CopilotToolName[]): string {
+export function getCopilotWelcome(
+  tools: readonly CopilotToolName[],
+  t: typeof applicationTranslation = applicationTranslation
+): string {
   const subjects: string[] = [];
   if (tools.includes('search_properties')) subjects.push(t('vos biens'));
   if (tools.includes('search_leases')) subjects.push(t('vos baux'));

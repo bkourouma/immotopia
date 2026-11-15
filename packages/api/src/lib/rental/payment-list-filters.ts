@@ -18,7 +18,7 @@
  */
 import type { Request } from 'express';
 import { z } from 'zod';
-import { RentalPaymentMethod } from '@prisma/client';
+import { RentalPaymentMethod, RentalPaymentStatus, type Prisma } from '@prisma/client';
 import { BadRequestError } from '../../middleware/error-middleware';
 import {
   dayEnd,
@@ -40,6 +40,8 @@ export interface PaymentListExtras {
   startDate?: Date;
   /** Fin du jour demandé (UTC, 23:59:59.999) : borne inclusive. */
   endDate?: Date;
+  receivedFrom?: Date;
+  receivedTo?: Date;
 }
 
 export interface DeclarationListExtras {
@@ -65,10 +67,13 @@ const paymentExtrasSchema = z
     search: zSearch(),
     startDate: zDay,
     endDate: zDay,
+    receivedFrom: zDay,
+    receivedTo: zDay,
     minAmount: zAmount(),
     maxAmount: zAmount()
   })
   .superRefine(dayOrderRefinement('startDate', 'endDate'))
+  .superRefine(dayOrderRefinement('receivedFrom', 'receivedTo'))
   .superRefine(amountOrder);
 
 const declarationExtrasSchema = z
@@ -109,6 +114,8 @@ export function parsePaymentListExtras(query: Request['query']): PaymentListExtr
   const parsed = parseOrThrow(paymentExtrasSchema, query);
   return compact<PaymentListExtras>({
     search: parsed.search,
+    receivedFrom: parsed.receivedFrom ? dayStart(parsed.receivedFrom) : undefined,
+    receivedTo: parsed.receivedTo ? dayEnd(parsed.receivedTo) : undefined,
     minAmount: parsed.minAmount,
     maxAmount: parsed.maxAmount,
     startDate: parsed.startDate ? dayStart(parsed.startDate) : undefined,
@@ -143,13 +150,20 @@ function leaseColumns(search: string) {
   ];
 }
 
-/**
- * Ajoute au `where` d'une liste de paiements la recherche libre et l'intervalle
- * de montants. Les dates (`startDate`, `endDate`) restent traitées par le
- * service, qui reçoit déjà des bornes `Date` valides.
- */
+export function settledRentalPaymentWhere(succeeded_at: {
+  gte?: Date;
+  lte?: Date;
+  lt?: Date;
+}): Prisma.RentalPaymentWhereInput {
+  return { status: RentalPaymentStatus.SUCCESS, succeeded_at };
+}
+
+/** Ajoute la recherche, le montant et la période d’encaissement à la liste des paiements. */
 export function applyPaymentListExtras(where: any, extras: PaymentListExtras): void {
-  const { search, minAmount, maxAmount } = extras;
+  const { search, minAmount, maxAmount, receivedFrom, receivedTo } = extras;
+  if (receivedFrom || receivedTo) {
+    addAnd(where, settledRentalPaymentWhere({ gte: receivedFrom, lte: receivedTo }));
+  }
   if (search) {
     addAnd(where, {
       OR: [

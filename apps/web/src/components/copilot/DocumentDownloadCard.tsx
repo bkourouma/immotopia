@@ -3,7 +3,7 @@ import { Alert, Button, Card, Typography } from 'antd';
 import { downloadDocument } from '../../services/rental-service';
 import { downloadPropertyDocumentFile } from '../../services/property-service';
 import { saveBlob } from '../../utils/save-blob';
-import { t } from '../../i18n/t';
+import { useAssistantTranslation } from '../../i18n/useAssistantTranslation';
 
 export interface DocumentDownloadCardProps {
   tenantId: string;
@@ -28,6 +28,7 @@ export function DocumentDownloadCard({
   label,
   formatLabel
 }: DocumentDownloadCardProps): React.ReactElement {
+  const { t } = useAssistantTranslation();
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
 

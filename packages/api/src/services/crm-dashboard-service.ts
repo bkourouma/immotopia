@@ -1,6 +1,6 @@
 import { prisma } from '../utils/database';
 import { Dashboard, NextBestAction } from '../types/crm-types';
-import { CrmContactStatus, CrmDealStage } from '@prisma/client';
+import { CrmContactStatus, CrmDealStage, type Prisma } from '@prisma/client';
 
 // Types for the enhanced dashboard (matching frontend expectations)
 export interface KpiValue {
@@ -434,24 +434,27 @@ async function getEnhancedKPIs(
   };
 }
 
-/**
- * Get pipeline summary
- */
-async function getPipelineSummary(
+export const OPEN_CRM_STAGES = [
+  CrmDealStage.NEW,
+  CrmDealStage.QUALIFIED,
+  CrmDealStage.VISIT,
+  CrmDealStage.NEGOTIATION
+] as const;
+
+/** Get pipeline summary. */
+export async function getPipelineSummary(
   tenantId: string,
   assignedToUserId?: string,
-  stages?: CrmDealStage[]
+  stages?: CrmDealStage[],
+  now = new Date()
 ): Promise<PipelineSummary> {
-  const baseWhere: any = { tenantId, stage: { notIn: [CrmDealStage.WON, CrmDealStage.LOST] } };
+  const baseWhere: Prisma.CrmDealWhereInput = { tenantId };
   if (assignedToUserId) baseWhere.assignedToUserId = assignedToUserId;
-  if (stages && stages.length > 0) {
-    baseWhere.stage = { in: stages.filter(s => s !== CrmDealStage.WON && s !== CrmDealStage.LOST) };
-  }
 
   const stagesToShow =
     stages && stages.length > 0
       ? stages.filter(s => s !== CrmDealStage.WON && s !== CrmDealStage.LOST)
-      : [CrmDealStage.NEW, CrmDealStage.QUALIFIED, CrmDealStage.VISIT, CrmDealStage.NEGOTIATION];
+      : OPEN_CRM_STAGES;
 
   const stageData: PipelineStageData[] = [];
   let total = 0;
@@ -468,7 +471,7 @@ async function getPipelineSummary(
     const avgAgeDays =
       count > 0
         ? Math.round(
-            deals.reduce((sum, d) => sum + (Date.now() - d.createdAt.getTime()) / (1000 * 60 * 60 * 24), 0) / count
+            deals.reduce((sum, d) => sum + (now.getTime() - d.createdAt.getTime()) / (1000 * 60 * 60 * 24), 0) / count
           )
         : 0;
 

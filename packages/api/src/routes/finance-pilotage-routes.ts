@@ -10,6 +10,8 @@ import {
 import {
   acknowledgeBudgetAlertHandler,
   getSitesDashboardHandler,
+  getSiteBudgetThresholdHandler,
+  setSiteBudgetThresholdHandler,
   listOpenBudgetAlertsHandler,
   listSiteProgressHandler,
   recordSiteProgressHandler
@@ -63,6 +65,16 @@ router.post('/tenants/:tenantId/finance/sites/:siteId/progress', requireSitesMan
 // ---------------------------------------------------------------------------
 
 router.get('/tenants/:tenantId/finance/budget-alerts', requireReportsRead, listOpenBudgetAlertsHandler);
+router.get(
+  '/tenants/:tenantId/finance/sites/:siteId/budget-alert-threshold',
+  requireSitesManage,
+  getSiteBudgetThresholdHandler
+);
+router.patch(
+  '/tenants/:tenantId/finance/sites/:siteId/budget-alert-threshold',
+  requireSitesManage,
+  setSiteBudgetThresholdHandler
+);
 
 router.post(
   '/tenants/:tenantId/finance/budget-alerts/:alertId/acknowledge',

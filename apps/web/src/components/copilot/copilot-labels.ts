@@ -1,5 +1,5 @@
 import { activeLocale } from '../../i18n/format';
-import { t } from '../../i18n/t';
+import { t, t as applicationTranslation } from '../../i18n/t';
 import type { CopilotToolName } from '../../types/copilot';
 import { humanizeFieldName } from '../../utils/copilot-artifact';
 import { statusLabel } from '../primitives/StatusTag';
@@ -10,7 +10,7 @@ import { statusLabel } from '../primitives/StatusTag';
  * un statut ne doit pas s'appeler autrement selon l'écran. Valeur inconnue :
  * la valeur brute est affichée.
  */
-export function propertyTypeLabel(value: string): string {
+export function propertyTypeLabel(value: string, t: typeof applicationTranslation = applicationTranslation): string {
   const labels: Record<string, string> = {
     APPARTEMENT: t('Appartement'),
     MAISON_VILLA: t('Maison / Villa'),
@@ -28,7 +28,7 @@ export function propertyTypeLabel(value: string): string {
   return labels[value] ?? value;
 }
 
-export function propertyStatusLabel(value: string): string {
+export function propertyStatusLabel(value: string, t: typeof applicationTranslation = applicationTranslation): string {
   const labels: Record<string, string> = {
     DRAFT: t('Brouillon'),
     UNDER_REVIEW: t('En révision'),
@@ -42,7 +42,7 @@ export function propertyStatusLabel(value: string): string {
   return labels[value] ?? value;
 }
 
-export function leaseStatusLabel(value: string): string {
+export function leaseStatusLabel(value: string, t: typeof applicationTranslation = applicationTranslation): string {
   const labels: Record<string, string> = {
     DRAFT: t('Brouillon'),
     ACTIVE: t('Actif'),
@@ -54,10 +54,10 @@ export function leaseStatusLabel(value: string): string {
 }
 
 /** Montant reçu du serveur sous forme de chaîne : séparateurs de milliers selon la langue active. */
-export function formatCopilotAmount(amount: string | number | null): string {
+export function formatCopilotAmount(amount: string | number | null, locale = activeLocale()): string {
   if (amount === null || amount === '') return '';
   const n = Number(amount);
-  return Number.isFinite(n) ? n.toLocaleString(activeLocale()) : String(amount);
+  return Number.isFinite(n) ? n.toLocaleString(locale) : String(amount);
 }
 
 /**
@@ -68,11 +68,40 @@ export function formatCopilotAmount(amount: string | number | null): string {
 export function copilotToolLabel(tool: CopilotToolName): string {
   const labels: Record<CopilotToolName, string> = {
     search_properties: t('Recherche de biens'),
+    search_syndicates: t('Recherche de copropriétés'),
+    search_syndicate_lots: t('Recherche de lots de copropriété'),
+    search_sale_mandates: t('Recherche de mandats de vente'),
+    search_construction_sites: t('Recherche de chantiers'),
     search_leases: t('Recherche de baux'),
+    rental_arrears: t('Analyse des impayés locatifs'),
+    property_portfolio: t('Analyse du parc immobilier'),
+    lease_portfolio: t('Analyse des baux et de leurs échéances'),
+    syndicate_budget: t('Écarts budgétaires de copropriété'),
+    crm_pipeline: t('Pipeline des affaires'),
+    sale_mandates: t('Échéances des mandats de vente'),
+    construction_budget: t('Suivi budgétaire des chantiers'),
+    owner_statements: t('Montants des relevés de gérance'),
+    owner_payouts: t('Reversements propriétaires exécutés'),
+    propose_follow_up: t('Préparation d’une action'),
+    prepare_budget_alert: t('Préparation d’une alerte budgétaire'),
+    prepare_lease_expiry_alert: t('Préparation d’une alerte locative'),
+    prepare_declaration_alert: t('Préparation d’une alerte locative'),
+    prepare_rent_arrears_alert: t('Préparation d’une alerte locative'),
+    syndicate_charges: t('Analyse des charges de copropriété'),
+    syndicate_maintenance: t('Maintenance par copropriété'),
+    maintenance_overview: t('Analyse des tickets de maintenance'),
+    rental_receipts: t('Analyse des encaissements locatifs'),
+    rental_due_comparison: t('Comparaison des échéances locatives'),
+    rental_monthly_review: t('Bilan locatif du mois clos'),
+    chart_analysis: t('Création du graphique'),
+    pivot_analysis: t('Calcul du tableau croisé'),
+    show_indicators: t('Calcul des indicateurs'),
+    compose_report: t('Préparation du rapport'),
     list_lease_documents: t('Liste des documents du bail'),
     list_property_documents: t('Liste des documents du bien'),
     propose_rental_document: t('Préparation d’un document'),
     show_artifact: t('Affichage dans le panneau'),
+    list_datasets: t('Catalogue des jeux de données'),
     list_capabilities: t('Recherche dans les consultations disponibles'),
     call_read: t('Consultation d’une donnée')
   };
@@ -86,11 +115,11 @@ const ENUM_CODE = /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/;
  * paiement…), réutilisant les textes des écrans. `null` si le texte n'est pas EXACTEMENT
  * un code connu : un nom, une référence ou une phrase ne sont jamais traduits.
  */
-export function knownEnumLabel(value: string): string | null {
+export function knownEnumLabel(value: string, translate: typeof t = t): string | null {
   if (!ENUM_CODE.test(value)) return null;
-  const type = propertyTypeLabel(value);
+  const type = propertyTypeLabel(value, translate);
   if (type !== value) return type;
-  return statusLabel(value);
+  return statusLabel(value, translate);
 }
 
 /**
@@ -99,7 +128,7 @@ export function knownEnumLabel(value: string): string | null {
  * un champ inconnu retombe sur `humanizeFieldName`. Le nom technique reste à
  * la charge de l'appelant (infobulle `title`).
  */
-export function planFieldLabel(field: string): string {
+export function planFieldLabel(field: string, t: typeof applicationTranslation = applicationTranslation): string {
   // Chemin imbriqué (`address.city`, `items[0].name`) : libellé du dernier segment.
   const segments = field.split('.').filter(s => s !== '');
   const leaf = (segments[segments.length - 1] ?? field).replace(/\[\d+\]$/, '') || field;

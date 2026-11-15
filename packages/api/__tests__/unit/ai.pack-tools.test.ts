@@ -58,17 +58,84 @@ function toolsOfPack(modules: ModuleKeyCode[], readOnly = false) {
   return toolsForUser(ALL_PERMS, read).filter(tool => tool.kind !== 'proposal' || write.has(tool.feature));
 }
 
-const RENTAL_TOOLS = ['search_leases', 'list_lease_documents', 'propose_rental_document'];
+const RENTAL_TOOLS = [
+  'search_leases',
+  'list_lease_documents',
+  'propose_rental_document',
+  'lease_portfolio',
+  'prepare_lease_expiry_alert'
+];
 const CORE_TOOLS = [
   'search_properties',
   'list_property_documents',
   'show_artifact',
+  'property_portfolio',
+  'chart_analysis',
+  'pivot_analysis',
+  'show_indicators',
+  'compose_report',
   'list_capabilities',
   'call_read',
-  'plan_write'
+  'plan_write',
+  'propose_follow_up'
 ];
 
 describe('ImmoCopilot — outils et prompt par pack', () => {
+  it('exige les droits des trois jeux de données pour le bilan locatif complet', () => {
+    const permissions = ['RENTAL_INSTALLMENTS_VIEW', 'RENTAL_PAYMENTS_VIEW', 'RENTAL_LEASES_VIEW', 'PROPERTIES_VIEW'];
+    expect(toolsForUser(permissions, ['RENTAL']).map(tool => tool.name)).toContain('rental_monthly_review');
+    for (const missing of permissions) {
+      const names = toolsForUser(
+        permissions.filter(permission => permission !== missing),
+        ['RENTAL']
+      ).map(tool => tool.name);
+      expect(names).not.toContain('rental_monthly_review');
+    }
+    expect(toolsForUser(['RENTAL_INSTALLMENTS_VIEW'], ['RENTAL']).map(tool => tool.name)).toContain(
+      'rental_due_comparison'
+    );
+  });
+  it('garde les relevés et les reversements séparés selon les permissions locatives', () => {
+    expect(toolsForUser(['OWNER_STATEMENTS_VIEW'], ['RENTAL']).map(tool => tool.name)).toEqual(['owner_statements']);
+    expect(toolsForUser(['FINANCE_ACCOUNTS_READ'], ['RENTAL']).map(tool => tool.name)).toEqual([
+      'owner_payouts',
+      'owner_balances'
+    ]);
+    expect(toolsForUser(['OWNER_STATEMENTS_VIEW', 'FINANCE_ACCOUNTS_READ'], ['CORE'])).toEqual([]);
+  });
+  it('réserve les valorisations du patrimoine à son droit personnel et à son module', () => {
+    expect(toolsForUser(['PATRIMOINE_PERSONAL_VIEW'], ['PATRIMOINE']).map(tool => tool.name)).toEqual([
+      'patrimony_net_worth',
+      'patrimony_history'
+    ]);
+    expect(toolsForUser(['PROPERTIES_VIEW'], ['PATRIMOINE']).map(tool => tool.name)).toEqual(['maintenance_log']);
+    expect(toolsForUser(['PATRIMOINE_PERSONAL_VIEW'], ['CORE'])).toEqual([]);
+  });
+  it('exige le module Ventes pour les biens réservés à la vente', () => {
+    expect(toolsForUser(['PROPERTIES_VIEW'], ['SALES']).map(tool => tool.name)).toEqual(['reserved_sale_properties']);
+    expect(toolsForUser(['CRM_DEALS_VIEW'], ['SALES']).map(tool => tool.name)).not.toContain(
+      'reserved_sale_properties'
+    );
+  });
+  it('expose chaque analyse commerciale uniquement avec son module et son droit de lecture', () => {
+    const permissions = ['CRM_DEALS_VIEW', 'FINANCE_REPORTS_READ'];
+    expect(toolsForUser(permissions, ['CRM']).map(tool => tool.name)).toEqual(['crm_pipeline']);
+    expect(toolsForUser(permissions, ['SALES']).map(tool => tool.name)).toEqual([
+      'search_sale_mandates',
+      'sale_mandates',
+      'sale_commitments'
+    ]);
+    expect(toolsForUser(permissions, ['CONSTRUCTION']).map(tool => tool.name)).toEqual(['construction_budget']);
+    expect(toolsForUser([], ['CRM', 'SALES', 'CONSTRUCTION'])).toEqual([]);
+  });
+  it('réserve la préparation des alertes budgétaires au module Construction et aux gestionnaires de chantier', () => {
+    const permissions = ['FINANCE_SITES_MANAGE', 'FINANCE_ACCOUNTS_READ'];
+    expect(toolsForUser(permissions, ['CONSTRUCTION']).map(tool => tool.name)).toContain('prepare_budget_alert');
+    expect(toolsForUser(permissions, ['CORE']).map(tool => tool.name)).not.toContain('prepare_budget_alert');
+    expect(toolsForUser(['FINANCE_ACCOUNTS_READ'], ['CONSTRUCTION']).map(tool => tool.name)).not.toContain(
+      'prepare_budget_alert'
+    );
+  });
   it.each([
     ['AGENCE', [...CORE_TOOLS, ...RENTAL_TOOLS]],
     ['PATRIMOINE', [...CORE_TOOLS, ...RENTAL_TOOLS]],
@@ -99,6 +166,7 @@ describe('ImmoCopilot — outils et prompt par pack', () => {
   it('lecture seule : aucun outil de proposition, prompt en lecture seule', () => {
     const tools = toolsOfPack(PACKS.AGENCE, true);
     expect(tools.map(tool => tool.name)).not.toContain('propose_rental_document');
+    expect(tools.map(tool => tool.name)).not.toContain('propose_follow_up');
     expect(tools.map(tool => tool.name)).toContain('search_leases');
     expect(buildSystemPrompt('fr', tools)).toContain('lecture seule');
   });

@@ -35,6 +35,7 @@ import { safeFormatDate } from '../utils/date-utils';
 import { t } from '../i18n/t';
 
 import { activeLocale } from '../i18n/format';
+const PinnedAnalyses = React.lazy(() => import('../components/home/PinnedAnalyses'));
 const { Text } = Typography;
 
 /**
@@ -703,6 +704,9 @@ export const Dashboard: React.FC = () => {
         />
       ) : (
         <>
+          <React.Suspense fallback={null}>
+            <PinnedAnalyses key={`${tenantId}:${user.id}`} tenantId={tenantId} />
+          </React.Suspense>
           {/* Les tuiles : deux colonnes au pouce, six sur un écran large. */}
           <Row gutter={[16, 16]}>
             {tuiles.map(tuile => (

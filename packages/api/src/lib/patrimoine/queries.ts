@@ -1143,6 +1143,40 @@ export async function getOwnerStatementById(tenantId: string, statementId: strin
   return statement;
 }
 
+/** Projection de lecture des montants, sans coordonnées du propriétaire ni détail des écritures. */
+export function listOwnerStatementAmounts(
+  tenantId: string,
+  filters: ListOwnerStatementsFilters & { propertyId?: string },
+  take: number
+) {
+  const where = buildOwnerStatementsWhere(tenantId, filters);
+  where.owner = { tenantId };
+  if (filters.propertyId) {
+    where.AND = [
+      ...(Array.isArray(where.AND) ? where.AND : []),
+      { OR: [{ propertyIds: { has: filters.propertyId } }, { items: { some: { propertyId: filters.propertyId } } }] }
+    ];
+  }
+  return prisma.ownerStatement.findMany({
+    where,
+    select: {
+      id: true,
+      period: true,
+      status: true,
+      currency: true,
+      totalRevenue: true,
+      totalExpenses: true,
+      totalManagementFees: true,
+      totalManagementFeesVat: true,
+      netAmount: true,
+      computationVersion: true,
+      owner: { select: { firstName: true, lastName: true, legalName: true } }
+    },
+    orderBy: [{ period: 'desc' }, { createdAt: 'desc' }, { id: 'asc' }],
+    take
+  });
+}
+
 const STATEMENT_INCLUDE = {
   owner: true,
   items: { include: { property: true } }

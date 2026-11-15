@@ -235,6 +235,12 @@ describe('GET /api/tenants/:tenantId/properties — vignette', () => {
     // plus du nombre de biens affiches.
     await request(app).get(`/api/tenants/${TENANT_ID}/properties`);
     expect(mediaFindMany).toHaveBeenCalledTimes(1);
-    expect(mediaFindMany.mock.calls[0][0].where.propertyId.in).toEqual(['prop-1', 'prop-2']);
+    expect(mediaFindMany.mock.calls[0][0].where).toMatchObject({
+      propertyId: { in: ['prop-1', 'prop-2'] },
+      OR: [
+        { tenantId: TENANT_ID, property: { tenantId: TENANT_ID } },
+        { tenantId: null, property: { tenantId: null } }
+      ]
+    });
   });
 });

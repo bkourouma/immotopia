@@ -239,12 +239,20 @@ const identityOf = (sourceId: string) => sourceId.replace(/:r\d+$/, '');
 const monthKey = (date: Date) => `${date.getUTCFullYear()}-${date.getUTCMonth()}`;
 
 /** Propriétaires de l'agence : clients de type propriétaire, désignés sur un bail, ou indivisaires. */
+export function agencyOwnerWhere(tenantId: string) {
+  return {
+    tenantId,
+    OR: [
+      { clientType: 'OWNER' as const },
+      { ownerLeases: { some: { tenant_id: tenantId } } },
+      { ownershipShares: { some: { tenantId } } }
+    ]
+  };
+}
+
 export async function listAgencyOwners(tenantId: string) {
   return prisma.tenantClient.findMany({
-    where: {
-      tenantId,
-      OR: [{ clientType: 'OWNER' }, { ownerLeases: { some: {} } }, { ownershipShares: { some: {} } }]
-    },
+    where: agencyOwnerWhere(tenantId),
     select: { id: true, userId: true, user: { select: { fullName: true, email: true } } },
     orderBy: { user: { fullName: 'asc' } }
   });

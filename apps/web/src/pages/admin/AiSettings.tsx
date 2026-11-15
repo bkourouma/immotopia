@@ -5,6 +5,8 @@ import {
   AutoComplete,
   Button,
   Card,
+  Collapse,
+  Input,
   Radio,
   Select,
   Skeleton,
@@ -13,10 +15,21 @@ import {
   Tag,
   Typography
 } from 'antd';
+import { AssistantFeedbackList } from './AssistantFeedbackList';
+import { AssistantUsageList } from './AssistantUsageList';
 import { SaveOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { getAiSettings, listAiModels, updateAiSettings } from '../../services/ai-settings-service';
-import type { AiEffort, AiModelOption, AiProviderId, AiSettings } from '../../types/ai-settings';
+import { getAiSettings, listAiModels, testAiConnection, updateAiSettings } from '../../services/ai-settings-service';
+import type {
+  AiEffort,
+  AiMode,
+  AiModelOption,
+  AiModelsByMode,
+  AiProviderId,
+  AiSettings,
+  TranscriptionProvider,
+  TranscriptionSettings
+} from '../../types/ai-settings';
 import { handleApiError } from '../../utils/error-handler';
 import { dateFormat } from '../../i18n/format';
 import { t } from '../../i18n/t';
@@ -28,6 +41,22 @@ interface Draft {
   model: string;
   effort: AiEffort;
   refusalFallback: boolean;
+  modelsByMode: AiModelsByMode;
+  transcription: TranscriptionSettings;
+}
+
+const audioModels = { openai: 'gpt-transcribe', google: 'gemini-3.5-transcribe' } as const;
+const audioProviders = { openai: 'OpenAI', google: 'Google Gemini' } as const;
+const audioModelId = /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/;
+
+function normalizeTranscription(config: TranscriptionSettings): TranscriptionSettings {
+  return config.provider === 'disabled' ? config : { ...config, model: config.model.trim() };
+}
+
+function modeModels(input: AiModelsByMode = {}): AiModelsByMode {
+  const deep = input.deep?.trim();
+  const fast = input.fast?.trim();
+  return { ...(deep ? { deep } : {}), ...(fast ? { fast } : {}) };
 }
 
 function toDraft(settings: AiSettings): Draft {
@@ -35,7 +64,9 @@ function toDraft(settings: AiSettings): Draft {
     provider: settings.provider,
     model: settings.model ?? '',
     effort: settings.effort,
-    refusalFallback: settings.refusalFallback
+    refusalFallback: settings.refusalFallback,
+    modelsByMode: modeModels(settings.modelsByMode),
+    transcription: settings.transcription ?? { provider: 'disabled' }
   };
 }
 
@@ -73,6 +104,8 @@ export const AiSettingsPage: React.FC = () => {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [testMode, setTestMode] = useState<AiMode>('standard');
+  const [testing, setTesting] = useState(false);
 
   const [models, setModels] = useState<AiModelOption[] | null>(null);
   const [modelsLoading, setModelsLoading] = useState(false);
@@ -127,7 +160,9 @@ export const AiSettingsPage: React.FC = () => {
       base.provider !== draft.provider ||
       base.model.trim() !== draft.model.trim() ||
       base.effort !== draft.effort ||
-      base.refusalFallback !== draft.refusalFallback
+      base.refusalFallback !== draft.refusalFallback ||
+      JSON.stringify(base.transcription) !== JSON.stringify(normalizeTranscription(draft.transcription)) ||
+      JSON.stringify(base.modelsByMode) !== JSON.stringify(modeModels(draft.modelsByMode))
     );
   }, [settings, draft]);
 
@@ -152,7 +187,17 @@ export const AiSettingsPage: React.FC = () => {
     setSaving(true);
     setSaveError(null);
     try {
-      const saved = await updateAiSettings({ ...draft, model: draft.model.trim() });
+      const { modelsByMode, transcription, ...base } = draft;
+      const normalized = modeModels(modelsByMode);
+      const changed = JSON.stringify(normalized) !== JSON.stringify(modeModels(settings?.modelsByMode));
+      const audio = normalizeTranscription(transcription);
+      const audioChanged = settings && JSON.stringify(audio) !== JSON.stringify(toDraft(settings).transcription);
+      const saved = await updateAiSettings({
+        ...base,
+        model: base.model.trim(),
+        ...(changed ? { modelsByMode: normalized } : {}),
+        ...(audioChanged ? { transcription: audio } : {})
+      });
       setSettings(saved);
       setDraft(toDraft(saved));
       message.success(t('Réglages de l’assistant IA enregistrés.'));
@@ -162,6 +207,24 @@ export const AiSettingsPage: React.FC = () => {
       setSaving(false);
     }
   };
+
+  async function runConnectionTest() {
+    setTesting(true);
+    try {
+      const result = await testAiConnection(testMode);
+      message.success(
+        result.simulated
+          ? t('Test effectué avec le fournisseur de recette.')
+          : result.toolsVerified
+            ? t('Connexion et appel d’outil vérifiés en {{count}} ms.', { count: result.durationMs })
+            : t('Connexion réussie en {{count}} ms.', { count: result.durationMs })
+      );
+    } catch (error) {
+      message.error(handleApiError(error));
+    } finally {
+      setTesting(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -223,7 +286,7 @@ export const AiSettingsPage: React.FC = () => {
             const next = e.target.value as AiProviderId;
             // Un modèle sans « / » (ex. celui d'Anthropic) n'existe pas chez OpenRouter : on le vide.
             const invalid = next === 'openrouter' && !draft.model.includes('/');
-            patch(invalid ? { provider: next, model: '' } : { provider: next });
+            patch({ provider: next, ...(invalid ? { model: '' } : {}), modelsByMode: {} });
           }}
           style={{ width: '100%' }}
         >
@@ -322,10 +385,114 @@ export const AiSettingsPage: React.FC = () => {
         </Card>
       ) : null}
 
+      {draft.provider === 'anthropic' || draft.provider === 'openrouter' ? (
+        <Card title={t('Modèles par mode')}>
+          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+            {(['deep', 'fast'] as const).map(mode => {
+              const label = mode === 'deep' ? t('Modèle approfondi') : t('Modèle rapide');
+              return (
+                <label key={mode} style={{ display: 'grid', gap: 6 }}>
+                  {label}
+                  <AutoComplete
+                    aria-label={label}
+                    allowClear
+                    style={{ width: '100%' }}
+                    value={draft.modelsByMode[mode] ?? ''}
+                    options={
+                      draft.provider === 'anthropic' ? ANTHROPIC_MODELS.map(id => ({ value: id })) : modelOptions
+                    }
+                    placeholder={t('Utilise le modèle standard si vide')}
+                    onChange={value => patch({ modelsByMode: { ...draft.modelsByMode, [mode]: value } })}
+                  />
+                </label>
+              );
+            })}
+          </Space>
+        </Card>
+      ) : null}
+      {draft.provider !== 'disabled' && (
+        <Card title={t('Connexion au fournisseur')}>
+          <Space wrap>
+            <Select
+              aria-label={t('Mode du test')}
+              value={testMode}
+              onChange={setTestMode}
+              options={[
+                { value: 'standard', label: t('Standard') },
+                { value: 'deep', label: t('Approfondi') },
+                { value: 'fast', label: t('Rapide') }
+              ]}
+            />
+            <Button disabled={dirty} loading={testing} onClick={() => void runConnectionTest()}>
+              {t('Tester la connexion')}
+            </Button>
+          </Space>
+        </Card>
+      )}
+
+      {settings.transcriptionKeys && (
+        <Card title={t('Transcription de la dictée')}>
+          <Space direction="vertical" style={{ width: '100%' }}>
+            <Text type="secondary">
+              {t('Ce moteur prend le relais lorsque la dictée du navigateur est indisponible.')}
+            </Text>
+            <Radio.Group
+              aria-label={t('Moteur de transcription')}
+              value={draft.transcription.provider}
+              onChange={e => {
+                const provider = e.target.value as TranscriptionProvider | 'disabled';
+                patch({
+                  transcription: provider === 'disabled' ? { provider } : { provider, model: audioModels[provider] }
+                });
+              }}
+            >
+              <Space wrap>
+                <Radio value="disabled">{t('Navigateur uniquement')}</Radio>
+                {(Object.keys(audioProviders) as TranscriptionProvider[]).map(provider => (
+                  <Radio key={provider} value={provider} disabled={!settings.transcriptionKeys?.[provider]}>
+                    {audioProviders[provider]}{' '}
+                    {!settings.transcriptionKeys?.[provider] && <Tag color="red">{t('Clé manquante')}</Tag>}
+                  </Radio>
+                ))}
+              </Space>
+            </Radio.Group>
+            {draft.transcription.provider !== 'disabled' && (
+              <Input
+                aria-label={t('Modèle de transcription')}
+                placeholder={t('Modèle de transcription')}
+                value={draft.transcription.model}
+                maxLength={200}
+                onChange={e => {
+                  if (draft.transcription.provider !== 'disabled') {
+                    patch({ transcription: { ...draft.transcription, model: e.target.value } });
+                  }
+                }}
+              />
+            )}
+          </Space>
+        </Card>
+      )}
+
+      <Collapse
+        items={[
+          { key: 'feedback', label: t('Avis sur les réponses de l’assistant'), children: <AssistantFeedbackList /> },
+          { key: 'usage', label: t('Usages de l’assistant'), children: <AssistantUsageList /> }
+        ]}
+      />
+
       {saveError ? <Alert type="error" showIcon message={saveError} role="alert" /> : null}
 
       <Space wrap align="center" size="middle">
-        <Button type="primary" icon={<SaveOutlined />} disabled={!dirty} loading={saving} onClick={() => void onSave()}>
+        <Button
+          type="primary"
+          icon={<SaveOutlined />}
+          disabled={
+            !dirty ||
+            (draft.transcription.provider !== 'disabled' && !audioModelId.test(draft.transcription.model.trim()))
+          }
+          loading={saving}
+          onClick={() => void onSave()}
+        >
           {t('Enregistrer')}
         </Button>
         <Tag>{settings.source === 'database' ? t('Base de données') : t('Variables d’environnement')}</Tag>

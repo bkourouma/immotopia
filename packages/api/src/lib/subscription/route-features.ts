@@ -77,6 +77,7 @@ export const TENANT_ROUTE_FEATURES: readonly RouteFeatureRule[] = [
   { prefix: '/dashboard', feature: 'CORE' },
   { prefix: '/audit', feature: 'CORE', note: "Journal d'activité de l'agence (ADR-006) : lecture seule." },
   { prefix: '/documents', feature: 'CORE' },
+  { prefix: '/ai/rental-alerts', feature: 'RENTAL' },
   {
     prefix: '/ai',
     feature: 'CORE',

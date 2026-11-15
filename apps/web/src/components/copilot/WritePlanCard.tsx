@@ -6,7 +6,7 @@ import {
   WarningOutlined
 } from '@ant-design/icons';
 import { Alert, Button, Card, Input, Space, Tag } from 'antd';
-import { t } from '../../i18n/t';
+import { useAssistantTranslation } from '../../i18n/useAssistantTranslation';
 import type { WritePlan, WritePlanState, CapabilityExecutedPayload, CapabilityFieldError } from '../../types/copilot';
 import { requiredConfirmationWord } from '../../utils/copilot-write-plan';
 import { planFieldLabel } from './copilot-labels';
@@ -49,7 +49,7 @@ function useNow(active: boolean): number {
   return now;
 }
 
-function bannerText(state: WritePlanState): string {
+function bannerText(state: WritePlanState, t: ReturnType<typeof useAssistantTranslation>['t']): string {
   switch (state) {
     case 'executed':
       return t('Action exécutée');
@@ -65,6 +65,7 @@ function bannerText(state: WritePlanState): string {
 }
 
 function SourceTag({ server }: { server: boolean }): React.ReactElement {
+  const { t } = useAssistantTranslation();
   return server ? (
     <Tag icon={<SafetyCertificateOutlined aria-hidden="true" />} color="blue">
       {t('Calculé par le serveur')}
@@ -75,9 +76,10 @@ function SourceTag({ server }: { server: boolean }): React.ReactElement {
 }
 
 function PlanContent({ plan }: { plan: WritePlan }): React.ReactElement {
+  const { locale, t } = useAssistantTranslation();
   const stepsId = useId();
   const dataId = useId();
-  const stateReadTime = formatStateReadTime(plan.stateReadAt);
+  const stateReadTime = formatStateReadTime(plan.stateReadAt, locale);
   return (
     <>
       <section aria-labelledby={stepsId} style={sectionStyle}>
@@ -106,7 +108,7 @@ function PlanContent({ plan }: { plan: WritePlan }): React.ReactElement {
           <p style={{ margin: '6px 0' }}>
             <span style={mutedStyle}>{t('Enregistrement visé')} : </span>
             <strong>
-              <bdi>{targetLabelText(plan.target.label)}</bdi>
+              <bdi>{targetLabelText(plan.target.label, t)}</bdi>
             </strong>
             {plan.target.resolved ? null : <span style={mutedStyle}> ({t('non retrouvé par le serveur')})</span>}
           </p>
@@ -134,6 +136,7 @@ function PlanContent({ plan }: { plan: WritePlan }): React.ReactElement {
 }
 
 function Warnings({ warnings }: { warnings: string[] }): React.ReactElement | null {
+  const { t } = useAssistantTranslation();
   const id = useId();
   if (warnings.length === 0) return null;
   return (
@@ -161,11 +164,12 @@ function Warnings({ warnings }: { warnings: string[] }): React.ReactElement | nu
 
 /** Champs refusés par la validation : libellé lisible (chemin technique en infobulle) et message serveur en texte brut. */
 function FieldErrors({ errors }: { errors: CapabilityFieldError[] }): React.ReactElement {
+  const { t } = useAssistantTranslation();
   return (
     <ul data-testid="copilot-write-plan-field-errors" style={{ margin: '8px 0 0', paddingInlineStart: 20 }}>
       {errors.map((fe, index) => (
         <li key={index} style={{ overflowWrap: 'anywhere' }}>
-          <span title={fe.path}>{planFieldLabel(fe.path)}</span> : {fe.message}
+          <span title={fe.path}>{planFieldLabel(fe.path, t)}</span> : {fe.message}
         </li>
       ))}
     </ul>
@@ -178,7 +182,8 @@ function Outcome({
   error,
   decidedAt
 }: Pick<WritePlanCardProps, 'state' | 'result' | 'error' | 'decidedAt'>): React.ReactElement | null {
-  const time = formatDecisionTime(decidedAt);
+  const { locale, t } = useAssistantTranslation();
+  const time = formatDecisionTime(decidedAt, locale);
   const preview = result ? resultPreviewText(result.resultPreview) : null;
   let alert: React.ReactNode = null;
   if (state === 'executed') {
@@ -241,6 +246,7 @@ export function WritePlanCard({
   onApprove,
   onRefuse
 }: WritePlanCardProps): React.ReactElement {
+  const { t } = useAssistantTranslation();
   const bannerId = useId();
   const inputId = useId();
   const [typed, setTyped] = useState('');
@@ -252,7 +258,7 @@ export function WritePlanCard({
   const actionable = state === 'pending' && !timeExpired;
   const word = requiredConfirmationWord(plan);
   const wordOk = word === null || typed === word;
-  const countdown = Number.isFinite(msLeft) ? formatCountdown(msLeft) : null;
+  const countdown = Number.isFinite(msLeft) ? formatCountdown(msLeft, t) : null;
 
   const bannerState: WritePlanState = timeExpired ? 'expired' : state;
   const frozen = !open;
@@ -275,18 +281,18 @@ export function WritePlanCard({
         }}
       >
         <BannerIcon aria-hidden="true" />
-        <strong id={bannerId}>{bannerText(bannerState)}</strong>
+        <strong id={bannerId}>{bannerText(bannerState, t)}</strong>
       </div>
 
       <h3 style={{ margin: 0, fontSize: 16, overflowWrap: 'anywhere' }}>{plan.title}</h3>
       <Space wrap size={[8, 4]} style={{ marginBlockStart: 6 }}>
-        <Tag color={plan.sensitive ? 'red' : 'default'}>{recordKindLabel(plan.recordKind)}</Tag>
+        <Tag color={plan.sensitive ? 'red' : 'default'}>{recordKindLabel(plan.recordKind, t)}</Tag>
         {plan.module ? (
           <span style={mutedStyle}>
-            {t('Module')} : {planModuleLabel(plan.module)}
+            {t('Module')} : {planModuleLabel(plan.module, t)}
           </span>
         ) : null}
-        <span style={mutedStyle}>{methodLabel(plan.method)}</span>
+        <span style={mutedStyle}>{methodLabel(plan.method, t)}</span>
       </Space>
 
       <PlanContent plan={plan} />

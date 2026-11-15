@@ -5,8 +5,9 @@ import type { TextAreaRef } from 'antd/es/input/TextArea';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { useCopilotChat } from '../../hooks/useCopilotChat';
-import { t } from '../../i18n/t';
+import { useAssistantTranslation } from '../../i18n/useAssistantTranslation';
 import { useLanguage } from '../../i18n/useLanguage';
+import copilotService from '../../services/copilot-service';
 import type { CopilotStatus } from '../../types/copilot';
 import { CopilotComposer } from './CopilotComposer';
 import { CopilotThread } from './CopilotThread';
@@ -22,19 +23,22 @@ export interface CopilotDrawerProps {
 const DRAWER_WIDTH = 440;
 
 const CopilotDrawer: React.FC<CopilotDrawerProps> = ({ tenantId, status, open, onClose }) => {
-  const { pathname } = useLocation();
+  const { selected, language, t } = useAssistantTranslation();
+  const { pathname, search } = useLocation();
   const navigate = useNavigate();
   const { rtl: isRtl } = useLanguage();
   const { isMobile } = useBreakpoint();
-  const chat = useCopilotChat(tenantId);
+  const chat = useCopilotChat(tenantId, true);
   const { stop } = chat;
   const [draft, setDraft] = useState('');
+  const [files, setFiles] = useState<File[]>([]);
+  const [composerVersion, setComposerVersion] = useState(0);
   const inputRef = useRef<TextAreaRef>(null);
   const onAssistantPage = /\/assistant\/?$/.test(pathname);
   const streaming = chat.status === 'streaming';
   const maxChars = status.limits.maxMessageChars || undefined;
 
-  const context = getCopilotPageContext(pathname);
+  const context = getCopilotPageContext(pathname, search);
   const propertyId = context.activeEntityType === 'PROPERTY' ? context.activeEntityId : undefined;
 
   // Fermer le tiroir en pleine réponse arrête le flux.
@@ -50,24 +54,31 @@ const CopilotDrawer: React.FC<CopilotDrawerProps> = ({ tenantId, status, open, o
     if (open) inputRef.current?.focus();
   }, [open]);
 
-  // Le tiroir cède la place à la page : la conversation du tiroir ne la suit pas.
-  const openFullPage = () => {
+  const openFullPage = (artifactId?: string, version?: number) => {
+    const target = new URLSearchParams();
+    if (chat.conversationId) target.set('c', chat.conversationId);
+    if (artifactId) target.set('resultat', artifactId);
+    if (version !== undefined) target.set('version', String(version));
     handleClose();
-    navigate(`/tenant/${tenantId}/assistant`);
+    navigate({
+      pathname: `/tenant/${tenantId}/assistant`,
+      search: target.toString()
+    });
   };
 
   const submit = (text: string) => {
-    const value = text.trim();
+    const value = text.trim() || (files.length ? t('Analyse les fichiers joints.') : '');
     if (!value || streaming) return;
     setDraft('');
-    void chat.send(value, context);
+    setFiles([]);
+    void chat.send(value, context, false, files);
   };
 
   return (
     <Drawer
       open={open}
       onClose={handleClose}
-      placement={isRtl ? 'left' : 'right'}
+      placement={(selected ? language === 'ar' : isRtl) ? 'left' : 'right'}
       size={isMobile ? '100%' : DRAWER_WIDTH}
       title={t('Assistant ImmoCopilot')}
       keyboard
@@ -83,7 +94,8 @@ const CopilotDrawer: React.FC<CopilotDrawerProps> = ({ tenantId, status, open, o
                 type="text"
                 icon={<ExpandOutlined aria-hidden />}
                 aria-label={t('Ouvrir en pleine page')}
-                onClick={openFullPage}
+                disabled={streaming}
+                onClick={() => openFullPage()}
               />
             </Tooltip>
           )}
@@ -92,8 +104,13 @@ const CopilotDrawer: React.FC<CopilotDrawerProps> = ({ tenantId, status, open, o
               type="text"
               icon={<ClearOutlined aria-hidden />}
               aria-label={t('Nouvelle conversation')}
-              disabled={chat.messages.length === 0}
-              onClick={() => chat.reset()}
+              disabled={chat.messages.length === 0 && !draft && files.length === 0}
+              onClick={() => {
+                chat.reset();
+                setDraft('');
+                setFiles([]);
+                setComposerVersion(version => version + 1);
+              }}
             />
           </Tooltip>
         </Space>
@@ -105,21 +122,34 @@ const CopilotDrawer: React.FC<CopilotDrawerProps> = ({ tenantId, status, open, o
         tenantId={tenantId}
         status={status}
         pathname={pathname}
+        visible={open}
         propertyId={propertyId}
         onSuggestion={submit}
+        onOpenArtifact={chat.conversationId && !streaming ? openFullPage : undefined}
       />
-      <div style={{ padding: 'var(--space-3) var(--space-4)' }}>
-        <CopilotComposer
-          inputRef={inputRef}
-          value={draft}
-          onChange={setDraft}
-          onSubmit={submit}
-          onStop={() => stop()}
-          streaming={streaming}
-          maxChars={maxChars}
-          maxRows={5}
-        />
-      </div>
+      {open && (
+        <div style={{ padding: 'var(--space-3) var(--space-4)' }}>
+          <CopilotComposer
+            key={composerVersion}
+            inputRef={inputRef}
+            value={draft}
+            onChange={setDraft}
+            files={files}
+            onFilesChange={setFiles}
+            transcribe={
+              status.transcription
+                ? (audio, signal, durationSeconds) =>
+                    copilotService.transcribe(tenantId, audio, signal, durationSeconds)
+                : undefined
+            }
+            onSubmit={submit}
+            onStop={() => stop()}
+            streaming={streaming}
+            maxChars={maxChars}
+            maxRows={5}
+          />
+        </div>
+      )}
     </Drawer>
   );
 };

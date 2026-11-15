@@ -1,6 +1,9 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import en from './locales/en.json';
 import ar from './locales/ar.json';
+import es from './locales/es-assistant.json';
+import hi from './locales/hi-assistant.json';
+import zh from './locales/zh-assistant.json';
 
 /**
  * i18n du serveur — messages d'erreur, e-mails et documents generes.
@@ -12,14 +15,30 @@ import ar from './locales/ar.json';
 
 export const LANGUAGES = ['fr', 'en', 'ar'] as const;
 export type Language = (typeof LANGUAGES)[number];
+export const ASSISTANT_LANGUAGES = [...LANGUAGES, 'es', 'zh', 'hi'] as const;
+export type AssistantLanguage = (typeof ASSISTANT_LANGUAGES)[number];
 
 export const DEFAULT_LANGUAGE: Language = 'fr';
 
 /** Le francais n'a pas de catalogue : sa cle est deja son texte. */
-const CATALOGS: Record<Exclude<Language, 'fr'>, Record<string, string>> = { en, ar };
+const CATALOGS: Record<Exclude<AssistantLanguage, 'fr'>, Record<string, string>> = { en, ar, es, zh, hi };
 
 export function isLanguage(value: unknown): value is Language {
   return typeof value === 'string' && (LANGUAGES as readonly string[]).includes(value);
+}
+
+export function isAssistantLanguage(value: unknown): value is AssistantLanguage {
+  return typeof value === 'string' && (ASSISTANT_LANGUAGES as readonly string[]).includes(value);
+}
+
+export function assistantLanguageFor(
+  account?: {
+    preferredAssistantLanguage?: string | null;
+    preferredLanguage?: string | null;
+  } | null
+): AssistantLanguage {
+  if (isAssistantLanguage(account?.preferredAssistantLanguage)) return account.preferredAssistantLanguage;
+  return isLanguage(account?.preferredLanguage) ? account.preferredLanguage : DEFAULT_LANGUAGE;
 }
 
 /**
@@ -31,10 +50,24 @@ export function isLanguage(value: unknown): value is Language {
  * chaque signature de service jusqu'a la racine — pour un besoin qui ne
  * concerne que la mise en forme finale du message.
  */
-const requestLanguage = new AsyncLocalStorage<Language>();
+const requestLanguage = new AsyncLocalStorage<{ language: Language; assistantLanguage?: AssistantLanguage }>();
 
 export function runWithLanguage<T>(language: Language, callback: () => T): T {
-  return requestLanguage.run(language, callback);
+  return requestLanguage.run({ language }, callback);
+}
+
+export function runWithAssistantLanguage<T>(language: AssistantLanguage, callback: () => T): T {
+  return requestLanguage.run(
+    {
+      language: isLanguage(language) ? language : currentLanguage(),
+      assistantLanguage: language
+    },
+    callback
+  );
+}
+
+export function currentAssistantLanguage(): AssistantLanguage {
+  return requestLanguage.getStore()?.assistantLanguage ?? currentLanguage();
 }
 
 /**
@@ -49,7 +82,7 @@ export function runInFrench<T>(callback: () => T): T {
 
 /** Langue de la requete en cours, ou francais hors requete (jobs, scripts). */
 export function currentLanguage(): Language {
-  return requestLanguage.getStore() ?? DEFAULT_LANGUAGE;
+  return requestLanguage.getStore()?.language ?? DEFAULT_LANGUAGE;
 }
 
 /**
@@ -60,16 +93,25 @@ export function currentLanguage(): Language {
  * nous supportons. Les facteurs de qualite (`;q=0.8`) sont ignores — les
  * navigateurs listent deja leurs preferences dans l'ordre.
  */
-export function negotiateLanguage(acceptLanguage: string | undefined): Language | null {
+function negotiate<T extends string>(acceptLanguage: string | undefined, supported: readonly T[]): T | null {
   if (!acceptLanguage) return null;
 
   for (const part of acceptLanguage.split(',')) {
     const tag = part.split(';')[0]?.trim().toLowerCase();
     const base = tag?.split('-')[0];
-    if (isLanguage(base)) return base;
+    const supportedLanguage = supported.find(language => language === base);
+    if (supportedLanguage) return supportedLanguage;
   }
 
   return null;
+}
+
+export function negotiateLanguage(acceptLanguage: string | undefined): Language | null {
+  return negotiate(acceptLanguage, LANGUAGES);
+}
+
+export function negotiateAssistantLanguage(acceptLanguage: string | undefined): AssistantLanguage | null {
+  return negotiate(acceptLanguage, ASSISTANT_LANGUAGES);
 }
 
 /** Remplace les `{{nom}}` par leur valeur. Une valeur absente laisse le motif. */
@@ -88,13 +130,13 @@ function interpolate(text: string, values?: Record<string, string | number>): st
 export function t(
   text: string,
   values?: Record<string, string | number>,
-  language: Language = currentLanguage()
+  language: AssistantLanguage = currentAssistantLanguage()
 ): string {
   // `language !== 'fr'` ne suffit pas a TypeScript pour indexer CATALOGS : il
   // faut lui dire que ce qui reste est bien une de ses cles.
-  if (language === DEFAULT_LANGUAGE) return interpolate(text, values);
+  if (language === 'fr') return interpolate(text, values);
 
-  const translated = CATALOGS[language as Exclude<Language, 'fr'>]?.[text];
+  const translated = CATALOGS[language]?.[text];
   // Une entree vide vaut « pas encore traduit » et retombe sur le francais.
   return interpolate(translated || text, values);
 }
