@@ -276,8 +276,9 @@ anticipé, le sixième fichier, l’octet excédentaire et l’envoi valide de c
 utilise une agence et un compte dédiés pour éviter qu’un quota consommé par les autres cas masque le contrôle
 multipart. Les 38 scénarios PostgreSQL Assistant en garde stricte et les 57 tests ciblés passent. Le catalogue
 généré reste identique. Le plan indique les suites de recette et la vérification externe restant à réaliser.
+La CI `43691854740` a réussi ses huit contrôles.
 
-**Lien d’un résultat du tiroir (commit de cette passation)** — La pastille « Ouvrir » reprend le fil en pleine page
+**Lien d’un résultat du tiroir (`046bb686`)** — La pastille « Ouvrir » reprend le fil en pleine page
 et montre directement le résultat. « Source » transmet aussi la version citée. La page ouvre le panneau après la
 lecture du fil privé, quand le résultat figure dans ce fil. Fermer le panneau le laisse fermé. Choisir un autre fil
 retire la sélection du lien. Les 57 tests de la page et du tiroir passent. Sur le build web, la recette Chromium
@@ -285,6 +286,14 @@ avec API simulée vérifie le parcours depuis le tableau de bord à 375 px, la v
 version 3, la réouverture après rechargement et le retour du focus à « Résultats ». La taille initiale est de
 234 439 octets gzip pour un plafond de 234 496. Le wiki est synchronisé. La qualification auprès des fournisseurs
 actifs reste à faire.
+
+**Documents locatifs en garde stricte (commit de cette passation)** — L’extension Prisma vérifie l’agence dans la
+clé composée du compteur de documents. Elle contrôle aussi l’agence de création et empêche le déplacement du
+compteur vers une autre agence. La requête conserve l’upsert atomique d’origine. Les trois scénarios DOCX passent
+sur PostgreSQL en garde stricte. Ils couvrent le relevé, la quittance rejouée sans doublon et le refus de téléchargement
+entre agences. Les 64 tests ciblés de garde et de numérotation, le typecheck API et le rejeu commun des 41 scénarios
+Assistant et DOCX passent. Le rejeu strict global précédent signalait aussi des requêtes de parc et de facturation
+de l’espace particulier, distinctes de ce parcours.
 
 ## chore/deps-patch-minor — 2026-11-11
 
