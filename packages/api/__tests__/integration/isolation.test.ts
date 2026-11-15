@@ -266,6 +266,89 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
   });
 
   describe('Assistant — historique privé', () => {
+    it('borne les étapes de huit conversations simultanées en modes standard et approfondi', async () => {
+      const agencies = await Promise.all([
+        createTestTenant('Charge-assistant-A'),
+        createTestTenant('Charge-assistant-B')
+      ]);
+      createdTenantIds.push(...agencies.map(agency => agency.id));
+      const participants = await Promise.all(
+        agencies.map(async (agency, index) => {
+          const user = await createTenantMemberUser(
+            agency,
+            `charge-assistant-${index}`,
+            `TEST_ASSISTANT_LOAD_${index}`,
+            ['PROPERTIES_VIEW']
+          );
+          const fixture = await createRentalFixtureDirect(agency.id, user.id, `assistant-charge-${index}`);
+          return { tenantId: agency.id, user, propertyId: fixture.propertyId, base: `/api/tenants/${agency.id}/ai` };
+        })
+      );
+      const clientIp = '192.0.2.40';
+      const deepLimit = 30;
+      const standardLimit = env.AI_MAX_TOOL_ROUNDS;
+      const runs = participants.flatMap(participant =>
+        [false, true, false, true].map((deep, index) => {
+          const turnId = randomUUID();
+          return { ...participant, deep, turnId, question: `Vérification sous charge ${index} ${turnId}` };
+        })
+      );
+      mockFakeScript = Array.from({ length: deepLimit + 1 }, () => ({
+        toolCalls: [{ name: 'search_properties', input: {} }]
+      }));
+      const firstProviderRequest = mockProviderRequests.length;
+      try {
+        const responses = await Promise.all(
+          runs.map(({ base, user, deep, turnId, question }) =>
+            request(app)
+              .post(base + '/chat')
+              .set(authed(user))
+              .set('X-Forwarded-For', clientIp)
+              .send({ deep, turnId, messages: [{ role: 'user', content: question }] })
+          )
+        );
+        const conversationIds = new Set<string>();
+        for (const [index, run] of runs.entries()) {
+          const response = responses[index];
+          expect(response.status).toBe(200);
+          expect(response.headers['content-type']).toContain('text/event-stream');
+          const events = response.text
+            .split('\n')
+            .filter(line => line.startsWith('data: {'))
+            .map(line => JSON.parse(line.slice(6)));
+          const limit = run.deep ? deepLimit : standardLimit;
+          expect(events.filter(event => event.type === 'tool_status' && event.status === 'succeeded')).toHaveLength(
+            limit
+          );
+          expect(events.filter(event => event.type === 'error')).toEqual([
+            expect.objectContaining({ code: 'MAX_ROUNDS', retryable: false })
+          ]);
+          expect(events.at(-1)).toEqual({ type: 'done', reason: 'max_rounds' });
+          const { conversationId } = events.find(event => event.type === 'meta');
+          conversationIds.add(conversationId);
+          const saved = await request(app)
+            .get(run.base + '/conversations/' + conversationId)
+            .set(authed(run.user))
+            .set('X-Forwarded-For', clientIp);
+          expect(saved.status).toBe(200);
+          expect(saved.body.data.turns).toEqual([
+            expect.objectContaining({ id: run.turnId, question: run.question, outcome: 'max_rounds' })
+          ]);
+        }
+        expect(conversationIds.size).toBe(runs.length);
+        const calls = mockProviderRequests.slice(firstProviderRequest).map(({ messages }) => JSON.stringify(messages));
+        for (const run of runs) {
+          const history = calls.filter(call => call.includes(run.question));
+          expect(history).toHaveLength((run.deep ? deepLimit : standardLimit) + 1);
+          expect(history.at(-1)).toContain(run.propertyId);
+          const other = participants.find(participant => participant.tenantId !== run.tenantId)!;
+          expect(history.at(-1)).not.toContain(other.propertyId);
+        }
+      } finally {
+        mockFakeScript = undefined;
+      }
+    });
+
     it('compacte les anciens échanges du fil pour le chat et la régénération en conservant le texte stocké', async () => {
       const actor = await createTenantMemberUser(tenantA, 'assistant-long-thread', 'TEST_ASSISTANT_LONG_THREAD', [
         'PROPERTIES_VIEW'
@@ -7332,7 +7415,9 @@ maybeDescribe('Espace particulier — création en libre-service et compteur d�
 
   it('6 POST concurrents du même utilisateur -> un 201, cinq 409, un seul tenant', async () => {
     const user = await verifiedUser();
-    const responses = await Promise.all(Array.from({ length: 6 }, (_, i) => createSpaceFor(user, `Course ${i}`)));
+    // Le même client pour les six POST, avec un compteur IP indépendant du reste de cette suite.
+    const client = { ...user, headers: { ...user.headers, 'X-Forwarded-For': '192.0.2.41' } };
+    const responses = await Promise.all(Array.from({ length: 6 }, (_, i) => createSpaceFor(client, `Course ${i}`)));
     const statuses = responses.map(r => r.status).sort();
     expect(statuses).toEqual([201, 409, 409, 409, 409, 409]);
     expect(await prisma.membership.count({ where: { userId: user.id } })).toBe(1);

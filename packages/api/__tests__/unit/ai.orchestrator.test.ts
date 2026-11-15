@@ -428,7 +428,22 @@ describe('orchestrateur — limites, abandon, refus', () => {
     expect(harness.events.at(-1)).toEqual({ type: 'done', reason: 'max_rounds' });
   });
 
-  it('refuse plus de 8 appels d’outils par requête', async () => {
+  it.each([
+    { mode: 'standard', deep: false, limit: env.AI_MAX_TOOL_ROUNDS },
+    { mode: 'approfondi', deep: true, limit: 30 }
+  ])('accepte la synthèse finale après le dernier appel autorisé en mode $mode', async ({ deep, limit }) => {
+    const step: FakeStep = { toolCalls: [{ name: 'search_properties', input: {} }] };
+    const harness = start(scripted([...Array.from({ length: limit }, () => step), { text: 'Synthèse prête.' }]), {
+      deep
+    });
+    await expect(harness.result).resolves.toBe('end_turn');
+    expect(mockListProperties).toHaveBeenCalledTimes(limit);
+    expect(harness.requests).toHaveLength(limit + 1);
+    expect(harness.events.some(event => event.type === 'error')).toBe(false);
+    expect(harness.events.at(-1)).toEqual({ type: 'done', reason: 'end_turn' });
+  });
+
+  it('refuse un lot qui dépasse le plafond d’appels du mode standard', async () => {
     const calls = Array.from({ length: MAX_TOOL_CALLS_PER_REQUEST + 1 }, () => ({
       name: 'search_properties' as const,
       input: {}

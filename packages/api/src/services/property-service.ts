@@ -2,6 +2,7 @@ import { escapeLike } from '../utils/like-escape';
 import { assertFreeTierCapacityTx, getAssetCapacityLimit, lockTenantAssets } from './personal-space/free-tier';
 import { prisma } from '../utils/database';
 import { PROPERTY_MEDIA_SELECT } from '../utils/property-media-select';
+import { propertyTenantWhere } from '../utils/property-tenant-guard';
 import { logger } from '../utils/logger';
 import { logAuditEvent, recordAuditEvent } from './audit-service';
 import { diffForAudit } from '../lib/audit/changes';
@@ -1139,8 +1140,19 @@ export async function listProperties(
   const thumbnailByPropertyId = new Map<string, string>();
   const propertyIds = propertiesWithCounts.map(p => p.id);
   if (propertyIds.length > 0) {
+    // Les identifiants viennent de la liste déjà autorisée. Les médias suivent
+    // le tenant du parent, y compris les biens indépendants ou sous mandat.
+    const mediaScope = tenantId
+      ? {
+          OR: [
+            { tenantId, property: propertyTenantWhere(tenantId) },
+            { tenantId: null, property: { tenantId: null } }
+          ]
+        }
+      : {};
     const photos = await prisma.propertyMedia.findMany({
       where: {
+        ...mediaScope,
         propertyId: { in: propertyIds },
         mediaType: PropertyMediaType.PHOTO
       },
