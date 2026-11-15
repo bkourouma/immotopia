@@ -145,7 +145,7 @@ describe('AssistantPage — artefacts', () => {
   });
 
   it('localise les analyses enregistrées et la programmation sans modifier le titre enregistré', async () => {
-    getStatus.mockResolvedValue(ENABLED);
+    getStatus.mockResolvedValue({ ...ENABLED, agencyTimeZone: 'Asia/Kolkata' });
     const title = 'Situation locative de décembre';
     vi.mocked(copilotService.listSavedAnalyses).mockResolvedValueOnce({
       items: [{ conversationId: 'c1', artifactId: 'a1', title, createdAt: '2026-11-14' }]
@@ -163,6 +163,7 @@ describe('AssistantPage — artefacts', () => {
     const report = within(save.closest<HTMLElement>('[role="dialog"]')!);
     expect(report.getByText('安排定期报告')).toBeInTheDocument();
     expect(report.getByLabelText('频率')).toBeInTheDocument();
+    expect(report.getByLabelText('时区')).toHaveValue('Asia/Kolkata');
     expect(save).toBeDisabled();
     expect(copilotService.createScheduledReport).not.toHaveBeenCalled();
   });

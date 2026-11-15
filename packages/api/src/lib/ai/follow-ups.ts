@@ -8,11 +8,12 @@ import { assertAnalysisCollaborator } from './analysis-shares';
 import { colleagueNotificationInput, notifyAssistantColleaguesInTransaction } from './colleague-notifications';
 import type { CopilotArtifact, FollowUpProposal } from './contracts';
 import type { AssistantOwner } from './conversations';
-import { reportSchedule } from './report-schedule';
+import { reportScheduleInput } from './report-schedule';
 import {
   createScheduledReportDraft,
   immediateReportInput,
   queueImmediateReportInTransaction,
+  resolveReportSchedule,
   scheduledReportInput,
   setScheduledReportActiveInTransaction
 } from './scheduled-reports';
@@ -53,7 +54,7 @@ export const followUpInput = z.discriminatedUnion('kind', [
       message: z.string().trim().max(2000).optional()
     })
     .strict(),
-  z.object({ kind: z.literal('schedule'), recipients, artifactId, formats, schedule: reportSchedule }).strict()
+  z.object({ kind: z.literal('schedule'), recipients, artifactId, formats, schedule: reportScheduleInput }).strict()
 ]);
 export type FollowUpInput = z.infer<typeof followUpInput>;
 const storedInput = z
@@ -65,10 +66,14 @@ const fold = (name: string) => name.normalize('NFKC').trim().toLowerCase();
 export async function proposeFollowUp(
   owner: AssistantOwner,
   turnId: string,
-  input: FollowUpInput,
+  requested: FollowUpInput,
   artifact?: CopilotArtifact
 ): Promise<FollowUpProposal> {
-  if (input.artifactId && artifact?.id !== input.artifactId) throw new NotFoundError();
+  if (requested.artifactId && artifact?.id !== requested.artifactId) throw new NotFoundError();
+  const input =
+    requested.kind === 'schedule'
+      ? { ...requested, schedule: await resolveReportSchedule(owner.tenantId, requested.schedule) }
+      : requested;
   const available = (await listAssignableMembers(owner.tenantId)).filter(member => member.roles.length);
   const recipients = new Map<string, string>();
   for (const name of input.recipients) {

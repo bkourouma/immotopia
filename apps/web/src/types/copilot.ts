@@ -284,6 +284,7 @@ export function isCapabilityExecuted(r: ExecuteActionResult | undefined): r is C
 }
 
 export interface CopilotStatus {
+  agencyTimeZone?: string;
   preferredAssistantLanguage?: import('../i18n/assistant-language').AssistantLanguage | null;
   transcription?: boolean;
   enabled: boolean;

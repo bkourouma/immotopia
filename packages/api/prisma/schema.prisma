@@ -623,6 +623,7 @@ model Tenant {
   contactPhone          String?      @map("contact_phone")
   country               String?
   city                  String?
+  timeZone              String       @default("UTC") @map("time_zone")
   address               String?
   brandingPrimaryColor  String?      @map("branding_primary_color")
   subdomain             String?      @unique

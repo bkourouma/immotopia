@@ -445,6 +445,7 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
         <SavedAnalyses
           key={analysisArtifact ?? ''}
           tenantId={tenantId}
+          agencyTimeZone={status.agencyTimeZone}
           initialAnalysis={initialAnalysis}
           onCreateTask={analysis => setTaskDraft({ analysis })}
           onNotify={analysis => setNotificationDraft({ analysis })}

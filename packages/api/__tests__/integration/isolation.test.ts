@@ -2251,6 +2251,64 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       }
     }
 
+    it('résout le fuseau de l’agence et le fige dans les nouveaux rapports', async () => {
+      const owner = await createTenantAdminUser(tenantA, 'report-time-zone');
+      const tenantPath = `/api/tenants/${tenantA.id}`;
+      const reportsPath = tenantPath + '/ai/reports';
+      const original = await prisma.tenant.findUniqueOrThrow({
+        where: { id: tenantA.id },
+        select: { timeZone: true }
+      });
+      try {
+        expect((await request(app).patch(tenantPath).set(authed(adminB)).send({ timeZone: 'Asia/Tokyo' })).status).toBe(
+          403
+        );
+        expect(
+          (await request(app).patch(tenantPath).set(authed(owner)).send({ timeZone: 'Nowhere/Local' })).status
+        ).toBe(400);
+        const updated = await request(app).patch(tenantPath).set(authed(owner)).send({ timeZone: 'Asia/Kolkata' });
+        expect(updated.status).toBe(200);
+        expect(updated.body.data.timeZone).toBe('Asia/Kolkata');
+        const status = await request(app)
+          .get(tenantPath + '/ai/status')
+          .set(authed(owner));
+        expect(status.body.data.agencyTimeZone).toBe('Asia/Kolkata');
+
+        const analysis = await saveReportAnalysis(tenantPath + '/ai', owner);
+        const input = {
+          ...analysis,
+          recipientIds: [owner.id],
+          formats: ['csv'],
+          schedule: { frequency: 'daily', time: '08:15' }
+        };
+        const first = await request(app).post(reportsPath).set(authed(owner)).send(input);
+        expect(first.status).toBe(201);
+        expect(first.body.data.previewRunAt).toMatch(/T02:45:00\.000Z$/);
+
+        expect((await request(app).patch(tenantPath).set(authed(owner)).send({ timeZone: 'Asia/Tokyo' })).status).toBe(
+          200
+        );
+        const second = await request(app).post(reportsPath).set(authed(owner)).send(input);
+        expect(second.status).toBe(201);
+        expect(second.body.data.previewRunAt).toMatch(/T23:15:00\.000Z$/);
+        const list = await request(app).get(reportsPath).set(authed(owner));
+        expect(list.body.data.items).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              id: first.body.data.id,
+              schedule: { ...input.schedule, timeZone: 'Asia/Kolkata' }
+            }),
+            expect.objectContaining({
+              id: second.body.data.id,
+              schedule: { ...input.schedule, timeZone: 'Asia/Tokyo' }
+            })
+          ])
+        );
+      } finally {
+        await prisma.tenant.update({ where: { id: tenantA.id }, data: original });
+      }
+    });
+
     it('enregistre un brouillon de rapport dans le périmètre du propriétaire', async () => {
       const owner = await createTenantAdminUser(tenantA, 'report-owner');
       const recipient = await createTenantAdminUser(tenantA, 'report-recipient');
@@ -2743,12 +2801,14 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         expect((await decide(notify.id)).body.data.status).toBe('CONFIRMED');
         expect(await notices()).toBe(1);
         expect((await decide(email.id)).body.data.status).toBe('CONFIRMED');
-        const scheduleInput = { frequency: 'daily', time: '08:00', timeZone: 'Africa/Abidjan' };
+        const scheduleInput = { frequency: 'daily', time: '08:00' };
+        const expectedSchedule = { ...scheduleInput, timeZone: 'UTC' };
         const [schedule, cancelled, invalidated] = await propose([
           { kind: 'schedule', recipients, artifactId, formats: ['csv'], schedule: scheduleInput },
           { kind: 'notify', recipients, message: 'Annuler ce brouillon.' },
           { kind: 'notify', recipients, message: 'Vérifier le droit courant.' }
         ]);
+        expect(schedule.display.schedule).toEqual(expectedSchedule);
         expect((await decide(schedule.id)).body.data.status).toBe('CONFIRMED');
         expect((await decide(cancelled.id, false)).body.data.status).toBe('DECLINED');
         expect((await decide(cancelled.id)).body.data.status).toBe('DECLINED');
@@ -2765,7 +2825,7 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         expect(reports).toEqual(
           expect.arrayContaining([
             expect.objectContaining({ schedule: null, active: true }),
-            expect.objectContaining({ schedule: scheduleInput, active: true })
+            expect.objectContaining({ schedule: expectedSchedule, active: true })
           ])
         );
         const restored = await request(app)

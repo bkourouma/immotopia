@@ -12,12 +12,14 @@ export function ScheduleReportDialog({
   tenantId,
   analysis,
   immediate,
+  agencyTimeZone = 'UTC',
   onClose,
   onCreated
 }: {
   tenantId: string;
   analysis: SavedAnalysis;
   immediate: boolean;
+  agencyTimeZone?: string;
   onClose(): void;
   onCreated(): void;
 }) {
@@ -25,7 +27,7 @@ export function ScheduleReportDialog({
   const [frequency, setFrequency] = useState<ReportSchedule['frequency']>('weekly');
   const [day, setDay] = useState(1);
   const [time, setTime] = useState('08:00');
-  const [timeZone, setTimeZone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
+  const [timeZone, setTimeZone] = useState<string>();
   const [formats, setFormats] = useState<ReportFormat[]>(['pdf']);
   const [recipientIds, setRecipientIds] = useState<string[]>([]);
   const [recipients, setRecipients] = useState<Array<{ userId: string; displayName: string }>>([]);
@@ -67,8 +69,9 @@ export function ScheduleReportDialog({
         }
         await copilotService.queueImmediateReport(tenantId, { ...email, requestId: confirmation.current.key });
       } else {
-        const clock = { time, timeZone: timeZone.trim() };
-        new Intl.DateTimeFormat('en', { timeZone: clock.timeZone });
+        const override = timeZone?.trim();
+        const clock = { time, timeZone: override || undefined };
+        if (override) new Intl.DateTimeFormat('en', { timeZone: override });
         await copilotService.createScheduledReport(tenantId, {
           ...input,
           schedule: frequency === 'daily' ? { ...clock, frequency } : { ...clock, frequency, day }
@@ -99,7 +102,7 @@ export function ScheduleReportDialog({
       okText={immediate ? t('Confirmer l’envoi') : t('Enregistrer le brouillon')}
       cancelText={t('Annuler')}
       confirmLoading={busy}
-      okButtonProps={{ disabled: !recipientIds.length || !formats.length || (!immediate && !timeZone.trim()) }}
+      okButtonProps={{ disabled: !recipientIds.length || !formats.length }}
     >
       <p>{analysis.title}</p>
       <p>
@@ -171,9 +174,9 @@ export function ScheduleReportDialog({
             <Form.Item label={t('Fuseau horaire')}>
               <Input
                 aria-label={t('Fuseau horaire')}
-                value={timeZone}
+                value={timeZone ?? agencyTimeZone}
                 onChange={event => setTimeZone(event.target.value)}
-                placeholder="Africa/Abidjan"
+                placeholder={agencyTimeZone}
                 maxLength={100}
               />
             </Form.Item>

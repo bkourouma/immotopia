@@ -70,6 +70,7 @@ function SavedAnalysisPreview({
 
 export function SavedAnalyses({
   tenantId,
+  agencyTimeZone,
   onClose,
   initialAnalysis,
   onReportCreated,
@@ -77,6 +78,7 @@ export function SavedAnalyses({
   onNotify
 }: {
   tenantId: string;
+  agencyTimeZone?: string;
   onClose(): void;
   initialAnalysis?: SavedAnalysisReference;
   onReportCreated(): void;
@@ -139,6 +141,7 @@ export function SavedAnalyses({
       {report && (
         <ScheduleReportDialog
           tenantId={tenantId}
+          agencyTimeZone={agencyTimeZone}
           analysis={report.item}
           immediate={report.immediate}
           onClose={() => setReport(undefined)}

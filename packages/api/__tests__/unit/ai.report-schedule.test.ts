@@ -1,4 +1,11 @@
-import { nextReportRun, reportSchedule } from '../../src/lib/ai/report-schedule';
+import { nextReportRun, reportSchedule, reportScheduleInput } from '../../src/lib/ai/report-schedule';
+
+it('accepte un fuseau implicite à la création et en exige un pour un rapport enregistré', () => {
+  const input = { frequency: 'daily', time: '08:15' };
+  expect(reportScheduleInput.parse(input)).toEqual(input);
+  expect(reportSchedule.safeParse(input).success).toBe(false);
+  expect(reportScheduleInput.safeParse({ ...input, timeZone: 'Nowhere/Local' }).success).toBe(false);
+});
 
 it('calcule la prochaine échéance dans le fuseau choisi', () => {
   const next = nextReportRun(

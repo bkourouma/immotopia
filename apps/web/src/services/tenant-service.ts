@@ -12,6 +12,7 @@ export interface Tenant {
   contactPhone?: string;
   country?: string;
   city?: string;
+  timeZone?: string;
   address?: string;
   brandingPrimaryColor?: string;
   subdomain?: string;
@@ -157,6 +158,7 @@ export interface UpdateTenantRequest {
   contactPhone?: string;
   country?: string;
   city?: string;
+  timeZone?: string;
   address?: string;
   brandingPrimaryColor?: string;
   subdomain?: string;

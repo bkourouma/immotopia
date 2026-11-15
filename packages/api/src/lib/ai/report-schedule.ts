@@ -1,25 +1,18 @@
 import { z } from 'zod';
-
-const timeZone = z
-  .string()
-  .min(1)
-  .max(100)
-  .refine(value => {
-    try {
-      new Intl.DateTimeFormat('en', { timeZone: value });
-      return /^[A-Za-z][A-Za-z0-9_+/-]*$/.test(value);
-    } catch {
-      return false;
-    }
-  });
+import { timeZoneSchema } from '../../utils/time-zone';
 
 const clock = z.string().regex(/^([01]\d|2[0-3]):(00|15|30|45)$/);
-const timing = { time: clock, timeZone };
-export const reportSchedule = z.discriminatedUnion('frequency', [
-  z.object({ ...timing, frequency: z.literal('daily') }).strict(),
-  z.object({ ...timing, frequency: z.literal('weekly'), day: z.number().int().min(1).max(7) }).strict(),
-  z.object({ ...timing, frequency: z.literal('monthly'), day: z.number().int().min(1).max(28) }).strict()
-]);
+function scheduleSchema<T extends z.ZodTypeAny>(timeZone: T) {
+  const timing = { time: clock, timeZone };
+  return z.discriminatedUnion('frequency', [
+    z.object({ ...timing, frequency: z.literal('daily') }).strict(),
+    z.object({ ...timing, frequency: z.literal('weekly'), day: z.number().int().min(1).max(7) }).strict(),
+    z.object({ ...timing, frequency: z.literal('monthly'), day: z.number().int().min(1).max(28) }).strict()
+  ]);
+}
+
+export const reportSchedule = scheduleSchema(timeZoneSchema);
+export const reportScheduleInput = scheduleSchema(timeZoneSchema.optional());
 export type ReportSchedule = z.infer<typeof reportSchedule>;
 
 const dayMs = 86_400_000;

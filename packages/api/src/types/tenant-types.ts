@@ -46,6 +46,7 @@ export interface UpdateTenantRequest {
   contactPhone?: string;
   country?: string;
   city?: string;
+  timeZone?: string;
   address?: string;
   // `| null` (lot G3) : efface une valeur deja posee, comme la colonne Prisma
   // (`String?`) le permet deja.

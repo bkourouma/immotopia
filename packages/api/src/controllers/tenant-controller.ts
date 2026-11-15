@@ -25,6 +25,7 @@ import { z } from 'zod';
 import { getTenantModules, updateTenantModules } from '../services/module-service';
 import { provisionTenant } from '../services/tenant-provisioning-service';
 import { IDEMPOTENCY_KEY_MAX_LENGTH } from '../utils/idempotency';
+import { timeZoneSchema } from '../utils/time-zone';
 import { AppError, asyncHandler, BadRequestError, NotFoundError } from '../middleware/error-middleware';
 import { t } from '../i18n';
 import { httpUrl } from '../lib/safe-url';
@@ -107,6 +108,7 @@ const updateTenantSchema = z.object({
   contactPhone: z.string().optional(),
   country: z.string().optional(),
   city: z.string().optional(),
+  timeZone: timeZoneSchema.optional(),
   address: z.string().optional(),
   brandingPrimaryColor: nullableBrandingColor,
   subdomain: z.string().optional(),
@@ -123,6 +125,7 @@ const updateTenantSelfSchema = z.object({
   contactPhone: z.string().optional(),
   country: z.string().max(200).optional(),
   city: z.string().max(200).optional(),
+  timeZone: timeZoneSchema.optional(),
   address: z.string().max(500).optional(),
   brandingPrimaryColor: nullableBrandingColor,
   logoUrl: nullableLogoUrl,

@@ -25,6 +25,7 @@ type TenantFormValues = Required<
     | 'contactPhone'
     | 'country'
     | 'city'
+    | 'timeZone'
     | 'address'
     | 'subdomain'
     | 'customDomain'
@@ -37,7 +38,12 @@ type TenantFormValues = Required<
  * refusee. On n'envoie donc que les champs reellement renseignes ou vides pour
  * les champs libres, et on omet les champs contraints laisses vides.
  */
-const CONSTRAINED_FIELDS: Array<keyof TenantFormValues> = ['contactEmail', 'website', 'brandingPrimaryColor'];
+const CONSTRAINED_FIELDS: Array<keyof TenantFormValues> = [
+  'contactEmail',
+  'website',
+  'brandingPrimaryColor',
+  'timeZone'
+];
 
 function toPayload(values: TenantFormValues): UpdateTenantRequest {
   const payload: UpdateTenantRequest = {};
@@ -79,6 +85,7 @@ export const TenantEdit: React.FC = () => {
           contactPhone: response.data.contactPhone ?? '',
           country: response.data.country ?? '',
           city: response.data.city ?? '',
+          timeZone: response.data.timeZone ?? 'UTC',
           address: response.data.address ?? '',
           subdomain: response.data.subdomain ?? '',
           customDomain: response.data.customDomain ?? '',
@@ -223,7 +230,11 @@ export const TenantEdit: React.FC = () => {
                   </div>
                 )}
                 <Space direction="vertical">
-                  <Upload accept="image/png,image/jpeg,image/webp" showUploadList={false} beforeUpload={handleLogoSelect}>
+                  <Upload
+                    accept="image/png,image/jpeg,image/webp"
+                    showUploadList={false}
+                    beforeUpload={handleLogoSelect}
+                  >
                     <Button icon={<UploadOutlined />} loading={uploadingLogo}>
                       {t('Téléverser un logo')}
                     </Button>
@@ -273,6 +284,11 @@ export const TenantEdit: React.FC = () => {
               <Col xs={24} sm={12}>
                 <Form.Item label={t('Pays')} name="country">
                   <Input placeholder={t("Côte d'Ivoire")} />
+                </Form.Item>
+              </Col>
+              <Col xs={24} sm={12}>
+                <Form.Item label={t('Fuseau horaire')} name="timeZone">
+                  <Input placeholder="Africa/Abidjan" maxLength={100} />
                 </Form.Item>
               </Col>
               <Col span={24}>

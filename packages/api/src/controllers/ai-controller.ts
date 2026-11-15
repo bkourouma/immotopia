@@ -9,6 +9,7 @@ import {
   assistantReportInput,
   createScheduledReportDraft,
   findScheduledReport,
+  getAgencyTimeZone,
   listScheduledReports,
   queueImmediateReport,
   removeScheduledReport,
@@ -825,9 +826,13 @@ export const getStatusHandler = asyncHandler(async (req: Request, res: Response)
   }
   if (status.enabled && (await getTranscriptionEngine())) status.transcription = true;
   if (status.enabled) {
-    const account = await getPreferredAssistantLanguage(userId);
+    const [account, agencyTimeZone] = await Promise.all([
+      getPreferredAssistantLanguage(userId),
+      getAgencyTimeZone(tenantId)
+    ]);
     const preferred = account?.preferredAssistantLanguage;
     status.preferredAssistantLanguage = isAssistantLanguage(preferred) ? preferred : null;
+    status.agencyTimeZone = agencyTimeZone;
   }
   res.set('Cache-Control', 'private, no-store').json({ success: true, data: status });
 });

@@ -354,6 +354,7 @@ export interface CapabilityExecutedPayload {
 }
 
 export interface CopilotStatus {
+  agencyTimeZone?: string;
   preferredAssistantLanguage?: AssistantLanguage | null;
   transcription?: boolean;
   enabled: boolean;

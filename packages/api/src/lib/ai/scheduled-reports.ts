@@ -4,7 +4,7 @@ import { ConflictError, NotFoundError } from '../../middleware/error-middleware'
 import { t } from '../../i18n';
 import { prisma, type PrismaTransactionClient } from '../../utils/database';
 import type { AssistantOwner } from './conversations';
-import { nextReportRun, reportSchedule } from './report-schedule';
+import { nextReportRun, reportSchedule, reportScheduleInput, type ReportSchedule } from './report-schedule';
 import { createAnalysisSharesInTransaction } from './analysis-shares';
 
 const reportInput = z.object({
@@ -16,7 +16,7 @@ const reportInput = z.object({
     .min(1)
     .max(3)
 });
-export const scheduledReportInput = reportInput.extend({ schedule: reportSchedule }).strict();
+export const scheduledReportInput = reportInput.extend({ schedule: reportScheduleInput }).strict();
 export const immediateReportInput = reportInput
   .extend({
     requestId: z.string().uuid(),
@@ -26,6 +26,20 @@ export const immediateReportInput = reportInput
   .strict();
 export const assistantReportInput = z.union([scheduledReportInput, immediateReportInput]);
 
+export async function getAgencyTimeZone(tenantId: string, db: PrismaTransactionClient = prisma): Promise<string> {
+  const tenant = await db.tenant.findUnique({ where: { id: tenantId }, select: { timeZone: true } });
+  if (!tenant) throw new NotFoundError();
+  return tenant.timeZone;
+}
+
+export async function resolveReportSchedule(
+  tenantId: string,
+  schedule: z.infer<typeof reportScheduleInput>,
+  db: PrismaTransactionClient = prisma
+): Promise<ReportSchedule> {
+  return { ...schedule, timeZone: schedule.timeZone ?? (await getAgencyTimeZone(tenantId, db)) };
+}
+
 export async function createScheduledReportDraft(
   owner: AssistantOwner,
   scopeKey: string,
@@ -33,9 +47,10 @@ export async function createScheduledReportDraft(
   db: PrismaTransactionClient = prisma
 ) {
   const id = randomUUID();
+  const schedule = await resolveReportSchedule(owner.tenantId, input.schedule, db);
   const result = await db.$executeRaw`
     INSERT INTO assistant_scheduled_reports (id, tenant_id, owner_id, conversation_id, artifact_id, schedule, recipient_ids, formats)
-    SELECT ${id}, a.tenant_id, a.owner_id, a.conversation_id, a.artifact_id, ${JSON.stringify(input.schedule)}::jsonb,
+    SELECT ${id}, a.tenant_id, a.owner_id, a.conversation_id, a.artifact_id, ${JSON.stringify(schedule)}::jsonb,
       ${[...new Set(input.recipientIds)]}::text[], ${[...new Set(input.formats)]}::text[]
     FROM assistant_saved_analyses a
     JOIN assistant_conversations c ON (c.tenant_id, c.owner_id, c.id) = (a.tenant_id, a.owner_id, a.conversation_id)
@@ -45,7 +60,7 @@ export async function createScheduledReportDraft(
     FOR SHARE OF a, c
   `;
   if (!result) throw new NotFoundError();
-  return { id, previewRunAt: nextReportRun(input.schedule, new Date()) };
+  return { id, previewRunAt: nextReportRun(schedule, new Date()) };
 }
 
 export async function queueImmediateReport(

@@ -44,11 +44,11 @@ export const proposeFollowUpTool: CopilotToolDefinition<typeof followUpInput> = 
       schedule: {
         type: 'object',
         additionalProperties: false,
-        required: ['frequency', 'time', 'timeZone'],
+        required: ['frequency', 'time'],
         properties: {
           frequency: { type: 'string', enum: ['daily', 'weekly', 'monthly'] },
           time: { type: 'string', description: 'HH:mm au quart d’heure.' },
-          timeZone: { type: 'string', description: 'Fuseau IANA.' },
+          timeZone: { type: 'string', description: "Fuseau IANA. Omettre pour utiliser le fuseau de l'agence." },
           day: {
             type: 'integer',
             description: 'Lundi 1 à dimanche 7 pour weekly, 1 à 28 pour monthly. Omis pour daily.'

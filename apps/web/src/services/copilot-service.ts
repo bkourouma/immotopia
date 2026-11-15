@@ -252,9 +252,10 @@ async function updateArtifactVersion(
 }
 
 export type SavedAnalysisReference = { conversationId: string; artifactId: string };
-export type ReportSchedule = { time: string; timeZone: string } & (
+type ReportScheduleFields = { time: string } & (
   { frequency: 'daily' } | { frequency: 'weekly' | 'monthly'; day: number }
 );
+export type ReportSchedule = ReportScheduleFields & { timeZone: string };
 export type ReportFormat = 'xlsx' | 'pdf' | 'csv';
 export type ScheduledReport = {
   id: string;
@@ -371,7 +372,7 @@ export const copilotService = {
   async createScheduledReport(
     tenantId: string,
     input: SavedAnalysisReference & {
-      schedule: ReportSchedule;
+      schedule: ReportScheduleFields & { timeZone?: string };
       formats: ReportFormat[];
       recipientIds: string[];
     }
