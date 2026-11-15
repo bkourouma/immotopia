@@ -9,11 +9,11 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Finance | 198 |
 | CRM et Ventes | 72 |
 | Maintenance | 34 |
-| Communication et Documents | 115 |
+| Communication et Documents | 116 |
 | Syndic copropriete | 247 |
 | Administration plateforme | 145 |
 | Portails externes | 84 |
-| **Total** | **1276** |
+| **Total** | **1277** |
 
 ## Sous-fonctionnalités
 
@@ -846,6 +846,7 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Agence, Syndic, Promoteur, Opérateur intégré | RENTAL | Assistant IA ImmoCopilot | Créer et gérer les alertes locatives | Préparer depuis le chat ou créer dans le formulaire une règle de fin de bail, de déclaration en attente ou de seuil d’impayés. | Règle, délai, bien facultatif, montant et devise pour les impayés | Alerte personnelle, notification interne au déclenchement et réarmement lorsque la condition cesse | Module locatif et permission de lecture de la donnée concernée | Collaborateur de l’agence | Agence (collaborateur) | GET /api/tenants/:tenantId/ai/rental-alerts et /properties ; PUT et DELETE /api/tenants/:tenantId/ai/rental-alerts/:id | RENTAL_LEASES_VIEW, RENTAL_PAYMENTS_VIEW ou RENTAL_INSTALLMENTS_VIEW selon la règle | Disponible | Assistant > Alertes locatives |
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Titrer automatiquement une conversation | Proposer un titre court avec le modèle rapide après une réponse réussie. Le titre choisi par le propriétaire est conservé. | Première question et réponse réussie, avec extraits bornés | Titre enregistré dans l’historique, avec repli sur la première ligne de la question | Conversation privée avec un titre en attente | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | authenticate + requireTenantAccess + requireTenantCollaborator + requireAiStatusAccess | Disponible | Assistant > Historique |
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Reprendre automatiquement une étape du chat | Reprendre jusqu’à trois fois une étape interrompue par une panne transitoire du fournisseur avant le premier contenu. Un délai dépassé ou une annulation termine l’étape. | Question en cours et contexte de l’étape | Réponse dans le même fil ou erreur du fournisseur si les tentatives sont épuisées | Fournisseur de chat disponible et tentative sans contenu | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | authenticate + requireTenantAccess + requireTenantCollaborator + requireAiStatusAccess | Disponible | Assistant > Chat |
+| Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Construire un tableau croisé | Croiser des dimensions d’un jeu de données de la conversation et calculer somme, moyenne, minimum, maximum ou nombre. Les totaux utilisent les lignes source filtrées et les devises différentes restent séparées. | Jeu source, dimensions en lignes et colonnes, mesures et filtres facultatifs | Tableau croisé et total, provenance, recalcul et exports selon les droits actuels | Jeu source complet et accès à ses données | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | PROPERTIES_VIEW et accès au jeu source | Disponible | Assistant > Résultats et documents |
 
 ### Syndic copropriete
 

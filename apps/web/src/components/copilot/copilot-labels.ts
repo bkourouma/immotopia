@@ -90,6 +90,7 @@ export function copilotToolLabel(tool: CopilotToolName): string {
     rental_due_comparison: t('Comparaison des échéances locatives'),
     rental_monthly_review: t('Bilan locatif du mois clos'),
     chart_analysis: t('Création du graphique'),
+    pivot_analysis: t('Calcul du tableau croisé'),
     show_indicators: t('Calcul des indicateurs'),
     compose_report: t('Préparation du rapport'),
     list_lease_documents: t('Liste des documents du bail'),

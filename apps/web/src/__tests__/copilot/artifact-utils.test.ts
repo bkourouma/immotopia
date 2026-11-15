@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   compareCells,
   csvSeparator,
+  exportableTable,
   formatArtifactCell,
   neutralizeFormula,
   safeFilename,
@@ -10,6 +11,22 @@ import {
 } from '../../utils/copilot-artifact';
 
 describe('sanitizeArtifact', () => {
+  it('conserve les colonnes et les totaux du tableau croisé pour l’export', () => {
+    const columns = Array.from({ length: 51 }, (_, index) => ({ key: `c${index}`, label: `Colonne ${index}` }));
+    const table = sanitizeArtifact({
+      kind: 'table',
+      id: 'pivot',
+      title: 'Tableau croisé',
+      columns,
+      rows: [{ c0: 'Cocody', c49: 7 }],
+      totals: { c0: 'Total', c49: 7, c50: 9 }
+    });
+    if (table?.kind !== 'table') throw new Error('table attendue');
+    expect(table.columns).toHaveLength(50);
+    expect(table.totals).toMatchObject({ c0: 'Total', c49: 7 });
+    expect(table.totals).not.toHaveProperty('c50');
+    expect(exportableTable(table)?.rows.at(-1)).toEqual(table.totals);
+  });
   it('accepte un tableau, un texte et un graphique bien formés', () => {
     expect(
       sanitizeArtifact({ kind: 'table', id: 't', title: 'T', columns: [{ key: 'a', label: 'A' }], rows: [{ a: 1 }] })

@@ -17,6 +17,7 @@ import { showArtifactTool } from './show-artifact';
 import { rentalArrearsTool } from './rental-arrears';
 import { rentalReceiptsTool } from './rental-receipts';
 import { chartAnalysisTool } from './chart-analysis';
+import { pivotAnalysisTool } from './pivot-analysis';
 import { showIndicatorsTool } from './show-indicators';
 import { composeReportTool } from './compose-report';
 import { leasePortfolioTool, propertyPortfolioTool } from './portfolio';
@@ -48,6 +49,7 @@ export const ALL_TOOLS: readonly CopilotToolDefinition[] = [
   ownerStatementsTool,
   ownerPayoutsTool,
   chartAnalysisTool,
+  pivotAnalysisTool,
   showIndicatorsTool,
   composeReportTool,
   listLeaseDocumentsTool,

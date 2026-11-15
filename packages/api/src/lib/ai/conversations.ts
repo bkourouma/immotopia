@@ -92,6 +92,7 @@ export function assistantScope(permissions: Set<string>, toolNames: string[]): s
   // L’analyse de maintenance applique MAINTENANCE_ADMIN et le module CORE existants.
   const additionalTools = new Set([
     'show_indicators',
+    'pivot_analysis',
     'compose_report',
     'property_portfolio',
     'lease_portfolio',

@@ -59,6 +59,7 @@ const TOOL_CAPABILITIES: Record<CopilotToolName, { group: string; text: string }
     text: 'le bilan locatif du mois clos avec échéances, encaissements et alertes à préparer'
   },
   chart_analysis: { group: 'charts', text: 'des graphiques fondés sur les tableaux calculés par le serveur' },
+  pivot_analysis: { group: 'pivots', text: 'des tableaux croisés avec agrégats et totaux calculés par le serveur' },
   show_indicators: { group: 'indicators', text: 'des indicateurs chiffrés issus des analyses' },
   compose_report: { group: 'reports', text: 'des rapports structurés avec tableaux et provenance' },
   list_lease_documents: { group: 'documents', text: 'des documents' },
@@ -127,6 +128,11 @@ export function buildSystemPrompt(
   if (tools.some(tool => tool.name === 'chart_analysis')) {
     help.push(
       'Pour un graphique fondé sur une analyse locative, appelle chart_analysis avec le tableau de cette conversation et les clés retournées. Les séries sont calculées côté serveur.'
+    );
+  }
+  if (tools.some(tool => tool.name === 'pivot_analysis')) {
+    help.push(
+      'Pour croiser les dimensions d’un jeu, appelle pivot_analysis avec le tableau d’origine. Utilise currency parmi les dimensions si le jeu contient plusieurs devises.'
     );
   }
   if (tools.some(tool => tool.name === 'rental_arrears')) {

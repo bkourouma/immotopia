@@ -5,6 +5,7 @@ import { AppError, ForbiddenError } from '../../middleware/error-middleware';
 import type {
   AnalysisQuery,
   AnalysisTable,
+  BaseAnalysisQuery,
   CopilotArtifact,
   CopilotToolContext,
   CopilotToolDefinition
@@ -16,6 +17,7 @@ import { maintenanceOverviewTool, syndicateMaintenanceTool } from './tools/maint
 import { rentalReceiptsTool } from './tools/rental-receipts';
 import { chartAnalysisTool } from './tools/chart-analysis';
 import { showIndicatorsTool } from './tools/show-indicators';
+import { pivotAnalysisTool, pivotInputSchema } from './tools/pivot-analysis';
 import { leasePortfolioTool, propertyPortfolioTool } from './tools/portfolio';
 import { constructionBudgetTool, crmPipelineTool, saleMandatesTool } from './tools/commercial-analysis';
 import { ownerPayoutsTool, ownerStatementsTool } from './tools/owner-financial-analysis';
@@ -42,7 +44,7 @@ const querySchema = z.discriminatedUnion('tool', [
     .extend({ tool: z.literal('owner_payouts') })
 ]);
 
-const analysisTools: Record<AnalysisQuery['tool'], CopilotToolDefinition> = {
+const analysisTools: Record<BaseAnalysisQuery['tool'], CopilotToolDefinition> = {
   rental_arrears: rentalArrearsTool,
   rental_receipts: rentalReceiptsTool,
   rental_due_comparison: rentalDueComparisonTool,
@@ -97,7 +99,9 @@ export async function replayArtifact(
   const calculations = new Map<string, Promise<AnalysisTable>>();
 
   const unavailable = () => new AppError(t('Cette analyse ne peut pas être recalculée.'), 422);
-  function read(query: AnalysisQuery): Promise<AnalysisTable> {
+  const canRead = (query: AnalysisQuery) =>
+    allowed.has(query.tool) && (query.tool !== 'pivot_analysis' || allowed.has(query.source.tool));
+  function read(query: BaseAnalysisQuery): Promise<AnalysisTable> {
     const { tool, ...input } = querySchema.parse(query);
     if (!allowed.has(tool)) throw new ForbiddenError();
     const key = JSON.stringify([tool, input]);
@@ -111,12 +115,25 @@ export async function replayArtifact(
     return operation;
   }
 
+  async function readAnalysis(query: AnalysisQuery): Promise<AnalysisTable> {
+    if (query.tool !== 'pivot_analysis') return read(query);
+    if (!allowed.has(query.tool)) throw new ForbiddenError();
+    const source = await read(query.source);
+    const parsed = pivotInputSchema.parse(query.input);
+    const result = await pivotAnalysisTool.execute(
+      { ...parsed, sourceId: source.id, title: shared ? t('Tableau croisé') : parsed.title },
+      { ...ctx, analysisTables: new Map([[source.id, source]]) }
+    );
+    if (result.uiEvent?.type !== 'artifact' || result.uiEvent.artifact.kind !== 'table') throw unavailable();
+    return result.uiEvent.artifact;
+  }
+
   async function table(previous: AnalysisTable): Promise<AnalysisTable> {
     if (!previous.query) {
       if (shared) throw unavailable();
       return previous;
     }
-    const fresh = await read(previous.query);
+    const fresh = await readAnalysis(previous.query);
     if (shared) {
       const { query: _query, ...result } = fresh;
       return { ...result, id: previous.id };
@@ -130,7 +147,7 @@ export async function replayArtifact(
     for (const block of artifact.blocks) {
       if (!shared) {
         blocks.push(block.kind === 'table' ? { ...block, table: await table(block.table) } : block);
-      } else if (block.kind === 'table' && block.table.query && allowed.has(block.table.query.tool)) {
+      } else if (block.kind === 'table' && block.table.query && canRead(block.table.query)) {
         blocks.push({ kind: 'table' as const, table: await table(block.table) });
       }
     }
@@ -144,7 +161,7 @@ export async function replayArtifact(
     const tool: CopilotToolDefinition = artifact.kind === 'chart' ? chartAnalysisTool : showIndicatorsTool;
     if (artifact.replay.tool !== tool.name || !allowed.has(tool.name)) throw new ForbiddenError();
     const input = tool.inputSchema.parse(artifact.replay.input);
-    const fresh = await read(artifact.replay.source);
+    const fresh = await readAnalysis(artifact.replay.source);
     const result = await tool.execute(shared ? { ...input, title: fresh.title.slice(0, 120) } : input, {
       ...ctx,
       analysisTables: new Map([[input.sourceId, fresh]])

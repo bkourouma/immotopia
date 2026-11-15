@@ -27,6 +27,7 @@ export type CopilotToolName =
   | 'owner_statements'
   | 'owner_payouts'
   | 'chart_analysis'
+  | 'pivot_analysis'
   | 'show_indicators'
   | 'compose_report'
   | 'list_lease_documents'
@@ -347,6 +348,7 @@ export type CopilotArtifact = { canRefresh?: boolean } & (
       columns: { key: string; label: string; linkKey?: string; type?: 'text' | 'number' | 'currency' | 'date' }[];
       provenance?: ArtifactProvenance;
       rows: Record<string, ArtifactCell>[];
+      totals?: Record<string, ArtifactCell>;
       truncated?: boolean;
     }
   | { kind: 'markdown'; id: string; title: string; content: string }
@@ -367,6 +369,7 @@ export type CopilotArtifact = { canRefresh?: boolean } & (
 /** Limites de l'API ; le front les réapplique à l'affichage (défensif). */
 export const ARTIFACT_MAX_ROWS = 500;
 export const ARTIFACT_MAX_COLUMNS = 20;
+export const ARTIFACT_MAX_PIVOT_COLUMNS = 50;
 export const ARTIFACT_MAX_MARKDOWN_CHARS = 20000;
 export const ARTIFACT_MAX_CHART_POINTS = 200;
 export const ARTIFACT_MAX_SERIES = 6;

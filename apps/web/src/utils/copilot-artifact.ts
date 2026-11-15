@@ -4,6 +4,7 @@ import {
   ARTIFACT_MAX_CHART_POINTS,
   ARTIFACT_MAX_COLUMNS,
   ARTIFACT_MAX_MARKDOWN_CHARS,
+  ARTIFACT_MAX_PIVOT_COLUMNS,
   ARTIFACT_MAX_ROWS,
   ARTIFACT_MAX_SERIES,
   type ArtifactCell,
@@ -148,6 +149,7 @@ export function sanitizeArtifact(raw: unknown): (CopilotArtifact & { canRefresh?
   if (raw.kind === 'table') {
     if (!Array.isArray(raw.columns)) return null;
     const columns: Extract<CopilotArtifact, { kind: 'table' }>['columns'] = [];
+    const maxColumns = isRecord(raw.totals) ? ARTIFACT_MAX_PIVOT_COLUMNS : ARTIFACT_MAX_COLUMNS;
     for (const c of raw.columns) {
       if (!isRecord(c)) continue;
       const key = str(c.key);
@@ -161,11 +163,16 @@ export function sanitizeArtifact(raw: unknown): (CopilotArtifact & { canRefresh?
         ...(type ? { type } : {}),
         ...(linkKey ? { linkKey } : {})
       });
-      if (columns.length >= ARTIFACT_MAX_COLUMNS) break;
+      if (columns.length >= maxColumns) break;
     }
     if (columns.length === 0) return null;
     const total = Array.isArray(raw.rows) ? raw.rows.length : 0;
     const provenance = sanitizeProvenance(raw.provenance);
+    const [totals] = cleanRows(
+      [raw.totals],
+      columns.map(column => column.key),
+      1
+    );
     return {
       kind: 'table',
       id,
@@ -177,6 +184,7 @@ export function sanitizeArtifact(raw: unknown): (CopilotArtifact & { canRefresh?
         ARTIFACT_MAX_ROWS
       ),
       truncated: raw.truncated === true || total > ARTIFACT_MAX_ROWS || undefined,
+      ...(totals ? { totals } : {}),
       ...refresh,
       ...(provenance ? { provenance } : {})
     };
@@ -327,7 +335,9 @@ export function chartXLabel(artifact: Extract<CopilotArtifact, { kind: 'chart' }
 export function exportableTable(
   artifact: CopilotArtifact
 ): { columns: { key: string; label: string }[]; rows: Record<string, ArtifactCell>[] } | null {
-  if (artifact.kind === 'table') return { columns: artifact.columns, rows: artifact.rows };
+  if (artifact.kind === 'table') {
+    return { columns: artifact.columns, rows: artifact.totals ? [...artifact.rows, artifact.totals] : artifact.rows };
+  }
   if (artifact.kind === 'indicators') {
     return {
       columns: [

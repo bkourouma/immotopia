@@ -64,7 +64,12 @@ const ALL_PERMS = [
   'SYNDIC_VIEW',
   'RENTAL_LEASES_VIEW',
   'RENTAL_DOCUMENTS_VIEW',
-  'RENTAL_DOCUMENTS_GENERATE'
+  'RENTAL_DOCUMENTS_GENERATE',
+  'CRM_DEALS_VIEW',
+  'FINANCE_REPORTS_READ',
+  'FINANCE_SITES_MANAGE',
+  'FINANCE_ACCOUNTS_READ',
+  'OWNER_STATEMENTS_VIEW'
 ];
 
 const ctx = (perms: string[] = ALL_PERMS, seen: string[] = [LEASE_ID]): CopilotToolContext => ({
@@ -124,6 +129,7 @@ describe('registre', () => {
         'rental_arrears',
         'rental_receipts',
         'chart_analysis',
+        'pivot_analysis',
         'show_indicators',
         'compose_report',
         'property_portfolio',
@@ -131,7 +137,19 @@ describe('registre', () => {
         'maintenance_overview',
         'syndicate_budget',
         'syndicate_charges',
-        'syndicate_maintenance'
+        'syndicate_maintenance',
+        'rental_due_comparison',
+        'rental_monthly_review',
+        'crm_pipeline',
+        'sale_mandates',
+        'construction_budget',
+        'owner_statements',
+        'owner_payouts',
+        'propose_follow_up',
+        'prepare_budget_alert',
+        'prepare_lease_expiry_alert',
+        'prepare_declaration_alert',
+        'prepare_rent_arrears_alert'
       ].sort()
     );
     expect(ALL_TOOLS.some(t => /execute/i.test(t.name))).toBe(false);
@@ -147,6 +165,7 @@ describe('registre', () => {
     ['rental_arrears', 'RENTAL_INSTALLMENTS_VIEW'],
     ['rental_receipts', 'RENTAL_PAYMENTS_VIEW'],
     ['chart_analysis', 'PROPERTIES_VIEW'],
+    ['pivot_analysis', 'PROPERTIES_VIEW'],
     ['show_indicators', 'PROPERTIES_VIEW'],
     ['compose_report', 'PROPERTIES_VIEW'],
     ['property_portfolio', 'PROPERTIES_VIEW'],
@@ -188,8 +207,10 @@ describe('registre', () => {
       'compose_report',
       'list_capabilities',
       'list_property_documents',
+      'pivot_analysis',
       'plan_write',
       'property_portfolio',
+      'propose_follow_up',
       'search_properties',
       'show_artifact',
       'show_indicators'
@@ -206,8 +227,10 @@ describe('registre', () => {
       'list_capabilities',
       'list_property_documents',
       'maintenance_overview',
+      'pivot_analysis',
       'plan_write',
       'property_portfolio',
+      'propose_follow_up',
       'search_properties',
       'show_artifact',
       'show_indicators'
@@ -225,8 +248,9 @@ describe('registre', () => {
     const definition = tool(name);
     // Un schéma affiné (superRefine, ex. show_artifact) enveloppe l'objet dans un ZodEffects.
     const schema = definition.inputSchema as unknown as z.ZodTypeAny;
-    const base = (schema instanceof z.ZodEffects ? schema.innerType() : schema) as z.ZodObject<z.ZodRawShape>;
-    const shape = base.shape;
+    const base = schema instanceof z.ZodEffects ? schema.innerType() : schema;
+    const variants: z.ZodObject<z.ZodRawShape>[] =
+      base instanceof z.ZodDiscriminatedUnion ? base.options : [base as z.ZodObject<z.ZodRawShape>];
     const json = definition.jsonSchema as {
       type: string;
       additionalProperties: boolean;
@@ -235,11 +259,9 @@ describe('registre', () => {
     };
     expect(json.type).toBe('object');
     expect(json.additionalProperties).toBe(false);
-    expect(Object.keys(json.properties).sort()).toEqual(Object.keys(shape).sort());
-    const required = Object.entries(shape)
-      .filter(([, schema]) => !schema.isOptional())
-      .map(([key]) => key)
-      .sort();
+    const properties = [...new Set(variants.flatMap(variant => Object.keys(variant.shape)))].sort();
+    expect(Object.keys(json.properties).sort()).toEqual(properties);
+    const required = properties.filter(key => variants.every(variant => variant.shape[key]?.isOptional() === false));
     expect([...(json.required ?? [])].sort()).toEqual(required);
   });
 

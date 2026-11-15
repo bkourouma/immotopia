@@ -3,7 +3,7 @@ import { currentLanguage, t } from '../../i18n';
 import { AppError } from '../../middleware/error-middleware';
 import type { CopilotArtifact } from './contracts';
 import { chartColors, chartExportData } from './artifact-chart-data';
-import { artifactExportSections, artifactProvenanceLines } from './artifact-pdf';
+import { artifactColumnGroups, artifactExportSections, artifactProvenanceLines } from './artifact-pdf';
 
 export async function buildArtifactPowerPoint(artifact: CopilotArtifact): Promise<Buffer> {
   const pptx = new PptxGenJS();
@@ -106,19 +106,15 @@ export async function buildArtifactPowerPoint(artifact: CopilotArtifact): Promis
       continue;
     }
     const title = section.title ?? artifact.title;
-    const groups: number[][] = [];
-    for (let start = 1; start < section.headers.length; start += 5) {
-      groups.push([0, ...section.headers.slice(start, start + 5).map((_label, offset) => start + offset)]);
-    }
-    if (section.headers.length === 1) groups.push([0]);
-    for (const columns of groups) {
+    for (const columns of artifactColumnGroups(section.headers.length, section.dimensionColumns)) {
       const order = rtl ? [...columns].reverse() : columns;
       const headers = order.map(index => ({
         text: section.headers[index],
         options: { bold: true, fill: { color: 'E9EFF5' }, color: '19334F' }
       }));
       const maxChars = Math.floor(96 / columns.length);
-      const rows = section.rows.flatMap(row => {
+      const rows = section.rows.flatMap((row, index) => {
+        const total = !!section.hasTotals && index === section.rows.length - 1;
         const chunks = order.map(index => {
           const value = String(row[index] ?? '—')
             .replace(/\s+/g, ' ')
@@ -131,7 +127,7 @@ export async function buildArtifactPowerPoint(artifact: CopilotArtifact): Promis
           return parts;
         });
         return Array.from({ length: Math.max(1, ...chunks.map(parts => parts.length)) }, (_, line) =>
-          chunks.map(parts => ({ text: parts[line] ?? '' }))
+          chunks.map(parts => ({ text: parts[line] ?? '', ...(total ? { options: { bold: true } } : {}) }))
         );
       });
       for (let start = 0; start < Math.max(1, rows.length); start += 18) {

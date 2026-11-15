@@ -52,6 +52,7 @@ export type CopilotToolName =
   | 'owner_statements'
   | 'owner_payouts'
   | 'chart_analysis'
+  | 'pivot_analysis'
   | 'show_indicators'
   | 'compose_report'
   | 'list_lease_documents'
@@ -363,7 +364,7 @@ type MaintenanceQueryFilters = {
   status?: MaintenanceTicketStatus;
 };
 
-export type AnalysisQuery =
+export type BaseAnalysisQuery =
   | { tool: 'syndicate_budget'; syndicateId: string; fiscalYear: number; budgetId?: string; status?: BudgetStatus }
   | {
       tool: 'syndicate_charges';
@@ -390,6 +391,8 @@ export type AnalysisQuery =
       status?: StatementStatus;
     }
   | { tool: 'owner_payouts'; periodFrom: string; periodTo: string; ownerClientId?: string };
+
+export type AnalysisQuery = BaseAnalysisQuery | { tool: 'pivot_analysis'; source: BaseAnalysisQuery; input: unknown };
 
 export interface ArtifactProvenance {
   source: string;
@@ -425,6 +428,8 @@ export type CopilotArtifact =
       columns: { key: string; label: string; linkKey?: string; type?: 'text' | 'number' | 'currency' | 'date' }[];
       provenance?: ArtifactProvenance;
       rows: Record<string, ArtifactCell>[];
+      totals?: Record<string, ArtifactCell>;
+      dimensionColumns?: number;
       truncated?: boolean;
       query?: AnalysisQuery;
     }

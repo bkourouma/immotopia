@@ -2933,5 +2933,6 @@
   "Reversements propriétaires exécutés": "Completed owner payouts",
   "Bilan locatif du mois clos": "Closed-month rental review",
   "Comparaison des échéances locatives": "Rental instalment comparison",
-  "Prépare le bilan locatif du dernier mois clos": "Prepare the rental review for the last closed month"
+  "Prépare le bilan locatif du dernier mois clos": "Prepare the rental review for the last closed month",
+  "Calcul du tableau croisé": "Building the pivot table"
 }

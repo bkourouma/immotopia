@@ -71,6 +71,7 @@ const CORE_TOOLS = [
   'show_artifact',
   'property_portfolio',
   'chart_analysis',
+  'pivot_analysis',
   'show_indicators',
   'compose_report',
   'list_capabilities',

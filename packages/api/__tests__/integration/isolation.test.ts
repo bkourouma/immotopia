@@ -648,7 +648,49 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         { category: '2024-10', value0: 80 },
         { category: period, value0: 117 }
       ]);
+      mockFakeScript = [
+        {
+          toolCalls: [
+            {
+              name: 'pivot_analysis',
+              input: {
+                title: 'Tableau privé par devise',
+                sourceId: dues.id,
+                rows: ['currency'],
+                values: [
+                  { key: 'overdue', operation: 'sum' },
+                  { key: 'overdue', operation: 'average' }
+                ]
+              }
+            }
+          ]
+        },
+        { text: 'Tableau croisé prêt.' }
+      ];
+      const pivotResponse = await request(app)
+        .post(base + '/chat')
+        .set(authed(admin))
+        .send({
+          conversationId,
+          turnId: randomUUID(),
+          messages: [{ role: 'user', content: 'Croise les soldes par devise.' }]
+        });
+      expect(pivotResponse.status).toBe(200);
+      const pivot = parseEvents(pivotResponse.text).find(event => event.type === 'artifact')?.artifact;
+      expect(pivot).toMatchObject({
+        rows: [{ currency: 'XOF', pivot_0: 77, pivot_1: 38.5 }],
+        totals: { currency: 'Total', pivot_0: 77, pivot_1: 38.5 }
+      });
       await updateDue(agency.id, current.installmentId, { amount_paid: 70 });
+      const pivotPath = `${base}/conversations/${conversationId}/artifacts/${pivot.id}`;
+      const pivotReplay = await request(app).post(pivotPath).set(authed(admin)).send({ expectedVersion: 1 });
+      expect(pivotReplay.status).toBe(201);
+      expect(pivotReplay.body.data.artifact.totals).toMatchObject({ pivot_0: 47, pivot_1: 23.5 });
+      const csv = await request(app)
+        .get(pivotPath + '/csv')
+        .set(authed(admin));
+      expect(csv.status).toBe(200);
+      expect(csv.text).toMatch(/"Total"[;,]47[;,]23[.,]5/);
       const path = `${base}/conversations/${conversationId}/artifacts/${report.id}`;
       const replay = await request(app).post(path).set(authed(admin)).send({ expectedVersion: 1 });
       expect(replay.status).toBe(201);

@@ -47,6 +47,27 @@ export const ArtifactTable: React.FC<{ artifact: TableArtifact }> = ({ artifact 
         columns={columns}
         dataSource={dataSource}
         pagination={artifact.rows.length > 50 ? { pageSize: 50, showSizeChanger: false } : false}
+        summary={
+          artifact.totals
+            ? () => (
+                <Table.Summary.Row>
+                  {artifact.columns.map((column, index) => (
+                    <Table.Summary.Cell key={column.key} index={index}>
+                      <Typography.Text
+                        strong
+                        style={{
+                          display: 'block',
+                          textAlign: column.type === 'number' || column.type === 'currency' ? 'end' : 'start'
+                        }}
+                      >
+                        <bdi>{formatArtifactCell(artifact.totals?.[column.key] ?? null, column.type)}</bdi>
+                      </Typography.Text>
+                    </Table.Summary.Cell>
+                  ))}
+                </Table.Summary.Row>
+              )
+            : undefined
+        }
         scroll={{ x: 'max-content', y: 'max(240px, calc(100dvh - 380px))' }}
         aria-label={artifact.title}
       />

@@ -45,7 +45,10 @@ export async function buildArtifactXlsx(artifact: CopilotArtifact): Promise<Buff
       continue;
     }
     sheet.addRow(section.headers).font = { bold: true };
-    for (const row of section.rows) sheet.addRow(row);
+    for (const [index, row] of section.rows.entries()) {
+      const entry = sheet.addRow(row);
+      if (section.hasTotals && index === section.rows.length - 1) entry.font = { bold: true };
+    }
     section.headers.forEach((header, col) => {
       sheet.getColumn(col + 1).width = Math.min(54, Math.max(18, header.length + 4));
     });

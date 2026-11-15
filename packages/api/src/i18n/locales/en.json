@@ -3163,5 +3163,13 @@
   "Modèle": "Model",
   "Réduisez la période ou filtrez les usages avant de les exporter.": "Shorten the period or filter usage before exporting.",
   "Le fournisseur de ce mode est indisponible.": "The provider for this mode is unavailable.",
-  "Le test de connexion au fournisseur a échoué.": "The provider connection test failed."
+  "Le test de connexion au fournisseur a échoué.": "The provider connection test failed.",
+  "Le total reprend les lignes source après filtrage.": "The total is calculated from the filtered source rows.",
+  "Les montants de devises différentes ou inconnues restent séparés.": "Amounts in different or unknown currencies are not combined.",
+  "Maximum": "Maximum",
+  "Minimum": "Minimum",
+  "Somme": "Sum",
+  "Tableau croisé": "Pivot table",
+  "Total": "Total",
+  "Valeur moyenne": "Average"
 }

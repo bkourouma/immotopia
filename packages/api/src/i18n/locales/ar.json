@@ -3163,5 +3163,13 @@
   "Modèle": "النموذج",
   "Réduisez la période ou filtrez les usages avant de les exporter.": "قلّل الفترة أو صفِّ بيانات الاستخدام قبل تصديرها.",
   "Le fournisseur de ce mode est indisponible.": "مزوّد هذا الوضع غير متاح.",
-  "Le test de connexion au fournisseur a échoué.": "فشل اختبار الاتصال بالمزوّد."
+  "Le test de connexion au fournisseur a échoué.": "فشل اختبار الاتصال بالمزوّد.",
+  "Le total reprend les lignes source après filtrage.": "يُحسب الإجمالي من صفوف المصدر بعد التصفية.",
+  "Les montants de devises différentes ou inconnues restent séparés.": "تُحسب المبالغ بعملات مختلفة أو غير معروفة بشكل منفصل.",
+  "Maximum": "الحد الأقصى",
+  "Minimum": "الحد الأدنى",
+  "Somme": "المجموع",
+  "Tableau croisé": "جدول محوري",
+  "Total": "الإجمالي",
+  "Valeur moyenne": "المتوسط"
 }

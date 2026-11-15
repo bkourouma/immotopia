@@ -90,6 +90,13 @@ const chart: CopilotArtifact = {
   ]
 };
 
+it('rend le total du tableau croisé dans le pied du tableau', () => {
+  renderPanel([{ ...table, truncated: false, totals: { name: 'Total', amount: 1700.5 } }], table.id);
+  const footer = screen.getByText('Total').closest('tfoot');
+  expect(footer).toBeInTheDocument();
+  expect(footer).toHaveTextContent(/1.?700,50/);
+});
+
 function renderPanel(
   artifacts: CopilotArtifact[],
   selectedId?: string,

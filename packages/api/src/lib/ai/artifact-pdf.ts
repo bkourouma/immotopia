@@ -35,7 +35,25 @@ type ExportSection =
       rows: ArtifactCell[][];
       provenance?: ArtifactProvenance;
       truncated?: boolean;
+      dimensionColumns?: number;
+      hasTotals?: boolean;
     };
+
+/** Répète les dimensions sur chaque groupe de colonnes du document. */
+export function artifactColumnGroups(count: number, dimensionColumns = 1): number[][] {
+  if (count === 0) return [];
+  const leading = Array.from(
+    { length: Math.min(count, Math.max(1, Math.min(dimensionColumns, 3))) },
+    (_, index) => index
+  );
+  if (count <= leading.length) return [leading];
+  const groups: number[][] = [];
+  const step = 6 - leading.length;
+  for (let start = leading.length; start < count; start += step) {
+    groups.push([...leading, ...Array.from({ length: Math.min(step, count - start) }, (_, offset) => start + offset)]);
+  }
+  return groups;
+}
 
 export function artifactExportSections(artifact: CopilotArtifact): ExportSection[] {
   switch (artifact.kind) {
@@ -54,7 +72,11 @@ export function artifactExportSections(artifact: CopilotArtifact): ExportSection
           kind: 'grid',
           headers: artifact.columns.map(column => column.label),
           truncated: artifact.truncated,
-          rows: artifact.rows.map(row => artifact.columns.map(column => row[column.key] ?? null)),
+          ...(artifact.dimensionColumns ? { dimensionColumns: artifact.dimensionColumns } : {}),
+          ...(artifact.totals ? { hasTotals: true } : {}),
+          rows: (artifact.totals ? [...artifact.rows, artifact.totals] : artifact.rows).map(row =>
+            artifact.columns.map(column => row[column.key] ?? null)
+          ),
           provenance: artifact.provenance
         }
       ];
@@ -150,14 +172,8 @@ export async function buildArtifactPdf(artifact: CopilotArtifact, exportedAt = n
     }
   }
 
-  function grid(headers: string[], rows: ArtifactCell[][]) {
-    // Repartir les tableaux larges et répéter la première colonne pour identifier chaque ligne.
-    const groups: number[][] = [];
-    for (let start = 1; start < headers.length; start += 5) {
-      groups.push([0, ...headers.slice(start, start + 5).map((_header, offset) => start + offset)]);
-    }
-    if (headers.length === 1) groups.push([0]);
-    for (const columns of groups) {
+  function grid({ headers, rows, dimensionColumns, hasTotals }: Extract<ExportSection, { kind: 'grid' }>) {
+    for (const columns of artifactColumnGroups(headers.length, dimensionColumns)) {
       const cellWidth = width / columns.length;
       const wrap = (values: ArtifactCell[], face: TextFace) =>
         columns.map(index => wrapArabicText(face, String(values[index] ?? '—'), 9, cellWidth - 12));
@@ -177,8 +193,10 @@ export async function buildArtifactPdf(artifact: CopilotArtifact, exportedAt = n
       }
       reserve(height(header) + lineHeight + 8);
       draw(header, bold, true);
-      for (const values of rows) {
-        const cells = wrap(values, regular);
+      for (const [index, values] of rows.entries()) {
+        const total = !!hasTotals && index === rows.length - 1;
+        const face = total ? bold : regular;
+        const cells = wrap(values, face);
         let row = cells;
         // Conserver les cellules longues en continuant sur la page suivante.
         while (row.some(lines => lines.length)) {
@@ -186,8 +204,8 @@ export async function buildArtifactPdf(artifact: CopilotArtifact, exportedAt = n
           const available = Math.max(1, Math.floor((y - margin - 8) / lineHeight));
           draw(
             row.map(lines => lines.slice(0, available)),
-            regular,
-            false
+            face,
+            total
           );
           row = row.map(lines => lines.slice(available));
         }
@@ -221,7 +239,7 @@ export async function buildArtifactPdf(artifact: CopilotArtifact, exportedAt = n
       }
     } else {
       if (section.title) paragraph(section.title, bold, 13);
-      grid(section.headers, section.rows);
+      grid(section);
       if (section.truncated) paragraph(t('Résultat tronqué : seules les premières lignes sont affichées.'), bold, 9);
       if (section.provenance)
         for (const line of artifactProvenanceLines(section.provenance)) paragraph(line, regular, 9);

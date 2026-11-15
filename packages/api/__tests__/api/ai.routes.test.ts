@@ -200,6 +200,7 @@ describe('GET /ai/status', () => {
     'compose_report',
     'list_capabilities',
     'list_property_documents',
+    'pivot_analysis',
     'plan_write',
     'property_portfolio',
     'propose_follow_up',
