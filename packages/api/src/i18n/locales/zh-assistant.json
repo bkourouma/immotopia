@@ -544,5 +544,22 @@
   "Joignez les fichiers dans une conversation enregistrée.": "请将文件附加到已保存的对话中。",
   "Ce message comporte déjà trois propositions.": "此消息已有三条提议。",
   "La conversation n’a pas pu être enregistrée.": "无法保存对话。",
-  "Vous n'avez pas la permission de générer ce document.": "您无权生成此文档。"
+  "Vous n'avez pas la permission de générer ce document.": "您无权生成此文档。",
+  "Copropriétés trouvées": "找到的共有物业",
+  "Lots de copropriété trouvés": "找到的共有物业单元",
+  "Mandats de vente trouvés": "找到的销售委托",
+  "Chantiers trouvés": "找到的施工项目",
+  "Copropriété": "共有物业",
+  "Immatriculation": "登记号",
+  "Référence cadastrale": "地籍编号",
+  "Numéro de lot": "单元编号",
+  "Type de lot": "单元类型",
+  "Appartement": "公寓",
+  "Parking": "车位",
+  "Cave": "地下储藏室",
+  "Bureau": "办公室",
+  "Local commercial": "商铺",
+  "Actif": "有效",
+  "Révoqué": "已撤销",
+  "Terminé": "已完成"
 }

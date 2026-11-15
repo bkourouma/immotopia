@@ -563,5 +563,9 @@
   "Vous n'avez pas la permission d'effectuer cette action.": "No tiene permiso para realizar esta acción.",
   "La connexion a été interrompue : vérifiez dans l'application si l'action a été effectuée.": "Se interrumpió la conexión. Compruebe en la aplicación si se realizó la acción.",
   "La réponse a été interrompue.": "La respuesta se interrumpió.",
-  "Saisissez le mot de confirmation": "Escriba la palabra de confirmación"
+  "Saisissez le mot de confirmation": "Escriba la palabra de confirmación",
+  "Recherche de copropriétés": "Búsqueda de comunidades de propietarios",
+  "Recherche de lots de copropriété": "Búsqueda de unidades en copropiedad",
+  "Recherche de mandats de vente": "Búsqueda de mandatos de venta",
+  "Recherche de chantiers": "Búsqueda de obras"
 }

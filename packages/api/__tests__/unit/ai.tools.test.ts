@@ -126,6 +126,10 @@ describe('registre', () => {
         'propose_rental_document',
         'search_leases',
         'search_properties',
+        'search_syndicates',
+        'search_syndicate_lots',
+        'search_sale_mandates',
+        'search_construction_sites',
         'show_artifact',
         'rental_arrears',
         'rental_receipts',
@@ -166,6 +170,10 @@ describe('registre', () => {
 
   it.each([
     ['search_properties', 'PROPERTIES_VIEW'],
+    ['search_syndicates', 'SYNDIC_VIEW'],
+    ['search_syndicate_lots', 'SYNDIC_VIEW'],
+    ['search_sale_mandates', 'CRM_DEALS_VIEW'],
+    ['search_construction_sites', 'FINANCE_ACCOUNTS_READ'],
     ['search_leases', 'RENTAL_LEASES_VIEW'],
     ['list_lease_documents', 'RENTAL_DOCUMENTS_VIEW'],
     ['list_property_documents', 'PROPERTIES_VIEW'],

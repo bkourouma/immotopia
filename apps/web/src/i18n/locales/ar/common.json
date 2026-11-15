@@ -2955,5 +2955,9 @@
   "Langue de l’assistant": "لغة المساعد",
   "Langue de l’interface": "لغة الواجهة",
   "La langue de l’assistant n’a pas pu être enregistrée.": "تعذّر حفظ لغة المساعد.",
-  "Feuille1": "الورقة1"
+  "Feuille1": "الورقة1",
+  "Recherche de copropriétés": "البحث عن الملكيات المشتركة",
+  "Recherche de lots de copropriété": "البحث عن وحدات الملكية المشتركة",
+  "Recherche de mandats de vente": "البحث عن تفويضات البيع",
+  "Recherche de chantiers": "البحث عن مواقع البناء"
 }

@@ -266,6 +266,151 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
   });
 
   describe('Assistant — historique privé', () => {
+    it('retrouve les entités métier dans la seule agence active', async () => {
+      const actor = await createTenantMemberUser(tenantA, 'assistant-entity-search', 'TEST_ENTITY_LOOKUP', [
+        'SYNDIC_VIEW',
+        'CRM_DEALS_VIEW',
+        'FINANCE_ACCOUNTS_READ'
+      ]);
+      const limited = await createTenantMemberUser(tenantA, 'assistant-lots-only', 'TEST_ENTITY_SYNDIC', [
+        'SYNDIC_VIEW'
+      ]);
+      const marker = 'Belvédère ' + randomUUID().slice(0, 6);
+      const seed = async (tenant: TestTenant, user: TestUser) => {
+        const rental = await createRentalFixtureDirect(tenant.id, user.id, 'assistant-recherche');
+        const lease = await prisma.rentalLease.findFirstOrThrow({
+          where: { tenant_id: tenant.id, id: rental.leaseId },
+          select: { primary_renter_client_id: true }
+        });
+        const syndicate = await prisma.syndicate.create({
+          data: { tenantId: tenant.id, name: marker, address: 'Abidjan' }
+        });
+        createdSyndicateIds.push(syndicate.id);
+        const lot = await prisma.syndicateLot.create({
+          data: { syndicateId: syndicate.id, lotNumber: '1', lotType: 'APARTMENT', generalShares: 123 }
+        });
+        const site = await prisma.constructionSite.create({ data: { tenantId: tenant.id, name: marker } });
+        const mandate = await prisma.saleMandate.create({
+          data: {
+            tenantId: tenant.id,
+            propertyId: rental.propertyId,
+            sellerClientId: lease.primary_renter_client_id,
+            agentUserId: user.id,
+            year: 2042,
+            sequence: 27,
+            mandateType: 'SIMPLE',
+            commissionMode: 'PERCENT',
+            commissionPayer: 'SELLER',
+            commissionRate: 5,
+            askingPrice: 500,
+            startDate: new Date('2042-01-01')
+          }
+        });
+        return { syndicate, lot, site, mandate };
+      };
+      const own = await seed(tenantA, actor);
+      const foreign = await seed(tenantB, adminB);
+      const base = `/api/tenants/${tenantA.id}/ai`;
+      const tenantPath = `/tenant/${tenantA.id}`;
+      const calls = [
+        {
+          name: 'search_syndicates',
+          input: { q: marker },
+          id: own.syndicate.id,
+          href: `${tenantPath}/syndics/${own.syndicate.id}`
+        },
+        {
+          name: 'search_syndicate_lots',
+          input: { q: '1' },
+          id: own.lot.id,
+          href: `${tenantPath}/syndics/${own.syndicate.id}/lots`
+        },
+        {
+          name: 'search_sale_mandates',
+          input: { q: 'MV-2042-0027' },
+          id: own.mandate.id,
+          href: `${tenantPath}/sales/mandates/${own.mandate.id}`
+        },
+        {
+          name: 'search_construction_sites',
+          input: { q: marker },
+          id: own.site.id,
+          href: `${tenantPath}/finance/chantiers/${own.site.id}`
+        }
+      ];
+      const body = () => ({
+        turnId: randomUUID(),
+        messages: [{ role: 'user', content: 'Retrouve cette copropriété, ce lot, ce mandat et ce chantier.' }]
+      });
+      try {
+        const owner = { tenantId: tenantA.id, ownerId: actor.id };
+        const permissions = new Set(await getUserPermissions(actor.id, tenantA.id, { fresh: true }));
+        const available = await request(app)
+          .get(base + '/status')
+          .set(authed(actor));
+        expect(available.status).toBe(200);
+        const previousScope = assistantScope(
+          permissions,
+          available.body.data.tools.filter(
+            (name: string) => name !== 'list_datasets' && !calls.some(call => call.name === name)
+          )
+        );
+        const previous = await prisma.assistantConversation.create({
+          data: { ...owner, title: 'Historique avant les recherches', scopeKey: previousScope }
+        });
+        const reopened = await request(app)
+          .get(base + '/conversations/' + previous.id)
+          .set(authed(actor));
+        expect(reopened.status).toBe(200);
+        expect(new Date(reopened.body.data.updatedAt)).toEqual(previous.updatedAt);
+
+        mockFakeScript = [
+          ...calls.map(({ name, input }) => ({ toolCalls: [{ name, input }] })),
+          { toolCalls: [{ name: 'search_syndicate_lots', input: { q: '1', syndicateId: foreign.syndicate.id } }] },
+          { toolCalls: [{ name: 'search_syndicates', input: { q: '%%' } }] },
+          { text: 'Recherche terminée.' }
+        ];
+        const response = await request(app)
+          .post(base + '/chat')
+          .set(authed(actor))
+          .send(body());
+        expect(response.status).toBe(200);
+        const artifacts = response.text
+          .split('\n')
+          .filter(line => line.startsWith('data: {'))
+          .map(line => JSON.parse(line.slice(6)))
+          .filter(event => event.type === 'artifact')
+          .map(event => event.artifact);
+        expect(artifacts.map(artifact => artifact.rows.map(({ id, href }) => ({ id, href })))).toEqual(
+          calls.map(({ id, href }) => [{ id, href }])
+        );
+        expect(response.text).toContain('"reason":"end_turn"');
+        for (const { id } of Object.values(foreign)) expect(response.text).not.toContain(id);
+
+        const status = await request(app)
+          .get(base + '/status')
+          .set(authed(limited));
+        expect(status.body.data.tools).toEqual(expect.arrayContaining(['search_syndicates', 'search_syndicate_lots']));
+        expect(status.body.data.tools).not.toContain('search_sale_mandates');
+        expect(status.body.data.tools).not.toContain('search_construction_sites');
+        mockFakeScript = [
+          { toolCalls: [{ name: 'search_construction_sites', input: { q: marker } }] },
+          { text: 'Ce chantier ne peut pas être consulté.' }
+        ];
+        const denied = await request(app)
+          .post(base + '/chat')
+          .set(authed(limited))
+          .send(body());
+        expect(denied.text).toContain('"tool":"search_construction_sites","status":"forbidden"');
+        expect(denied.text).not.toContain(own.site.id);
+      } finally {
+        mockFakeScript = undefined;
+        const tenantIds = [tenantA.id, tenantB.id];
+        await prisma.saleMandate.deleteMany({ where: { tenantId: { in: tenantIds }, year: 2042, sequence: 27 } });
+        await prisma.constructionSite.deleteMany({ where: { tenantId: { in: tenantIds }, name: marker } });
+      }
+    });
+
     it('présente le catalogue des jeux métier selon les outils du compte', async () => {
       const owner = await createTenantMemberUser(tenantA, 'assistant-dataset-catalog', 'TEST_DATASET_CATALOG', [
         'RENTAL_PAYMENTS_VIEW'
@@ -1935,6 +2080,10 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
                 'patrimony_history',
                 'maintenance_log',
                 'reserved_sale_properties',
+                'search_syndicates',
+                'search_syndicate_lots',
+                'search_sale_mandates',
+                'search_construction_sites',
                 'rental_receipts_sql',
                 'rental_installments_sql',
                 'sale_commitments',

@@ -120,7 +120,11 @@ describe('ImmoCopilot — outils et prompt par pack', () => {
   it('expose chaque analyse commerciale uniquement avec son module et son droit de lecture', () => {
     const permissions = ['CRM_DEALS_VIEW', 'FINANCE_REPORTS_READ'];
     expect(toolsForUser(permissions, ['CRM']).map(tool => tool.name)).toEqual(['crm_pipeline']);
-    expect(toolsForUser(permissions, ['SALES']).map(tool => tool.name)).toEqual(['sale_mandates', 'sale_commitments']);
+    expect(toolsForUser(permissions, ['SALES']).map(tool => tool.name)).toEqual([
+      'search_sale_mandates',
+      'sale_mandates',
+      'sale_commitments'
+    ]);
     expect(toolsForUser(permissions, ['CONSTRUCTION']).map(tool => tool.name)).toEqual(['construction_budget']);
     expect(toolsForUser([], ['CRM', 'SALES', 'CONSTRUCTION'])).toEqual([]);
   });

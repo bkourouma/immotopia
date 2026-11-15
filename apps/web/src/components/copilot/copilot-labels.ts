@@ -68,6 +68,10 @@ export function formatCopilotAmount(amount: string | number | null, locale = act
 export function copilotToolLabel(tool: CopilotToolName): string {
   const labels: Record<CopilotToolName, string> = {
     search_properties: t('Recherche de biens'),
+    search_syndicates: t('Recherche de copropriétés'),
+    search_syndicate_lots: t('Recherche de lots de copropriété'),
+    search_sale_mandates: t('Recherche de mandats de vente'),
+    search_construction_sites: t('Recherche de chantiers'),
     search_leases: t('Recherche de baux'),
     rental_arrears: t('Analyse des impayés locatifs'),
     property_portfolio: t('Analyse du parc immobilier'),

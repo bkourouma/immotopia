@@ -30,6 +30,10 @@ const LANGUAGE_NAMES: Record<AssistantLanguage, string> = {
 /** Capacité annoncée par outil ; les outils d'un même groupe ne sont cités qu'une fois. */
 const TOOL_CAPABILITIES: Record<CopilotToolName, { group: string; text: string }> = {
   search_properties: { group: 'properties', text: 'des biens' },
+  search_syndicates: { group: 'syndicates', text: 'des copropriétés par nom ou référence' },
+  search_syndicate_lots: { group: 'syndicate_lots', text: 'des lots de copropriété' },
+  search_sale_mandates: { group: 'mandates_directory', text: 'des mandats de vente par numéro ou par bien' },
+  search_construction_sites: { group: 'site_directory', text: 'des chantiers par nom, zone ou référence du bien' },
   search_leases: { group: 'leases', text: 'des baux' },
   rental_arrears: { group: 'rentalArrears', text: 'les échéances locatives non soldées par bien et par mois clos' },
   property_portfolio: { group: 'portfolio', text: 'l’occupation et la disponibilité du parc actuel' },
@@ -166,6 +170,17 @@ export function buildSystemPrompt(
   if (tools.some(tool => tool.name === 'pivot_analysis')) {
     help.push(
       'Pour croiser les dimensions d’un jeu, appelle pivot_analysis avec le tableau d’origine. Utilise currency parmi les dimensions si le jeu contient plusieurs devises.'
+    );
+  }
+  if (
+    tools.some(tool =>
+      ['search_syndicates', 'search_syndicate_lots', 'search_sale_mandates', 'search_construction_sites'].includes(
+        tool.name
+      )
+    )
+  ) {
+    help.push(
+      'Avant un calcul sur une copropriété, un lot, un mandat ou un chantier cité par nom ou référence, utilise l’outil de recherche disponible pour obtenir son identifiant. Si plusieurs résultats correspondent, demande lequel utiliser.'
     );
   }
   if (tools.some(tool => tool.name === 'list_datasets')) {

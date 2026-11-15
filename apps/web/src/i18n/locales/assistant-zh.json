@@ -563,5 +563,9 @@
   "Vous n'avez pas la permission d'effectuer cette action.": "您无权执行此操作。",
   "La connexion a été interrompue : vérifiez dans l'application si l'action a été effectuée.": "连接已中断。请在应用中确认操作是否已执行。",
   "La réponse a été interrompue.": "回复已中断。",
-  "Saisissez le mot de confirmation": "输入确认词"
+  "Saisissez le mot de confirmation": "输入确认词",
+  "Recherche de copropriétés": "共有物业搜索",
+  "Recherche de lots de copropriété": "共有物业单元搜索",
+  "Recherche de mandats de vente": "销售委托搜索",
+  "Recherche de chantiers": "施工项目搜索"
 }

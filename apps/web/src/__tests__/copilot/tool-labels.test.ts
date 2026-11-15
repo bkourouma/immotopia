@@ -4,6 +4,10 @@ import type { CopilotToolName } from '../../types/copilot';
 
 const TOOLS: CopilotToolName[] = [
   'search_properties',
+  'search_syndicates',
+  'search_syndicate_lots',
+  'search_sale_mandates',
+  'search_construction_sites',
   'search_leases',
   'list_lease_documents',
   'list_property_documents',

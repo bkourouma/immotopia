@@ -563,5 +563,9 @@
   "Vous n'avez pas la permission d'effectuer cette action.": "आपको यह कार्रवाई करने की अनुमति नहीं है।",
   "La connexion a été interrompue : vérifiez dans l'application si l'action a été effectuée.": "कनेक्शन टूट गया। ऐप में जाँचें कि कार्रवाई हुई या नहीं।",
   "La réponse a été interrompue.": "उत्तर बीच में रुक गया।",
-  "Saisissez le mot de confirmation": "पुष्टि वाला शब्द लिखें"
+  "Saisissez le mot de confirmation": "पुष्टि वाला शब्द लिखें",
+  "Recherche de copropriétés": "सह-स्वामित्व की खोज",
+  "Recherche de lots de copropriété": "सह-स्वामित्व इकाइयों की खोज",
+  "Recherche de mandats de vente": "बिक्री अधिदेश की खोज",
+  "Recherche de chantiers": "निर्माण स्थलों की खोज"
 }

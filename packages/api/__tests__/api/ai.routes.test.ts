@@ -73,6 +73,8 @@ jest.mock('../../src/services/permission-service', () => ({
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockPrisma: Record<string, any> = {
+  user: { findUnique: jest.fn().mockResolvedValue({ preferredAssistantLanguage: null }) },
+  tenant: { findUnique: jest.fn().mockResolvedValue({ timeZone: 'UTC' }) },
   rentalLease: { findFirst: jest.fn() },
   rentalInstallment: { findFirst: jest.fn() },
   rentalPaymentAllocation: { findMany: jest.fn() },
@@ -199,6 +201,7 @@ describe('GET /ai/status', () => {
     'chart_analysis',
     'compose_report',
     'list_capabilities',
+    'list_datasets',
     'list_property_documents',
     'pivot_analysis',
     'plan_write',
@@ -231,7 +234,9 @@ describe('GET /ai/status', () => {
     expect(res.status).toBe(200);
     expect(res.body.data.enabled).toBe(true);
     expect(res.body.data.provider).toBe('fake');
-    expect([...res.body.data.tools].sort()).toEqual(propertyTools);
+    expect([...res.body.data.tools].sort()).toEqual(
+      [...propertyTools, 'maintenance_log', 'reserved_sale_properties'].sort()
+    );
     expect(mockGetUserPermissions).toHaveBeenCalledWith(currentUser, TENANT_A, { fresh: false });
   });
 

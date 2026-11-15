@@ -37,6 +37,10 @@ export const COPILOT_MAX_WRITE_PLANS_PER_REQUEST = 3;
 
 export type CopilotToolName =
   | 'search_properties'
+  | 'search_syndicates'
+  | 'search_syndicate_lots'
+  | 'search_sale_mandates'
+  | 'search_construction_sites'
   | 'search_leases'
   | 'rental_arrears'
   | 'rental_receipts'

@@ -544,5 +544,22 @@
   "Joignez les fichiers dans une conversation enregistrée.": "फ़ाइलें किसी सहेजी गई बातचीत में जोड़ें।",
   "Ce message comporte déjà trois propositions.": "इस संदेश में पहले से तीन प्रस्ताव हैं।",
   "La conversation n’a pas pu être enregistrée.": "बातचीत सहेजी नहीं जा सकी।",
-  "Vous n'avez pas la permission de générer ce document.": "आपको यह दस्तावेज़ बनाने की अनुमति नहीं है।"
+  "Vous n'avez pas la permission de générer ce document.": "आपको यह दस्तावेज़ बनाने की अनुमति नहीं है।",
+  "Copropriétés trouvées": "मिले हुए सह-स्वामित्व",
+  "Lots de copropriété trouvés": "मिली हुई सह-स्वामित्व इकाइयाँ",
+  "Mandats de vente trouvés": "मिले हुए बिक्री अधिदेश",
+  "Chantiers trouvés": "मिले हुए निर्माण स्थल",
+  "Copropriété": "सह-स्वामित्व",
+  "Immatriculation": "पंजीकरण संख्या",
+  "Référence cadastrale": "भू-अभिलेख संदर्भ",
+  "Numéro de lot": "इकाई संख्या",
+  "Type de lot": "इकाई का प्रकार",
+  "Appartement": "अपार्टमेंट",
+  "Parking": "पार्किंग स्थान",
+  "Cave": "तहखाना",
+  "Bureau": "कार्यालय",
+  "Local commercial": "व्यावसायिक इकाई",
+  "Actif": "सक्रिय",
+  "Révoqué": "निरस्त",
+  "Terminé": "पूर्ण"
 }

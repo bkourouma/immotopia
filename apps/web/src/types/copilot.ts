@@ -10,6 +10,10 @@ export const COPILOT_MAX_TOTAL_CHARS = 24000;
 
 export type CopilotToolName =
   | 'search_properties'
+  | 'search_syndicates'
+  | 'search_syndicate_lots'
+  | 'search_sale_mandates'
+  | 'search_construction_sites'
   | 'search_leases'
   | 'rental_arrears'
   | 'rental_receipts'

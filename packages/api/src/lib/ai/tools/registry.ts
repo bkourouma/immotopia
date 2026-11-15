@@ -13,6 +13,12 @@ import { rentalAlertTools } from './prepare-rental-alerts';
 import { proposeRentalDocumentTool } from './propose-rental-document';
 import { searchLeasesTool } from './search-leases';
 import { searchPropertiesTool } from './search-properties';
+import {
+  searchSyndicatesTool,
+  searchSyndicateLotsTool,
+  searchSaleMandatesTool,
+  searchConstructionSitesTool
+} from './search-entities';
 import { showArtifactTool } from './show-artifact';
 import { rentalArrearsTool } from './rental-arrears';
 import { rentalReceiptsTool } from './rental-receipts';
@@ -37,6 +43,10 @@ import { rentalDueComparisonTool, rentalMonthlyReviewTool } from './rental-month
  */
 export const ALL_TOOLS: readonly CopilotToolDefinition[] = [
   searchPropertiesTool,
+  searchSyndicatesTool,
+  searchSyndicateLotsTool,
+  searchSaleMandatesTool,
+  searchConstructionSitesTool,
   searchLeasesTool,
   rentalArrearsTool,
   rentalReceiptsTool,

@@ -3382,5 +3382,16 @@
   "Dépôt prévu": "Agreed deposit",
   "Compromis de vente": "Sale agreements",
   "Seuls les compromis signés et encore en cours sont inclus. Le dépôt prévu est le montant inscrit au compromis.": "Only active signed sale agreements are included. The agreed deposit is the amount stated in the agreement.",
-  "La date prévue de l’acte est antérieure au {{date}}.": "The expected deed date is before {{date}}."
+  "La date prévue de l’acte est antérieure au {{date}}.": "The expected deed date is before {{date}}.",
+  "Copropriétés trouvées": "Condominiums found",
+  "Lots de copropriété trouvés": "Condominium lots found",
+  "Mandats de vente trouvés": "Sales mandates found",
+  "Chantiers trouvés": "Construction sites found",
+  "Référence cadastrale": "Cadastral reference",
+  "Numéro de lot": "Lot number",
+  "Type de lot": "Lot type",
+  "Parking": "Parking space",
+  "Cave": "Storage cellar",
+  "Local commercial": "Retail unit",
+  "Révoqué": "Revoked"
 }

@@ -3382,5 +3382,16 @@
   "Dépôt prévu": "مبلغ العربون المتفق عليه",
   "Compromis de vente": "اتفاقيات البيع",
   "Seuls les compromis signés et encore en cours sont inclus. Le dépôt prévu est le montant inscrit au compromis.": "يشمل الجدول اتفاقيات البيع الموقعة قيد التنفيذ فقط. ومبلغ العربون هو المبلغ المذكور في الاتفاقية.",
-  "La date prévue de l’acte est antérieure au {{date}}.": "التاريخ المتوقع للعقد النهائي يسبق {{date}}."
+  "La date prévue de l’acte est antérieure au {{date}}.": "التاريخ المتوقع للعقد النهائي يسبق {{date}}.",
+  "Copropriétés trouvées": "الملكيات المشتركة المطابقة",
+  "Lots de copropriété trouvés": "وحدات الملكية المشتركة المطابقة",
+  "Mandats de vente trouvés": "تفويضات البيع المطابقة",
+  "Chantiers trouvés": "مواقع البناء المطابقة",
+  "Référence cadastrale": "المرجع العقاري",
+  "Numéro de lot": "رقم الوحدة",
+  "Type de lot": "نوع الوحدة",
+  "Parking": "موقف سيارة",
+  "Cave": "قبو تخزين",
+  "Local commercial": "محل تجاري",
+  "Révoqué": "ملغى"
 }

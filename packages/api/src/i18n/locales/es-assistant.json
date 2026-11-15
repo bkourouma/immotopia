@@ -544,5 +544,22 @@
   "Joignez les fichiers dans une conversation enregistrée.": "Adjunte los archivos a una conversación guardada.",
   "Ce message comporte déjà trois propositions.": "Este mensaje ya tiene tres propuestas.",
   "La conversation n’a pas pu être enregistrée.": "No se pudo guardar la conversación.",
-  "Vous n'avez pas la permission de générer ce document.": "No tiene permiso para generar este documento."
+  "Vous n'avez pas la permission de générer ce document.": "No tiene permiso para generar este documento.",
+  "Copropriétés trouvées": "Comunidades de propietarios encontradas",
+  "Lots de copropriété trouvés": "Unidades en copropiedad encontradas",
+  "Mandats de vente trouvés": "Mandatos de venta encontrados",
+  "Chantiers trouvés": "Obras encontradas",
+  "Copropriété": "Comunidad de propietarios",
+  "Immatriculation": "Número de registro",
+  "Référence cadastrale": "Referencia catastral",
+  "Numéro de lot": "Número de unidad",
+  "Type de lot": "Tipo de unidad",
+  "Appartement": "Apartamento",
+  "Parking": "Plaza de aparcamiento",
+  "Cave": "Trastero",
+  "Bureau": "Oficina",
+  "Local commercial": "Local comercial",
+  "Actif": "Activo",
+  "Révoqué": "Revocado",
+  "Terminé": "Completado"
 }
