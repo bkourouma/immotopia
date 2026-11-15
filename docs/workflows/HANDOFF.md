@@ -295,7 +295,7 @@ entre agences. Les 64 tests ciblés de garde et de numérotation, le typecheck A
 Assistant et DOCX passent. Le rejeu strict global précédent signalait aussi des requêtes de parc et de facturation
 de l’espace particulier, distinctes de ce parcours.
 
-**Qualification OpenRouter (commit de cette passation)** — Douze sondes diffusées le 15 novembre 2026 avec
+**Qualification OpenRouter (`d1752ddb`)** — Douze sondes diffusées le 15 novembre 2026 avec
 l’adaptateur de `bf85c270` réussissent pour Anthropic, OpenAI, Google et DeepSeek via OpenRouter. Elles vérifient
 huit appels d’outil et quatre réponses texte. Le scénario des impayés du mois clos passe aussi avec un vrai
 `openai/gpt-4.1-mini`, PostgreSQL local en garde stricte, export CSV et journal des deux appels standard du premier
@@ -303,6 +303,12 @@ tour. Le transport SMTP de la recette est simulé. Le jeton OpenRouter était co
 et y a été utilisé par les processus temporaires. Les environnements local, recette et production inspectés ne
 fournissent pas les clés dédiées OpenAI et Gemini pour qualifier la transcription. La procédure est dans le runbook.
 Les huit contrôles de la CI `43694509302` sur `bf85c270` ont réussi.
+
+**Contrat Gemini de transcription (commit de cette passation)** — Le champ `model` d’Interactions utilise
+l’identifiant nu enregistré, `gemini-3.5-transcribe`, conformément à l’exemple REST de Google. Les deux scénarios
+PostgreSQL de transcription simulée passent sous garde stricte. La vérification de présence dans les fichiers
+Compose des piles confirme l’absence de `AI_TRANSCRIPTION_OPENAI_KEY` et de `GEMINI_API_KEY`.
+[Référence REST de Google](https://ai.google.dev/gemini-api/docs/transcribe).
 
 ## chore/deps-patch-minor — 2026-11-11
 

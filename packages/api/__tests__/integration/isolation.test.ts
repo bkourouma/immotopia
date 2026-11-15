@@ -4424,7 +4424,7 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         const [url, requestOptions] = google.mock.calls[0];
         expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/interactions');
         expect(JSON.parse(requestOptions?.body as string)).toMatchObject({
-          model: 'models/gemini-3.5-transcribe',
+          model: 'gemini-3.5-transcribe',
           store: false,
           input: [{ type: 'audio', mime_type: 'audio/wav', data: waveform.toString('base64') }],
           generation_config: { transcription_config: { language_codes: ['en-US'] } }

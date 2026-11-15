@@ -92,7 +92,7 @@ export async function requestTranscription(
     await send('https://generativelanguage.googleapis.com/v1beta/interactions', {
       headers: { 'x-goog-api-key': engine.key, 'Content-Type': 'application/json', 'Api-Revision': '2026-05-20' },
       body: JSON.stringify({
-        model: dedicated ? 'models/' + engine.model : engine.model,
+        model: engine.model,
         store: false,
         input: [audioInput],
         ...(dedicated
