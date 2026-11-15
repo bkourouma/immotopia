@@ -287,13 +287,22 @@ version 3, la réouverture après rechargement et le retour du focus à « Résu
 234 439 octets gzip pour un plafond de 234 496. Le wiki est synchronisé. La qualification auprès des fournisseurs
 actifs reste à faire.
 
-**Documents locatifs en garde stricte (commit de cette passation)** — L’extension Prisma vérifie l’agence dans la
+**Documents locatifs en garde stricte (`bf85c270`)** — L’extension Prisma vérifie l’agence dans la
 clé composée du compteur de documents. Elle contrôle aussi l’agence de création et empêche le déplacement du
 compteur vers une autre agence. La requête conserve l’upsert atomique d’origine. Les trois scénarios DOCX passent
 sur PostgreSQL en garde stricte. Ils couvrent le relevé, la quittance rejouée sans doublon et le refus de téléchargement
 entre agences. Les 64 tests ciblés de garde et de numérotation, le typecheck API et le rejeu commun des 41 scénarios
 Assistant et DOCX passent. Le rejeu strict global précédent signalait aussi des requêtes de parc et de facturation
 de l’espace particulier, distinctes de ce parcours.
+
+**Qualification OpenRouter (commit de cette passation)** — Douze sondes diffusées le 15 novembre 2026 avec
+l’adaptateur de `bf85c270` réussissent pour Anthropic, OpenAI, Google et DeepSeek via OpenRouter. Elles vérifient
+huit appels d’outil et quatre réponses texte. Le scénario des impayés du mois clos passe aussi avec un vrai
+`openai/gpt-4.1-mini`, PostgreSQL local en garde stricte, export CSV et journal des deux appels standard du premier
+tour. Le transport SMTP de la recette est simulé. Le jeton OpenRouter était configuré dans le conteneur de recette
+et y a été utilisé par les processus temporaires. Les environnements local, recette et production inspectés ne
+fournissent pas les clés dédiées OpenAI et Gemini pour qualifier la transcription. La procédure est dans le runbook.
+Les huit contrôles de la CI `43694509302` sur `bf85c270` ont réussi.
 
 ## chore/deps-patch-minor — 2026-11-11
 

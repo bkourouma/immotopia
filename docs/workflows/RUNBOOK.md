@@ -485,6 +485,16 @@ modèle renvoyé, le mode, l’issue et la durée. Le catalogue public et les
 réponses SSE simulées constituent des contrôles distincts.
 [Documentation OpenRouter sur la sélection des fournisseurs](https://openrouter.ai/docs/guides/routing/provider-selection).
 
+**Qualifier la transcription.** Sur une instance de recette, enregistrer un moteur dans
+Administration › Assistant IA avec la clé serveur `AI_TRANSCRIPTION_OPENAI_KEY` pour OpenAI
+ou `GEMINI_API_KEY` pour Google. Dans un compte collaborateur, envoyer un enregistrement
+de recette sans données personnelles depuis la dictée dans un navigateur compatible avec
+`MediaRecorder` et sans reconnaissance intégrée, ou via `POST /api/tenants/:tenantId/ai/transcribe`
+dans la session du collaborateur. Le formulaire multipart reçoit `audio`, et accepte `language`
+et `durationSeconds`. Rejouer le même enregistrement sur les deux moteurs. Vérifier le texte,
+la langue, la durée et la ligne d’usage `transcription` dans l’administration. Consigner le moteur,
+le modèle et le résultat pour chaque essai.
+
 **Activer le secours SQL locatif.** Appliquer les migrations de l’API, puis
 exécuter `packages/api/scripts/provision-assistant-reader.sql` dans la même
 base avec un compte d’administration PostgreSQL. Attribuer un mot de passe au

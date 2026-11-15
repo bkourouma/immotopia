@@ -73,7 +73,11 @@ La [PR #221](https://github.com/bkourouma/immotopia/pull/221) rassemble les quat
 
 Les suites de référence sont [l’intégration PostgreSQL](../../packages/api/__tests__/integration/isolation.test.ts), [le parcours de la page Assistant](../../apps/web/src/__tests__/copilot/assistant-page.test.tsx) et [le lanceur et le tiroir](../../apps/web/src/__tests__/copilot/copilot-root.test.tsx). La configuration de la base dédiée et du secours SQL est décrite dans le [runbook](../workflows/RUNBOOK.md).
 
-La qualification externe doit encore vérifier les appels authentifiés des quatre familles de modèles et la transcription avec des identifiants actifs. La recette de diffusion utilise un transport SMTP simulé. La CI complète de la PR fournit le statut des contrôles sur chaque révision publiée.
+Le 15 novembre 2026, l’adaptateur OpenRouter de la branche `bf85c270` a réussi douze sondes authentifiées avec `anthropic/claude-haiku-4.5`, `openai/gpt-4.1-mini`, `google/gemini-2.5-flash-lite` et `deepseek/deepseek-v3.2`. Les huit sondes standard et approfondies ont rendu l’identifiant aléatoire dans l’appel d’outil attendu. Les quatre sondes rapides ont terminé avec du texte. Les délais mesurés vont de 192 à 2 942 ms. OpenRouter a rapporté un coût total de 0,00256166 USD. Un processus temporaire a utilisé des messages fictifs, la clé de recette et des paramètres de modèle fournis pour chaque sonde.
+
+Le même jour, le scénario des impayés du dernier mois clos a passé la recette locale avec la route Express, PostgreSQL en garde stricte et `openai/gpt-4.1-mini` via OpenRouter. Le compte limité et l’autre agence ont conservé leurs périmètres. Le premier solde atteint 51 700 FCFA et le journal contient les deux appels standard du tour. Le test retrouve le fil, télécharge le CSV et valide le recalcul du rapport après un nouveau règlement. Un relais temporaire a authentifié les appels dans le conteneur de recette pour utiliser la clé dans son environnement d’origine.
+
+La transcription externe reste à qualifier avec des identifiants OpenAI et Google actifs. La recette de diffusion utilise un transport SMTP simulé. La CI complète de la PR fournit le statut des contrôles sur chaque révision publiée.
 
 ## Rapprochement avec les crédits IA
 
