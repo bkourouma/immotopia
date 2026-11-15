@@ -92,6 +92,15 @@ export type CopilotErrorCode =
 
 // --- Requêtes --------------------------------------------------------------
 
+export interface AssistantBriefingItem {
+  id: string;
+  title: string;
+  description: string;
+  href: string;
+  occurredAt: string;
+  severity: 'danger' | 'warning' | 'info';
+}
+
 export interface AssistantConversationSummary {
   id: string;
   title: string;

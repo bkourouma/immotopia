@@ -3393,5 +3393,13 @@
   "Parking": "موقف سيارة",
   "Cave": "قبو تخزين",
   "Local commercial": "محل تجاري",
-  "Révoqué": "ملغى"
+  "Révoqué": "ملغى",
+  "Bail arrivant à échéance · {{number}}": "عقد إيجار يوشك على الانتهاء · {{number}}",
+  "Mandat arrivant à échéance · {{number}}": "تفويض بيع يوشك على الانتهاء · {{number}}",
+  "Appel de fonds en retard · {{name}}": "طلب مساهمة متأخر · {{name}}",
+  "Échéance en retard": "دفعة متأخرة",
+  "{{days}} j de retard": "تأخير {{days}} يوم",
+  "Déclaration à valider · {{number}}": "تصريح دفع للمراجعة · {{number}}",
+  "Déclaration à valider": "تصريح دفع للمراجعة",
+  "Bien non renseigné": "العقار غير محدد"
 }

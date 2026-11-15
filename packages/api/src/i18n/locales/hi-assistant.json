@@ -561,5 +561,14 @@
   "Local commercial": "व्यावसायिक इकाई",
   "Actif": "सक्रिय",
   "Révoqué": "निरस्त",
-  "Terminé": "पूर्ण"
+  "Terminé": "पूर्ण",
+  "Bail arrivant à échéance · {{number}}": "किराया अनुबंध जल्द समाप्त होगा · {{number}}",
+  "Mandat arrivant à échéance · {{number}}": "बिक्री अधिदेश जल्द समाप्त होगा · {{number}}",
+  "Appel de fonds en retard · {{name}}": "बकाया सह-स्वामित्व शुल्क · {{name}}",
+  "Lot {{number}}": "इकाई {{number}}",
+  "Échéance en retard": "बकाया किस्त",
+  "{{days}} j de retard": "{{days}} दिन की देरी",
+  "Déclaration à valider · {{number}}": "भुगतान घोषणा की समीक्षा करें · {{number}}",
+  "Déclaration à valider": "भुगतान घोषणा की समीक्षा करें",
+  "Bien non renseigné": "संपत्ति निर्दिष्ट नहीं है"
 }

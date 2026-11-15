@@ -179,7 +179,7 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 **Langues du catalogue (`2e868bd5`)** — Le contrôle parcourt les 22 jeux et leurs schémas pour vérifier que chaque titre, grain, libellé, définition, période et aide de filtre possède une traduction exploitable dans les six langues de l’assistant. Le test d’exécution vérifie une fiche dans chacune des six langues. Les identifiants, unités, limites et motifs de validation restent communs aux langues. La recette PostgreSQL vérifie la fiche des encaissements en espagnol sur la vraie route de chat. La liste métier des copropriétés ne propose que la pagination, la liste des lots suppose une copropriété connue et la liste des chantiers filtre par statut. L’audit doit encore couvrir leur recherche par nom ou référence dans l’assistant, ainsi que la qualification avec des fournisseurs actifs.
 
-**Recherche par nom ou référence (commit de cette passation)** — Quatre outils retrouvent les copropriétés, les lots,
+**Recherche par nom ou référence (`14355f05`)** — Quatre outils retrouvent les copropriétés, les lots,
 les mandats de vente et les chantiers. Les résultats fournissent les identifiants pour une analyse et un tableau avec
 liens vers les fiches ou la liste des lots. Le mandat se retrouve par numéro complet, année ou bien. Le chantier se
 retrouve par nom, zone, identifiant ou référence du bien lié. La recherche par numéro de lot accepte un seul caractère.
@@ -187,6 +187,16 @@ Les 27 libellés API et quatre libellés web sont disponibles dans les six langu
 stricte vérifie quatre homonymes étrangers, la recherche de lot avec une copropriété étrangère, la recherche littérale
 de caractères génériques, le refus sans droit de lecture et la réouverture d’un fil antérieur. Le wiki et le budget web
 passent. Restent la suite de l’audit de parité et la qualification avec des comptes fournisseurs actifs.
+
+**Briefing multi-module (commit de cette passation)** — `GET /ai/briefing` charge les lignes de la file métier sans
+demander les agrégats du tableau de bord. Il ajoute les fins de bail et de mandat actifs sur les 30 prochains jours
+et les appels de fonds non soldés dont l’échéance est passée. Les dates de début et de fin de la fenêtre utilisent les
+jours UTC. Les liens ouvrent la fiche ou la liste des charges du lot filtrée sur le statut En retard. L’API relit les
+droits et les modules, filtre l’agence et classe les lignes par gravité puis par date. Les échéances locatives
+partiellement réglées et échues intègrent la file commune. Les nouvelles cartes sont localisées dans les six langues.
+La recette PostgreSQL couvre l’ordre des cartes, un compte limité aux baux, deux agences et le retrait d’une carte
+lorsque le contrat est révoqué, le paiement soldé ou l’échéance déplacée. Le wiki est synchronisé. Restent la
+qualification des fournisseurs actifs et les derniers contrôles transversaux du plan.
 
 ## chore/deps-patch-minor — 2026-11-11
 

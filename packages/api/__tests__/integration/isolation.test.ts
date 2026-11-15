@@ -266,6 +266,133 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
   });
 
   describe('Assistant — historique privé', () => {
+    it('affiche les fins de bail, mandats et appels de fonds dans le briefing autorisé', async () => {
+      const actor = await createTenantMemberUser(tenantA, 'assistant-briefing', 'TEST_ASSISTANT_BRIEFING', [
+        'RENTAL_LEASES_VIEW',
+        'RENTAL_INSTALLMENTS_VIEW',
+        'CRM_DEALS_VIEW',
+        'SYNDIC_VIEW'
+      ]);
+      const rentalOnly = await createTenantMemberUser(
+        tenantA,
+        'assistant-briefing-lease',
+        'TEST_ASSISTANT_BRIEFING_LEASE',
+        ['RENTAL_LEASES_VIEW']
+      );
+      const today = new Date(new Date().toISOString().slice(0, 10));
+      const dateAfter = (days: number) => new Date(today.getTime() + days * 86_400_000);
+      const base = `/api/tenants/${tenantA.id}/ai/briefing`;
+      const prefix = `/tenant/${tenantA.id}`;
+      async function seed(tenant: TestTenant, user: TestUser, label: string) {
+        const rental = await createRentalFixtureDirect(tenant.id, user.id, label);
+        const lease = await prisma.rentalLease.update({
+          where: { tenant_id: tenant.id, id: rental.leaseId },
+          data: { end_date: dateAfter(2) },
+          select: { primary_renter_client_id: true }
+        });
+        await prisma.rentalInstallment.update({
+          where: { id: rental.installmentId, tenant_id: tenant.id },
+          data: { due_date: dateAfter(-7), status: 'PARTIAL', amount_paid: 50_000 }
+        });
+        const mandate = await prisma.saleMandate.create({
+          data: {
+            tenantId: tenant.id,
+            propertyId: rental.propertyId,
+            sellerClientId: lease.primary_renter_client_id,
+            agentUserId: user.id,
+            year: 2043,
+            sequence: 17,
+            mandateType: 'SIMPLE',
+            commissionMode: 'PERCENT',
+            commissionPayer: 'SELLER',
+            commissionRate: 5,
+            askingPrice: 500,
+            startDate: dateAfter(-20),
+            endDate: dateAfter(5)
+          }
+        });
+        const syndicate = await prisma.syndicate.create({
+          data: { tenantId: tenant.id, name: 'Résidence Briefing ' + label, address: 'Cocody' }
+        });
+        createdSyndicateIds.push(syndicate.id);
+        const lot = await prisma.syndicateLot.create({
+          data: { syndicateId: syndicate.id, lotNumber: 'B-01', lotType: 'APARTMENT', generalShares: 100 }
+        });
+        const chargeData = { syndicateId: syndicate.id, lotId: lot.id, period: 'Briefing', amount: 100 };
+        const charge = await prisma.chargeCall.create({
+          data: { ...chargeData, dueDate: dateAfter(-4), status: 'PARTIAL' }
+        });
+        await prisma.chargeCall.createMany({
+          data: [
+            { ...chargeData, dueDate: dateAfter(-5), status: 'PAID' },
+            { ...chargeData, dueDate: dateAfter(2), status: 'PENDING' },
+            { ...chargeData, dueDate: dateAfter(-5), amount: 0, status: 'PENDING' }
+          ]
+        });
+        return { rental, mandate, syndicate, lot, charge };
+      }
+      try {
+        const own = await seed(tenantA, actor, 'ici');
+        const foreign = await seed(tenantB, adminB, 'ailleurs');
+        const response = await request(app).get(base).set(authed(actor)).set('Accept-Language', 'es');
+        expect(response.status).toBe(200);
+        expect(response.headers['cache-control']).toContain('no-store');
+        expect(response.body.data).toMatchObject([
+          {
+            id: 'installment:' + own.rental.installmentId,
+            severity: 'danger',
+            href: `${prefix}/rental/installments/${own.rental.installmentId}`
+          },
+          {
+            id: 'charge-overdue:' + own.charge.id,
+            title: 'Cuota de comunidad vencida · ' + own.syndicate.name,
+            severity: 'danger',
+            href: `${prefix}/syndics/${own.syndicate.id}/charges?status=OVERDUE&lotId=${own.lot.id}`
+          },
+          {
+            id: 'lease-expiry:' + own.rental.leaseId,
+            severity: 'warning',
+            href: `${prefix}/rental/leases/${own.rental.leaseId}`
+          },
+          {
+            id: 'mandate-expiry:' + own.mandate.id,
+            severity: 'warning',
+            href: `${prefix}/sales/mandates/${own.mandate.id}`
+          }
+        ]);
+        expect(response.text).not.toContain(foreign.rental.leaseId);
+        expect(response.text).not.toContain(foreign.rental.installmentId);
+        expect(response.text).not.toContain(foreign.mandate.id);
+        expect(response.text).not.toContain(foreign.syndicate.name);
+        const limited = await request(app).get(base).set(authed(rentalOnly));
+        expect(limited.status).toBe(200);
+        expect(limited.body.data.map((item: { id: string }) => item.id)).toEqual([
+          'lease-expiry:' + own.rental.leaseId
+        ]);
+        await prisma.rentalLease.update({
+          where: { tenant_id: tenantA.id, id: own.rental.leaseId },
+          data: { end_date: dateAfter(31) }
+        });
+        await prisma.rentalInstallment.update({
+          where: { id: own.rental.installmentId, tenant_id: tenantA.id },
+          data: { status: 'PAID', amount_paid: 100_000 }
+        });
+        await prisma.saleMandate.update({
+          where: { tenantId: tenantA.id, id: own.mandate.id },
+          data: { status: 'REVOKED' }
+        });
+        await prisma.chargeCall.update({
+          where: { id: own.charge.id, syndicate: { tenantId: tenantA.id } },
+          data: { status: 'PAID' }
+        });
+        expect((await request(app).get(base).set(authed(actor))).body.data).toEqual([]);
+      } finally {
+        await prisma.saleMandate.deleteMany({
+          where: { tenantId: { in: [tenantA.id, tenantB.id] }, year: 2043, sequence: 17 }
+        });
+      }
+    });
+
     it('retrouve les entités métier dans la seule agence active', async () => {
       const actor = await createTenantMemberUser(tenantA, 'assistant-entity-search', 'TEST_ENTITY_LOOKUP', [
         'SYNDIC_VIEW',

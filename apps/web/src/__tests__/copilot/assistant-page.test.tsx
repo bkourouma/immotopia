@@ -10,6 +10,7 @@ import type { CopilotStatus } from '../../types/copilot';
 vi.mock('../../services/copilot-service', () => {
   const service = {
     getStatus: vi.fn(),
+    getBriefing: vi.fn().mockResolvedValue([]),
     savePreferredLanguage: vi.fn(),
     streamChat: vi.fn(),
     executeProposal: vi.fn(),
@@ -40,10 +41,6 @@ vi.mock('../../services/copilot-service', () => {
   };
   return { default: service, copilotService: service };
 });
-
-vi.mock('../../services/dashboard-service', () => ({
-  getTenantDashboard: vi.fn().mockResolvedValue({ data: { workQueue: [] } })
-}));
 
 vi.mock('../../utils/save-blob', async importOriginal => ({
   ...(await importOriginal<typeof import('../../utils/save-blob')>()),
@@ -607,6 +604,26 @@ describe('AssistantPage — artefacts', () => {
 });
 
 describe('AssistantPage', () => {
+  it('affiche dans un nouveau fil les liens métier du briefing', async () => {
+    getStatus.mockResolvedValue(ENABLED);
+    vi.mocked(copilotService.getBriefing).mockResolvedValueOnce([
+      {
+        id: 'lease-expiry:lease-1',
+        title: 'Bail arrivant à échéance · BAIL-1',
+        description: '15 nov. 2026',
+        occurredAt: '2026-11-15T00:00:00.000Z',
+        severity: 'warning',
+        href: '/tenant/t1/rental/leases/lease-1'
+      }
+    ]);
+    renderPage();
+    const briefing = await screen.findByRole('region', { name: 'Briefing du jour' });
+    expect(within(briefing).getByRole('link', { name: 'Bail arrivant à échéance · BAIL-1' })).toHaveAttribute(
+      'href',
+      '/tenant/t1/rental/leases/lease-1'
+    );
+  });
+
   it('joint un classeur et peut envoyer le message sans saisie', async () => {
     getStatus.mockResolvedValue(ENABLED);
     const { container } = renderPage();

@@ -561,5 +561,14 @@
   "Local commercial": "商铺",
   "Actif": "有效",
   "Révoqué": "已撤销",
-  "Terminé": "已完成"
+  "Terminé": "已完成",
+  "Bail arrivant à échéance · {{number}}": "即将到期的租约 · {{number}}",
+  "Mandat arrivant à échéance · {{number}}": "即将到期的销售委托 · {{number}}",
+  "Appel de fonds en retard · {{name}}": "逾期的共有物业费用 · {{name}}",
+  "Lot {{number}}": "单元 {{number}}",
+  "Échéance en retard": "逾期租金",
+  "{{days}} j de retard": "逾期 {{days}} 天",
+  "Déclaration à valider · {{number}}": "待审核的付款申报 · {{number}}",
+  "Déclaration à valider": "待审核的付款申报",
+  "Bien non renseigné": "未指定房产"
 }

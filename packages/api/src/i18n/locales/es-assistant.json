@@ -561,5 +561,14 @@
   "Local commercial": "Local comercial",
   "Actif": "Activo",
   "Révoqué": "Revocado",
-  "Terminé": "Completado"
+  "Terminé": "Completado",
+  "Bail arrivant à échéance · {{number}}": "Contrato de alquiler próximo a vencer · {{number}}",
+  "Mandat arrivant à échéance · {{number}}": "Mandato de venta próximo a vencer · {{number}}",
+  "Appel de fonds en retard · {{name}}": "Cuota de comunidad vencida · {{name}}",
+  "Lot {{number}}": "Unidad {{number}}",
+  "Échéance en retard": "Cuota de alquiler vencida",
+  "{{days}} j de retard": "{{days}} días de atraso",
+  "Déclaration à valider · {{number}}": "Declaración de pago por revisar · {{number}}",
+  "Déclaration à valider": "Declaración de pago por revisar",
+  "Bien non renseigné": "Inmueble sin especificar"
 }

@@ -3393,5 +3393,13 @@
   "Parking": "Parking space",
   "Cave": "Storage cellar",
   "Local commercial": "Retail unit",
-  "Révoqué": "Revoked"
+  "Révoqué": "Revoked",
+  "Bail arrivant à échéance · {{number}}": "Lease ending soon · {{number}}",
+  "Mandat arrivant à échéance · {{number}}": "Sales mandate expiring soon · {{number}}",
+  "Appel de fonds en retard · {{name}}": "Overdue charge call · {{name}}",
+  "Échéance en retard": "Overdue instalment",
+  "{{days}} j de retard": "{{days}} days overdue",
+  "Déclaration à valider · {{number}}": "Payment declaration to review · {{number}}",
+  "Déclaration à valider": "Payment declaration to review",
+  "Bien non renseigné": "Property not specified"
 }

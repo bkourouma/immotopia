@@ -13,6 +13,7 @@ import type {
   ArtifactDownloadFormat,
   ArtifactVersionChange,
   ArtifactVersionPayload,
+  AssistantBriefingItem,
   AssistantConversation,
   AssistantConversationSummary,
   ChatRequest,
@@ -300,6 +301,10 @@ function savedAnalysisPath(tenantId: string, { conversationId, artifactId }: Sav
 }
 
 export const copilotService = {
+  async getBriefing(tenantId: string, signal: AbortSignal) {
+    const response = await apiClient.get(`/tenants/${tenantId}/ai/briefing`, { signal });
+    return unwrap<AssistantBriefingItem[]>(response.data);
+  },
   async listRentalAlerts(tenantId: string, cursor?: string, signal?: AbortSignal) {
     const response = await apiClient.get(`/tenants/${tenantId}/ai/rental-alerts`, { params: { cursor }, signal });
     return unwrap<{

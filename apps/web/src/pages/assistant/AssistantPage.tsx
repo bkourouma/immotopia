@@ -3,8 +3,6 @@ import { ClearOutlined, DatabaseOutlined } from '@ant-design/icons';
 import { Button, ConfigProvider, Drawer, Modal, Result, Skeleton, Switch, Typography } from 'antd';
 import type { TextAreaRef } from 'antd/es/input/TextArea';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { getTenantDashboard } from '../../services/dashboard-service';
-import type { DashboardTask } from '../../services/dashboard-service';
 import { ConversationHistory } from '../../components/copilot/ConversationHistory';
 import { SavedAnalyses } from '../../components/copilot/SavedAnalyses';
 import { AnalysisShares } from '../../components/copilot/AnalysisShares';
@@ -29,7 +27,7 @@ import { t } from '../../i18n/t';
 import { assistantLanguageCodes, assistantLanguages, isAssistantLanguage } from '../../i18n/assistant-language';
 import { assistantComponentLocales } from '../../i18n/assistant-component-locales';
 import { useAssistantTranslation } from '../../i18n/useAssistantTranslation';
-import type { CopilotStatus } from '../../types/copilot';
+import type { AssistantBriefingItem, CopilotStatus } from '../../types/copilot';
 import {
   MAX_RESULT_WIDTH,
   MIN_RESULT_WIDTH,
@@ -159,7 +157,7 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
   const [sharedConversation, setSharedConversation] = useState<string>();
   const [historyRefresh, setHistoryRefresh] = useState(0);
   const [archivedThread, setArchivedThread] = useState(false);
-  const [briefing, setBriefing] = useState<DashboardTask[]>([]);
+  const [briefing, setBriefing] = useState<AssistantBriefingItem[]>([]);
   const [showBriefing, setShowBriefing] = useState(false);
   const [deep, setDeep] = useState(false);
   const selectConversation = (id: string | null) => {
@@ -214,17 +212,18 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
   }, [activeId, conversationId, setParams]);
   const isNewConversation = !activeId;
   useEffect(() => {
+    setBriefing([]);
+    setShowBriefing(false);
     if (!isNewConversation) return;
-    let cancelled = false;
-    void getTenantDashboard(tenantId)
-      .then(payload => {
-        if (!cancelled) setBriefing(payload.data?.workQueue ?? []);
+    const controller = new AbortController();
+    void copilotService
+      .getBriefing(tenantId, controller.signal)
+      .then(items => {
+        if (!controller.signal.aborted) setBriefing(items);
       })
       .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [isNewConversation, tenantId]);
+    return () => controller.abort();
+  }, [isNewConversation, tenantId, language]);
   const { stop } = chat;
   const [draft, setDraft] = useState('');
   const [focus, setFocus] = useState<{ artifactId: string; version: number; title: string }>();
@@ -760,7 +759,7 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
             <Typography.Title level={5}>{t('Briefing du jour')}</Typography.Title>
             <ul style={{ paddingInlineStart: 20 }}>
               {briefing.slice(0, showBriefing ? briefing.length : 6).map(task => (
-                <li key={`${task.kind}-${task.id}`} style={{ marginBlockEnd: 8 }}>
+                <li key={task.id} style={{ marginBlockEnd: 8 }}>
                   <Link to={task.href}>{task.title}</Link>
                   <Typography.Text type="secondary" style={{ display: 'block' }}>
                     {task.description}

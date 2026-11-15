@@ -34,6 +34,7 @@ import {
   executeActionHandler,
   getConversationHandler,
   getStatusHandler,
+  getBriefingHandler,
   listConversationsHandler,
   listSavedAnalysesHandler,
   listScheduledReportsHandler,
@@ -85,6 +86,7 @@ router.use(requireTenantCollaborator);
 
 // Ce que l'interface peut proposer ; répond `enabled: false` quand l'assistant est désactivé.
 router.get('/status', requireAiStatusAccess, getStatusHandler);
+router.get('/briefing', requireAiAssistantAccess, getBriefingHandler);
 router.get('/rental-alerts', requireAiStatusAccess, listRentalAlertsHandler);
 router.get('/rental-alerts/properties', requireAiStatusAccess, getRentalAlertPropertiesHandler);
 router.put('/rental-alerts/:id', requireAiStatusAccess, aiActionRateLimiter, saveRentalAlertHandler);

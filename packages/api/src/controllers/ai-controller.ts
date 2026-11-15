@@ -1,3 +1,4 @@
+import { getAssistantBriefing } from '../services/dashboard-service';
 import { withDatasetCatalog } from '../lib/ai/tools/list-datasets';
 import { extractAssistantFile } from '../lib/ai/assistant-files';
 import { randomUUID } from 'node:crypto';
@@ -108,6 +109,12 @@ import { logger } from '../utils/logger';
  * `executeActionHandler` est la SEULE porte de génération : route HTTP
  * distincte, avec `requireDocumentsGenerate` et un jeton de proposition signé.
  */
+
+export const getBriefingHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { tenantId, userId } = requireContext(req);
+  const items = await getAssistantBriefing(tenantId, userId);
+  res.set('Cache-Control', 'private, no-store').json({ success: true, data: items });
+});
 
 function requireContext(req: Request): { tenantId: string; userId: string } {
   const tenantId = req.tenantContext?.tenantId;
