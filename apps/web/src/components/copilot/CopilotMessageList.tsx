@@ -120,8 +120,8 @@ function Attachment({
       if (attachment.alert.kind === 'rental') {
         const { rule, propertyLabel } = attachment.alert;
         return (
-          <Card title={rentalAlertLabels()[rule.kind]} size="small">
-            <p>{rentalAlertDescription(rule)}</p>
+          <Card title={rentalAlertLabels(t)[rule.kind]} size="small">
+            <p>{rentalAlertDescription(rule, t)}</p>
             {propertyLabel && <p>{propertyLabel}</p>}
             <Link to={`/tenant/${encodeURIComponent(tenantId)}/assistant?${rentalAlertParams(rule, conversationId)}`}>
               {t('Ouvrir le formulaire d’alerte')}

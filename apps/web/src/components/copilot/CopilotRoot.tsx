@@ -1,8 +1,9 @@
 import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { RobotOutlined } from '@ant-design/icons';
-import { Button, Modal } from 'antd';
+import { Button, ConfigProvider, Modal } from 'antd';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { t } from '../../i18n/t';
+import { assistantComponentLocales } from '../../i18n/assistant-component-locales';
+import { useAssistantTranslation } from '../../i18n/useAssistantTranslation';
 import { useCopilotStatus } from '../../hooks/useCopilotStatus';
 import type { CopilotStatus } from '../../types/copilot';
 
@@ -51,6 +52,7 @@ const CopilotRoot: React.FC<CopilotRootProps> = ({
   hasAction = false,
   isDesktop = true
 }) => {
+  const { language, selected, t } = useAssistantTranslation();
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const [launchOpen, setLaunchOpen] = useState(false);
@@ -134,41 +136,46 @@ const CopilotRoot: React.FC<CopilotRootProps> = ({
           }}
         />
       )}
-      <Modal
-        open={launchOpen && !onAssistantPage}
-        title={t('Demander à ImmoCopilot')}
-        footer={null}
-        onCancel={() => setLaunchOpen(false)}
-        destroyOnHidden
+      <ConfigProvider
+        direction={selected ? (language === 'ar' ? 'rtl' : 'ltr') : undefined}
+        locale={assistantComponentLocales[language]}
       >
-        <Suspense fallback={null}>
-          <LaunchComposer
-            value={question}
-            onChange={setQuestion}
-            streaming={false}
-            onStop={() => undefined}
-            maxChars={status.limits.maxMessageChars}
-            onSubmit={value => {
-              const prompt = value.trim();
-              if (!prompt) return;
-              setLaunchOpen(false);
-              navigate(`/tenant/${tenantId}/assistant`, {
-                state: { prompt, sourcePath: useContext ? pathname : undefined }
-              });
-            }}
-          />
-        </Suspense>
-        {useContext && (
-          <Button type="link" onClick={() => setUseContext(false)}>
-            {t('Retirer le contexte de l’écran')}
-          </Button>
+        <Modal
+          open={launchOpen && !onAssistantPage}
+          title={t('Demander à ImmoCopilot')}
+          footer={null}
+          onCancel={() => setLaunchOpen(false)}
+          destroyOnHidden
+        >
+          <Suspense fallback={null}>
+            <LaunchComposer
+              value={question}
+              onChange={setQuestion}
+              streaming={false}
+              onStop={() => undefined}
+              maxChars={status.limits.maxMessageChars}
+              onSubmit={value => {
+                const prompt = value.trim();
+                if (!prompt) return;
+                setLaunchOpen(false);
+                navigate(`/tenant/${tenantId}/assistant`, {
+                  state: { prompt, sourcePath: useContext ? pathname : undefined }
+                });
+              }}
+            />
+          </Suspense>
+          {useContext && (
+            <Button type="link" onClick={() => setUseContext(false)}>
+              {t('Retirer le contexte de l’écran')}
+            </Button>
+          )}
+        </Modal>
+        {everOpened && (
+          <Suspense fallback={null}>
+            <CopilotDrawer tenantId={tenantId} status={status} open={open} onClose={() => setOpen(false)} />
+          </Suspense>
         )}
-      </Modal>
-      {everOpened && (
-        <Suspense fallback={null}>
-          <CopilotDrawer tenantId={tenantId} status={status} open={open} onClose={() => setOpen(false)} />
-        </Suspense>
-      )}
+      </ConfigProvider>
     </>
   );
 };

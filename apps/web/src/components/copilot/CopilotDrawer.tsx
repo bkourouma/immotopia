@@ -5,7 +5,7 @@ import type { TextAreaRef } from 'antd/es/input/TextArea';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { useCopilotChat } from '../../hooks/useCopilotChat';
-import { t } from '../../i18n/t';
+import { useAssistantTranslation } from '../../i18n/useAssistantTranslation';
 import { useLanguage } from '../../i18n/useLanguage';
 import type { CopilotStatus } from '../../types/copilot';
 import { CopilotComposer } from './CopilotComposer';
@@ -22,6 +22,7 @@ export interface CopilotDrawerProps {
 const DRAWER_WIDTH = 440;
 
 const CopilotDrawer: React.FC<CopilotDrawerProps> = ({ tenantId, status, open, onClose }) => {
+  const { selected, language, t } = useAssistantTranslation();
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const { rtl: isRtl } = useLanguage();
@@ -67,7 +68,7 @@ const CopilotDrawer: React.FC<CopilotDrawerProps> = ({ tenantId, status, open, o
     <Drawer
       open={open}
       onClose={handleClose}
-      placement={isRtl ? 'left' : 'right'}
+      placement={(selected ? language === 'ar' : isRtl) ? 'left' : 'right'}
       size={isMobile ? '100%' : DRAWER_WIDTH}
       title={t('Assistant ImmoCopilot')}
       keyboard

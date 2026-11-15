@@ -1,4 +1,4 @@
-import { t } from '../../i18n/t';
+import { t as applicationTranslation } from '../../i18n/t';
 import type { CopilotToolName } from '../../types/copilot';
 
 export interface CopilotSuggestion {
@@ -14,7 +14,11 @@ const PROPERTY_PATH = /\/properties\/(?!new(?:\/|$))[^/]+/;
 const RENTAL_PATH = /\/rental(\/|$)/;
 
 /** Suggestions selon la route courante, filtrées par les outils autorisés. */
-export function getCopilotSuggestions(pathname: string, tools: readonly CopilotToolName[]): CopilotSuggestion[] {
+export function getCopilotSuggestions(
+  pathname: string,
+  tools: readonly CopilotToolName[],
+  t: typeof applicationTranslation = applicationTranslation
+): CopilotSuggestion[] {
   let candidates: CopilotSuggestion[];
 
   if (LEASE_PATH.test(pathname)) {
@@ -75,7 +79,10 @@ export function getCopilotSuggestions(pathname: string, tools: readonly CopilotT
 }
 
 /** Invitation d'accueil : ne cite que les capacités que les outils autorisés couvrent. */
-export function getCopilotWelcome(tools: readonly CopilotToolName[]): string {
+export function getCopilotWelcome(
+  tools: readonly CopilotToolName[],
+  t: typeof applicationTranslation = applicationTranslation
+): string {
   const subjects: string[] = [];
   if (tools.includes('search_properties')) subjects.push(t('vos biens'));
   if (tools.includes('search_leases')) subjects.push(t('vos baux'));

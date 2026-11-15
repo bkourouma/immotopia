@@ -8,6 +8,7 @@ import { NotificationBell, NOTIFICATION_POLL_MS } from './NotificationBell';
 import { useNotificationScope } from './useNotificationScope';
 import { UNREAD_COUNTS_CHANGED_EVENT } from '../../utils/unread-counts-event';
 import { t } from '../../i18n/t';
+import { useAssistantTranslation } from '../../i18n/useAssistantTranslation';
 
 /**
  * Cloche de notifications et icône « Messagerie » de l'en-tête. Chargé à part
@@ -17,6 +18,7 @@ import { t } from '../../i18n/t';
  */
 const HeaderActions: React.FC<{ showAssistant: boolean; isDesktop: boolean }> = ({ showAssistant, isDesktop }) => {
   const scope = useNotificationScope();
+  const { t: assistantTranslation } = useAssistantTranslation();
   const navigate = useNavigate();
   const [unread, setUnread] = useState(0);
 
@@ -50,11 +52,11 @@ const HeaderActions: React.FC<{ showAssistant: boolean; isDesktop: boolean }> = 
         <Button
           type="text"
           icon={<RobotOutlined />}
-          aria-label={t('Demander à ImmoCopilot')}
+          aria-label={assistantTranslation('Demander à ImmoCopilot')}
           aria-keyshortcuts="Control+K Meta+K"
           onClick={() => window.dispatchEvent(new Event('immotopia:ask-assistant'))}
         >
-          {isDesktop ? t('Demander à ImmoCopilot') : undefined}
+          {isDesktop ? assistantTranslation('Demander à ImmoCopilot') : undefined}
         </Button>
       )}
       <NotificationBell scope={scope} />

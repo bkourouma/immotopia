@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, Button, Card, Descriptions, Space } from 'antd';
-import { t } from '../../i18n/t';
+import { useAssistantTranslation } from '../../i18n/useAssistantTranslation';
 import type { ActionExecutedPayload, ActionProposal, CopilotProposalState } from '../../types/copilot';
 import { DocumentDownloadCard } from './DocumentDownloadCard';
 import { formatCopilotAmount } from './copilot-labels';
@@ -14,11 +14,6 @@ export interface ActionProposalCardProps {
   onConfirm(proposalId: string): void;
   onCancel(proposalId: string): void;
 }
-
-const DOCUMENT_LABEL: Record<ActionProposal['documentType'], string> = {
-  RENT_RECEIPT: 'Quittance de loyer',
-  RENT_STATEMENT: 'Relevé de compte'
-};
 
 function useExpired(expiresAt: string): boolean {
   const target = Date.parse(expiresAt);
@@ -46,6 +41,7 @@ export function ActionProposalCard({
   onConfirm,
   onCancel
 }: ActionProposalCardProps): React.ReactElement {
+  const { locale, t } = useAssistantTranslation();
   const timeExpired = useExpired(proposal.expiresAt);
   const expired = state === 'expired' || (state === 'pending' && timeExpired);
   const { summary } = proposal;
@@ -70,7 +66,11 @@ export function ActionProposalCard({
   }
 
   return (
-    <Card size="small" title={t(DOCUMENT_LABEL[proposal.documentType])} data-testid="copilot-proposal-card">
+    <Card
+      size="small"
+      title={proposal.documentType === 'RENT_RECEIPT' ? t('Quittance de loyer') : t('Relevé de compte')}
+      data-testid="copilot-proposal-card"
+    >
       <Descriptions size="small" column={1}>
         <Descriptions.Item label={t('Bail')}>{summary.leaseNumber}</Descriptions.Item>
         <Descriptions.Item label={t('Bien')}>{summary.propertyLabel}</Descriptions.Item>
@@ -79,7 +79,7 @@ export function ActionProposalCard({
         {summary.amount ? (
           <Descriptions.Item
             label={t('Montant')}
-          >{`${formatCopilotAmount(summary.amount)} ${summary.currency}`}</Descriptions.Item>
+          >{`${formatCopilotAmount(summary.amount, locale)} ${summary.currency}`}</Descriptions.Item>
         ) : null}
       </Descriptions>
       <div aria-live="polite" data-testid="copilot-proposal-status" style={{ marginBlockStart: 8 }}>

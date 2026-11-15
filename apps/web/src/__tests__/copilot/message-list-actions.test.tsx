@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CopilotMessageList } from '../../components/copilot/CopilotMessageList';
 
@@ -7,6 +7,7 @@ describe('CopilotMessageList voice and clipboard actions', () => {
   const answer = { id: 'reply', role: 'assistant' as const, text: 'Votre analyse est prête.', attachments: [] };
 
   afterEach(() => {
+    cleanup();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
@@ -23,7 +24,7 @@ describe('CopilotMessageList voice and clipboard actions', () => {
     vi.stubGlobal('speechSynthesis', { speak, cancel });
     const { rerender } = render(<CopilotMessageList {...props} messages={[answer]} />);
     fireEvent.click(screen.getByRole('button', { name: 'Lire à voix haute' }));
-    expect(speak).toHaveBeenCalledWith(expect.objectContaining({ text: answer.text, lang: 'fr' }));
+    expect(speak).toHaveBeenCalledWith(expect.objectContaining({ text: answer.text, lang: 'fr-FR' }));
     expect(screen.getByRole('button', { name: 'Arrêter la lecture' })).toBeVisible();
 
     rerender(<CopilotMessageList {...props} messages={[{ ...answer, id: 'other' }]} />);

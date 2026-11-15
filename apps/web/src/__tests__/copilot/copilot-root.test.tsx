@@ -5,6 +5,7 @@ import AuthContext from '../../context/AuthContext';
 import type { AuthContextType } from '../../types/auth-types';
 import { AppShell } from '../../components/shell/AppShell';
 import CopilotRoot from '../../components/copilot/CopilotRoot';
+import { selectAssistantLanguage } from '../../i18n/assistant-language';
 import { LanguageProvider } from '../../i18n/LanguageProvider';
 import { resetCopilotStatusCache } from '../../utils/copilot-status-cache';
 import type { CopilotStatus } from '../../types/copilot';
@@ -75,6 +76,15 @@ describe('CopilotRoot', () => {
     renderRoot();
     const button = await screen.findByRole('button', BUTTON);
     expect(button).toHaveAttribute('aria-keyshortcuts', 'Control+J Meta+J');
+  });
+
+  it('ouvre le tiroir et affiche ses suggestions dans la langue de l’assistant', async () => {
+    getStatus.mockResolvedValue(ENABLED);
+    selectAssistantLanguage('es');
+    renderRoot();
+    fireEvent.click(await screen.findByRole('button', { name: 'Abrir el asistente' }));
+    expect(await screen.findByLabelText('Su mensaje', {}, { timeout: 5000 })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Muéstrame los inmuebles disponibles' })).toBeInTheDocument();
   });
 
   it('masque le bouton quand l’assistant est désactivé', async () => {

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button, Input, Modal, Radio } from 'antd';
-import { t } from '../../i18n/t';
+import { useAssistantTranslation } from '../../i18n/useAssistantTranslation';
 import { copilotService } from '../../services/copilot-service';
 import type { CopilotUiMessage, ResponseFeedback } from '../../types/copilot';
 
@@ -11,6 +11,7 @@ interface Props {
 }
 
 export function ResponseFeedbackButton({ tenantId, conversationId, rating }: Props) {
+  const { t } = useAssistantTranslation();
   const [saved, setSaved] = useState(rating.previous);
   const [draft, setDraft] = useState<{ helpful?: boolean; comment: string }>();
   const [pending, setPending] = useState(false);

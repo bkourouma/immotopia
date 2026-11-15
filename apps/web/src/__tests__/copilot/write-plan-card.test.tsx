@@ -4,6 +4,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { formatNumber } from '../../i18n/format';
+import { selectAssistantLanguage } from '../../i18n/assistant-language';
 import { WritePlanCard } from '../../components/copilot/WritePlanCard';
 import { CopilotMessageList } from '../../components/copilot/CopilotMessageList';
 import type { CapabilityExecutedPayload, WritePlan } from '../../types/copilot';
@@ -49,6 +50,16 @@ beforeEach(() => vi.useRealTimers());
 afterEach(() => vi.useRealTimers());
 
 describe('WritePlanCard : rendu', () => {
+  it('localise les champs et les valeurs sans modifier la cible ni le texte du plan', () => {
+    selectAssistantLanguage('hi');
+    setup(makePlan({ changes: [{ field: 'amount', before: 1234567, after: 2000000 }] }));
+    expect(screen.getByRole('button', { name: 'मंज़ूरी दें और चलाएँ' })).toBeEnabled();
+    expect(screen.getByRole('rowheader', { name: 'राशि' })).toBeInTheDocument();
+    expect(screen.getByText('12,34,567')).toBeInTheDocument();
+    expect(screen.getByText('Awa Diop')).toBeInTheDocument();
+    expect(screen.getByText('Lire le contact')).toBeInTheDocument();
+  });
+
   it("annonce que rien n'a été modifié, dans un groupe nommé", () => {
     setup(makePlan());
     const group = screen.getByRole('group', { name: /Action à valider — rien n'a encore été modifié/ });

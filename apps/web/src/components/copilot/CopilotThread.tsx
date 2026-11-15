@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Alert, Button, Space } from 'antd';
+import { useAssistantTranslation } from '../../i18n/useAssistantTranslation';
 import type { CopilotStatus, UseCopilotChatResult } from '../../types/copilot';
 import { CopilotMessageList } from './CopilotMessageList';
 import { getCopilotSuggestions, getCopilotWelcome } from './copilot-suggestions';
@@ -34,9 +35,10 @@ export const CopilotThread: React.FC<CopilotThreadProps> = ({
   maxWidth,
   onOpenArtifact
 }) => {
+  const { language, t } = useAssistantTranslation();
   const scrollRef = useRef<HTMLDivElement>(null);
   const streaming = chat.status === 'streaming';
-  const suggestions = getCopilotSuggestions(pathname, status.tools);
+  const suggestions = getCopilotSuggestions(pathname, status.tools, t);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -48,13 +50,14 @@ export const CopilotThread: React.FC<CopilotThreadProps> = ({
       ref={scrollRef}
       style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 'var(--space-4)' }}
       role="log"
+      lang={language}
       aria-live="polite"
       aria-busy={streaming}
     >
       <div style={{ maxWidth, marginInline: maxWidth ? 'auto' : undefined }}>
         {chat.messages.length === 0 && (
           <div>
-            <p>{getCopilotWelcome(status.tools)}</p>
+            <p>{getCopilotWelcome(status.tools, t)}</p>
             <Space wrap>
               {suggestions.map(s => (
                 <Button key={s.id} size="small" onClick={() => onSuggestion(s.text)}>

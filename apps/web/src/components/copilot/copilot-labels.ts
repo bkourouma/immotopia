@@ -28,7 +28,7 @@ export function propertyTypeLabel(value: string, t: typeof applicationTranslatio
   return labels[value] ?? value;
 }
 
-export function propertyStatusLabel(value: string): string {
+export function propertyStatusLabel(value: string, t: typeof applicationTranslation = applicationTranslation): string {
   const labels: Record<string, string> = {
     DRAFT: t('Brouillon'),
     UNDER_REVIEW: t('En révision'),
@@ -42,7 +42,7 @@ export function propertyStatusLabel(value: string): string {
   return labels[value] ?? value;
 }
 
-export function leaseStatusLabel(value: string): string {
+export function leaseStatusLabel(value: string, t: typeof applicationTranslation = applicationTranslation): string {
   const labels: Record<string, string> = {
     DRAFT: t('Brouillon'),
     ACTIVE: t('Actif'),
@@ -54,10 +54,10 @@ export function leaseStatusLabel(value: string): string {
 }
 
 /** Montant reçu du serveur sous forme de chaîne : séparateurs de milliers selon la langue active. */
-export function formatCopilotAmount(amount: string | number | null): string {
+export function formatCopilotAmount(amount: string | number | null, locale = activeLocale()): string {
   if (amount === null || amount === '') return '';
   const n = Number(amount);
-  return Number.isFinite(n) ? n.toLocaleString(activeLocale()) : String(amount);
+  return Number.isFinite(n) ? n.toLocaleString(locale) : String(amount);
 }
 
 /**
@@ -123,7 +123,7 @@ export function knownEnumLabel(value: string, translate: typeof t = t): string |
  * un champ inconnu retombe sur `humanizeFieldName`. Le nom technique reste à
  * la charge de l'appelant (infobulle `title`).
  */
-export function planFieldLabel(field: string): string {
+export function planFieldLabel(field: string, t: typeof applicationTranslation = applicationTranslation): string {
   // Chemin imbriqué (`address.city`, `items[0].name`) : libellé du dernier segment.
   const segments = field.split('.').filter(s => s !== '');
   const leaf = (segments[segments.length - 1] ?? field).replace(/\[\d+\]$/, '') || field;

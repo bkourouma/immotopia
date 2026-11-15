@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { nouvelIdentifiantDeRequete } from '../utils/stock-client-request-id';
-import { t } from '../i18n/t';
+import { translateActiveAssistant as t } from '../i18n/useAssistantTranslation';
 import copilotService from '../services/copilot-service';
 import { sanitizeArtifact } from '../utils/copilot-artifact';
 import { requiredConfirmationWord, sanitizeWritePlan } from '../utils/copilot-write-plan';

@@ -1,8 +1,9 @@
 import React, { useRef, useState } from 'react';
 import { Alert, Button, Card, Space, Tag } from 'antd';
-import { t } from '../../i18n/t';
+import { useAssistantTranslation } from '../../i18n/useAssistantTranslation';
 import { copilotService } from '../../services/copilot-service';
 import type { FollowUpProposal } from '../../types/copilot';
+import { formatArtifactCell } from '../../utils/copilot-artifact';
 import { taskPriorities } from './AssistantTasks';
 
 export function FollowUpCard({
@@ -14,6 +15,7 @@ export function FollowUpCard({
   proposal: FollowUpProposal;
   streaming?: boolean;
 }) {
+  const { locale, t } = useAssistantTranslation();
   const [status, setStatus] = useState(proposal.status);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
@@ -62,12 +64,12 @@ export function FollowUpCard({
       {display.title && <p>{display.title}</p>}
       {display.priority && (
         <p>
-          {t('Priorité')} · {taskPriorities()[display.priority]}
+          {t('Priorité')} · {taskPriorities(t)[display.priority]}
         </p>
       )}
       {display.dueDate && (
         <p>
-          {t('Échéance')} · {display.dueDate}
+          {t('Échéance')} · {formatArtifactCell(display.dueDate, 'date', locale)}
         </p>
       )}
       {display.artifactTitle && (
