@@ -36,7 +36,8 @@ export function chartExportData(artifact: ChartArtifact) {
         : [],
     series,
     values,
-    type: parts && !validParts ? ('bar' as const) : artifact.chartType,
+    type:
+      parts && !validParts ? (labels.length > 8 ? ('horizontal_bar' as const) : ('bar' as const)) : artifact.chartType,
     fallback: parts && !validParts
   };
 }

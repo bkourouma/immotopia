@@ -8,12 +8,14 @@ import {
   COPILOT_ARTIFACT_MAX_CHART_POINTS,
   COPILOT_ARTIFACT_MAX_SERIES,
   type AnalysisChartSeries,
+  type AnalysisChartType,
   type AnalysisTable,
   type ArtifactCell,
   type ChartScene,
   type CopilotToolDefinition
 } from '../contracts';
 import { chartScene } from '../artifact-chart-scene';
+import { rankChart } from '../chart-ranking';
 import { assertToolPermission, outcome } from './tool-utils';
 
 const key = z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,39}$/);
@@ -41,7 +43,9 @@ const schema = z
       .optional(),
     series: z.array(seriesSchema).max(11).optional(),
     percent: z.boolean().optional(),
-    targetMeasure: key.optional()
+    targetMeasure: key.optional(),
+    limit: z.number().int().min(1).max(100).optional(),
+    sort: z.enum(['asc', 'desc']).optional()
   })
   .strict();
 
@@ -55,6 +59,8 @@ type ChartParts = {
   groupKey?: string;
   groupLabel?: string;
   scene?: ChartScene;
+  notices?: string[];
+  chartType?: AnalysisChartType;
 };
 
 const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
@@ -65,7 +71,7 @@ const numeric = (column: AnalysisTable['columns'][number] | undefined) =>
 function publish(input: ChartInput, source: AnalysisTable, { rule, ...parts }: ChartParts) {
   const id = randomUUID();
   return outcome(
-    { artifactId: id, sourceId: source.id },
+    { artifactId: id, sourceId: source.id, ...(parts.notices?.length ? { notices: parts.notices } : {}) },
     {
       type: 'artifact',
       artifact: {
@@ -87,6 +93,8 @@ function publish(input: ChartInput, source: AnalysisTable, { rule, ...parts }: C
 const sceneTypes = ['heatmap', 'treemap', 'funnel', 'gauge'] as const;
 type SceneType = (typeof sceneTypes)[number];
 const isSceneType = (type: ChartInput['chartType']): type is SceneType => sceneTypes.some(value => type === value);
+const calendar = (dimension: AnalysisTable['columns'][number]) =>
+  dimension.type === 'date' || /^(period|month|year|quarter|date)(?:$|[A-Z_])/.test(dimension.key);
 
 function plotScene(
   type: SceneType,
@@ -140,6 +148,7 @@ function plotScene(
   const series: AnalysisChartSeries[] = [{ key: 'value0', label }];
 
   if (type === 'gauge') {
+    if (input.limit || input.sort) return invalid();
     const percent = input.percent === true;
     // Un taux agrégé doit provenir du tableau métier sous forme d’une valeur unique.
     if (values.length > 8 || (percent && values.length !== 1) || input.aggregation === 'average') return invalid();
@@ -190,12 +199,32 @@ function plotScene(
     }
     buckets.set(id, bucket);
   }
-  const entries = [...buckets.values()].map(bucket => {
+  const points = [...buckets.values()].map(bucket => {
     const value = bucket.count
       ? (input.aggregation === 'average' ? bucket.sum.div(bucket.count) : bucket.sum).toNumber()
       : null;
-    return { category: bucket.category, group: bucket.group, value: finite(value) ? value : null };
+    return {
+      category: bucket.category,
+      ...(bucket.group !== undefined ? { group: bucket.group } : {}),
+      value: finite(value) ? value : null
+    };
   });
+  const ranked = rankChart({
+    data: points,
+    xKey: 'category',
+    groupKey: group ? 'group' : undefined,
+    rankKey: 'value',
+    rankAverage: input.aggregation === 'average',
+    additive: input.aggregation === 'average' ? [] : ['value'],
+    order: calendar(dimension) && type === 'heatmap' ? 'date' : (input.sort ?? (type === 'heatmap' ? 'label' : 'desc')),
+    rank: input.sort,
+    limit: input.limit
+  });
+  const entries = ranked.data.map(row => ({
+    category: String(row.category),
+    group: typeof row.group === 'string' ? row.group : undefined,
+    value: finite(row.value) ? row.value : null
+  }));
   const columns = new Set(entries.map(entry => entry.category)).size;
   const rows = new Set(entries.map(entry => entry.group)).size;
   if (
@@ -211,11 +240,6 @@ function plotScene(
       (type === 'funnel' && (entries.length < 2 || entries.length > 8)))
   )
     return invalid();
-  entries.sort(
-    type === 'heatmap'
-      ? (a, b) => a.category.localeCompare(b.category) || String(a.group).localeCompare(String(b.group))
-      : (a, b) => (b.value ?? -Infinity) - (a.value ?? -Infinity)
-  );
   const matrix =
     type === 'heatmap'
       ? [...new Set(entries.map(entry => entry.category))].flatMap(category =>
@@ -237,6 +261,7 @@ function plotScene(
       value0: entry.value
     })),
     scene: chartScene(type, matrix),
+    ...(ranked.notices.length ? { notices: ranked.notices } : {}),
     rule:
       type === 'heatmap'
         ? t('Les croisements sans valeur restent distincts des zéros.')
@@ -259,7 +284,7 @@ function plotMeasures(
   if (
     input.seriesBy ||
     (scatter
-      ? !numeric(dimension) || input.aggregation || specs.length !== 1
+      ? !numeric(dimension) || input.aggregation || input.limit || input.sort || specs.length !== 1
       : !specs.some(spec => spec.form === 'line') ||
         specs.some(spec => spec.measure === dimension.key) ||
         columns.some(column => !numeric(column)))
@@ -313,7 +338,7 @@ function plotMeasures(
       buckets[index].count += 1;
     });
   }
-  if (groups.size > COPILOT_ARTIFACT_MAX_CHART_POINTS) {
+  if (!input.limit && groups.size > COPILOT_ARTIFACT_MAX_CHART_POINTS) {
     return outcome({ error: 'TOO_MANY_POINTS', message: t('Le résultat dépasse la capacité de ce graphique.') });
   }
   const data = [...groups].map(([category, buckets]) => ({
@@ -325,8 +350,15 @@ function plotMeasures(
       })
     )
   }));
-  if (dimension.key === 'period' || dimension.type === 'date')
-    data.sort((a, b) => a.category.localeCompare(b.category));
+  const ranked = rankChart({
+    data,
+    xKey: 'category',
+    rankKey: 'value0',
+    limit: input.limit,
+    rank: input.sort,
+    order: calendar(dimension) ? 'date' : (input.sort ?? 'label'),
+    additive: specs.flatMap((spec, index) => (spec.aggregation === 'average' ? [] : [`value${index}`]))
+  });
   return publish(input, source, {
     xKey: 'category',
     xLabel: dimension.label,
@@ -336,7 +368,8 @@ function plotMeasures(
       form: spec.form,
       axis: spec.axis ?? 'primary'
     })),
-    data,
+    data: ranked.data,
+    ...(ranked.notices.length ? { notices: ranked.notices } : {}),
     rule: t('Les séries du graphique combiné utilisent leur agrégation et leur axe respectifs.')
   });
 }
@@ -344,7 +377,7 @@ function plotMeasures(
 export const chartAnalysisTool: CopilotToolDefinition<typeof schema> = {
   name: 'chart_analysis',
   description:
-    'Publie un graphique fondé sur un tableau du fil. Pour un taux, utilise aggregation=average hors jauge. scatter trace deux mesures numériques sans agrégation. combo utilise measure pour la barre principale et series pour les autres mesures. heatmap exige seriesBy comme seconde dimension. treemap accepte seriesBy comme groupe parent. funnel affiche de deux à huit étapes. Pour gauge, percent=true exige un taux unique ; targetMeasure référence un objectif fourni par le tableau. currency peut isoler une devise pour ces formes.',
+    'Publie un graphique fondé sur un tableau du fil. limit garde les N premières catégories (ou les N dernières périodes). sort choisit asc ou desc par la mesure principale. currency isole une devise. Pour un taux, utilise aggregation=average hors jauge. scatter trace deux mesures sans agrégation, limite ni tri. combo utilise measure pour la barre principale et series pour les autres mesures. heatmap exige seriesBy comme seconde dimension. treemap accepte seriesBy comme groupe parent. funnel affiche de deux à huit étapes. Pour gauge, percent=true exige un taux unique ; targetMeasure référence un objectif fourni par le tableau.',
   inputSchema: schema,
   jsonSchema: {
     type: 'object',
@@ -356,6 +389,8 @@ export const chartAnalysisTool: CopilotToolDefinition<typeof schema> = {
       dimension: { type: 'string' },
       measure: { type: 'string' },
       chartType: { type: 'string', enum: ANALYSIS_CHART_TYPES },
+      limit: { type: 'integer', minimum: 1, maximum: 100 },
+      sort: { type: 'string', enum: ['asc', 'desc'] },
       seriesBy: { type: 'string' },
       aggregation: { type: 'string', enum: ['sum', 'average'] },
       currency: { type: 'string', pattern: '^[A-Z]{3}$' },
@@ -410,7 +445,7 @@ export const chartAnalysisTool: CopilotToolDefinition<typeof schema> = {
     }
     if (input.chartType === 'scatter' || input.chartType === 'combo')
       return plotMeasures(input, source, dimension, measure);
-    if (input.currency || input.series?.length) {
+    if (input.series?.length) {
       return outcome({
         error: 'INVALID_SERIES',
         message: t('Vérifiez les mesures et les axes demandés pour ce graphique.')
@@ -428,6 +463,7 @@ export const chartAnalysisTool: CopilotToolDefinition<typeof schema> = {
 
     for (const row of source.rows) {
       const currency = String(row.currency === 'FCFA' ? 'XOF' : (row.currency ?? ''));
+      if (input.currency && currency !== currencyOf(input.currency)) continue;
       const group = input.seriesBy && input.seriesBy !== 'currency' ? String(row[input.seriesBy] ?? '') : '';
       const id = JSON.stringify([group, currency]);
       if (!series.has(id)) {
@@ -447,7 +483,10 @@ export const chartAnalysisTool: CopilotToolDefinition<typeof schema> = {
       combined ||= previous !== undefined;
       entry.set(id, { sum: (previous?.sum ?? new Prisma.Decimal(0)).plus(point), count: (previous?.count ?? 0) + 1 });
     }
-    if (series.size > COPILOT_ARTIFACT_MAX_SERIES || categories.size > COPILOT_ARTIFACT_MAX_CHART_POINTS) {
+    if (
+      (!parts && series.size > COPILOT_ARTIFACT_MAX_SERIES) ||
+      (!input.limit && categories.size > COPILOT_ARTIFACT_MAX_CHART_POINTS)
+    ) {
       return outcome({ error: 'TOO_MANY_POINTS', message: t('Le résultat dépasse la capacité de ce graphique.') });
     }
     if ((parts || stacked) && (input.aggregation === 'average' || (monetary && currencies.size > 1))) {
@@ -469,19 +508,48 @@ export const chartAnalysisTool: CopilotToolDefinition<typeof schema> = {
         })
       )
     }));
+    const date = calendar(dimension);
+    if (monetary && currencies.size > 1 && !date && (input.sort || (input.limit && categories.size > input.limit))) {
+      return outcome({
+        error: 'INCOMPATIBLE_UNITS',
+        message: t('Choisissez une seule devise pour classer les valeurs.')
+      });
+    }
+    const actualSeries = [...series.values()];
+    const notices: string[] = [];
+    if (parts && actualSeries.length > 1) {
+      actualSeries.splice(1);
+      for (const row of data) for (const key of Object.keys(row)) if (key !== xKey && key !== 'value0') delete row[key];
+      notices.push(t('Seule la première série est affichée dans ce graphique en parts.'));
+    }
+    const rank = rankChart({
+      data: parts ? data.filter(row => row.value0 !== undefined) : data,
+      xKey,
+      rankKey: 'value0',
+      limit: input.limit,
+      rank: input.sort,
+      order:
+        date && (!parts || input.limit)
+          ? 'date'
+          : (input.sort ??
+            (parts || (input.chartType === 'horizontal_bar' && actualSeries.length === 1) ? 'desc' : 'label')),
+      additive: input.aggregation === 'average' ? [] : actualSeries.map(item => item.key)
+    });
+    notices.push(...rank.notices);
     if (
       parts &&
-      (series.size !== 1 || data.length < 2 || data.length > 8 || negative || !data.some(row => Number(row.value0) > 0))
+      (rank.data.length < 2 ||
+        rank.data.some(row => Number(row.value0) < 0) ||
+        !rank.data.some(row => Number(row.value0) > 0))
     ) {
       return outcome({
         error: 'INVALID_PARTS',
-        message: t('Un graphique en parts exige de deux à huit catégories et des valeurs positives ou nulles.')
+        message: t('Un graphique en parts exige au moins deux catégories et des valeurs positives ou nulles.')
       });
     }
-    if (parts || (input.chartType === 'horizontal_bar' && series.size === 1)) {
-      data.sort((a, b) => Number(b.value0 ?? -Infinity) - Number(a.value0 ?? -Infinity));
-    } else if (dimension.key === 'period' || dimension.type === 'date') {
-      data.sort((a, b) => String(a[xKey]).localeCompare(String(b[xKey])));
+    const fallback = parts && rank.data.length > 8;
+    if (fallback) {
+      notices.push(t('Plus de huit parts : le graphique est présenté en barres horizontales.'));
     }
     const rule =
       input.aggregation === 'average'
@@ -489,6 +557,14 @@ export const chartAnalysisTool: CopilotToolDefinition<typeof schema> = {
         : combined
           ? t('Les valeurs d’une même catégorie et série sont additionnées.')
           : undefined;
-    return publish(input, source, { xKey, xLabel: dimension.label, series: [...series.values()], data, rule });
+    return publish(input, source, {
+      xKey,
+      xLabel: dimension.label,
+      series: actualSeries,
+      data: rank.data,
+      rule,
+      ...(fallback ? { chartType: 'horizontal_bar' as const } : {}),
+      ...(notices.length ? { notices } : {})
+    });
   }
 };

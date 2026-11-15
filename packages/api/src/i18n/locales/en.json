@@ -3189,5 +3189,15 @@
   "La jauge utilise le taux calculé du jeu source sur une échelle de 0 à 100.": "The gauge uses the calculated rate from the source data on a scale from 0 to 100.",
   "La jauge utilise le total du jeu et affiche l’objectif fourni par la source lorsqu’il existe.": "The gauge uses the dataset total and shows the target supplied by the source when available.",
   "Les croisements sans valeur restent distincts des zéros.": "Combinations with no data are distinct from zeros.",
-  "Les proportions sont calculées à partir des valeurs additives du jeu source.": "Proportions are based on additive values from the source dataset."
+  "Les proportions sont calculées à partir des valeurs additives du jeu source.": "Proportions are based on additive values from the source dataset.",
+  "Autres": "Other",
+  "Choisissez une seule devise pour classer les valeurs.": "Select a single currency to rank the values.",
+  "Le graphique est limité à {{count}} catégories.": "The chart is limited to {{count}} categories.",
+  "Le graphique est limité à une catégorie.": "The chart is limited to one category.",
+  "Les valeurs additives restantes sont regroupées dans « {{label}} ».": "Remaining additive values are grouped under “{{label}}”.",
+  "Plus de huit parts : le graphique est présenté en barres horizontales.": "With more than eight slices, the chart is shown as horizontal bars.",
+  "Seule la période la plus récente est affichée.": "Only the most recent period is shown.",
+  "Seule la première série est affichée dans ce graphique en parts.": "Only the first series is shown in this part-to-whole chart.",
+  "Seules les {{count}} périodes les plus récentes sont affichées.": "Only the {{count}} most recent periods are shown.",
+  "Un graphique en parts exige au moins deux catégories et des valeurs positives ou nulles.": "A part-to-whole chart requires at least two categories and nonnegative values."
 }

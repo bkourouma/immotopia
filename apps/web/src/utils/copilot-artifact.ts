@@ -253,6 +253,11 @@ export function sanitizeArtifact(raw: unknown): (CopilotArtifact & { canRefresh?
     const provenance = sanitizeProvenance(raw.provenance);
     const groupKey = str(raw.groupKey);
     const scene = sanitizeScene(raw.scene);
+    const notices = Array.isArray(raw.notices)
+      ? raw.notices
+          .flatMap(value => (typeof value === 'string' && value.trim() ? [value.slice(0, 300)] : []))
+          .slice(0, 6)
+      : [];
     return {
       kind: 'chart',
       id,
@@ -262,6 +267,7 @@ export function sanitizeArtifact(raw: unknown): (CopilotArtifact & { canRefresh?
       ...(str(raw.xLabel) ? { xLabel: str(raw.xLabel) } : {}),
       ...(groupKey ? { groupKey, groupLabel: str(raw.groupLabel) ?? groupKey } : {}),
       ...(scene ? { scene } : {}),
+      ...(notices.length ? { notices } : {}),
       series,
       data: cleanRows(
         raw.data,

@@ -296,3 +296,46 @@ it('utilise le taux fourni et valide la cible de la jauge sans fabriquer de seui
   expect(noGoal.uiEvent).toMatchObject({ artifact: { data: [{ category: 'Total', value0: 28 }] } });
   expect(JSON.stringify(noGoal.uiEvent)).not.toContain('Objectif');
 });
+it('regroupe le reste d’un Top N additif et omet le reste d’une moyenne', async () => {
+  const args = { dimension: 'zone', chartType: 'bar', limit: 1 };
+  expect((await run(args)).uiEvent).toMatchObject({
+    artifact: {
+      data: [
+        { category: 'A', value0: 22 },
+        { category: 'Autres', value0: 6 }
+      ],
+      notices: [
+        'Le graphique est limité à une catégorie.',
+        'Les valeurs additives restantes sont regroupées dans « Autres ».'
+      ],
+      replay: { input: { limit: 1 } }
+    }
+  });
+  expect((await run({ ...args, aggregation: 'average' })).uiEvent).toMatchObject({
+    artifact: {
+      data: [{ category: 'A', value0: 22 / 3 }],
+      notices: ['Le graphique est limité à une catégorie.']
+    }
+  });
+});
+
+it('conserve les dernières périodes même si un ancien mois a une valeur supérieure', async () => {
+  expect((await run({ chartType: 'line', limit: 1 })).uiEvent).toMatchObject({
+    artifact: {
+      data: [{ category: '2026-10', value0: 12 }],
+      notices: ['Seule la période la plus récente est affichée.']
+    }
+  });
+});
+
+it('convertit neuf parts en barres horizontales et annonce le changement', async () => {
+  const rows = Array.from({ length: 9 }, (_, index) => ({ zone: `Zone ${index}`, amount: index + 1, currency: 'XOF' }));
+  const result = await run({ chartType: 'pie', dimension: 'zone' }, { ...source, rows });
+  expect(result.uiEvent).toMatchObject({
+    artifact: {
+      chartType: 'horizontal_bar',
+      notices: ['Plus de huit parts : le graphique est présenté en barres horizontales.'],
+      replay: { input: { chartType: 'pie' } }
+    }
+  });
+});

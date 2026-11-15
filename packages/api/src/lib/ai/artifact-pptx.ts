@@ -242,7 +242,10 @@ export async function buildArtifactPowerPoint(artifact: CopilotArtifact): Promis
         });
       }
     }
-    const notes = section.provenance ? artifactProvenanceLines(section.provenance) : [];
+    const notes = [
+      ...(section.notes ?? []),
+      ...(section.provenance ? artifactProvenanceLines(section.provenance) : [])
+    ];
     if (section.truncated) notes.unshift(t('Résultat tronqué : seules les premières lignes sont affichées.'));
     if (notes.length) narrative(t('Source des données'), notes.join('\n'));
   }

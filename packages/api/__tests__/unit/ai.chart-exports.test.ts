@@ -195,3 +195,22 @@ it('exporte le même dessin et les deux dimensions de la carte de chaleur', asyn
   const pdf = await PDFDocument.load(await runWithLanguage('ar', () => buildArtifactPdf(artifact)));
   expect(pdf.getPageCount()).toBeGreaterThan(0);
 });
+
+it('joint l’avertissement du classement à l’export du jeu classé', async () => {
+  const notice = 'Les valeurs additives restantes sont regroupées dans « Autres ».';
+  const artifact: ChartArtifact = {
+    ...pie,
+    chartType: 'horizontal_bar',
+    notices: [notice],
+    data: [
+      { month: 'Sélection', xof: 20 },
+      { month: 'Autres', xof: 9 }
+    ]
+  };
+  const csv = buildArtifactCsv(artifact).toString('utf8');
+  expect(csv).toContain('"Autres";9');
+  expect(csv).toContain(notice);
+  const archive = await JSZip.loadAsync(buildPowerPoint(artifact, 'fr'));
+  const slides = await Promise.all(archive.file(/^ppt\/slides\/slide\d+\.xml$/).map(entry => entry.async('string')));
+  expect(slides.join('')).toContain(notice);
+});

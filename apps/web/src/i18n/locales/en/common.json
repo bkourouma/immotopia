@@ -2935,5 +2935,8 @@
   "Comparaison des échéances locatives": "Rental instalment comparison",
   "Prépare le bilan locatif du dernier mois clos": "Prepare the rental review for the last closed month",
   "Calcul du tableau croisé": "Building the pivot table",
-  "Les données sont présentées en barres pour faciliter leur lecture.": "The data is shown as a bar chart for readability."
+  "Les données sont présentées en barres pour faciliter leur lecture.": "The data is shown as a bar chart for readability.",
+  "Nombre de catégories visibles": "Number of visible categories",
+  "Première catégorie visible": "First visible category",
+  "Catégories {{first}} à {{last}} sur {{total}}": "Categories {{first}} to {{last}} of {{total}}"
 }

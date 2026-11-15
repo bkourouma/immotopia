@@ -12,9 +12,12 @@ import { saveBlob } from './save-blob';
 const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 function provenanceRows(artifact: CopilotArtifact): string[][] {
-  if (artifact.kind === 'markdown' || artifact.kind === 'document' || !artifact.provenance) return [];
+  if (artifact.kind === 'markdown' || artifact.kind === 'document') return [];
+  const notices = artifact.kind === 'chart' ? (artifact.notices ?? []).map(notice => [t('Information'), notice]) : [];
   const provenance = artifact.provenance;
+  if (!provenance) return notices;
   return [
+    ...notices,
     [t('Source'), provenance.source],
     [t('Période'), provenance.period],
     [t('Date de calcul'), provenance.calculatedAt],
@@ -100,6 +103,8 @@ export function downloadMarkdown(artifact: CopilotArtifact): void {
  */
 export function findChartSvg(container: ParentNode | null): SVGSVGElement | null {
   if (!container) return null;
+  const scene = container.querySelector<SVGSVGElement>('svg[data-chart-surface]');
+  if (scene) return scene;
   const direct = container.querySelector<SVGSVGElement>('.recharts-wrapper > svg.recharts-surface');
   if (direct) return direct;
   const all = Array.from(container.querySelectorAll<SVGSVGElement>('svg.recharts-surface'));

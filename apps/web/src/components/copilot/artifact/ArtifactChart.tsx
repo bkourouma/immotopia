@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Area,
   AreaChart,
@@ -99,7 +99,12 @@ const DataFallback: React.FC<{ artifact: ChartArtifact }> = ({ artifact }) => (
 
 function SceneFigure({ scene, rtl }: { scene: ChartScene; rtl: boolean }) {
   return (
-    <svg viewBox={`0 0 ${scene.width} ${scene.height}`} style={{ width: '100%', height: '100%' }} aria-hidden="true">
+    <svg
+      data-chart-surface="true"
+      viewBox={`0 0 ${scene.width} ${scene.height}`}
+      style={{ width: '100%', height: '100%' }}
+      aria-hidden="true"
+    >
       {scene.marks.map((mark, index) => {
         const x = rtl ? scene.width - mark.x - mark.w : mark.x;
         if (mark.kind === 'rect')
@@ -120,7 +125,7 @@ function SceneFigure({ scene, rtl }: { scene: ChartScene; rtl: boolean }) {
             x={x + from}
             y={mark.y + mark.h / 2}
             fill={`#${mark.color}`}
-            fontFamily="Arial, sans-serif"
+            fontFamily={t('Arial, sans-serif')}
             fontSize={size}
             dominantBaseline="central"
             direction={rtl ? 'rtl' : 'ltr'}
@@ -141,7 +146,7 @@ export const ArtifactChart: React.FC<{ artifact: ChartArtifact }> = ({ artifact 
   const textColor = useMemo(() => cssVar('--text-secondary', '#525252'), []);
   const gridColor = useMemo(() => cssVar('--border-subtle', '#e5e5e5'), []);
 
-  const data = useMemo(
+  const allData = useMemo(
     () =>
       artifact.data.map(row => {
         const out: Record<string, string | number | null> = {
@@ -152,6 +157,17 @@ export const ArtifactChart: React.FC<{ artifact: ChartArtifact }> = ({ artifact 
       }),
     [artifact]
   );
+  const [zoom, setZoom] = useState<{ rows: typeof allData; size: number; start: number } | null>(null);
+  const parts = artifact.chartType === 'pie' || artifact.chartType === 'donut';
+  const zoomable =
+    !artifact.scene && artifact.chartType !== 'scatter' && (!parts || allData.length > 8) && allData.length > 24;
+  const viewport = zoomable && zoom?.rows === allData ? zoom : { rows: allData, size: allData.length, start: 0 };
+  const data = zoomable ? allData.slice(viewport.start, viewport.start + viewport.size) : allData;
+  const notices = artifact.notices?.map((message, index) => (
+    <p key={index} role="status">
+      {message}
+    </p>
+  ));
 
   const label = t('Graphique : {{title}} ({{count}} valeurs)', { title: artifact.title, count: data.length });
   const tick = { fill: textColor, fontSize: 12 };
@@ -169,6 +185,7 @@ export const ArtifactChart: React.FC<{ artifact: ChartArtifact }> = ({ artifact 
         >
           <SceneFigure scene={artifact.scene} rtl={rtl} />
         </div>
+        {notices}
         <DataFallback artifact={artifact} />
       </div>
     );
@@ -176,15 +193,14 @@ export const ArtifactChart: React.FC<{ artifact: ChartArtifact }> = ({ artifact 
   const values = data.flatMap(row =>
     artifact.series.map(series => num(row[series.key])).filter(value => value !== null)
   );
-  const parts = artifact.chartType === 'pie' || artifact.chartType === 'donut';
   const validParts =
     parts &&
     artifact.series.length === 1 &&
     data.length >= 2 &&
-    data.length <= 8 &&
+    allData.length <= 8 &&
     values.every(value => value >= 0) &&
     values.some(value => value > 0);
-  const horizontal = artifact.chartType === 'horizontal_bar';
+  const horizontal = artifact.chartType === 'horizontal_bar' || (parts && allData.length > 8);
   const donut = artifact.chartType === 'donut';
   const total = donut ? values.reduce((sum, value) => sum + value, 0) : undefined;
 
@@ -206,7 +222,13 @@ export const ArtifactChart: React.FC<{ artifact: ChartArtifact }> = ({ artifact 
         </>
       ) : (
         <>
-          <XAxis dataKey={artifact.xKey} tick={tick} stroke={gridColor} reversed={rtl} />
+          <XAxis
+            dataKey={artifact.xKey}
+            tick={tick}
+            stroke={gridColor}
+            reversed={rtl}
+            interval={data.length <= 12 ? 0 : 'preserveStartEnd'}
+          />
           <YAxis tick={tick} stroke={gridColor} tickFormatter={fmt} orientation={rtl ? 'right' : 'left'} />
         </>
       )}
@@ -253,7 +275,13 @@ export const ArtifactChart: React.FC<{ artifact: ChartArtifact }> = ({ artifact 
     chart = (
       <ComposedChart data={data}>
         <CartesianGrid stroke={gridColor} strokeDasharray="3 3" />
-        <XAxis dataKey={artifact.xKey} tick={tick} stroke={gridColor} reversed={rtl} />
+        <XAxis
+          dataKey={artifact.xKey}
+          tick={tick}
+          stroke={gridColor}
+          reversed={rtl}
+          interval={data.length <= 12 ? 0 : 'preserveStartEnd'}
+        />
         <YAxis yAxisId="primary" tick={tick} tickFormatter={fmt} orientation={rtl ? 'right' : 'left'} />
         {artifact.series.some(series => series.axis === 'secondary') && (
           <YAxis yAxisId="secondary" tick={tick} tickFormatter={fmt} orientation={rtl ? 'left' : 'right'} />
@@ -317,6 +345,7 @@ export const ArtifactChart: React.FC<{ artifact: ChartArtifact }> = ({ artifact 
             name={s.label}
             stroke={colors[i % colors.length]}
             strokeWidth={2}
+            dot={data.length <= 24}
             isAnimationActive={false}
           />
         ))}
@@ -352,6 +381,8 @@ export const ArtifactChart: React.FC<{ artifact: ChartArtifact }> = ({ artifact 
             fill={colors[i % colors.length]}
             isAnimationActive={false}
             stackId={artifact.chartType === 'stacked_bar' ? 'values' : undefined}
+            maxBarSize={40}
+            radius={artifact.chartType === 'stacked_bar' ? 0 : 4}
           />
         ))}
       </BarChart>
@@ -360,6 +391,41 @@ export const ArtifactChart: React.FC<{ artifact: ChartArtifact }> = ({ artifact 
 
   return (
     <div>
+      {zoomable && (
+        <div style={{ display: 'grid', gap: 4, marginBlockEnd: 8 }}>
+          <label style={{ display: 'grid', gap: 4 }}>
+            {t('Nombre de catégories visibles')}
+            <input
+              type="range"
+              min={1}
+              max={allData.length}
+              value={viewport.size}
+              onChange={event => {
+                const size = Number(event.currentTarget.value);
+                setZoom({ rows: allData, size, start: Math.min(viewport.start, allData.length - size) });
+              }}
+            />
+          </label>
+          <label style={{ display: 'grid', gap: 4 }}>
+            {t('Première catégorie visible')}
+            <input
+              type="range"
+              min={1}
+              max={allData.length - viewport.size + 1}
+              value={viewport.start + 1}
+              disabled={viewport.size === allData.length}
+              onChange={event => setZoom({ ...viewport, start: Number(event.currentTarget.value) - 1 })}
+            />
+          </label>
+          <small aria-live="polite">
+            {t('Catégories {{first}} à {{last}} sur {{total}}', {
+              first: viewport.start + 1,
+              last: viewport.start + viewport.size,
+              total: allData.length
+            })}
+          </small>
+        </div>
+      )}
       <div
         role="img"
         aria-label={label}
@@ -371,6 +437,7 @@ export const ArtifactChart: React.FC<{ artifact: ChartArtifact }> = ({ artifact 
           {chart}
         </ResponsiveContainer>
       </div>
+      {notices}
       {parts && !validParts && <p>{t('Les données sont présentées en barres pour faciliter leur lecture.')}</p>}
       <DataFallback artifact={artifact} />
     </div>

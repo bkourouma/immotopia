@@ -407,6 +407,7 @@ export type CopilotArtifact = { canRefresh?: boolean } & (
       groupKey?: string;
       groupLabel?: string;
       scene?: ChartScene;
+      notices?: string[];
       series: AnalysisChartSeries[];
       data: Record<string, ArtifactCell>[];
     }

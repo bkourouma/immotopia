@@ -663,6 +663,7 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
                 dimension: 'period',
                 measure: 'expected',
                 chartType: 'combo',
+                limit: 1,
                 series: [{ measure: 'overdueCount', form: 'line', axis: 'secondary' }]
               }
             }
@@ -686,10 +687,8 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
           { form: 'bar', axis: 'primary' },
           { form: 'line', axis: 'secondary' }
         ],
-        data: [
-          { category: '2024-10', value0: 80, value1: 0 },
-          { category: period, value0: 117, value1: 1 }
-        ]
+        data: [{ category: period, value0: 117, value1: 1 }],
+        notices: ['Seule la période la plus récente est affichée.']
       });
       mockFakeScript = [
         {
@@ -776,7 +775,8 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       expect(comboReplay.body.data.artifact).toMatchObject({
         chartType: 'combo',
         series: comboArtifact.series,
-        data: comboArtifact.data
+        data: comboArtifact.data,
+        notices: comboArtifact.notices
       });
       const pivotPath = `${base}/conversations/${conversationId}/artifacts/${pivot.id}`;
       const pivotReplay = await request(app).post(pivotPath).set(authed(admin)).send({ expectedVersion: 1 });

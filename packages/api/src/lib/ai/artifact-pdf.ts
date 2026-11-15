@@ -34,6 +34,7 @@ type ExportSection =
       headers: string[];
       rows: ArtifactCell[][];
       provenance?: ArtifactProvenance;
+      notes?: string[];
       truncated?: boolean;
       dimensionColumns?: number;
       hasTotals?: boolean;
@@ -94,6 +95,7 @@ export function artifactExportSections(artifact: CopilotArtifact): ExportSection
             ...(artifact.groupKey ? [row[artifact.groupKey] ?? null] : []),
             ...artifact.series.map(series => row[series.key] ?? null)
           ]),
+          ...(artifact.notices?.length ? { notes: artifact.notices } : {}),
           provenance: artifact.provenance
         }
       ];
@@ -251,6 +253,7 @@ export async function buildArtifactPdf(artifact: CopilotArtifact, exportedAt = n
       if (section.title) paragraph(section.title, bold, 13);
       grid(section);
       if (section.truncated) paragraph(t('Résultat tronqué : seules les premières lignes sont affichées.'), bold, 9);
+      for (const note of section.notes ?? []) paragraph(note, bold, 9);
       if (section.provenance)
         for (const line of artifactProvenanceLines(section.provenance)) paragraph(line, regular, 9);
     }

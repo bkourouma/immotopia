@@ -3189,5 +3189,15 @@
   "La jauge utilise le taux calculé du jeu source sur une échelle de 0 à 100.": "يعرض المقياس النسبة المحسوبة من بيانات المصدر على مقياس من 0 إلى 100.",
   "La jauge utilise le total du jeu et affiche l’objectif fourni par la source lorsqu’il existe.": "يعرض المقياس إجمالي البيانات والهدف الوارد في المصدر إن توفر.",
   "Les croisements sans valeur restent distincts des zéros.": "تظل التقاطعات التي لا تحتوي على بيانات مميزة عن الأصفار.",
-  "Les proportions sont calculées à partir des valeurs additives du jeu source.": "تُحسب النسب من القيم القابلة للجمع في بيانات المصدر."
+  "Les proportions sont calculées à partir des valeurs additives du jeu source.": "تُحسب النسب من القيم القابلة للجمع في بيانات المصدر.",
+  "Autres": "أخرى",
+  "Choisissez une seule devise pour classer les valeurs.": "اختر عملة واحدة لترتيب القيم.",
+  "Le graphique est limité à {{count}} catégories.": "يقتصر المخطط على {{count}} من الفئات.",
+  "Le graphique est limité à une catégorie.": "يقتصر المخطط على فئة واحدة.",
+  "Les valeurs additives restantes sont regroupées dans « {{label}} ».": "تُجمع القيم المتبقية القابلة للجمع ضمن «{{label}}».",
+  "Plus de huit parts : le graphique est présenté en barres horizontales.": "عند وجود أكثر من ثماني حصص، يُعرض المخطط بأشرطة أفقية.",
+  "Seule la période la plus récente est affichée.": "تُعرض أحدث فترة فقط.",
+  "Seule la première série est affichée dans ce graphique en parts.": "تُعرض السلسلة الأولى فقط في مخطط الحصص.",
+  "Seules les {{count}} périodes les plus récentes sont affichées.": "تُعرض أحدث {{count}} فترات فقط.",
+  "Un graphique en parts exige au moins deux catégories et des valeurs positives ou nulles.": "يتطلب مخطط الحصص فئتين على الأقل وقيماً موجبة أو صفراً."
 }

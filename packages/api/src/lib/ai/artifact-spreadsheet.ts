@@ -21,9 +21,10 @@ export function buildArtifactCsv(artifact: CopilotArtifact): Buffer {
   }
   const sep = currentLanguage() === 'en' ? ',' : ';';
   const rows: ArtifactCell[][] = [grid.headers, ...grid.rows];
-  if (grid.truncated || grid.provenance) {
+  if (grid.truncated || grid.provenance || grid.notes?.length) {
     rows.push([]);
     if (grid.truncated) rows.push([t('Résultat tronqué : seules les premières lignes sont affichées.')]);
+    for (const note of grid.notes ?? []) rows.push([note]);
     if (grid.provenance) {
       const provenance = artifactProvenanceLines(grid.provenance);
       rows.push(...provenance.map(line => [line]));
@@ -53,6 +54,7 @@ export async function buildArtifactXlsx(artifact: CopilotArtifact): Promise<Buff
       sheet.getColumn(col + 1).width = Math.min(54, Math.max(18, header.length + 4));
     });
     if (section.truncated) sheet.addRow([t('Résultat tronqué : seules les premières lignes sont affichées.')]);
+    for (const note of section.notes ?? []) sheet.addRow([note]);
     if (section.provenance) {
       sheet.addRow([]);
       for (const line of artifactProvenanceLines(section.provenance)) sheet.addRow([line]);

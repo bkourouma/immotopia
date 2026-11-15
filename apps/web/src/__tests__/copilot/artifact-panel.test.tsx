@@ -193,6 +193,20 @@ describe('ArtifactPanel — rendus', () => {
     expect(screen.getByText('Fév')).toBeInTheDocument();
   });
 
+  it('déplace la fenêtre du graphique en gardant toutes les catégories dans le tableau', async () => {
+    renderPanel([
+      { ...chart, data: Array.from({ length: 32 }, (_, index) => ({ mois: `Mois ${index + 1}`, v: index })) }
+    ]);
+    const size = await screen.findByRole('slider', { name: 'Nombre de catégories visibles' });
+    const start = screen.getByRole('slider', { name: 'Première catégorie visible' });
+    expect(start).toBeDisabled();
+    fireEvent.change(size, { target: { value: '8' } });
+    fireEvent.change(start, { target: { value: '4' } });
+    expect(screen.getByText('Catégories 4 à 11 sur 32')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: /Revenus \(8 valeurs\)/ })).toBeInTheDocument();
+    expect(screen.getAllByRole('rowheader')).toHaveLength(32);
+  });
+
   it.each([
     ['horizontal_bar', 'bar-chart', 'data-layout', 'vertical'],
     ['stacked_bar', 'bar', 'data-stack', 'values'],
