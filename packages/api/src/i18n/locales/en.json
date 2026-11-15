@@ -3242,5 +3242,16 @@
   "La requête utilise une vue en lecture seule filtrée sur l’agence active.": "The query uses a read-only view filtered to the active agency.",
   "Les échéances annulées sont exclues. Le reste dû est calculé avec les affectations enregistrées.": "Cancelled installments are excluded. The outstanding balance uses recorded allocations.",
   "Requête analytique invalide ou hors du périmètre autorisé.": "Invalid analytical query or query outside the authorized scope.",
-  "Selon les filtres de la requête": "Based on query filters"
+  "Selon les filtres de la requête": "Based on query filters",
+  "À partir du {{date}}": "From {{date}}",
+  "Toutes les dates de signature": "All signing dates",
+  "Compromis de vente signés en cours": "Active signed sale agreements",
+  "Compromis": "Sale agreement",
+  "Date de signature": "Signing date",
+  "Date prévue de l’acte": "Expected deed date",
+  "Prix convenu": "Agreed price",
+  "Dépôt prévu": "Agreed deposit",
+  "Compromis de vente": "Sale agreements",
+  "Seuls les compromis signés et encore en cours sont inclus. Le dépôt prévu est le montant inscrit au compromis.": "Only active signed sale agreements are included. The agreed deposit is the amount stated in the agreement.",
+  "La date prévue de l’acte est antérieure au {{date}}.": "The expected deed date is before {{date}}."
 }

@@ -3242,5 +3242,16 @@
   "La requête utilise une vue en lecture seule filtrée sur l’agence active.": "يستخدم الاستعلام عرضًا للقراءة فقط يقتصر على الوكالة النشطة.",
   "Les échéances annulées sont exclues. Le reste dû est calculé avec les affectations enregistrées.": "تُستبعد الأقساط الملغاة. يُحتسب الرصيد المتبقي بناءً على التخصيصات المسجلة.",
   "Requête analytique invalide ou hors du périmètre autorisé.": "استعلام تحليلي غير صالح أو خارج النطاق المصرح به.",
-  "Selon les filtres de la requête": "وفقًا لمرشحات الاستعلام"
+  "Selon les filtres de la requête": "وفقًا لمرشحات الاستعلام",
+  "À partir du {{date}}": "اعتبارًا من {{date}}",
+  "Toutes les dates de signature": "جميع تواريخ التوقيع",
+  "Compromis de vente signés en cours": "اتفاقيات البيع الموقعة قيد التنفيذ",
+  "Compromis": "اتفاقية البيع",
+  "Date de signature": "تاريخ التوقيع",
+  "Date prévue de l’acte": "التاريخ المتوقع للعقد النهائي",
+  "Prix convenu": "السعر المتفق عليه",
+  "Dépôt prévu": "مبلغ العربون المتفق عليه",
+  "Compromis de vente": "اتفاقيات البيع",
+  "Seuls les compromis signés et encore en cours sont inclus. Le dépôt prévu est le montant inscrit au compromis.": "يشمل الجدول اتفاقيات البيع الموقعة قيد التنفيذ فقط. ومبلغ العربون هو المبلغ المذكور في الاتفاقية.",
+  "La date prévue de l’acte est antérieure au {{date}}.": "التاريخ المتوقع للعقد النهائي يسبق {{date}}."
 }

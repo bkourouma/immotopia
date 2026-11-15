@@ -1182,7 +1182,7 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       }
     });
 
-    it('recalcule le pipeline CRM et filtre les échéances des mandats de vente de l’agence', async () => {
+    it('recalcule le pipeline CRM et filtre les mandats et compromis de vente de l’agence', async () => {
       const actor = await createTenantMemberUser(tenantA, 'commercial-assistant', 'TEST_COMMERCIAL_ASSISTANT', [
         'CRM_CONTACTS_VIEW',
         'CRM_DEALS_VIEW'
@@ -1232,7 +1232,7 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         }
       });
       try {
-        await prisma.saleMandate.create({
+        const foreignMandate = await prisma.saleMandate.create({
           data: {
             ...mandateData,
             tenantId: tenantB.id,
@@ -1301,8 +1301,89 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
           .send({ expectedVersion: 1 });
         expect(replay.status).toBe(201);
         expect(replay.body.data.artifact.rows[0]).toMatchObject({ count: 1, value: 600 });
+
+        const createCompromise = async (
+          mandate: typeof own,
+          buyerContactId: string,
+          sequence: number,
+          status: 'SIGNED' | 'DRAFT',
+          expectedDeedDate: Date | null = new Date('1999-01-31')
+        ) => {
+          const { tenantId, id: mandateId, propertyId } = mandate;
+          const offer = await prisma.saleOffer.create({
+            data: {
+              tenantId,
+              mandateId,
+              buyerContactId,
+              year: 1999,
+              sequence,
+              amount: 500,
+              financing: 'CASH',
+              status: 'ACCEPTED'
+            }
+          });
+          return prisma.saleAgreement.create({
+            data: {
+              tenantId,
+              mandateId,
+              propertyId,
+              offerId: offer.id,
+              year: 1999,
+              sequence,
+              price: 500,
+              depositAmount: 50,
+              signedAt: status === 'SIGNED' ? new Date('1999-01-01') : null,
+              expectedDeedDate,
+              status
+            }
+          });
+        };
+        const signed = await createCompromise(own, contactId, 1, 'SIGNED');
+        await createCompromise(own, contactId, 2, 'DRAFT');
+        await createCompromise(own, contactId, 3, 'SIGNED', null);
+        await createCompromise(foreignMandate, foreignContact, 1, 'SIGNED');
+        const input = { signedFrom: '1999-01-01', signedTo: '1999-01-01', onlyOverdue: true };
+        mockFakeScript = [{ toolCalls: [{ name: 'sale_commitments', input }] }, { text: 'Compromis trouvés.' }];
+        const saleResponse = await request(app)
+          .post(base + '/ai/chat')
+          .set(authed(actor))
+          .send({
+            turnId: randomUUID(),
+            messages: [{ role: 'user', content: 'Montre les compromis de vente dont la date prévue est passée.' }]
+          });
+        expect(saleResponse.status).toBe(200);
+        const saleEvents = saleResponse.text
+          .split('\n')
+          .filter(line => line.startsWith('data: {'))
+          .map(line => JSON.parse(line.slice(6)));
+        const saleArtifact = saleEvents.find(event => event.type === 'artifact').artifact;
+        const source = await request(app).get(`${base}/sales/agreements/${signed.id}`).set(authed(actor));
+        expect(source.status).toBe(200);
+        expect(saleArtifact.rows).toEqual([
+          expect.objectContaining({
+            number: source.body.data.number,
+            price: source.body.data.price,
+            deposit: source.body.data.depositAmount,
+            href: `/tenant/${tenantA.id}/sales/agreements/${signed.id}`
+          })
+        ]);
+        await prisma.saleAgreement.updateMany({
+          where: { tenantId: tenantA.id, id: signed.id },
+          data: { status: 'CANCELLED' }
+        });
+        const saleConversationId = saleEvents.find(event => event.type === 'meta').conversationId;
+        const refreshedSale = await request(app)
+          .post(`${base}/ai/conversations/${saleConversationId}/artifacts/${saleArtifact.id}`)
+          .set(authed(actor))
+          .send({ expectedVersion: 1 });
+        expect(refreshedSale.status).toBe(201);
+        expect(refreshedSale.body.data.artifact.rows).toEqual([]);
       } finally {
         mockFakeScript = undefined;
+        await prisma.saleAgreement.deleteMany({ where: { tenantId: tenantA.id, propertyId: rental.propertyId } });
+        await prisma.saleAgreement.deleteMany({
+          where: { tenantId: tenantB.id, propertyId: foreignRental.propertyId }
+        });
         await prisma.saleMandate.deleteMany({ where: { tenantId: tenantA.id, propertyId: rental.propertyId } });
         await prisma.saleMandate.deleteMany({ where: { tenantId: tenantB.id, propertyId: foreignRental.propertyId } });
       }
@@ -1615,6 +1696,9 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
                 'patrimony_history',
                 'maintenance_log',
                 'reserved_sale_properties',
+                'rental_receipts_sql',
+                'rental_installments_sql',
+                'sale_commitments',
                 'rental_due_comparison',
                 'rental_monthly_review'
               ].includes(name)

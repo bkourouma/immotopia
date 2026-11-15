@@ -24,6 +24,7 @@ import { ownerBalancesTool, ownerPayoutsTool, ownerStatementsTool } from './tool
 import { patrimonyHistoryTool, patrimonyNetWorthTool } from './tools/patrimoine-analysis';
 import { maintenanceLogTool } from './tools/maintenance-log';
 import { reservedPropertiesTool } from './tools/reserved-properties';
+import { saleCommitmentsTool } from './tools/sale-commitments';
 import { rentalReceiptsSqlTool, rentalInstallmentsSqlTool } from './tools/rental-sql';
 import { rentalDueComparisonTool } from './tools/rental-monthly-review';
 
@@ -51,6 +52,7 @@ const querySchema = z.discriminatedUnion('tool', [
   patrimonyHistoryTool.inputSchema.required({ to: true }).extend({ tool: z.literal('patrimony_history') }),
   maintenanceLogTool.inputSchema.required({ to: true }).extend({ tool: z.literal('maintenance_log') }),
   reservedPropertiesTool.inputSchema.extend({ tool: z.literal('reserved_sale_properties') }),
+  saleCommitmentsTool.inputSchema.extend({ tool: z.literal('sale_commitments') }),
   rentalReceiptsSqlTool.inputSchema.extend({ tool: z.literal('rental_receipts_sql') }),
   rentalInstallmentsSqlTool.inputSchema.extend({ tool: z.literal('rental_installments_sql') })
 ]);
@@ -75,6 +77,7 @@ const analysisTools: Record<BaseAnalysisQuery['tool'], CopilotToolDefinition> = 
   patrimony_history: patrimonyHistoryTool,
   maintenance_log: maintenanceLogTool,
   reserved_sale_properties: reservedPropertiesTool,
+  sale_commitments: saleCommitmentsTool,
   rental_receipts_sql: rentalReceiptsSqlTool,
   rental_installments_sql: rentalInstallmentsSqlTool
 };

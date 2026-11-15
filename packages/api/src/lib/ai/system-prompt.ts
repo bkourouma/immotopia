@@ -42,6 +42,10 @@ const TOOL_CAPABILITIES: Record<CopilotToolName, { group: string; text: string }
     text: 'les interventions, coûts et échéances inscrits au carnet d’entretien'
   },
   reserved_sale_properties: { group: 'saleReservations', text: 'les biens et lots mis en vente au statut réservé' },
+  sale_commitments: {
+    group: 'saleCommitments',
+    text: 'les compromis signés en cours, les dépôts prévus et les actes en retard'
+  },
   patrimony_net_worth: {
     group: 'patrimony',
     text: 'la valorisation du patrimoine et l’évolution mensuelle de sa valeur nette'

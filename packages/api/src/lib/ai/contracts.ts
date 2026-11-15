@@ -59,6 +59,7 @@ export type CopilotToolName =
   | 'patrimony_history'
   | 'maintenance_log'
   | 'reserved_sale_properties'
+  | 'sale_commitments'
   | 'chart_analysis'
   | 'pivot_analysis'
   | 'show_indicators'
@@ -457,6 +458,7 @@ export type BaseAnalysisQuery =
       overdueAsOf?: string;
     }
   | { tool: 'reserved_sale_properties'; programId?: string }
+  | { tool: 'sale_commitments'; programId?: string; signedFrom?: string; signedTo?: string; onlyOverdue?: boolean }
   | { tool: 'rental_receipts_sql' | 'rental_installments_sql'; sql: string };
 
 export type AnalysisQuery = BaseAnalysisQuery | { tool: 'pivot_analysis'; source: BaseAnalysisQuery; input: unknown };

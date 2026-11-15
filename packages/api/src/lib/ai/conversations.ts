@@ -111,7 +111,10 @@ export async function resolveSavedAssistantScope(
   toolNames: string[]
 ): Promise<string> {
   const scopeKey = assistantScope(permissions, toolNames);
-  const beforeSql = toolNames.filter(name => name !== 'rental_receipts_sql' && name !== 'rental_installments_sql');
+  const beforeSaleCommitments = toolNames.filter(name => name !== 'sale_commitments');
+  const beforeSql = beforeSaleCommitments.filter(
+    name => name !== 'rental_receipts_sql' && name !== 'rental_installments_sql'
+  );
   const beforeLogAndReservations = beforeSql.filter(
     name => name !== 'maintenance_log' && name !== 'reserved_sale_properties'
   );
@@ -141,6 +144,7 @@ export async function resolveSavedAssistantScope(
   const earlierScopes = [
     ...new Set(
       [
+        beforeSaleCommitments,
         beforeSql,
         beforeLogAndReservations,
         beforePatrimonyAnalysis,

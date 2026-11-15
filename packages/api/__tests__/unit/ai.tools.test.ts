@@ -153,6 +153,7 @@ describe('registre', () => {
         'patrimony_history',
         'maintenance_log',
         'reserved_sale_properties',
+        'sale_commitments',
         'propose_follow_up',
         'prepare_budget_alert',
         'prepare_lease_expiry_alert',
@@ -189,6 +190,7 @@ describe('registre', () => {
     ['patrimony_history', 'PATRIMOINE_PERSONAL_VIEW'],
     ['maintenance_log', 'PROPERTIES_VIEW'],
     ['reserved_sale_properties', 'PROPERTIES_VIEW'],
+    ['sale_commitments', 'CRM_DEALS_VIEW'],
     ['list_capabilities', 'PROPERTIES_VIEW'],
     ['call_read', 'PROPERTIES_VIEW'],
     ['plan_write', 'PROPERTIES_VIEW']
