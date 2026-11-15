@@ -1,4 +1,13 @@
 {
+  "Jeu de données indisponible.": "Dataset unavailable.",
+  "Jeux de données disponibles": "Available datasets",
+  "Dernier mois civil clos": "Most recent completed calendar month",
+  "Trente prochains jours": "Next thirty days",
+  "Douze mois jusqu’à la date de consultation": "Twelve months through the current date",
+  "Année civile demandée": "Requested calendar year",
+  "Exercice demandé": "Requested fiscal year",
+  "Situation à la date de consultation": "Snapshot at the time of the query",
+  "Date de consultation": "Date of the query",
   "Périmètre": "Scope",
   "Filtre": "Filter",
   "Filtres appliqués": "Applied filters",

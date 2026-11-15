@@ -1,4 +1,13 @@
 {
+  "Jeu de données indisponible.": "数据集不可用。",
+  "Jeux de données disponibles": "可用的数据集",
+  "Dernier mois civil clos": "最近一个已结束的日历月",
+  "Trente prochains jours": "未来三十天",
+  "Douze mois jusqu’à la date de consultation": "截至查询日期的十二个月",
+  "Année civile demandée": "指定的日历年",
+  "Exercice demandé": "指定的财年",
+  "Situation à la date de consultation": "查询时的情况",
+  "Date de consultation": "查询日期",
   "Périmètre": "范围",
   "Filtre": "筛选条件",
   "Filtres appliqués": "已应用的筛选条件",

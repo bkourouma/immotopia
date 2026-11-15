@@ -549,6 +549,26 @@ export class FakeProvider implements LlmProvider {
     // Le bloc <screen_context> (JSON, guillemets compris) précède le texte de l'utilisateur : on l'écarte.
     const userText = question.replace(/<screen_context>[\s\S]*?<\/screen_context>/g, '').trim();
 
+    if (
+      offered?.has('list_datasets') &&
+      /jeux de donnees|data sets|datasets|conjuntos de datos|مجموعات البيانات|डेटा सेट|数据集/u.test(normalized)
+    ) {
+      if (round === 0) return call('list_datasets', {});
+      const items =
+        (
+          results.find(result => result.name === 'list_datasets')?.data as
+            | {
+                items?: { title: string }[];
+              }
+            | undefined
+        )?.items ?? [];
+      return {
+        text: items.length
+          ? t('Jeux de données disponibles') + '\n\n' + items.map(item => '- ' + item.title).join('\n')
+          : t('Jeu de données indisponible.')
+      };
+    }
+
     // 000. Écriture : plan_write seulement (création d'une étiquette, modification d'un contact)
     const canPlan = offered === null || offered.has('plan_write');
     if (canPlan && /\b(cree|creer)\b/.test(normalized) && /\b(etiquette|etiquettes|tag)\b/.test(normalized)) {

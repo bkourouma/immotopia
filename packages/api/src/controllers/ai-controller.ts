@@ -1,3 +1,4 @@
+import { withDatasetCatalog } from '../lib/ai/tools/list-datasets';
 import { extractAssistantFile } from '../lib/ai/assistant-files';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
@@ -822,7 +823,7 @@ export const getStatusHandler = asyncHandler(async (req: Request, res: Response)
     status =
       tools.length === 0
         ? { enabled: false, reason: 'NO_TOOLS', provider: provider.id, tools: [], limits }
-        : { enabled: true, provider: provider.id, tools: tools.map(tool => tool.name), limits };
+        : { enabled: true, provider: provider.id, tools: withDatasetCatalog(tools).map(tool => tool.name), limits };
   }
   if (status.enabled && (await getTranscriptionEngine())) status.transcription = true;
   if (status.enabled) {

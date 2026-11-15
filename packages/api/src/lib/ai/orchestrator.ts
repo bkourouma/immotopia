@@ -6,6 +6,7 @@ import { logAuditEvent } from '../../services/audit-service';
 import { AuditActionKey } from '../../types/audit-types';
 import { logger } from '../../utils/logger';
 import { analysisSources, withAnalysisProvenance, withoutSourceMarkers } from './artifact-sources';
+import { withDatasetCatalog } from './tools/list-datasets';
 import type {
   ChatRequest,
   CopilotErrorCode,
@@ -76,7 +77,7 @@ export interface RunChatInput {
 
 type ToolResultBlock = Extract<LlmMessage['content'][number], { type: 'tool_result' }>;
 
-const KNOWN_TOOL_NAMES: ReadonlySet<string> = new Set(ALL_TOOLS.map(tool => tool.name));
+const KNOWN_TOOL_NAMES: ReadonlySet<string> = new Set([...ALL_TOOLS.map(tool => tool.name), 'list_datasets']);
 const MAX_ISSUES_REPORTED = 5;
 
 function errorResult(
@@ -185,7 +186,8 @@ export async function runChat(input: RunChatInput): Promise<ChatDoneReason> {
       ? Math.min(64_000, 2 * env.AI_MAX_OUTPUT_TOKENS)
       : env.AI_MAX_OUTPUT_TOKENS;
 
-  const system = buildSystemPrompt(currentAssistantLanguage(), input.tools);
+  const tools = withDatasetCatalog(input.tools);
+  const system = buildSystemPrompt(currentAssistantLanguage(), tools);
   const analysisTables = new Map(
     [...(input.analysisTables ?? []), ...(input.importedTables ?? [])].map(table => [
       table.id,
@@ -240,7 +242,7 @@ export async function runChat(input: RunChatInput): Promise<ChatDoneReason> {
     contextBlocks.push('<file_extracts>' + excerpts + '</file_extracts>');
   }
   const messages = toLlmMessages(input.messages, contextBlocks.join('\n'));
-  const toolSpecs = toLlmToolSpecs(input.tools);
+  const toolSpecs = toLlmToolSpecs(tools);
   const ctx: CopilotToolContext = {
     tenantId,
     userId,
@@ -323,7 +325,7 @@ export async function runChat(input: RunChatInput): Promise<ChatDoneReason> {
       const results: ToolResultBlock[] = [];
       for (const call of turn.toolCalls) {
         toolCalls += 1;
-        results.push(await runToolCall(call, input, ctx));
+        results.push(await runToolCall(call, input, ctx, tools));
         if (signal.aborted) break;
       }
       if (signal.aborted) {
@@ -379,10 +381,11 @@ export async function runChat(input: RunChatInput): Promise<ChatDoneReason> {
 async function runToolCall(
   call: LlmTurnResult['toolCalls'][number],
   input: RunChatInput,
-  ctx: CopilotToolContext
+  ctx: CopilotToolContext,
+  tools: readonly CopilotToolDefinition[]
 ): Promise<ToolResultBlock> {
   const { tenantId, userId, emit } = input;
-  const tool = findTool(input.tools, call.name);
+  const tool = findTool(tools, call.name);
   const known = KNOWN_TOOL_NAMES.has(call.name);
 
   const audit = (actionKey: AuditActionKey, payload: Record<string, unknown>): void =>

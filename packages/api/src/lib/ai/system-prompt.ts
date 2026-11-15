@@ -98,6 +98,7 @@ const TOOL_CAPABILITIES: Record<CopilotToolName, { group: string; text: string }
   list_property_documents: { group: 'documents', text: 'des documents' },
   propose_rental_document: { group: 'receipts', text: 'des quittances de loyer ou des relevés de compte' },
   show_artifact: { group: 'artifacts', text: "des tableaux, graphiques ou synthèses dans le panneau d'affichage" },
+  list_datasets: { group: 'datasets', text: 'les jeux métier disponibles à l’analyse' },
   list_capabilities: { group: 'gateway', text: "d'autres données consultables de l'application" },
   call_read: { group: 'gateway', text: "d'autres données consultables de l'application" },
   plan_write: { group: 'writes', text: "des créations ou modifications soumises à l'accord de l'utilisateur" },
@@ -165,6 +166,11 @@ export function buildSystemPrompt(
   if (tools.some(tool => tool.name === 'pivot_analysis')) {
     help.push(
       'Pour croiser les dimensions d’un jeu, appelle pivot_analysis avec le tableau d’origine. Utilise currency parmi les dimensions si le jeu contient plusieurs devises.'
+    );
+  }
+  if (tools.some(tool => tool.name === 'list_datasets')) {
+    help.push(
+      'Utilise list_datasets pour expliquer les jeux accessibles. Demande le détail d’un jeu avant un calcul lorsque son grain, ses unités ou ses filtres ne sont pas clairs. Un catalogue seul ne contient aucun résultat chiffré.'
     );
   }
   if (tools.some(tool => tool.name === 'rental_arrears')) {

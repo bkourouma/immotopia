@@ -70,6 +70,7 @@ export type CopilotToolName =
   | 'propose_rental_document'
   | 'show_artifact'
   | 'list_capabilities'
+  | 'list_datasets'
   | 'call_read'
   | 'plan_write'
   | 'propose_follow_up'

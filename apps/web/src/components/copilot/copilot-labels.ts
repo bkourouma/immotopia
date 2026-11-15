@@ -97,6 +97,7 @@ export function copilotToolLabel(tool: CopilotToolName): string {
     list_property_documents: t('Liste des documents du bien'),
     propose_rental_document: t('Préparation d’un document'),
     show_artifact: t('Affichage dans le panneau'),
+    list_datasets: t('Catalogue des jeux de données'),
     list_capabilities: t('Recherche dans les consultations disponibles'),
     call_read: t('Consultation d’une donnée')
   };

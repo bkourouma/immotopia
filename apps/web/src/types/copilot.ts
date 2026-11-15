@@ -35,6 +35,7 @@ export type CopilotToolName =
   | 'propose_rental_document'
   | 'show_artifact'
   | 'list_capabilities'
+  | 'list_datasets'
   | 'call_read'
   | 'propose_follow_up'
   | 'prepare_budget_alert'

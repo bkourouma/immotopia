@@ -70,6 +70,7 @@ export function getCopilotSuggestions(
         text: t('Quels tickets de maintenance sont encore ouverts ou urgents ?'),
         requires: 'maintenance_overview'
       },
+      { id: 'default-datasets', text: t('Quels jeux de données puis-je analyser ?'), requires: 'list_datasets' },
       { id: 'default-leases', text: t('Cherche un bail par numéro'), requires: 'search_leases' },
       { id: 'default-receipt', text: t('Génère une quittance de loyer'), requires: 'propose_rental_document' }
     ];

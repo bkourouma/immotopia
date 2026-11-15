@@ -1,4 +1,13 @@
 {
+  "Jeu de données indisponible.": "مجموعة البيانات غير متاحة.",
+  "Jeux de données disponibles": "مجموعات البيانات المتاحة",
+  "Dernier mois civil clos": "آخر شهر ميلادي مكتمل",
+  "Trente prochains jours": "الثلاثون يومًا القادمة",
+  "Douze mois jusqu’à la date de consultation": "اثنا عشر شهرًا حتى تاريخ الاستعلام",
+  "Année civile demandée": "السنة الميلادية المطلوبة",
+  "Exercice demandé": "السنة المالية المطلوبة",
+  "Situation à la date de consultation": "الوضع في تاريخ الاستعلام",
+  "Date de consultation": "تاريخ الاستعلام",
   "Périmètre": "النطاق",
   "Filtre": "عامل التصفية",
   "Filtres appliqués": "عوامل التصفية المطبّقة",

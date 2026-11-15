@@ -52,7 +52,9 @@ import { formatContextBlock, resolvePageContext, sanitizeReference } from '../..
 import { FakeProvider, type FakeStep, LlmProviderError } from '../../src/lib/ai/providers';
 import { buildSystemPrompt } from '../../src/lib/ai/system-prompt';
 import { planWriteTool } from '../../src/lib/ai/tools/plan-write';
-import { toolsForUser } from '../../src/lib/ai/tools/registry';
+import { ALL_TOOLS, toolsForUser } from '../../src/lib/ai/tools/registry';
+import { withDatasetCatalog } from '../../src/lib/ai/tools/list-datasets';
+import { datasetCatalog } from '../../src/lib/ai/dataset-catalog';
 import { resetProposalUsageForTests } from '../../src/lib/ai/proposal-token';
 import { env } from '../../src/config/env';
 
@@ -414,6 +416,72 @@ describe('orchestrateur — outils interdits et entrées invalides', () => {
     const block = harness.requests[1][2].content[0] as { content: string };
     expect(block.content).not.toContain('secret');
     expect(JSON.parse(block.content).error).toBe('INTERNAL');
+  });
+});
+
+describe('catalogue des jeux métier', () => {
+  it('décrit uniquement les jeux autorisés pour le tour avant tout calcul', async () => {
+    const perms = ['RENTAL_PAYMENTS_VIEW'];
+    const receipt = toolsForUser(perms).find(tool => tool.name === 'rental_receipts')!;
+    const harness = start(
+      scripted([
+        { toolCalls: [{ name: 'list_datasets', input: {} }] },
+        { toolCalls: [{ name: 'list_datasets', input: { dataset: 'rental_receipts' } }] },
+        { toolCalls: [{ name: 'list_datasets', input: { dataset: 'rental_receipts_sql' } }] },
+        { toolCalls: [{ name: 'list_datasets', input: { dataset: 'absent' } }] },
+        { text: 'Catalogue consulté.' }
+      ]),
+      { perms, tools: [receipt] }
+    );
+    await expect(harness.result).resolves.toBe('end_turn');
+    const resultAt = (request: number) => {
+      const { content } = harness.requests[request].at(-1)!.content[0] as { content: string };
+      return JSON.parse(content);
+    };
+    expect(resultAt(1)).toEqual({
+      total: 1,
+      items: [{ id: 'rental_receipts', title: 'Encaissements locatifs', module: 'RENTAL' }]
+    });
+    expect(resultAt(2)).toMatchObject({
+      id: receipt.name,
+      filters: receipt.jsonSchema.properties,
+      defaultPeriod: 'Dernier mois civil clos',
+      granularities: ['month'],
+      measures: expect.arrayContaining([
+        expect.objectContaining({ key: 'amount', unit: 'currency', format: 'currency' })
+      ])
+    });
+    expect(resultAt(3)).toEqual(resultAt(4));
+    expect(resultAt(3)).toMatchObject({ error: 'NOT_FOUND' });
+    expect(harness.events.some(event => event.type === 'artifact')).toBe(false);
+  });
+
+  it('décrit chaque jeu livré dans le plafond de sortie et reprend les filtres de son outil', async () => {
+    const permissions = new Set(
+      ALL_TOOLS.flatMap(tool => [tool.requiredPermission, ...(tool.additionalPermissions ?? [])])
+    );
+    const definition = withDatasetCatalog(ALL_TOOLS).find(tool => tool.name === 'list_datasets')!;
+    const ctx = {
+      tenantId: TENANT,
+      userId: USER,
+      permissions,
+      requestId: 'catalogue',
+      conversationId: 'catalogue',
+      seenLeaseIds: new Set<string>(),
+      signal: new AbortController().signal
+    };
+    const list = await definition.execute({}, ctx);
+    const ids = Object.keys(datasetCatalog);
+    expect(list.modelResult.total).toBe(ids.length);
+    expect(list.modelResult.truncated).toBeUndefined();
+    const details = await Promise.all(ids.map(dataset => definition.execute({ dataset }, ctx)));
+    for (const [index, detail] of details.entries()) {
+      const tool = ALL_TOOLS.find(entry => entry.name === ids[index])!;
+      expect(detail.uiEvent).toBeUndefined();
+      expect(detail.modelResult).toMatchObject({ id: tool.name, filters: tool.jsonSchema.properties });
+      expect(detail.modelResult.truncated).toBeUndefined();
+    }
+    expect(withDatasetCatalog(ALL_TOOLS.filter(tool => tool.name === 'search_properties'))).toHaveLength(1);
   });
 });
 

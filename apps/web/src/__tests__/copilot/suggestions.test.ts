@@ -11,6 +11,14 @@ const ALL: CopilotToolName[] = [
   'propose_rental_document'
 ];
 
+it('propose le catalogue au compte qui peut utiliser les jeux métier', () => {
+  const path = '/tenant/t1/assistant';
+  expect(getCopilotSuggestions(path, ['list_datasets']).map(item => item.text)).toEqual([
+    'Quels jeux de données puis-je analyser ?'
+  ]);
+  expect(getCopilotSuggestions(path, ['search_properties']).map(item => item.id)).not.toContain('default-datasets');
+});
+
 describe('getCopilotPageContext', () => {
   it('transmet les filtres de liste reconnus sans la recherche libre ni la pagination', () => {
     expect(

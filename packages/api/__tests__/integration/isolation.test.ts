@@ -266,6 +266,42 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
   });
 
   describe('Assistant — historique privé', () => {
+    it('présente le catalogue des jeux métier selon les outils du compte', async () => {
+      const owner = await createTenantMemberUser(tenantA, 'assistant-dataset-catalog', 'TEST_DATASET_CATALOG', [
+        'RENTAL_PAYMENTS_VIEW'
+      ]);
+      const base = `/api/tenants/${tenantA.id}/ai`;
+      const status = await request(app)
+        .get(base + '/status')
+        .set(authed(owner));
+      expect(status.status).toBe(200);
+      expect(status.body.data.tools).toContain('list_datasets');
+      expect(status.body.data.tools).not.toContain('syndicate_charges');
+      const before = mockProviderRequests.length;
+      const response = await request(app)
+        .post(base + '/chat')
+        .set(authed(owner))
+        .send({
+          turnId: randomUUID(),
+          messages: [{ role: 'user', content: 'Quels jeux de données puis-je analyser ?' }]
+        });
+      expect(response.status).toBe(200);
+      expect(response.text).toContain('"tool":"list_datasets","status":"succeeded"');
+      expect(response.text).toContain('"reason":"end_turn"');
+      const sent = JSON.stringify(mockProviderRequests[before + 1].messages);
+      expect(sent).toContain('rental_receipts');
+      expect(sent).not.toMatch(/syndicate_charges|artifactId/);
+      const events = response.text
+        .split('\n')
+        .filter(line => line.startsWith('data: {'))
+        .map(line => JSON.parse(line.slice(6)));
+      const answer = events
+        .filter(event => event.type === 'text_delta')
+        .map(event => event.text)
+        .join('');
+      expect(answer).toContain('Encaissements locatifs');
+    });
+
     it('borne les étapes de huit conversations simultanées en modes standard et approfondi', async () => {
       const agencies = await Promise.all([
         createTestTenant('Charge-assistant-A'),

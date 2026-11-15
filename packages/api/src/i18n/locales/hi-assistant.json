@@ -1,4 +1,13 @@
 {
+  "Jeu de données indisponible.": "डेटा सेट उपलब्ध नहीं है।",
+  "Jeux de données disponibles": "उपलब्ध डेटा सेट",
+  "Dernier mois civil clos": "अंतिम पूरा कैलेंडर महीना",
+  "Trente prochains jours": "अगले तीस दिन",
+  "Douze mois jusqu’à la date de consultation": "वर्तमान तिथि तक बारह माह",
+  "Année civile demandée": "चयनित कैलेंडर वर्ष",
+  "Exercice demandé": "चयनित वित्त वर्ष",
+  "Situation à la date de consultation": "क्वेरी के समय की स्थिति",
+  "Date de consultation": "क्वेरी की तिथि",
   "Périmètre": "दायरा",
   "Filtre": "फ़िल्टर",
   "Filtres appliqués": "लागू फ़िल्टर",
