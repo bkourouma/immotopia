@@ -6,7 +6,7 @@ import JSZip from 'jszip';
 import { PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFRawStream, decodePDFRawStream } from 'pdf-lib';
 import { runWithAssistantLanguage, runWithLanguage } from '../../src/i18n';
 import type { ChartArtifact } from '../../src/lib/ai/artifact-chart-data';
-import { buildArtifactPdf } from '../../src/lib/ai/artifact-pdf';
+import { buildArtifactPdf, type ArtifactExportContext } from '../../src/lib/ai/artifact-pdf';
 import { chartScene } from '../../src/lib/ai/artifact-chart-scene';
 import { withAnalysisProvenance } from '../../src/lib/ai/artifact-sources';
 import { buildArtifactCsv, buildArtifactXlsx } from '../../src/lib/ai/artifact-spreadsheet';
@@ -45,7 +45,7 @@ const pie: ChartArtifact = {
   ]
 };
 
-function buildPowerPoint(artifact: ChartArtifact, language: 'ar' | 'fr'): Buffer {
+function buildPowerPoint(artifact: ChartArtifact, language: 'ar' | 'fr', context?: ArtifactExportContext): Buffer {
   // Exercise the real dependency in Node. PptxGenJS imports its I/O dependencies dynamically.
   const run = spawnSync(
     process.execPath,
@@ -57,15 +57,16 @@ function buildPowerPoint(artifact: ChartArtifact, language: 'ar' | 'fr'): Buffer
     const fs = require('node:fs');
     const { buildArtifactPowerPoint } = require('./src/lib/ai/artifact-pptx');
     const { runWithLanguage } = require('./src/i18n');
-    const { artifact, language } = JSON.parse(fs.readFileSync(0, 'utf8'));
-    runWithLanguage(language, () => buildArtifactPowerPoint(artifact))
+    const { artifact, language, context } = JSON.parse(fs.readFileSync(0, 'utf8'));
+    const metadata = context && { ...context, exportedAt: new Date(context.exportedAt) };
+    runWithLanguage(language, () => buildArtifactPowerPoint(artifact, metadata))
       .then(bytes => process.stdout.write(bytes))
       .catch(error => { console.error(error); process.exitCode = 1; });
   `
     ],
     {
       cwd: resolve(__dirname, '../..'),
-      input: JSON.stringify({ artifact, language }),
+      input: JSON.stringify({ artifact, language, context }),
       timeout: 25_000,
       maxBuffer: 10 * 1024 * 1024
     }
@@ -106,12 +107,24 @@ it('exporte le périmètre et les filtres sans reprendre les identifiants ou le 
   );
   expect(JSON.stringify(sql.provenance)).not.toContain('valeur_confidentielle');
 
-  const grid = await JSZip.loadAsync(await runWithLanguage('fr', () => buildArtifactXlsx(scoped)));
+  const context = { exportedAt: new Date('2028-06-03T14:15:00Z'), exportedBy: 'Awa Koné' };
+  const csv = runWithLanguage('fr', () => buildArtifactCsv(scoped, context)).toString('utf8');
+  expect(csv).toContain('Exporté par — Awa Koné');
+  expect(csv).toContain('Date d’export — 3 juin 2028');
+  expect(csv).toContain('Date de calcul');
+  expect(csv).not.toContain('id-privé');
+  const grid = await JSZip.loadAsync(await runWithLanguage('fr', () => buildArtifactXlsx(scoped, context)));
   const sheet = await grid.file('xl/sharedStrings.xml')?.async('string');
   expect(sheet).toContain('Droits communs de l’expéditeur et du destinataire');
   expect(sheet).toContain('Filtre — Année · 2026');
+  expect(sheet).toContain('Exporté par — Awa Koné');
+  expect(sheet).toContain('Date d’export — 3 juin 2028');
+  expect(await grid.file('xl/workbook.xml')?.async('string')).toContain('name="Provenance"');
 
-  const slides = await JSZip.loadAsync(buildPowerPoint({ ...line, provenance: scoped.provenance }, 'fr'));
+  const slides = await JSZip.loadAsync(buildPowerPoint({ ...line, provenance: scoped.provenance }, 'fr', context));
+  const cover = await slides.file('ppt/slides/slide1.xml')?.async('string');
+  expect(cover).toContain('Exporté par — Awa Koné');
+  expect(cover).toContain('Date d’export — 3 juin 2028');
   const content = (
     await Promise.all(slides.file(/^ppt\/slides\/slide\d+\.xml$/).map(file => file.async('string')))
   ).join('');
@@ -146,17 +159,23 @@ it.each([
 it('incorpore les contours chinois et garde le texte logique hindi dans un export mixte', async () => {
   const title = '租金收入概览';
   const label = 'किराये की आय (XOF)';
+  const exportedAt = new Date('2028-06-03T14:15:00Z');
+  const exportedBy = '王梅';
   const bytes = await runWithAssistantLanguage('zh', () =>
-    buildArtifactPdf({
-      ...line,
-      title,
-      xLabel: '月份',
-      series: [{ key: 'xof', label }],
-      data: [{ month: '一月', xof: 350_000 }]
-    })
+    buildArtifactPdf(
+      {
+        ...line,
+        title,
+        xLabel: '月份',
+        series: [{ key: 'xof', label }],
+        data: [{ month: '一月', xof: 350_000 }]
+      },
+      { exportedAt, exportedBy }
+    )
   );
   expect(bytes.length).toBeLessThan(250_000);
   const pdf = await PDFDocument.load(bytes);
+  expect(pdf.getCreationDate()).toEqual(exportedAt);
   const fontStreams = pdf.context.enumerateIndirectObjects().flatMap(([, object]) => {
     if (!(object instanceof PDFDict)) return [];
     const name = object.get(PDFName.of('FontName'))?.toString() ?? '';
@@ -183,6 +202,7 @@ it('incorpore les contours chinois et garde le texte logique hindi dans un expor
     })
     .join('\n');
   expect(drawing).toContain('/ActualText ' + PDFHexString.fromText(label).toString());
+  expect(drawing).toContain('/ActualText ' + PDFHexString.fromText('导出人 — ' + exportedBy).toString());
 }, 20_000);
 
 it('exporte un graphique modifiable avec données, lacunes et axe arabe', async () => {

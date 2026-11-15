@@ -267,6 +267,16 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
   });
 
   describe('Assistant — historique privé', () => {
+    // Plusieurs scénarios partagent la même instance Express, mais pas le
+    // quota IP d’un même navigateur. Garder une adresse par scénario.
+    let clientNumber = 0;
+    beforeEach(() => {
+      clientNumber++;
+    });
+    function authed(user: TestUser) {
+      return { Authorization: user.authHeader, 'X-Forwarded-For': `198.51.100.${clientNumber}` };
+    }
+
     it('affiche les fins de bail, mandats et appels de fonds dans le briefing autorisé', async () => {
       const actor = await createTenantMemberUser(tenantA, 'assistant-briefing', 'TEST_ASSISTANT_BRIEFING', [
         'RENTAL_LEASES_VIEW',
@@ -3099,7 +3109,18 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
             });
         const before = await downloadSharedWorkbook();
         expect(before.status).toBe(200);
-        expect(stringsInWorkbook(before.body)).toContain('Baux actifs');
+        expect(before.headers['content-disposition']).toMatch(/%20\d{4}-\d{2}-\d{2}\.xlsx$/);
+        expect(before.headers['cache-control']).toBe('private, no-store');
+        const { fullName } = await prisma.user.findUniqueOrThrow({
+          where: { id: partial.id },
+          select: { fullName: true }
+        });
+        const beforeStrings = stringsInWorkbook(before.body);
+        expect(beforeStrings).toContain('Exporté par — ' + fullName);
+        expect(beforeStrings).toContain('Date d’export — ');
+        expect(beforeStrings).not.toContain(partial.email);
+        expect(beforeStrings).not.toContain(partial.id);
+        expect(beforeStrings).toContain('Baux actifs');
         expect(stringsInWorkbook(before.body)).toContain('Montant encaissé');
 
         await updateMemberRoles(partial.id, agency.id, { roleIds: [paymentsRole.id] }, manager.id);
@@ -3151,6 +3172,10 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         expect(attachment?.filename).toBe('ImmoTopia.xlsx');
         expect(Buffer.isBuffer(attachment?.content)).toBe(true);
         const sentStrings = stringsInWorkbook(attachment?.content as Buffer);
+        expect(sentStrings).toContain('Exporté pour — ' + fullName);
+        expect(sentStrings).toContain('Date d’export — ');
+        expect(sentStrings).not.toContain(partial.email);
+        expect(sentStrings).not.toContain(partial.id);
         expect(sentStrings).toContain('Montant encaissé');
         expect(sentStrings).not.toContain('Montant attendu');
         expect(sentStrings).not.toContain('Baux actifs');

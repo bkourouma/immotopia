@@ -211,7 +211,7 @@ du destinataire. Le classeur téléchargé et celui envoyé depuis le job ne con
 destinataire, tandis que le second destinataire conserve son périmètre complet. Transport SMTP simulé. Restent la
 qualification des fournisseurs actifs et les derniers contrôles transversaux du plan.
 
-**Qualification des appels d’outils (commit de cette passation)** — Le champ Modèle liste les entrées du catalogue
+**Qualification des appels d’outils (`ae217498`)** — Le champ Modèle liste les entrées du catalogue
 OpenRouter qui déclarent `tools` et `tool_choice`. Les requêtes avec outils exigent ces paramètres du serveur de calcul
 choisi par OpenRouter. Le test de connexion des modes standard et approfondi vérifie le retour d’un appel fictif
 avec nonce, sans exécuter d’outil. Le mode rapide vérifie une réponse texte et le mode de recette est indiqué comme
@@ -219,6 +219,16 @@ simulé. Les tests API simulent les quatre familles de modèles sur le contrat S
 l’outil. Le wiki décrit la qualification. Le catalogue public annonce des modèles admissibles pour les quatre familles.
 Les variables de connexion fournisseur ne sont pas disponibles dans le processus ni dans la configuration locale
 d’ImmoTopia inspectée. Un appel authentifié auprès des fournisseurs reste à qualifier.
+
+**Traçabilité des exports (commit de cette passation)** — PDF, PowerPoint, Excel et CSV indiquent la date UTC de
+génération en plus de la date de calcul. Le téléchargement utilise le nom du compte courant. L’attachement d’un
+rapport envoyé utilise le nom du destinataire. L’identifiant et l’adresse ne figurent pas dans ces métadonnées. Les
+classeurs gardent leurs onglets de données et ajoutent une feuille Provenance. Le nom du fichier téléchargé inclut le
+jour UTC. Les tests ouvrent le PDF, la présentation et le classeur générés, et vérifient le classeur téléchargé et
+celui préparé par le job après une réduction des droits. Le wiki est synchronisé.
+La CI au commit `ae217498` a rencontré quatre 429 dans des scénarios après le bloc Assistant. Chaque scénario
+Assistant utilise désormais une adresse de test dédiée avec les limiteurs en place. Les 166 cas d’isolation
+repassent dans le mode warn de la CI. Les trois scénarios de rapports passent aussi avec la garde stricte.
 
 ## chore/deps-patch-minor — 2026-11-11
 

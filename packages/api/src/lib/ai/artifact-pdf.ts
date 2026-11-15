@@ -26,6 +26,22 @@ function formatExportDate(date: Date): string {
   );
 }
 
+export interface ArtifactExportContext {
+  exportedAt: Date;
+  exportedBy?: string | null;
+  exportedFor?: string | null;
+}
+
+export function artifactExportContextLines(context: ArtifactExportContext): string[] {
+  const actor = context.exportedBy?.trim();
+  const recipient = context.exportedFor?.trim();
+  return [
+    `${t('Date d’export')} — ${formatExportDate(context.exportedAt)}`,
+    ...(actor ? [`${t('Exporté par')} — ${actor}`] : []),
+    ...(recipient ? [`${t('Exporté pour')} — ${recipient}`] : [])
+  ];
+}
+
 type ExportSection =
   | { kind: 'text'; text: string }
   | {
@@ -151,13 +167,16 @@ export function artifactProvenanceLines(provenance: ArtifactProvenance): string[
   ];
 }
 
-export async function buildArtifactPdf(artifact: CopilotArtifact, exportedAt = new Date()): Promise<Buffer> {
+export async function buildArtifactPdf(
+  artifact: CopilotArtifact,
+  context: ArtifactExportContext = { exportedAt: new Date() }
+): Promise<Buffer> {
   const pdf = await PDFDocument.create();
   const language = currentAssistantLanguage();
   const rtl = language === 'ar';
-  const text = JSON.stringify(artifact);
+  const contextLines = artifactExportContextLines(context);
+  const text = JSON.stringify(artifact) + contextLines.join('');
   const sections = artifactExportSections(artifact);
-  const exportDate = formatExportDate(exportedAt);
   const chineseCharacter = /[\p{Script=Han}\u3000-\u303f\uff00-\uffef]/u;
   const needsChinese = language === 'zh' || chineseCharacter.test(text);
   const needsDevanagari = language === 'hi' || /\p{Script=Devanagari}/u.test(text);
@@ -172,7 +191,6 @@ export async function buildArtifactPdf(artifact: CopilotArtifact, exportedAt = n
     );
     // Inclut les unités numériques compactes et les notes ajoutées lors du rendu.
     systemText.push(
-      exportDate,
       '万亿千兆',
       t('Les données sont présentées en barres pour faciliter leur lecture.'),
       t('Aucune valeur numérique à tracer.'),
@@ -199,7 +217,7 @@ export async function buildArtifactPdf(artifact: CopilotArtifact, exportedAt = n
   );
   pdf.setTitle(artifact.title);
   pdf.setCreator('ImmoTopia');
-  pdf.setCreationDate(exportedAt);
+  pdf.setCreationDate(context.exportedAt);
   let page = pdf.addPage(pageSize);
   let y = pageSize[1] - margin;
 
@@ -271,7 +289,7 @@ export async function buildArtifactPdf(artifact: CopilotArtifact, exportedAt = n
   }
 
   paragraph(artifact.title, bold, 21);
-  paragraph(exportDate, regular, 9);
+  for (const line of contextLines) paragraph(line, regular, 9);
   y -= 12;
   if (artifact.kind === 'chart') {
     const chart = chartExportData(artifact);

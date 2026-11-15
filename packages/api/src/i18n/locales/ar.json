@@ -3402,5 +3402,9 @@
   "Déclaration à valider · {{number}}": "تصريح دفع للمراجعة · {{number}}",
   "Déclaration à valider": "تصريح دفع للمراجعة",
   "Bien non renseigné": "العقار غير محدد",
-  "Le modèle n’a pas réussi le test d’appel d’outil.": "لم يجتز النموذج اختبار استدعاء الأداة."
+  "Le modèle n’a pas réussi le test d’appel d’outil.": "لم يجتز النموذج اختبار استدعاء الأداة.",
+  "Date d’export": "تاريخ التصدير",
+  "Exporté par": "صدّره",
+  "Exporté pour": "صُدّر لصالح",
+  "Provenance": "مصدر البيانات"
 }

@@ -71,7 +71,7 @@ async function deliver(report: AssistantScheduledReport, dueAt: Date, recipientI
         emailVerified: true,
         memberships: { some: { tenantId, status: 'ACTIVE' } }
       },
-      select: { email: true, preferredLanguage: true, preferredAssistantLanguage: true }
+      select: { email: true, fullName: true, preferredLanguage: true, preferredAssistantLanguage: true }
     })
   ]);
   if (!account?.email) return 'SKIPPED';
@@ -86,11 +86,12 @@ async function deliver(report: AssistantScheduledReport, dueAt: Date, recipientI
       true
     );
     const attachments = [];
+    const exportContext = { exportedAt: new Date(), exportedFor: account.fullName };
     for (const format of report.formats) {
       if (!Object.prototype.hasOwnProperty.call(exporters, format)) {
         throw new AppError(t('Format de rapport invalide.'), 422);
       }
-      const content = await exporters[format as keyof typeof exporters](artifact);
+      const content = await exporters[format as keyof typeof exporters](artifact, exportContext);
       attachments.push({ filename: `ImmoTopia.${format}`, content });
     }
     await assertAnalysisCollaborator(tenantId, recipientId);

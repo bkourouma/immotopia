@@ -3,9 +3,18 @@ import { currentAssistantLanguage, t } from '../../i18n';
 import { AppError } from '../../middleware/error-middleware';
 import type { CopilotArtifact } from './contracts';
 import { chartColors, chartExportData } from './artifact-chart-data';
-import { artifactColumnGroups, artifactExportSections, artifactProvenanceLines } from './artifact-pdf';
+import {
+  artifactColumnGroups,
+  artifactExportContextLines,
+  artifactExportSections,
+  artifactProvenanceLines,
+  type ArtifactExportContext
+} from './artifact-pdf';
 
-export async function buildArtifactPowerPoint(artifact: CopilotArtifact): Promise<Buffer> {
+export async function buildArtifactPowerPoint(
+  artifact: CopilotArtifact,
+  context: ArtifactExportContext = { exportedAt: new Date() }
+): Promise<Buffer> {
   const pptx = new PptxGenJS();
   pptx.layout = 'LAYOUT_WIDE';
   pptx.title = artifact.title;
@@ -56,7 +65,16 @@ export async function buildArtifactPowerPoint(artifact: CopilotArtifact): Promis
   }
 
   const cover = slide(artifact.title);
-  cover.addText(new Date().toISOString(), { x: 0.55, y: 1.25, w: 12.2, h: 0.4, align, fontSize: 12 });
+  cover.addText(artifactExportContextLines(context).join('\n'), {
+    x: 0.55,
+    y: 1.25,
+    w: 12.2,
+    h: 1.2,
+    align,
+    rtlMode: rtl,
+    fontSize: 12,
+    fit: 'shrink'
+  });
   if (artifact.kind === 'chart') {
     const chart = chartExportData(artifact);
     if (artifact.scene) {

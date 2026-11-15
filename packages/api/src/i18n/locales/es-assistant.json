@@ -571,5 +571,9 @@
   "Déclaration à valider · {{number}}": "Declaración de pago por revisar · {{number}}",
   "Déclaration à valider": "Declaración de pago por revisar",
   "Bien non renseigné": "Inmueble sin especificar",
-  "Le modèle n’a pas réussi le test d’appel d’outil.": "El modelo no superó la prueba de llamada a herramientas."
+  "Le modèle n’a pas réussi le test d’appel d’outil.": "El modelo no superó la prueba de llamada a herramientas.",
+  "Date d’export": "Fecha de exportación",
+  "Exporté par": "Exportado por",
+  "Exporté pour": "Exportado para",
+  "Provenance": "Procedencia"
 }

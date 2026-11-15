@@ -571,5 +571,9 @@
   "Déclaration à valider · {{number}}": "待审核的付款申报 · {{number}}",
   "Déclaration à valider": "待审核的付款申报",
   "Bien non renseigné": "未指定房产",
-  "Le modèle n’a pas réussi le test d’appel d’outil.": "模型未通过工具调用测试。"
+  "Le modèle n’a pas réussi le test d’appel d’outil.": "模型未通过工具调用测试。",
+  "Date d’export": "导出日期",
+  "Exporté par": "导出人",
+  "Exporté pour": "导出对象",
+  "Provenance": "数据来源"
 }

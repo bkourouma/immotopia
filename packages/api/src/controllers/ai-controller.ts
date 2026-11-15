@@ -99,6 +99,7 @@ import { hasPermission } from '../services/permission-service';
 import { listAssignableMembers } from '../services/membership-service';
 import { getPreferredAssistantLanguage } from '../services/auth-service';
 import { assertModuleAccess, assertSubscriptionWritable } from '../lib/subscription/guards';
+import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
 
 /**
@@ -665,7 +666,7 @@ export const downloadSharedAnalysisHandler = asyncHandler(async (req, res) => {
   const { artifactId } = z.object({ artifactId: z.string().uuid().optional() }).strict().parse(req.query);
   const data = await getSharedAnalysis(tenantId, userId, id, artifactId);
   if (!('artifact' in data)) throw new NotFoundError();
-  await sendArtifactExport(res, data.artifact, format);
+  await sendArtifactExport(res, data.artifact, format, userId);
 });
 
 export const listAnalysisSharePinsHandler = asyncHandler(async (req, res) => {
@@ -705,21 +706,23 @@ export const downloadArtifactHandler = asyncHandler(async (req: Request, res: Re
         permissions,
         tools
       });
-  await sendArtifactExport(res, artifact, format);
+  await sendArtifactExport(res, artifact, format, owner.ownerId);
 });
 
 async function sendArtifactExport(
   res: Response,
   artifact: CopilotArtifact,
-  format: z.infer<typeof artifactExportFormat>
+  format: z.infer<typeof artifactExportFormat>,
+  userId: string
 ) {
   const exporter = artifactExporters[format];
-  const file = await exporter.build(artifact);
-  const filename =
-    artifact.title
-      .replace(/[^\p{L}\p{M}\p{N} ._-]+/gu, ' ')
-      .trim()
-      .slice(0, 100) || 'ImmoTopia';
+  const account = await prisma.user.findUnique({ where: { id: userId }, select: { fullName: true } });
+  const exportedAt = new Date();
+  const file = await exporter.build(artifact, { exportedAt, exportedBy: account?.fullName });
+  const safeTitle = artifact.title.replace(/[^\p{L}\p{M}\p{N} ._-]+/gu, ' ').trim();
+  const shortTitle = [...safeTitle].slice(0, 100).join('').trim() || 'ImmoTopia';
+  const title = /^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)/i.test(shortTitle) ? '_' + shortTitle : shortTitle;
+  const filename = `${title} ${exportedAt.toISOString().slice(0, 10)}`;
   res.set('Cache-Control', 'private, no-store');
   res.set('X-Content-Type-Options', 'nosniff');
   res.set(

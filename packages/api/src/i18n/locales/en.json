@@ -3402,5 +3402,9 @@
   "Déclaration à valider · {{number}}": "Payment declaration to review · {{number}}",
   "Déclaration à valider": "Payment declaration to review",
   "Bien non renseigné": "Property not specified",
-  "Le modèle n’a pas réussi le test d’appel d’outil.": "The model failed the tool call test."
+  "Le modèle n’a pas réussi le test d’appel d’outil.": "The model failed the tool call test.",
+  "Date d’export": "Export date",
+  "Exporté par": "Exported by",
+  "Exporté pour": "Exported for",
+  "Provenance": "Provenance"
 }
