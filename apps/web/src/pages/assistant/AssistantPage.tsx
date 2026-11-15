@@ -230,7 +230,10 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
     dispatchedPrompt.current = location.key;
     navigate(pathname, { replace: true, state: null });
     const origin = launch.sourcePath?.startsWith(`/tenant/${tenantId}/`) ? launch.sourcePath : pathname;
-    void send(launch.prompt, getCopilotPageContext(origin)).finally(() => setHistoryRefresh(value => value + 1));
+    const [originPath, originQuery] = origin.split('?', 2);
+    void send(launch.prompt, getCopilotPageContext(originPath, originQuery)).finally(() =>
+      setHistoryRefresh(value => value + 1)
+    );
   }, [activeId, location.key, location.state, navigate, pathname, send, tenantId]);
   const artifactCount = chat.artifacts.length;
   const hasArtifacts = artifactCount > 0;

@@ -23,7 +23,7 @@ const DRAWER_WIDTH = 440;
 
 const CopilotDrawer: React.FC<CopilotDrawerProps> = ({ tenantId, status, open, onClose }) => {
   const { selected, language, t } = useAssistantTranslation();
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const navigate = useNavigate();
   const { rtl: isRtl } = useLanguage();
   const { isMobile } = useBreakpoint();
@@ -35,7 +35,7 @@ const CopilotDrawer: React.FC<CopilotDrawerProps> = ({ tenantId, status, open, o
   const streaming = chat.status === 'streaming';
   const maxChars = status.limits.maxMessageChars || undefined;
 
-  const context = getCopilotPageContext(pathname);
+  const context = getCopilotPageContext(pathname, search);
   const propertyId = context.activeEntityType === 'PROPERTY' ? context.activeEntityId : undefined;
 
   // Fermer le tiroir en pleine réponse arrête le flux.

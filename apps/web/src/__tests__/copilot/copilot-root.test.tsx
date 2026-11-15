@@ -1,6 +1,6 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import AuthContext from '../../context/AuthContext';
 import type { AuthContextType } from '../../types/auth-types';
 import { AppShell } from '../../components/shell/AppShell';
@@ -65,12 +65,43 @@ function renderRoot() {
   );
 }
 
+function LaunchDestination() {
+  const location = useLocation();
+  return <output>{JSON.stringify(location.state)}</output>;
+}
+
 beforeEach(() => {
   resetCopilotStatusCache();
   getStatus.mockReset();
 });
 
 describe('CopilotRoot', () => {
+  it.each([true, false])('transmet ou retire les filtres actifs à l’ouverture de la page (%s)', async keep => {
+    getStatus.mockResolvedValue(ENABLED);
+    const path = `/tenant/${TENANT}/rental/installments`;
+    render(
+      <LanguageProvider>
+        <MemoryRouter initialEntries={[path + '?status=PARTIAL&dueFrom=2026-10-01&page=3&q=Nom']}>
+          <Routes>
+            <Route path={path} element={<CopilotRoot tenantId={TENANT} />} />
+            <Route path={`/tenant/${TENANT}/assistant`} element={<LaunchDestination />} />
+          </Routes>
+        </MemoryRouter>
+      </LanguageProvider>
+    );
+    await screen.findByRole('button', BUTTON);
+    await waitFor(() => expect(fireEvent.keyDown(window, { key: 'k', ctrlKey: true })).toBe(false));
+    const composer = await screen.findByRole('textbox', { name: 'Votre message' }, { timeout: 5000 });
+    if (!keep) fireEvent.click(screen.getByRole('button', { name: 'Retirer le contexte de l’écran' }));
+    fireEvent.change(composer, { target: { value: 'Résume les retards' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Envoyer' }));
+    const destination = await screen.findByRole('status');
+    expect(JSON.parse(destination.textContent ?? '{}')).toEqual({
+      prompt: 'Résume les retards',
+      ...(keep ? { sourcePath: path + '?status=PARTIAL&dueFrom=2026-10-01' } : {})
+    });
+  });
+
   it('affiche le bouton quand l’assistant est activé', async () => {
     getStatus.mockResolvedValue(ENABLED);
     renderRoot();

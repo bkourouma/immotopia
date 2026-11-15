@@ -245,7 +245,11 @@ export async function runChat(input: RunChatInput): Promise<ChatDoneReason> {
     writePlansIssued: 0,
     analysisTables,
     // Bail de l'écran vérifié côté serveur : seule source de confiance hors résultats d'outils.
-    seenLeaseIds: new Set(input.pageContext?.entityType === 'LEASE' ? [input.pageContext.entityId] : [])
+    seenLeaseIds: new Set(
+      input.pageContext && 'entityType' in input.pageContext && input.pageContext.entityType === 'LEASE'
+        ? [input.pageContext.entityId]
+        : []
+    )
   };
 
   let rounds = 0;

@@ -6,6 +6,7 @@ import { assistantComponentLocales } from '../../i18n/assistant-component-locale
 import { useAssistantTranslation } from '../../i18n/useAssistantTranslation';
 import { useCopilotStatus } from '../../hooks/useCopilotStatus';
 import type { CopilotStatus } from '../../types/copilot';
+import { getCopilotPageContext } from './copilot-page-context';
 
 // Le tiroir (chat, Markdown, cartes) ne se charge qu'à la première ouverture :
 // il reste hors du bundle d'entrée.
@@ -53,7 +54,7 @@ const CopilotRoot: React.FC<CopilotRootProps> = ({
   isDesktop = true
 }) => {
   const { language, selected, t } = useAssistantTranslation();
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const navigate = useNavigate();
   const [launchOpen, setLaunchOpen] = useState(false);
   const [question, setQuestion] = useState('');
@@ -159,7 +160,10 @@ const CopilotRoot: React.FC<CopilotRootProps> = ({
                 if (!prompt) return;
                 setLaunchOpen(false);
                 navigate(`/tenant/${tenantId}/assistant`, {
-                  state: { prompt, sourcePath: useContext ? pathname : undefined }
+                  state: {
+                    prompt,
+                    sourcePath: useContext ? getCopilotPageContext(pathname, search).currentPath : undefined
+                  }
                 });
               }}
             />

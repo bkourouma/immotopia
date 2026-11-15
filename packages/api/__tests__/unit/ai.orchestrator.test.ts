@@ -691,6 +691,29 @@ describe('orchestrateur — contexte d’écran', () => {
   });
 
   describe('resolvePageContext', () => {
+    it('valide les filtres affichés par liste et ignore les valeurs libres et les dates invalides', async () => {
+      const context = {
+        currentPath: `/tenant/${TENANT}/rental/installments?status=PARTIAL&overdue=1&dueFrom=2026-10-01&dueTo=2026-10-99&q=NOM-PRIVE&token=SECRET`
+      };
+      const result = await resolvePageContext(context, TENANT, new Set(['RENTAL_INSTALLMENTS_VIEW']));
+      expect(result).toEqual({
+        screen: 'rental_installments',
+        filters: { status: 'PARTIAL', overdue: true, dueFrom: '2026-10-01' }
+      });
+      const prompt = formatContextBlock(result, new Date('2026-11-15'));
+      expect(prompt).toContain('"filters":{"status":"PARTIAL","overdue":true,"dueFrom":"2026-10-01"}');
+      expect(prompt).not.toMatch(/NOM-PRIVE|SECRET|2026-10-99/);
+      expect(await resolvePageContext(context, 'other-tenant', new Set(['RENTAL_INSTALLMENTS_VIEW']))).toBeNull();
+      expect(await resolvePageContext(context, TENANT, new Set(['RENTAL_LEASES_VIEW']))).toBeNull();
+    });
+
+    it('normalise les dates et montants des encaissements et rejette les intervalles inversés', async () => {
+      const currentPath = `/tenant/${TENANT}/rental/payments?method=CASH&montantMin=20.5&montantMax=100&periodeFrom=2026-10-31&periodeTo=2026-10-01`;
+      expect(await resolvePageContext({ currentPath }, TENANT, new Set(['RENTAL_PAYMENTS_VIEW']))).toEqual({
+        screen: 'rental_payments',
+        filters: { method: 'CASH', minAmount: 20.5, maxAmount: 100 }
+      });
+    });
     const perms = new Set(ALL_PERMS);
 
     it('ignore un chemin dont l’agence n’est pas celle de la route', async () => {

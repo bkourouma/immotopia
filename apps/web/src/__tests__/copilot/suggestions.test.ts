@@ -12,6 +12,18 @@ const ALL: CopilotToolName[] = [
 ];
 
 describe('getCopilotPageContext', () => {
+  it('transmet les filtres de liste reconnus sans la recherche libre ni la pagination', () => {
+    expect(
+      getCopilotPageContext(
+        '/tenant/t1/rental/installments',
+        '?status=PARTIAL&overdue=1&dueFrom=2026-10-01&q=Camille&page=3&token=prive'
+      )
+    ).toEqual({ currentPath: '/tenant/t1/rental/installments?status=PARTIAL&overdue=1&dueFrom=2026-10-01' });
+    expect(getCopilotPageContext('/tenant/t1/dashboard', '?status=ACTIVE')).toEqual({
+      currentPath: '/tenant/t1/dashboard'
+    });
+  });
+
   it('reconnaît la fiche bien', () => {
     expect(getCopilotPageContext('/tenant/t1/properties/p1')).toEqual({
       currentPath: '/tenant/t1/properties/p1',
