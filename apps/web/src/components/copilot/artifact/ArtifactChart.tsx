@@ -21,7 +21,7 @@ import {
 } from 'recharts';
 import { t } from '../../../i18n/t';
 import { useLanguage } from '../../../i18n/useLanguage';
-import type { CopilotArtifact } from '../../../types/copilot';
+import type { ChartScene, CopilotArtifact } from '../../../types/copilot';
 import { chartXLabel, formatArtifactCell } from '../../../utils/copilot-artifact';
 
 type ChartArtifact = Extract<CopilotArtifact, { kind: 'chart' }>;
@@ -59,6 +59,11 @@ const DataFallback: React.FC<{ artifact: ChartArtifact }> = ({ artifact }) => (
             <th scope="col" style={{ textAlign: 'start' }}>
               {chartXLabel(artifact)}
             </th>
+            {artifact.groupKey && (
+              <th scope="col" style={{ textAlign: 'start' }}>
+                {artifact.groupLabel ?? artifact.groupKey}
+              </th>
+            )}
             {artifact.series.map(s => (
               <th key={s.key} scope="col" style={{ textAlign: 'start' }}>
                 {s.label}
@@ -76,6 +81,11 @@ const DataFallback: React.FC<{ artifact: ChartArtifact }> = ({ artifact }) => (
                     : String(row[artifact.xKey] ?? '')}
                 </bdi>
               </th>
+              {artifact.groupKey && (
+                <td>
+                  <bdi>{String(row[artifact.groupKey] ?? '')}</bdi>
+                </td>
+              )}
               {artifact.series.map(s => (
                 <td key={s.key}>{formatArtifactCell(row[s.key] ?? null, 'number')}</td>
               ))}
@@ -86,6 +96,44 @@ const DataFallback: React.FC<{ artifact: ChartArtifact }> = ({ artifact }) => (
     </div>
   </details>
 );
+
+function SceneFigure({ scene, rtl }: { scene: ChartScene; rtl: boolean }) {
+  return (
+    <svg viewBox={`0 0 ${scene.width} ${scene.height}`} style={{ width: '100%', height: '100%' }} aria-hidden="true">
+      {scene.marks.map((mark, index) => {
+        const x = rtl ? scene.width - mark.x - mark.w : mark.x;
+        if (mark.kind === 'rect')
+          return (
+            <rect key={index} x={x} y={mark.y} width={mark.w} height={mark.h} fill={`#${mark.color}`}>
+              {mark.tip && <title>{mark.tip}</title>}
+            </rect>
+          );
+        const letters = Array.from(mark.text);
+        const size = Math.min(22, mark.h * 0.8, Math.max(9, mark.w / (Math.max(1, letters.length) * 0.58)));
+        const cap = Math.max(1, Math.floor(mark.w / (size * 0.58)));
+        const label = letters.length > cap ? letters.slice(0, cap - 1).join('') + '…' : mark.text;
+        const from =
+          mark.align === 'start' ? (rtl ? mark.w : 0) : mark.align === 'end' ? (rtl ? 0 : mark.w) : mark.w / 2;
+        return (
+          <text
+            key={index}
+            x={x + from}
+            y={mark.y + mark.h / 2}
+            fill={`#${mark.color}`}
+            fontFamily="Arial, sans-serif"
+            fontSize={size}
+            dominantBaseline="central"
+            direction={rtl ? 'rtl' : 'ltr'}
+            textAnchor={mark.align === 'start' ? 'start' : mark.align === 'end' ? 'end' : 'middle'}
+          >
+            <title>{mark.text}</title>
+            {label}
+          </text>
+        );
+      })}
+    </svg>
+  );
+}
 
 export const ArtifactChart: React.FC<{ artifact: ChartArtifact }> = ({ artifact }) => {
   const { direction, rtl } = useLanguage();
@@ -109,6 +157,22 @@ export const ArtifactChart: React.FC<{ artifact: ChartArtifact }> = ({ artifact 
   const tick = { fill: textColor, fontSize: 12 };
   const fmt = (v: unknown) => (typeof v === 'number' ? formatArtifactCell(v, 'number') : String(v ?? ''));
   const first = artifact.series[0];
+  if (artifact.scene) {
+    return (
+      <div>
+        <div
+          role="img"
+          aria-label={label}
+          data-testid="artifact-chart"
+          dir={direction}
+          style={{ width: '100%', aspectRatio: artifact.scene.width / artifact.scene.height, maxHeight: 340 }}
+        >
+          <SceneFigure scene={artifact.scene} rtl={rtl} />
+        </div>
+        <DataFallback artifact={artifact} />
+      </div>
+    );
+  }
   const values = data.flatMap(row =>
     artifact.series.map(series => num(row[series.key])).filter(value => value !== null)
   );

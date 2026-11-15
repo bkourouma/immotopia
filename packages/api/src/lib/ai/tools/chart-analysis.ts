@@ -10,8 +10,10 @@ import {
   type AnalysisChartSeries,
   type AnalysisTable,
   type ArtifactCell,
+  type ChartScene,
   type CopilotToolDefinition
 } from '../contracts';
+import { chartScene } from '../artifact-chart-scene';
 import { assertToolPermission, outcome } from './tool-utils';
 
 const key = z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,39}$/);
@@ -37,7 +39,9 @@ const schema = z
       .string()
       .regex(/^[A-Z]{3}$/)
       .optional(),
-    series: z.array(seriesSchema).max(11).optional()
+    series: z.array(seriesSchema).max(11).optional(),
+    percent: z.boolean().optional(),
+    targetMeasure: key.optional()
   })
   .strict();
 
@@ -48,6 +52,9 @@ type ChartParts = {
   series: AnalysisChartSeries[];
   data: Record<string, ArtifactCell>[];
   rule?: string;
+  groupKey?: string;
+  groupLabel?: string;
+  scene?: ChartScene;
 };
 
 const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
@@ -75,6 +82,166 @@ function publish(input: ChartInput, source: AnalysisTable, { rule, ...parts }: C
       }
     }
   );
+}
+
+const sceneTypes = ['heatmap', 'treemap', 'funnel', 'gauge'] as const;
+type SceneType = (typeof sceneTypes)[number];
+const isSceneType = (type: ChartInput['chartType']): type is SceneType => sceneTypes.some(value => type === value);
+
+function plotScene(
+  type: SceneType,
+  input: ChartInput,
+  source: AnalysisTable,
+  dimension: AnalysisTable['columns'][number],
+  measure: AnalysisTable['columns'][number]
+) {
+  const group = source.columns.find(column => column.key === input.seriesBy);
+  const targetColumn = source.columns.find(column => column.key === input.targetMeasure);
+  const invalid = () =>
+    outcome({
+      error: 'INVALID_SERIES',
+      message: t('Vérifiez les mesures et les axes demandés pour ce graphique.')
+    });
+  const unavailable = () =>
+    outcome({
+      error: 'NO_PLOT_VALUES',
+      message: t('Aucune valeur numérique à tracer.')
+    });
+  if (
+    input.series?.length ||
+    (type === 'heatmap' && (!group || group.key === dimension.key)) ||
+    ((type === 'gauge' || type === 'funnel') && group) ||
+    (type !== 'gauge' && (input.percent !== undefined || input.targetMeasure)) ||
+    (input.targetMeasure && (!numeric(targetColumn) || targetColumn?.type !== measure.type)) ||
+    (input.percent && measure.type !== 'number') ||
+    ((type === 'funnel' || type === 'treemap') && input.aggregation === 'average')
+  )
+    return invalid();
+
+  const selected = source.rows.filter(
+    row => !input.currency || currencyOf(row.currency) === currencyOf(input.currency)
+  );
+  const values = selected.map(row => row[measure.key]).filter(finite);
+  if (!values.length) return unavailable();
+  const currencies =
+    measure.type === 'currency'
+      ? new Set(
+          selected
+            .filter(row => finite(row[measure.key]) || (targetColumn && finite(row[targetColumn.key])))
+            .map(row => currencyOf(row.currency))
+        )
+      : new Set<string>();
+  if (currencies.size > 1)
+    return outcome({
+      error: 'INCOMPATIBLE_UNITS',
+      message: t('Ce graphique exige des valeurs additives de même unité.')
+    });
+  const label = [measure.label, [...currencies][0]].filter(Boolean).join(' · ');
+  const series: AnalysisChartSeries[] = [{ key: 'value0', label }];
+
+  if (type === 'gauge') {
+    const percent = input.percent === true;
+    // Un taux agrégé doit provenir du tableau métier sous forme d’une valeur unique.
+    if (values.length > 8 || (percent && values.length !== 1) || input.aggregation === 'average') return invalid();
+    const total = values.reduce((sum, value) => sum.plus(value), new Prisma.Decimal(0)).toNumber();
+    const targets = targetColumn ? [...new Set(selected.map(row => row[targetColumn.key]).filter(finite))] : [];
+    if (targetColumn && targets.length !== 1) return invalid();
+    const target = targets[0];
+    if (
+      !finite(total) ||
+      total < 0 ||
+      (percent && total > 100) ||
+      (target !== undefined && (target < 0 || (percent && target > 100)))
+    )
+      return invalid();
+    const max = percent ? 100 : Math.min(Number.MAX_VALUE, Math.max(total, target ?? 0) * 1.25 || 1);
+    if (target !== undefined) series.push({ key: 'target', label: t('Objectif') });
+    return publish(input, source, {
+      xKey: 'category',
+      xLabel: dimension.label,
+      series,
+      data: [
+        {
+          category:
+            values.length === 1
+              ? String(selected.find(row => finite(row[measure.key]))?.[dimension.key] ?? label)
+              : t('Total'),
+          value0: total,
+          ...(target !== undefined ? { target } : {})
+        }
+      ],
+      scene: chartScene(type, [], { value: total, target, percent, max }),
+      rule: percent
+        ? t('La jauge utilise le taux calculé du jeu source sur une échelle de 0 à 100.')
+        : t('La jauge utilise le total du jeu et affiche l’objectif fourni par la source lorsqu’il existe.')
+    });
+  }
+
+  const buckets = new Map<string, { category: string; group?: string; sum: Prisma.Decimal; count: number }>();
+  for (const row of selected) {
+    const category = String(row[dimension.key] ?? t('Non renseigné'));
+    const grouping = group ? String(row[group.key] ?? t('Non renseigné')) : undefined;
+    const id = JSON.stringify([category, grouping]);
+    const bucket = buckets.get(id) ?? { category, group: grouping, sum: new Prisma.Decimal(0), count: 0 };
+    const value = row[measure.key];
+    if (finite(value)) {
+      bucket.sum = bucket.sum.plus(value);
+      bucket.count += 1;
+    }
+    buckets.set(id, bucket);
+  }
+  const entries = [...buckets.values()].map(bucket => {
+    const value = bucket.count
+      ? (input.aggregation === 'average' ? bucket.sum.div(bucket.count) : bucket.sum).toNumber()
+      : null;
+    return { category: bucket.category, group: bucket.group, value: finite(value) ? value : null };
+  });
+  const columns = new Set(entries.map(entry => entry.category)).size;
+  const rows = new Set(entries.map(entry => entry.group)).size;
+  if (
+    entries.length > COPILOT_ARTIFACT_MAX_CHART_POINTS ||
+    (type === 'heatmap' && (columns > 20 || rows > 20 || columns * rows > 200))
+  ) {
+    return outcome({ error: 'TOO_MANY_POINTS', message: t('Le résultat dépasse la capacité de ce graphique.') });
+  }
+  if (
+    (type === 'treemap' || type === 'funnel') &&
+    (entries.some(entry => (entry.value ?? 0) < 0) ||
+      !entries.some(entry => (entry.value ?? 0) > 0) ||
+      (type === 'funnel' && (entries.length < 2 || entries.length > 8)))
+  )
+    return invalid();
+  entries.sort(
+    type === 'heatmap'
+      ? (a, b) => a.category.localeCompare(b.category) || String(a.group).localeCompare(String(b.group))
+      : (a, b) => (b.value ?? -Infinity) - (a.value ?? -Infinity)
+  );
+  const matrix =
+    type === 'heatmap'
+      ? [...new Set(entries.map(entry => entry.category))].flatMap(category =>
+          [...new Set(entries.map(entry => entry.group))].map(group => ({
+            category,
+            group,
+            value: entries.find(entry => entry.category === category && entry.group === group)?.value ?? null
+          }))
+        )
+      : entries;
+  return publish(input, source, {
+    xKey: 'category',
+    xLabel: dimension.label,
+    series,
+    ...(group ? { groupKey: 'group', groupLabel: group.label } : {}),
+    data: matrix.map(entry => ({
+      category: entry.category,
+      ...(entry.group !== undefined ? { group: entry.group } : {}),
+      value0: entry.value
+    })),
+    scene: chartScene(type, matrix),
+    rule:
+      type === 'heatmap'
+        ? t('Les croisements sans valeur restent distincts des zéros.')
+        : t('Les proportions sont calculées à partir des valeurs additives du jeu source.')
+  });
 }
 
 function plotMeasures(
@@ -177,7 +344,7 @@ function plotMeasures(
 export const chartAnalysisTool: CopilotToolDefinition<typeof schema> = {
   name: 'chart_analysis',
   description:
-    'Publie un graphique fondé sur un tableau du fil. seriesBy répartit les séries. Pour un taux, utilise aggregation=average. Les parts et empilements utilisent une unité. Pour scatter, dimension et measure sont deux mesures numériques sans agrégation. Pour combo, measure est la barre principale et series décrit les autres mesures : form bar ou line, axis primary ou secondary. Pour scatter et combo, currency peut sélectionner une devise.',
+    'Publie un graphique fondé sur un tableau du fil. Pour un taux, utilise aggregation=average hors jauge. scatter trace deux mesures numériques sans agrégation. combo utilise measure pour la barre principale et series pour les autres mesures. heatmap exige seriesBy comme seconde dimension. treemap accepte seriesBy comme groupe parent. funnel affiche de deux à huit étapes. Pour gauge, percent=true exige un taux unique ; targetMeasure référence un objectif fourni par le tableau. currency peut isoler une devise pour ces formes.',
   inputSchema: schema,
   jsonSchema: {
     type: 'object',
@@ -192,6 +359,8 @@ export const chartAnalysisTool: CopilotToolDefinition<typeof schema> = {
       seriesBy: { type: 'string' },
       aggregation: { type: 'string', enum: ['sum', 'average'] },
       currency: { type: 'string', pattern: '^[A-Z]{3}$' },
+      percent: { type: 'boolean' },
+      targetMeasure: { type: 'string' },
       series: {
         type: 'array',
         maxItems: 11,
@@ -231,6 +400,13 @@ export const chartAnalysisTool: CopilotToolDefinition<typeof schema> = {
 
     if (source.truncated) {
       return outcome({ error: 'TOO_MANY_POINTS', message: t('Le résultat dépasse la capacité de ce graphique.') });
+    }
+    if (isSceneType(input.chartType)) return plotScene(input.chartType, input, source, dimension, measure);
+    if (input.percent !== undefined || input.targetMeasure) {
+      return outcome({
+        error: 'INVALID_SERIES',
+        message: t('Vérifiez les mesures et les axes demandés pour ce graphique.')
+      });
     }
     if (input.chartType === 'scatter' || input.chartType === 'combo')
       return plotMeasures(input, source, dimension, measure);

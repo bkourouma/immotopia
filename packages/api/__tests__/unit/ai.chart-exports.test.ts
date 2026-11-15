@@ -6,6 +6,8 @@ import { PDFArray, PDFDocument, PDFRawStream, decodePDFRawStream } from 'pdf-lib
 import { runWithLanguage } from '../../src/i18n';
 import type { ChartArtifact } from '../../src/lib/ai/artifact-chart-data';
 import { buildArtifactPdf } from '../../src/lib/ai/artifact-pdf';
+import { chartScene } from '../../src/lib/ai/artifact-chart-scene';
+import { buildArtifactCsv } from '../../src/lib/ai/artifact-spreadsheet';
 
 const line: ChartArtifact = {
   id: randomUUID(),
@@ -168,3 +170,28 @@ it('garde les coordonnées numériques et les axes natifs du nuage et du combin�
   expect(comboXml).toContain('<c:barChart>');
   expect(comboXml?.match(/<c:valAx>/g)).toHaveLength(2);
 }, 45_000);
+
+it('exporte le même dessin et les deux dimensions de la carte de chaleur', async () => {
+  const artifact: ChartArtifact = {
+    ...pie,
+    chartType: 'heatmap',
+    groupKey: 'zone',
+    groupLabel: 'Zone',
+    data: [
+      { month: 'Octobre', zone: 'A', xof: 0 },
+      { month: 'Novembre', zone: 'A', xof: null }
+    ],
+    scene: chartScene('heatmap', [
+      { category: 'Octobre', group: 'A', value: 0 },
+      { category: 'Novembre', group: 'A', value: null }
+    ])
+  };
+  expect(buildArtifactCsv(artifact).toString('utf8')).toContain('"Octobre";"A";0');
+  expect(buildArtifactCsv(artifact).toString('utf8')).toContain('"Novembre";"A";""');
+  const archive = await JSZip.loadAsync(buildPowerPoint(artifact, 'ar'));
+  const slide = await archive.file('ppt/slides/slide2.xml')?.async('string');
+  expect(slide).toContain('<a:prstGeom prst="rect">');
+  expect(slide).toContain('E7EDF4');
+  const pdf = await PDFDocument.load(await runWithLanguage('ar', () => buildArtifactPdf(artifact)));
+  expect(pdf.getPageCount()).toBeGreaterThan(0);
+});

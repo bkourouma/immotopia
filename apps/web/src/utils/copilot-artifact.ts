@@ -10,6 +10,8 @@ import {
   ARTIFACT_MAX_SERIES,
   type ArtifactCell,
   type AnalysisChartSeries,
+  type ChartScene,
+  type ChartMark,
   type ArtifactIndicator,
   type ArtifactDocumentBlock,
   type ArtifactProvenance,
@@ -43,6 +45,45 @@ function cleanRows(raw: unknown, keys: string[], max: number): Record<string, Ar
 }
 
 const COLUMN_TYPES = ['text', 'number', 'currency', 'date'] as const;
+
+function sanitizeScene(raw: unknown): ChartScene | undefined {
+  if (!isRecord(raw) || !Array.isArray(raw.marks)) return;
+  const { width, height } = raw;
+  if (
+    typeof width !== 'number' ||
+    !(width >= 1 && width <= 1000) ||
+    typeof height !== 'number' ||
+    !(height >= 1 && height <= 1000)
+  )
+    return;
+  const marks: ChartMark[] = [];
+  for (const mark of raw.marks.slice(0, 900)) {
+    if (!isRecord(mark)) continue;
+    const { x, y, w, h, color } = mark;
+    if (
+      typeof x !== 'number' ||
+      typeof y !== 'number' ||
+      typeof w !== 'number' ||
+      typeof h !== 'number' ||
+      !(x >= 0 && y >= 0 && w > 0 && h > 0 && x + w <= width + 0.01 && y + h <= height + 0.01) ||
+      typeof color !== 'string' ||
+      !/^[0-9a-f]{6}$/i.test(color)
+    )
+      continue;
+    const box = { x, y, w, h, color };
+    if (mark.kind === 'rect') {
+      marks.push({ kind: 'rect', ...box, ...(typeof mark.tip === 'string' ? { tip: mark.tip.slice(0, 250) } : {}) });
+    } else if (mark.kind === 'text' && typeof mark.text === 'string') {
+      marks.push({
+        kind: 'text',
+        ...box,
+        text: mark.text.slice(0, 180),
+        align: mark.align === 'start' || mark.align === 'end' ? mark.align : 'center'
+      });
+    }
+  }
+  return marks.length ? { width, height, marks } : undefined;
+}
 
 export function artifactInternalLink(value: unknown): string | undefined {
   return typeof value === 'string' && /^\/tenant\/[A-Za-z0-9_-]+\/[A-Za-z0-9_/-]+$/.test(value) ? value : undefined;
@@ -210,6 +251,8 @@ export function sanitizeArtifact(raw: unknown): (CopilotArtifact & { canRefresh?
     }
     if (series.length === 0) return null;
     const provenance = sanitizeProvenance(raw.provenance);
+    const groupKey = str(raw.groupKey);
+    const scene = sanitizeScene(raw.scene);
     return {
       kind: 'chart',
       id,
@@ -217,8 +260,14 @@ export function sanitizeArtifact(raw: unknown): (CopilotArtifact & { canRefresh?
       chartType,
       xKey,
       ...(str(raw.xLabel) ? { xLabel: str(raw.xLabel) } : {}),
+      ...(groupKey ? { groupKey, groupLabel: str(raw.groupLabel) ?? groupKey } : {}),
+      ...(scene ? { scene } : {}),
       series,
-      data: cleanRows(raw.data, [xKey, ...series.map(s => s.key)], ARTIFACT_MAX_CHART_POINTS),
+      data: cleanRows(
+        raw.data,
+        [xKey, ...(groupKey ? [groupKey] : []), ...series.map(s => s.key)],
+        ARTIFACT_MAX_CHART_POINTS
+      ),
       ...refresh,
       ...(provenance ? { provenance } : {})
     };
@@ -368,6 +417,7 @@ export function exportableTable(
     return {
       columns: [
         { key: artifact.xKey, label: chartXLabel(artifact) },
+        ...(artifact.groupKey ? [{ key: artifact.groupKey, label: artifact.groupLabel ?? artifact.groupKey }] : []),
         ...artifact.series.map(s => ({ key: s.key, label: s.label }))
       ],
       rows: artifact.data

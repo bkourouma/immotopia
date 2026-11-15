@@ -3,6 +3,7 @@ import { currentLanguage } from '../../i18n';
 import { wrapArabicText } from '../documents/pdf-arabic';
 import type { TextFace } from '../signature/seal-text';
 import { chartColors, type chartExportData } from './artifact-chart-data';
+import type { ChartScene } from './contracts';
 
 type Chart = ReturnType<typeof chartExportData>;
 const palette = chartColors.map(hex =>
@@ -12,6 +13,35 @@ const ink = rgb(0.1, 0.15, 0.22);
 const grid = rgb(0.83, 0.87, 0.92);
 
 export const chartHeight = 300;
+
+export function drawChartScene(
+  page: PDFPage,
+  scene: ChartScene,
+  font: TextFace,
+  area: { left: number; width: number; top: number; rtl: boolean }
+) {
+  const ratio = area.width / scene.width;
+  for (const mark of scene.marks) {
+    const left = area.left + (area.rtl ? scene.width - mark.x - mark.w : mark.x) * ratio;
+    const top = area.top - mark.y * ratio;
+    const w = mark.w * ratio;
+    const h = mark.h * ratio;
+    const color = rgb(
+      ...([0, 2, 4].map(offset => parseInt(mark.color.slice(offset, offset + 2), 16) / 255) as [number, number, number])
+    );
+    if (mark.kind === 'rect') {
+      page.drawRectangle({ x: left, y: top - h, width: w, height: h, color });
+    } else {
+      const size = Math.min(22 * ratio, h * 0.8);
+      const lines = wrapArabicText(font, mark.text, size, w);
+      const label = lines.length > 1 ? lines[0] + '…' : (lines[0] ?? '');
+      const remaining = Math.max(0, w - font.width(label, size));
+      const pos =
+        mark.align === 'center' || !mark.align ? remaining / 2 : (mark.align === 'start') === area.rtl ? remaining : 0;
+      font.draw(page, label, { x: left + pos, y: top - h / 2 - size * 0.3, size, color });
+    }
+  }
+}
 
 function numericScale(values: number[], includeZero: boolean) {
   const magnitude = Math.max(1, ...values.map(Math.abs));

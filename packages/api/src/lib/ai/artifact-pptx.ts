@@ -59,7 +59,36 @@ export async function buildArtifactPowerPoint(artifact: CopilotArtifact): Promis
   cover.addText(new Date().toISOString(), { x: 0.55, y: 1.25, w: 12.2, h: 0.4, align, fontSize: 12 });
   if (artifact.kind === 'chart') {
     const chart = chartExportData(artifact);
-    if (chart.values.length) {
+    if (artifact.scene) {
+      const page = slide(artifact.title);
+      const { width, height, marks } = artifact.scene;
+      const sx = 12.2 / width;
+      const sy = Math.min(5.67 / height, sx);
+      for (const mark of marks) {
+        const box = {
+          x: 0.55 + (rtl ? width - mark.x - mark.w : mark.x) * sx,
+          y: 1.14 + mark.y * sy,
+          w: mark.w * sx,
+          h: mark.h * sy
+        };
+        if (mark.kind === 'rect') {
+          page.addShape(pptx.ShapeType.rect, { ...box, fill: { color: mark.color }, line: { transparency: 100 } });
+        } else {
+          page.addText(mark.text, {
+            ...box,
+            margin: 0,
+            valign: 'middle',
+            color: mark.color,
+            fontFace: 'Arial',
+            fontSize: Math.min(22, 52 * box.h),
+            fit: 'shrink',
+            rtlMode: rtl,
+            align:
+              mark.align === 'center' || !mark.align ? 'center' : (mark.align === 'start') === rtl ? 'right' : 'left'
+          });
+        }
+      }
+    } else if (chart.values.length) {
       const page = slide(artifact.title);
       const horizontal = chart.type === 'horizontal_bar';
       const parts = chart.type === 'pie' || chart.type === 'donut';

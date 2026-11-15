@@ -222,3 +222,77 @@ it('mélange barres et courbes sur des axes distincts et applique l’agrégat d
     (await run({ chartType: 'combo', series: [{ ...series[0], axis: 'primary' }] }, dataset)).modelResult
   ).toMatchObject({ error: 'INCOMPATIBLE_UNITS' });
 });
+it('trace une carte de chaleur avec des cellules distinctes pour zéro et les croisements manquants', async () => {
+  const dataset = {
+    ...source,
+    rows: [
+      { period: '2026-09', zone: 'A', currency: 'XOF', amount: 0 },
+      { period: '2026-10', zone: 'B', currency: 'XOF', amount: -6 },
+      { period: '2026-10', zone: 'B', currency: 'XOF', amount: -4 }
+    ]
+  };
+  const result = await run({ chartType: 'heatmap', seriesBy: 'zone' }, dataset);
+  expect(result.uiEvent).toMatchObject({
+    artifact: {
+      groupKey: 'group',
+      groupLabel: 'Zone',
+      data: [
+        { category: '2026-09', group: 'A', value0: 0 },
+        { category: '2026-09', group: 'B', value0: null },
+        { category: '2026-10', group: 'A', value0: null },
+        { category: '2026-10', group: 'B', value0: -10 }
+      ],
+      scene: {
+        marks: expect.arrayContaining([
+          expect.objectContaining({ tip: '2026-09 · A: 0', color: 'f6f6f6' }),
+          expect.objectContaining({ tip: '2026-10 · A: —', color: 'E7EDF4' })
+        ])
+      }
+    }
+  });
+});
+
+it('trace un treemap hiérarchique et classe les étapes de l’entonnoir par valeur', async () => {
+  const tree = await run({ chartType: 'treemap', seriesBy: 'zone' });
+  expect(tree.uiEvent).toMatchObject({
+    artifact: {
+      groupLabel: 'Zone',
+      scene: { marks: expect.arrayContaining([expect.objectContaining({ tip: 'A · 2026-10: 12' })]) }
+    }
+  });
+  const funnel = await run({ chartType: 'funnel', dimension: 'zone' });
+  expect(funnel.uiEvent).toMatchObject({
+    artifact: {
+      data: [
+        { category: 'A', value0: 22 },
+        { category: 'B', value0: 6 }
+      ],
+      scene: { marks: expect.arrayContaining([expect.objectContaining({ tip: 'A', w: 355 })]) }
+    }
+  });
+});
+
+it('utilise le taux fourni et valide la cible de la jauge sans fabriquer de seuil', async () => {
+  const dataset: AnalysisTable = {
+    ...source,
+    columns: [
+      ...source.columns,
+      { key: 'rate', label: 'Taux', type: 'number' },
+      { key: 'goal', label: 'Cible', type: 'number' }
+    ],
+    rows: [{ period: '2026-10', rate: 75, goal: 90 }]
+  };
+  const args = { chartType: 'gauge', measure: 'rate', percent: true, targetMeasure: 'goal' };
+  expect((await run(args, dataset)).uiEvent).toMatchObject({
+    artifact: {
+      data: [{ category: '2026-10', value0: 75, target: 90 }],
+      scene: { marks: expect.arrayContaining([expect.objectContaining({ text: 'Objectif : 90 %' })]) }
+    }
+  });
+  expect(
+    (await run(args, { ...dataset, rows: [...dataset.rows, { period: '2026-09', rate: 82, goal: 90 }] })).modelResult
+  ).toMatchObject({ error: 'INVALID_SERIES' });
+  const noGoal = await run({ chartType: 'gauge' });
+  expect(noGoal.uiEvent).toMatchObject({ artifact: { data: [{ category: 'Total', value0: 28 }] } });
+  expect(JSON.stringify(noGoal.uiEvent)).not.toContain('Objectif');
+});

@@ -3180,5 +3180,14 @@
   "Vérifiez les mesures et les axes demandés pour ce graphique.": "تحقق من المقاييس والمحاور المطلوبة لهذا المخطط.",
   "Chaque axe doit utiliser une seule unité et une seule devise.": "يجب أن يستخدم كل محور وحدةً واحدة وعملةً واحدة.",
   "Chaque point reprend les deux mesures de la même ligne source.": "تستخدم كل نقطة المقياسين من صف المصدر نفسه.",
-  "Les séries du graphique combiné utilisent leur agrégation et leur axe respectifs.": "تستخدم كل سلسلة في المخطط المركب طريقة التجميع والمحور المخصصين لها."
+  "Les séries du graphique combiné utilisent leur agrégation et leur axe respectifs.": "تستخدم كل سلسلة في المخطط المركب طريقة التجميع والمحور المخصصين لها.",
+  "Négatif": "سالب",
+  "Positif": "موجب",
+  "Sans donnée": "لا توجد بيانات",
+  "Objectif": "الهدف",
+  "Objectif : {{value}}": "الهدف: {{value}}",
+  "La jauge utilise le taux calculé du jeu source sur une échelle de 0 à 100.": "يعرض المقياس النسبة المحسوبة من بيانات المصدر على مقياس من 0 إلى 100.",
+  "La jauge utilise le total du jeu et affiche l’objectif fourni par la source lorsqu’il existe.": "يعرض المقياس إجمالي البيانات والهدف الوارد في المصدر إن توفر.",
+  "Les croisements sans valeur restent distincts des zéros.": "تظل التقاطعات التي لا تحتوي على بيانات مميزة عن الأصفار.",
+  "Les proportions sont calculées à partir des valeurs additives du jeu source.": "تُحسب النسب من القيم القابلة للجمع في بيانات المصدر."
 }

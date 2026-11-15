@@ -695,6 +695,43 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         {
           toolCalls: [
             {
+              name: 'chart_analysis',
+              input: {
+                sourceId: dues.id,
+                title: 'Intensité des retards',
+                dimension: 'period',
+                measure: 'overdue',
+                chartType: 'heatmap',
+                seriesBy: 'currency'
+              }
+            }
+          ]
+        },
+        { text: 'Carte de chaleur prête.' }
+      ];
+      const heat = await request(app)
+        .post(base + '/chat')
+        .set(authed(admin))
+        .send({
+          conversationId,
+          turnId: randomUUID(),
+          messages: [{ role: 'user', content: 'Montre les retards en carte de chaleur.' }]
+        });
+      expect(heat.status).toBe(200);
+      const heatArtifact = parseEvents(heat.text).find(event => event.type === 'artifact')?.artifact;
+      expect(heatArtifact).toMatchObject({
+        chartType: 'heatmap',
+        groupKey: 'group',
+        scene: { width: 640 },
+        data: [
+          { category: '2024-10', group: 'XOF', value0: 0 },
+          { category: period, group: 'XOF', value0: 77 }
+        ]
+      });
+      mockFakeScript = [
+        {
+          toolCalls: [
+            {
               name: 'pivot_analysis',
               input: {
                 title: 'Tableau privé par devise',
@@ -725,6 +762,10 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         totals: { currency: 'Total', pivot_0: 77, pivot_1: 38.5 }
       });
       await updateDue(agency.id, current.installmentId, { amount_paid: 70 });
+      const heatPath = `${base}/conversations/${conversationId}/artifacts/${heatArtifact.id}`;
+      const heatReplay = await request(app).post(heatPath).set(authed(admin)).send({ expectedVersion: 1 });
+      expect(heatReplay.status).toBe(201);
+      expect(heatReplay.body.data.artifact.data[1]).toMatchObject({ category: period, group: 'XOF', value0: 47 });
       const chartPath = `${base}/conversations/${conversationId}/artifacts/${chartArtifact.id}`;
       const chartReplay = await request(app).post(chartPath).set(authed(admin)).send({ expectedVersion: 1 });
       expect(chartReplay.status).toBe(201);

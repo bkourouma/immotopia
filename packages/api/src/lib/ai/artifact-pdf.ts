@@ -4,7 +4,7 @@ import { AppError } from '../../middleware/error-middleware';
 import { wrapArabicText } from '../documents/pdf-arabic';
 import { embedUnicodeFonts, TextFace } from '../signature/seal-text';
 import { chartExportData } from './artifact-chart-data';
-import { chartHeight, drawArtifactChart } from './artifact-chart-pdf';
+import { chartHeight, drawArtifactChart, drawChartScene } from './artifact-chart-pdf';
 import type { ArtifactCell, ArtifactProvenance, CopilotArtifact } from './contracts';
 
 const margin = 42;
@@ -84,9 +84,14 @@ export function artifactExportSections(artifact: CopilotArtifact): ExportSection
       return [
         {
           kind: 'grid',
-          headers: [artifact.xLabel ?? artifact.xKey, ...artifact.series.map(series => series.label)],
+          headers: [
+            artifact.xLabel ?? artifact.xKey,
+            ...(artifact.groupKey ? [artifact.groupLabel ?? artifact.groupKey] : []),
+            ...artifact.series.map(series => series.label)
+          ],
           rows: artifact.data.map(row => [
             row[artifact.xKey] ?? null,
+            ...(artifact.groupKey ? [row[artifact.groupKey] ?? null] : []),
             ...artifact.series.map(series => row[series.key] ?? null)
           ]),
           provenance: artifact.provenance
@@ -219,7 +224,12 @@ export async function buildArtifactPdf(artifact: CopilotArtifact, exportedAt = n
   y -= 12;
   if (artifact.kind === 'chart') {
     const chart = chartExportData(artifact);
-    if (chart.values.length) {
+    if (artifact.scene) {
+      const size = (artifact.scene.height * width) / artifact.scene.width;
+      reserve(size);
+      drawChartScene(page, artifact.scene, regular, { left: margin, width, top: y, rtl });
+      y -= size;
+    } else if (chart.values.length) {
       if (chart.fallback)
         paragraph(t('Les données sont présentées en barres pour faciliter leur lecture.'), regular, 9);
       reserve(chartHeight);

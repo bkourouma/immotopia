@@ -11,6 +11,30 @@ import {
 } from '../../utils/copilot-artifact';
 
 describe('sanitizeArtifact', () => {
+  it('conserve le dessin et la seconde dimension sans accepter une couleur arbitraire', () => {
+    const item = sanitizeArtifact({
+      kind: 'chart',
+      id: 'heat',
+      title: 'Chaleur',
+      chartType: 'heatmap',
+      xKey: 'month',
+      groupKey: 'zone',
+      groupLabel: 'Zone',
+      series: [{ key: 'count', label: 'Nombre' }],
+      data: [{ month: 'Janvier', zone: 'Nord', count: 0 }],
+      scene: {
+        width: 640,
+        height: 300,
+        marks: [
+          { kind: 'rect', x: 1, y: 1, w: 50, h: 30, color: 'E7EDF4' },
+          { kind: 'rect', x: 1, y: 1, w: 50, h: 30, color: 'url(https://example.invalid)' },
+          { kind: 'rect', x: 1, y: 1, w: 750, h: 30, color: 'FFFFFF' }
+        ]
+      }
+    });
+    expect(item).toMatchObject({ groupKey: 'zone', scene: { marks: [{ kind: 'rect', color: 'E7EDF4' }] } });
+    expect(item && exportableTable(item)?.rows).toEqual([{ month: 'Janvier', zone: 'Nord', count: 0 }]);
+  });
   it('conserve les colonnes et les totaux du tableau croisé pour l’export', () => {
     const columns = Array.from({ length: 51 }, (_, index) => ({ key: `c${index}`, label: `Colonne ${index}` }));
     const table = sanitizeArtifact({

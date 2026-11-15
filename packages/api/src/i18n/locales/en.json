@@ -3180,5 +3180,14 @@
   "Vérifiez les mesures et les axes demandés pour ce graphique.": "Check the measures and axes requested for this chart.",
   "Chaque axe doit utiliser une seule unité et une seule devise.": "Each axis must use a single unit and a single currency.",
   "Chaque point reprend les deux mesures de la même ligne source.": "Each point uses the two measures from the same source row.",
-  "Les séries du graphique combiné utilisent leur agrégation et leur axe respectifs.": "Each series in the combination chart uses its own aggregation and axis."
+  "Les séries du graphique combiné utilisent leur agrégation et leur axe respectifs.": "Each series in the combination chart uses its own aggregation and axis.",
+  "Négatif": "Negative",
+  "Positif": "Positive",
+  "Sans donnée": "No data",
+  "Objectif": "Target",
+  "Objectif : {{value}}": "Target: {{value}}",
+  "La jauge utilise le taux calculé du jeu source sur une échelle de 0 à 100.": "The gauge uses the calculated rate from the source data on a scale from 0 to 100.",
+  "La jauge utilise le total du jeu et affiche l’objectif fourni par la source lorsqu’il existe.": "The gauge uses the dataset total and shows the target supplied by the source when available.",
+  "Les croisements sans valeur restent distincts des zéros.": "Combinations with no data are distinct from zeros.",
+  "Les proportions sont calculées à partir des valeurs additives du jeu source.": "Proportions are based on additive values from the source dataset."
 }

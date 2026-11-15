@@ -367,7 +367,11 @@ export const ANALYSIS_CHART_TYPES = [
   'pie',
   'donut',
   'scatter',
-  'combo'
+  'combo',
+  'heatmap',
+  'treemap',
+  'funnel',
+  'gauge'
 ] as const;
 export type AnalysisChartType = (typeof ANALYSIS_CHART_TYPES)[number];
 
@@ -376,6 +380,25 @@ export interface AnalysisChartSeries {
   label: string;
   form?: 'bar' | 'line';
   axis?: 'primary' | 'secondary';
+}
+
+export type ChartMark =
+  | { kind: 'rect'; x: number; y: number; w: number; h: number; color: string; tip?: string }
+  | {
+      kind: 'text';
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      color: string;
+      text: string;
+      align?: 'start' | 'center' | 'end';
+    };
+
+export interface ChartScene {
+  width: number;
+  height: number;
+  marks: ChartMark[];
 }
 
 type MaintenanceQueryFilters = {
@@ -464,6 +487,9 @@ export type CopilotArtifact =
       chartType: AnalysisChartType;
       xKey: string;
       xLabel?: string;
+      groupKey?: string;
+      groupLabel?: string;
+      scene?: ChartScene;
       series: AnalysisChartSeries[];
       data: Record<string, ArtifactCell>[];
     };
