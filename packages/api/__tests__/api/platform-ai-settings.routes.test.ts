@@ -230,7 +230,7 @@ describe('super-admin', () => {
     }
   });
 
-  it('teste la connexion du mode demandé avec le modèle enregistré et sans outils', async () => {
+  it('teste le mode rapide avec le modèle enregistré et sans outils', async () => {
     mockPrisma.platformAiSettings.findUnique.mockResolvedValue({
       id: 'default',
       ...body,
@@ -243,7 +243,12 @@ describe('super-admin', () => {
     try {
       const response = await request(app).post('/api/platform/ai-settings/connection-test').send({ mode: 'fast' });
       expect(response.status).toBe(200);
-      expect(response.body.data).toMatchObject({ model: 'provider/fast', provider: 'openrouter', simulated: false });
+      expect(response.body.data).toMatchObject({
+        model: 'provider/fast',
+        provider: 'openrouter',
+        simulated: false,
+        toolsVerified: false
+      });
       expect(response.text).not.toContain('Texte fournisseur');
       expect(response.text).not.toContain('SUPER-SECRET');
       const outbound = JSON.parse(String(fetchSpy.mock.calls[0][1]?.body));
@@ -254,6 +259,105 @@ describe('super-admin', () => {
       ).toBe(400);
     } finally {
       fetchSpy.mockRestore();
+    }
+  });
+
+  it.each([
+    ['standard', 'anthropic/test-model'],
+    ['deep', 'openai/test-model'],
+    ['standard', 'google/test-model'],
+    ['deep', 'deepseek/test-model']
+  ] as const)('le mode %s vérifie la réception de l’appel d’outil pour %s', async (mode, model) => {
+    mockPrisma.platformAiSettings.findUnique.mockResolvedValue({
+      id: 'default',
+      ...body,
+      model: mode === 'standard' ? model : body.model,
+      modelsByMode: mode === 'deep' ? { deep: model } : {},
+      updatedAt: new Date()
+    });
+    const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(async (_url, init) => {
+      const sent = JSON.parse(String(init?.body)) as { messages: Array<{ role: string; content: string }> };
+      const nonce = sent.messages.find(message => message.role === 'user')?.content;
+      expect(sent).toMatchObject({
+        model,
+        tools: [{ type: 'function', function: { name: 'list_capabilities' } }],
+        provider: { require_parameters: true }
+      });
+      const result = {
+        model,
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: 'test-call',
+                  type: 'function',
+                  function: { name: 'list_capabilities', arguments: JSON.stringify({ nonce }) }
+                }
+              ]
+            },
+            finish_reason: 'tool_calls'
+          }
+        ]
+      };
+      return new Response('data: ' + JSON.stringify(result) + '\n\ndata: [DONE]\n\n');
+    });
+    try {
+      const response = await request(app).post('/api/platform/ai-settings/connection-test').send({ mode });
+      expect(response.status).toBe(200);
+      expect(response.body.data).toMatchObject({
+        model,
+        provider: 'openrouter',
+        simulated: false,
+        toolsVerified: true
+      });
+      expect(JSON.stringify(response.body)).not.toContain('test-call');
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('refuse un modèle qui ignore le test d’appel d’outil', async () => {
+    mockPrisma.platformAiSettings.findUnique.mockResolvedValue({ id: 'default', ...body, updatedAt: new Date() });
+    const responseBody = 'data: {"choices":[{"delta":{"content":"OK"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n';
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(new Response(responseBody));
+    try {
+      const response = await request(app).post('/api/platform/ai-settings/connection-test').send({});
+      expect(response.status).toBe(502);
+      expect(response.body.message).toBe('Le modèle n’a pas réussi le test d’appel d’outil.');
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('écarte les modèles OpenRouter qui ne déclarent pas les deux paramètres des outils', async () => {
+    const spy = jest.spyOn(global, 'fetch').mockResolvedValue(
+      Response.json({
+        data: [
+          null,
+          { id: 'provider/text', supported_parameters: ['max_tokens'] },
+          {
+            id: 'provider/both',
+            name: 'Outils',
+            context_length: 32_000,
+            supported_parameters: ['tools', 'tool_choice']
+          },
+          { id: 'provider/no-tool-choice', supported_parameters: ['tools'] },
+          { id: 'provider/unknown' }
+        ]
+      })
+    );
+    try {
+      const res = await request(app).get('/api/platform/ai-settings/models');
+      expect(res.status).toBe(200);
+      expect(res.body.data).toEqual({
+        models: [{ id: 'provider/both', name: 'Outils', contextLength: 32_000 }],
+        unavailable: false
+      });
+    } finally {
+      spy.mockRestore();
     }
   });
 

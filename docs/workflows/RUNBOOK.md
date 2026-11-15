@@ -467,6 +467,24 @@ avertissement est écrit au démarrage. Les plafonds par agence s'ajoutent aux
 limites par utilisateur (20 par minute, 300 par jour). Faire tourner
 `JWT_SECRET` invalide les propositions en cours (5 minutes au plus).
 
+**Qualifier les fournisseurs et modèles.** Sur une instance de recette dotée
+d’une clé active, enregistrer le fournisseur et les modèles, puis lancer
+« Tester la connexion » dans les trois modes. Le test des modes standard et
+approfondi envoie une valeur aléatoire et vérifie qu’elle revient dans l’appel
+d’un outil fictif. Le mode rapide attend une réponse texte. La réponse
+`toolsVerified: true` confirme l’appel d’outil. Le test ne lit aucune donnée
+d’agence. La réponse `simulated: true` identifie le fournisseur local de recette.
+
+Avec OpenRouter, répéter le test avec un modèle de chacune des familles
+`anthropic/`, `openai/`, `google/` et `deepseek/` qui figure dans le
+catalogue d’ImmoTopia. La liste vérifie les paramètres annoncés et le test
+utilise le modèle enregistré. Compléter par une question de chat sur des
+données de recette et vérifier dans le flux que l’outil métier demandé a
+été appelé et que le résultat est affiché. Consigner le fournisseur, le
+modèle renvoyé, le mode, l’issue et la durée. Le catalogue public et les
+réponses SSE simulées constituent des contrôles distincts.
+[Documentation OpenRouter sur la sélection des fournisseurs](https://openrouter.ai/docs/guides/routing/provider-selection).
+
 **Activer le secours SQL locatif.** Appliquer les migrations de l’API, puis
 exécuter `packages/api/scripts/provision-assistant-reader.sql` dans la même
 base avec un compte d’administration PostgreSQL. Attribuer un mot de passe au

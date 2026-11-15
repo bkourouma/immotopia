@@ -215,7 +215,9 @@ export const AiSettingsPage: React.FC = () => {
       message.success(
         result.simulated
           ? t('Test effectué avec le fournisseur de recette.')
-          : t('Connexion réussie en {{count}} ms.', { count: result.durationMs })
+          : result.toolsVerified
+            ? t('Connexion et appel d’outil vérifiés en {{count}} ms.', { count: result.durationMs })
+            : t('Connexion réussie en {{count}} ms.', { count: result.durationMs })
       );
     } catch (error) {
       message.error(handleApiError(error));

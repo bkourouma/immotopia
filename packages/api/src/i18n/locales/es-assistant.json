@@ -570,5 +570,6 @@
   "{{days}} j de retard": "{{days}} días de atraso",
   "Déclaration à valider · {{number}}": "Declaración de pago por revisar · {{number}}",
   "Déclaration à valider": "Declaración de pago por revisar",
-  "Bien non renseigné": "Inmueble sin especificar"
+  "Bien non renseigné": "Inmueble sin especificar",
+  "Le modèle n’a pas réussi le test d’appel d’outil.": "El modelo no superó la prueba de llamada a herramientas."
 }

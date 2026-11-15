@@ -2959,5 +2959,6 @@
   "Recherche de copropriétés": "البحث عن الملكيات المشتركة",
   "Recherche de lots de copropriété": "البحث عن وحدات الملكية المشتركة",
   "Recherche de mandats de vente": "البحث عن تفويضات البيع",
-  "Recherche de chantiers": "البحث عن مواقع البناء"
+  "Recherche de chantiers": "البحث عن مواقع البناء",
+  "Connexion et appel d’outil vérifiés en {{count}} ms.": "تم التحقق من الاتصال واستدعاء الأداة خلال {{count}} مللي ثانية."
 }

@@ -98,7 +98,11 @@ export async function downloadAiUsage(filters: AssistantUsageFilters) {
 
 export async function testAiConnection(mode: AiMode) {
   const response = await apiClient.post('/platform/ai-settings/connection-test', { mode });
-  return unwrap<{ provider: AiProviderId; model: string | null; simulated: boolean; durationMs: number }>(
-    response.data
-  );
+  return unwrap<{
+    provider: AiProviderId;
+    model: string | null;
+    simulated: boolean;
+    toolsVerified: boolean;
+    durationMs: number;
+  }>(response.data);
 }

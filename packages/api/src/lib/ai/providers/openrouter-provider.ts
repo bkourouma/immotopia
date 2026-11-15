@@ -316,7 +316,8 @@ export class OpenRouterProvider implements LlmProvider {
               type: 'function',
               function: { name: tool.name, description: tool.description, parameters: tool.inputSchema }
             })),
-            tool_choice: 'auto'
+            tool_choice: 'auto',
+            provider: { require_parameters: true }
           }
         : {})
     };

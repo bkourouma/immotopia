@@ -3401,5 +3401,6 @@
   "{{days}} j de retard": "تأخير {{days}} يوم",
   "Déclaration à valider · {{number}}": "تصريح دفع للمراجعة · {{number}}",
   "Déclaration à valider": "تصريح دفع للمراجعة",
-  "Bien non renseigné": "العقار غير محدد"
+  "Bien non renseigné": "العقار غير محدد",
+  "Le modèle n’a pas réussi le test d’appel d’outil.": "لم يجتز النموذج اختبار استدعاء الأداة."
 }

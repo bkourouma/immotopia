@@ -136,6 +136,7 @@ describe('AiSettingsPage', () => {
       provider: 'openrouter',
       model: 'openai/gpt-4o',
       simulated: false,
+      toolsVerified: true,
       durationMs: 15
     });
     mount();
@@ -148,6 +149,7 @@ describe('AiSettingsPage', () => {
     await waitFor(() => expect(test).toBeEnabled());
     fireEvent.click(test);
     expect(testAiConnection).toHaveBeenCalledWith('standard');
+    expect(await screen.findByText('Connexion et appel d’outil vérifiés en 15 ms.')).toBeInTheDocument();
   });
 
   it('affiche le coût inconnu et exporte la sélection de compte', async () => {

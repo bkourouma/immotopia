@@ -2959,5 +2959,6 @@
   "Recherche de copropriétés": "Condominium search",
   "Recherche de lots de copropriété": "Condominium lot search",
   "Recherche de mandats de vente": "Sales mandate search",
-  "Recherche de chantiers": "Construction site search"
+  "Recherche de chantiers": "Construction site search",
+  "Connexion et appel d’outil vérifiés en {{count}} ms.": "Connection and tool call verified in {{count}} ms."
 }

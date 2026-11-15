@@ -350,7 +350,8 @@ export function resetAiSettingsCaches(): void {
 }
 
 /**
- * Catalogue public d'OpenRouter (sans clé). Ne lève jamais : en cas d'échec,
+ * Modèles du catalogue public OpenRouter qui déclarent la prise en charge des outils.
+ * Ne lève jamais : en cas d'échec,
  * liste vide et `unavailable: true` (l'interface bascule alors en saisie libre).
  */
 export async function listOpenRouterModels(
@@ -367,11 +368,21 @@ export async function listOpenRouterModels(
     });
     if (!response.ok) throw new Error(`status ${response.status}`);
     const body = (await response.json()) as { data?: unknown };
-    const rows = Array.isArray(body.data) ? body.data : [];
+    if (!Array.isArray(body.data)) throw new Error('invalid models catalog');
+    const rows = body.data;
     const models: OpenRouterModel[] = [];
     for (const row of rows) {
-      const item = row as { id?: unknown; name?: unknown; context_length?: unknown };
-      if (typeof item.id !== 'string' || !item.id) continue;
+      if (!row || typeof row !== 'object') continue;
+      const item = row as { id?: unknown; name?: unknown; context_length?: unknown; supported_parameters?: unknown };
+      const parameters = item.supported_parameters;
+      if (
+        typeof item.id !== 'string' ||
+        !item.id ||
+        !Array.isArray(parameters) ||
+        !parameters.includes('tools') ||
+        !parameters.includes('tool_choice')
+      )
+        continue;
       models.push({
         id: item.id,
         name: typeof item.name === 'string' && item.name ? item.name : item.id,

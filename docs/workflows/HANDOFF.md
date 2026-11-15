@@ -202,7 +202,7 @@ qualification des fournisseurs actifs et les derniers contrôles transversaux du
 fournisseur des exigences FR-001 à FR-009 de la spécification 028. Il indique les écarts de granularité, d’idempotence
 et de coût avant un raccordement de la facturation.
 
-**Reprise des rapports (commit de cette passation)** — Le statut du rapport, sa prochaine échéance et la notification
+**Reprise des rapports (`3d4e4533`)** — Le statut du rapport, sa prochaine échéance et la notification
 interne de résultat valident ensemble. En cas d’échec d’écriture, l’occurrence reste à traiter et les réservations SMTP
 déjà écrites empêchent un renvoi. La recette PostgreSQL stricte a rejoué une occurrence avec un accusé incertain, un
 autre envoi réussi, puis une panne de notification. Elle vérifie le statut partiel, une seule notification à la reprise
@@ -210,6 +210,15 @@ et les envois de l’occurrence suivante. Le même bilan locatif passe de trois 
 du destinataire. Le classeur téléchargé et celui envoyé depuis le job ne contiennent que les encaissements pour ce
 destinataire, tandis que le second destinataire conserve son périmètre complet. Transport SMTP simulé. Restent la
 qualification des fournisseurs actifs et les derniers contrôles transversaux du plan.
+
+**Qualification des appels d’outils (commit de cette passation)** — Le champ Modèle liste les entrées du catalogue
+OpenRouter qui déclarent `tools` et `tool_choice`. Les requêtes avec outils exigent ces paramètres du serveur de calcul
+choisi par OpenRouter. Le test de connexion des modes standard et approfondi vérifie le retour d’un appel fictif
+avec nonce, sans exécuter d’outil. Le mode rapide vérifie une réponse texte et le mode de recette est indiqué comme
+simulé. Les tests API simulent les quatre familles de modèles sur le contrat SSE, ainsi qu’un modèle qui ignore
+l’outil. Le wiki décrit la qualification. Le catalogue public annonce des modèles admissibles pour les quatre familles.
+Les variables de connexion fournisseur ne sont pas disponibles dans le processus ni dans la configuration locale
+d’ImmoTopia inspectée. Un appel authentifié auprès des fournisseurs reste à qualifier.
 
 ## chore/deps-patch-minor — 2026-11-11
 

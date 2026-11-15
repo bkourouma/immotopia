@@ -3401,5 +3401,6 @@
   "{{days}} j de retard": "{{days}} days overdue",
   "Déclaration à valider · {{number}}": "Payment declaration to review · {{number}}",
   "Déclaration à valider": "Payment declaration to review",
-  "Bien non renseigné": "Property not specified"
+  "Bien non renseigné": "Property not specified",
+  "Le modèle n’a pas réussi le test d’appel d’outil.": "The model failed the tool call test."
 }

@@ -1,7 +1,9 @@
+import { randomUUID } from 'node:crypto';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { assistantUsageCsv, assistantUsageReport, usageReportQuery } from '../lib/ai/provider-usage-report';
 import { t } from '../i18n';
+import type { LlmToolSpec, LlmTurnResult } from '../lib/ai/contracts';
 import { getLlmProvider } from '../lib/ai/providers';
 import { prisma } from '../utils/database';
 import { AppError, asyncHandler, UnauthorizedError } from '../middleware/error-middleware';
@@ -33,6 +35,18 @@ export const listAiModelsHandler = asyncHandler(async (_req: Request, res: Respo
   res.json({ success: true, data: await listOpenRouterModels() });
 });
 
+const connectionProbe: LlmToolSpec = {
+  name: 'list_capabilities',
+  description: 'Test only. Echo the nonce supplied in the user message.',
+  inputSchema: {
+    type: 'object',
+    properties: { nonce: { type: 'string' } },
+    required: ['nonce'],
+    additionalProperties: false
+  }
+};
+const connectionProbeInput = z.object({ nonce: z.string().uuid() }).strict();
+
 export const testAiConnectionHandler = asyncHandler(async (req, res) => {
   const { mode } = z
     .object({ mode: z.enum(['standard', 'deep', 'fast']).default('standard') })
@@ -42,29 +56,54 @@ export const testAiConnectionHandler = asyncHandler(async (req, res) => {
   if (!provider) throw new AppError(t('Le fournisseur de ce mode est indisponible.'), 503);
   const start = performance.now();
   const signal = AbortSignal.timeout(12_000);
+  const simulated = provider.id === 'fake';
+  const nonce = !simulated && mode !== 'fast' ? randomUUID() : null;
+  let result: LlmTurnResult;
   try {
-    const result = await provider.runTurn(
+    result = await provider.runTurn(
       {
-        system: 'Reply with OK.',
-        messages: [{ role: 'user', content: [{ type: 'text', text: 'OK' }] }],
-        tools: [],
-        maxOutputTokens: 32
+        system: nonce
+          ? 'This is a connection test. Call list_capabilities once with the exact nonce from the user message.'
+          : 'Reply with OK.',
+        messages: [{ role: 'user', content: [{ type: 'text', text: nonce ?? 'OK' }] }],
+        tools: nonce ? [connectionProbe] : [],
+        maxOutputTokens: nonce ? 512 : 32,
+        ...(mode === 'deep' ? { deep: true } : {})
       },
       () => {},
       signal
     );
-    res.set('Cache-Control', 'private, no-store').json({
-      success: true,
-      data: {
-        provider: provider.id,
-        model: result.model ?? null,
-        simulated: provider.id === 'fake',
-        durationMs: Math.round(performance.now() - start)
-      }
-    });
   } catch {
     throw new AppError(t('Le test de connexion au fournisseur a échoué.'), 502);
   }
+  if (nonce) {
+    const [call] = result.toolCalls;
+    const input = connectionProbeInput.safeParse(call?.input);
+    if (
+      result.stopReason !== 'tool_use' ||
+      result.toolCalls.length !== 1 ||
+      call.name !== connectionProbe.name ||
+      !input.success ||
+      input.data.nonce !== nonce
+    ) {
+      throw new AppError(t('Le modèle n’a pas réussi le test d’appel d’outil.'), 502);
+    }
+  } else if (
+    result.stopReason !== 'end_turn' ||
+    !result.assistantContent.some(block => block.type === 'text' && block.text.trim())
+  ) {
+    throw new AppError(t('Le test de connexion au fournisseur a échoué.'), 502);
+  }
+  res.set('Cache-Control', 'private, no-store').json({
+    success: true,
+    data: {
+      provider: provider.id,
+      model: result.model ?? null,
+      simulated,
+      toolsVerified: nonce !== null,
+      durationMs: Math.round(performance.now() - start)
+    }
+  });
 });
 
 export const listAiUsageHandler = asyncHandler(async (req, res) => {

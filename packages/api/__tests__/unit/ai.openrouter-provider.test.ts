@@ -98,7 +98,8 @@ describe('OpenRouterProvider', () => {
           }
         }
       ],
-      tool_choice: 'auto'
+      tool_choice: 'auto',
+      provider: { require_parameters: true }
     });
     expect(deltas).toEqual(['Bon', 'jour']);
     expect(result).toEqual({
