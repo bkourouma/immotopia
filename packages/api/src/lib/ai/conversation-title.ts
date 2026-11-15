@@ -1,5 +1,6 @@
 import { t } from '../../i18n';
 import type { LlmProvider } from './contracts';
+import { withoutSourceMarkers } from './artifact-sources';
 
 function bounded(value: string, max: number): string {
   return Array.from(value).slice(0, max).join('');
@@ -53,7 +54,7 @@ export async function generateConversationTitle(
                 type: 'text',
                 text: JSON.stringify({
                   question: bounded(question, 1500),
-                  response: bounded(response, 1500)
+                  response: bounded(withoutSourceMarkers(response), 1500)
                 })
               }
             ]

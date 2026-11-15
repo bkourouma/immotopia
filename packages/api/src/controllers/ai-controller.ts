@@ -893,13 +893,11 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
   const reference = regenerated?.focus ?? body.focus;
   const focus =
     reference && body.conversationId
-      ? (
-          await readArtifactVersions(
-            { ...owner, conversationId: body.conversationId, artifactId: reference.artifactId },
-            scopeKey,
-            reference.version
-          )
-        ).artifact
+      ? await readArtifactVersions(
+          { ...owner, conversationId: body.conversationId, artifactId: reference.artifactId },
+          scopeKey,
+          reference.version
+        )
       : undefined;
   const saved = body.turnId
     ? await beginAssistantTurn(owner, scopeKey, {
@@ -930,7 +928,8 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
     const outcome = await runChat({
       provider: measuredProvider(provider, { tenantId, userId, mode }),
       deep: body.deep,
-      focusedArtifact: focus,
+      focusedArtifact: focus?.artifact,
+      focusedVersion: focus?.version,
       analysisTables: regenerated?.analysisTables ?? saved?.analysisTables,
       artifactReferences: saved?.artifactReferences,
       fileExtracts: [

@@ -17,7 +17,7 @@ export interface CopilotThreadProps {
   /** Largeur maximale de la colonne de lecture (la page) ; sans limite dans le tiroir. */
   maxWidth?: number;
   /** Ouvre un artefact dans le panneau (page plein écran). */
-  onOpenArtifact?(artifactId: string): void;
+  onOpenArtifact?(artifactId: string, version?: number): void;
 }
 
 /**
@@ -69,6 +69,7 @@ export const CopilotThread: React.FC<CopilotThreadProps> = ({
         )}
         <CopilotMessageList
           messages={chat.messages}
+          artifacts={chat.artifacts}
           streaming={streaming}
           conversationId={chat.conversationId}
           visible={visible}

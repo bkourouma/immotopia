@@ -5,7 +5,7 @@ import { AppError, ForbiddenError } from '../../middleware/error-middleware';
 import { logAuditEvent } from '../../services/audit-service';
 import { AuditActionKey } from '../../types/audit-types';
 import { logger } from '../../utils/logger';
-import { analysisSources } from './artifact-sources';
+import { analysisSources, withoutSourceMarkers } from './artifact-sources';
 import type {
   ChatRequest,
   CopilotErrorCode,
@@ -47,6 +47,7 @@ export type ChatDoneReason = Extract<CopilotSseEvent, { type: 'done' }>['reason'
 export interface RunChatInput {
   deep?: boolean;
   focusedArtifact?: CopilotArtifact;
+  focusedVersion?: number;
   fileExtracts?: Array<{ name: string; excerpt: string; artifactId?: string }>;
   importedTables?: Array<Extract<CopilotArtifact, { kind: 'table' }>>;
   analysisTables?: Array<Extract<CopilotArtifact, { kind: 'table' }>>;
@@ -112,7 +113,8 @@ function toLlmMessages(messages: ChatRequest['messages'], contextBlock: string):
   messages.forEach((message, index) => {
     if (out.length === 0 && message.role !== 'user') return;
     // Le bloc d'écran ouvre le DERNIER message utilisateur : c'est une donnée, séparée du texte par une ligne vide.
-    const text = index === lastIndex ? `${contextBlock}\n\n${message.content}` : message.content;
+    const content = message.role === 'assistant' ? withoutSourceMarkers(message.content) : message.content;
+    const text = index === lastIndex ? `${contextBlock}\n\n${content}` : content;
     const previous = out[out.length - 1];
     if (previous && previous.role === message.role) {
       previous.content.push({ type: 'text', text });
@@ -188,9 +190,11 @@ export async function runChat(input: RunChatInput): Promise<ChatDoneReason> {
     [...(input.analysisTables ?? []), ...(input.importedTables ?? [])].map(table => [table.id, table])
   );
   const focus = input.focusedArtifact;
-  if (focus) for (const table of analysisSources(focus)) analysisTables.set(table.id, table);
+  const focusedSources = focus ? analysisSources(focus) : [];
+  for (const table of focusedSources) analysisTables.set(table.id, table);
   const sourceRefs = [...analysisTables.values()].map(table => ({
     id: table.id,
+    version: focusedSources.includes(table) ? input.focusedVersion : undefined,
     title: table.title.slice(0, 160),
     period: table.provenance?.period,
     source: table.provenance?.source.slice(0, 160),
@@ -220,6 +224,7 @@ export async function runChat(input: RunChatInput): Promise<ChatDoneReason> {
     });
     const snapshot = JSON.stringify({
       id: focus.id,
+      version: input.focusedVersion,
       kind: focus.kind,
       title: focus.title.slice(0, 160),
       preview: serialized.slice(0, 8_000),

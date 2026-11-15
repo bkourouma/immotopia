@@ -2251,6 +2251,67 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       }
     }
 
+    it('conserve les références aux résultats dans le fil privé et nettoie les extraits d’avis', async () => {
+      const owner = await createTenantAdminUser(tenantA, 'source-citation');
+      const base = `/api/tenants/${tenantA.id}/ai`;
+      const { conversationId, artifactId } = await saveReportAnalysis(base, owner, false);
+      const turnId = randomUUID();
+      const statement = 'Les encaissements sont détaillés dans ce résultat.';
+      const response = `${statement} [[source:${artifactId}:2]]`;
+      const turnsPath = `${base}/conversations/${conversationId}/turns/${turnId}`;
+      try {
+        const resultPath = `${base}/conversations/${conversationId}/artifacts/${artifactId}`;
+        const revision = await request(app)
+          .post(resultPath)
+          .set(authed(owner))
+          .send({ expectedVersion: 1, title: 'Détail des encaissements' });
+        expect(revision.status).toBe(201);
+        const beforeFocus = mockProviderRequests.length;
+        mockFakeScript = [{ text: response }];
+        const streamed = await request(app)
+          .post(base + '/chat')
+          .set(authed(owner))
+          .send({
+            conversationId,
+            turnId,
+            focus: { artifactId, version: 2 },
+            messages: [{ role: 'user', content: 'D’où viennent les encaissements ?' }]
+          });
+        expect(streamed.status).toBe(200);
+        const sourceContext = JSON.stringify(mockProviderRequests[beforeFocus].messages);
+        expect(sourceContext).toContain(`<focused_result>{\\"id\\":\\"${artifactId}\\",\\"version\\":2`);
+        const read = await request(app).get(`${base}/conversations/${conversationId}`).set(authed(owner));
+        expect(read.body.data.turns[1]).toMatchObject({ id: turnId, response });
+        const feedback = await request(app)
+          .put(turnsPath + '/feedback')
+          .set(authed(owner))
+          .send({ revision: 0, helpful: true, comment: '' });
+        expect(feedback.status).toBe(204);
+        expect(
+          await prisma.assistantResponseFeedback.findFirst({
+            where: { tenantId: tenantA.id, ownerId: owner.id, turnId }
+          })
+        ).toMatchObject({ excerpt: statement });
+
+        mockFakeScript = [{ text: 'Disponible.' }];
+        const before = mockProviderRequests.length;
+        await request(app)
+          .post(base + '/chat')
+          .set(authed(owner))
+          .send({
+            conversationId,
+            turnId: randomUUID(),
+            messages: [{ role: 'user', content: 'Et le mois précédent ?' }]
+          });
+        const context = JSON.stringify(mockProviderRequests[before].messages);
+        expect(context).toContain(statement);
+        expect(context).toContain(artifactId);
+        expect(context).not.toContain('[[source:');
+      } finally {
+        mockFakeScript = undefined;
+      }
+    });
+
     it('résout le fuseau de l’agence et le fige dans les nouveaux rapports', async () => {
       const owner = await createTenantAdminUser(tenantA, 'report-time-zone');
       const tenantPath = `/api/tenants/${tenantA.id}`;

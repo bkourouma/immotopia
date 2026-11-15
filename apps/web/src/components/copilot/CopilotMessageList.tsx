@@ -8,19 +8,20 @@ import { assistantLanguages } from '../../i18n/assistant-language';
 import { ResponseFeedbackButton } from './ResponseFeedbackButton';
 import { copilotService } from '../../services/copilot-service';
 import { filenameFromDisposition, saveBlob } from '../../utils/save-blob';
-import type { CopilotAttachment, CopilotUiMessage } from '../../types/copilot';
+import type { CopilotArtifact, CopilotAttachment, CopilotUiMessage } from '../../types/copilot';
 import { ActionProposalCard } from './ActionProposalCard';
 import { ArtifactChip } from './artifact/ArtifactChip';
 import { DocumentListCard } from './DocumentListCard';
 import { LeaseResultCard } from './LeaseResultCard';
 import { PropertyResultCard } from './PropertyResultCard';
-import { SafeMarkdown } from './SafeMarkdown';
+import { SafeMarkdown, withoutSourceMarkers } from './SafeMarkdown';
 import { WritePlanCard } from './WritePlanCard';
 import { FollowUpCard } from './FollowUpCard';
 import { rentalAlertDescription, rentalAlertLabels, rentalAlertParams } from './rental-alert-labels';
 
 export interface CopilotMessageListProps {
   messages: CopilotUiMessage[];
+  artifacts?: readonly CopilotArtifact[];
   streaming?: boolean;
   conversationId?: string;
   visible?: boolean;
@@ -33,7 +34,34 @@ export interface CopilotMessageListProps {
   /** Bien affiché à l'écran : nécessaire au téléchargement des pièces d'un bien. */
   propertyId?: string;
   /** Ouvre un artefact dans le panneau ; sans lui (tiroir), la pastille n'est pas cliquable. */
-  onOpenArtifact?(artifactId: string): void;
+  onOpenArtifact?(artifactId: string, version?: number): void;
+}
+
+function conversationSources(messages: CopilotUiMessage[], artifacts: readonly CopilotArtifact[]) {
+  const byId = new Map(artifacts.map(artifact => [artifact.id, artifact]));
+  const sources = new Map<string, { index: number; artifactId: string; title: string }>();
+  messages.forEach((message, index) => {
+    if (message.role !== 'assistant') return;
+    for (const attachment of message.attachments) {
+      if (attachment.kind !== 'artifact') continue;
+      const artifact = byId.get(attachment.artifactId);
+      if (!artifact || artifact.kind === 'markdown') continue;
+      const add = (id: string, title: string) => {
+        const key = id.toLowerCase();
+        if (!sources.has(key)) sources.set(key, { index, artifactId: artifact.id, title });
+      };
+      if (artifact.kind === 'document') {
+        for (const block of artifact.blocks) {
+          if (block.kind !== 'table' || !block.table.provenance) continue;
+          add(artifact.id, artifact.title);
+          add(block.table.id, block.table.title);
+        }
+      } else if (artifact.provenance) {
+        add(artifact.id, artifact.title);
+      }
+    }
+  });
+  return sources;
 }
 
 function Attachment({
@@ -145,6 +173,7 @@ function Attachment({
 
 export function CopilotMessageList({
   messages,
+  artifacts = [],
   streaming,
   conversationId,
   visible = true,
@@ -159,6 +188,7 @@ export function CopilotMessageList({
   const [notifications, notificationContext] = antMessage.useMessage();
   const { language, t } = useAssistantTranslation();
   const { supported, activeId, read, stop } = useCopilotSpeech(assistantLanguages[language].speech, tenantId);
+  const sources = conversationSources(messages, artifacts);
 
   useEffect(() => {
     if (activeId && (!visible || !messages.some(message => message.id === activeId))) stop();
@@ -175,7 +205,7 @@ export function CopilotMessageList({
 
   async function copy(text: string) {
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(withoutSourceMarkers(text));
       void notifications.success(t('Réponse copiée'));
     } catch {
       void notifications.error(t('Impossible de copier la réponse'));
@@ -209,7 +239,24 @@ export function CopilotMessageList({
                 {isUser ? (
                   <span style={{ whiteSpace: 'pre-wrap' }}>{message.text}</span>
                 ) : (
-                  <SafeMarkdown text={message.text} />
+                  <SafeMarkdown
+                    text={message.text}
+                    renderSource={(id, version) => {
+                      const source = sources.get(id);
+                      if (!onOpenArtifact || !source || source.index > index) return null;
+                      return (
+                        <Button
+                          type="link"
+                          size="small"
+                          style={{ paddingInline: 4, height: 'auto', verticalAlign: 'baseline' }}
+                          aria-label={t('Voir la source : {{title}}', { title: source.title || t('Résultat') })}
+                          onClick={() => onOpenArtifact(source.artifactId, version)}
+                        >
+                          {t('Source')}
+                        </Button>
+                      );
+                    }}
+                  />
                 )}
               </div>
             ) : null}
@@ -290,7 +337,7 @@ export function CopilotMessageList({
                       const answer = event.currentTarget
                         .closest('[data-role]')
                         ?.querySelector<HTMLElement>('[data-copilot-answer]');
-                      read(message.id, answer?.innerText || message.text, () => {
+                      read(message.id, withoutSourceMarkers(answer?.innerText || message.text), () => {
                         void notifications.error(t('La lecture à voix haute a échoué'));
                       });
                     }}

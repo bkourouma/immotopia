@@ -21,6 +21,7 @@ const ArtifactChart = React.lazy(() => import('./ArtifactChart'));
 export interface ArtifactPanelProps {
   artifacts: CopilotArtifact[];
   selectedId?: string;
+  initialVersion?: number;
   onSelect(id: string): void;
   onClose(): void;
   serverDownloadsOnly?: boolean;
@@ -152,6 +153,7 @@ function ArtifactBody({ artifact }: { artifact: CopilotArtifact }): React.ReactE
 export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
   artifacts,
   selectedId,
+  initialVersion,
   onSelect,
   onClose,
   serverDownloadsOnly,
@@ -170,9 +172,12 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
   const [refreshing, setRefreshing] = useState(false);
   const root = artifacts.find(a => a.id === selectedId) ?? artifacts[artifacts.length - 1];
   const rootId = root?.id;
-  const [requested, setRequested] = useState<{ id: string; version: number }>();
+  const [requested, setRequested] = useState<{ id: string; version: number } | undefined>(() =>
+    rootId && initialVersion !== undefined ? { id: rootId, version: initialVersion } : undefined
+  );
   const [loaded, setLoaded] = useState<Awaited<ReturnType<NonNullable<ArtifactPanelProps['onReadVersion']>>>>();
   const [revision, setRevision] = useState(0);
+  const [failedVersion, setFailedVersion] = useState<typeof requested>();
   const [versionEdit, setVersionEdit] = useState<{ id: string } & ArtifactVersionChange>();
   const [rewriteInstruction, setRewriteInstruction] = useState('');
   const [rewriting, setRewriting] = useState(false);
@@ -206,6 +211,7 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
   useEffect(() => {
     if (!rootId || !onReadVersion) return;
     let cancelled = false;
+    setFailedVersion(undefined);
     // Keep the version list visible while loading another snapshot.
     void onReadVersion(rootId, viewed)
       .then(result => {
@@ -213,8 +219,8 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
       })
       .catch(() => {
         if (!cancelled) {
-          setRequested(undefined);
-          feedback.error(t('Cette version est indisponible.'));
+          if (viewed !== undefined) setFailedVersion({ id: rootId, version: viewed });
+          else feedback.error(t('Cette version est indisponible.'));
         }
       });
     return () => {
@@ -225,9 +231,9 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
   const snapshot = onReadVersion && loaded?.artifact.id === root.id ? loaded : undefined;
   const artifact = snapshot?.artifact ?? root;
   const versionPending = Boolean(
-    onReadVersion &&
-    (viewed !== undefined ? snapshot?.version !== viewed : snapshot && snapshot.version !== snapshot.latest)
+    viewed !== undefined ? snapshot?.version !== viewed : snapshot && snapshot.version !== snapshot.latest
   );
+  const versionFailed = failedVersion?.id === rootId && failedVersion?.version === viewed;
   const editableSections =
     artifact.kind === 'markdown'
       ? [artifact.content]
@@ -517,9 +523,15 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
           t('Cette restauration crée une nouvelle version et conserve l’historique.')
         )}
       </Modal>
-      {'provenance' in artifact && artifact.provenance && <ArtifactSource provenance={artifact.provenance} />}
+      {!versionPending && 'provenance' in artifact && artifact.provenance && (
+        <ArtifactSource provenance={artifact.provenance} />
+      )}
       <div ref={bodyRef} style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-        {versionPending ? (
+        {versionFailed ? (
+          <Typography.Text type="danger" role="alert">
+            {t('Cette version est indisponible.')}
+          </Typography.Text>
+        ) : versionPending ? (
           <Skeleton active aria-label={t('Chargement de la version')} />
         ) : (
           <ArtifactBody artifact={artifact} />

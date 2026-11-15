@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CopilotMessageList } from '../../components/copilot/CopilotMessageList';
+import type { CopilotArtifact } from '../../types/copilot';
 
 describe('CopilotMessageList voice and clipboard actions', () => {
   const props = { tenantId: 'agency', onConfirm: vi.fn(), onCancel: vi.fn() };
@@ -56,5 +57,52 @@ describe('CopilotMessageList voice and clipboard actions', () => {
       if (clipboard) Object.defineProperty(navigator, 'clipboard', clipboard);
       else Reflect.deleteProperty(navigator, 'clipboard');
     }
+  });
+
+  it('attache une source à son passage uniquement si le résultat avec provenance figure déjà dans le fil', () => {
+    const id = 'b28bbb95-9e54-48a4-9c6f-9b044f4a21b6';
+    const missing = 'fd0ca857-d4e6-44e1-98be-f5445573c9f1';
+    const later = '7b9fab49-f6b6-48f8-a729-f22e19be4932';
+    const artifact: CopilotArtifact = {
+      id,
+      kind: 'table',
+      title: 'Échéances',
+      columns: [{ key: 'amount', label: 'Solde' }],
+      rows: [{ amount: 50000 }],
+      provenance: {
+        source: 'Échéances locatives',
+        href: '/tenant/agency/rental/installments',
+        period: '2026-10',
+        calculatedAt: '2026-11-15T00:00:00Z',
+        rules: []
+      }
+    };
+    const open = vi.fn();
+    const { container } = render(
+      <CopilotMessageList
+        {...props}
+        artifacts={[artifact, { ...artifact, id: later, title: 'Plus tard' }]}
+        messages={[
+          {
+            ...answer,
+            text: `Solde de 50 000. [[source:${id}:2]]\n\nSans source. [[source:${missing}]] [[source:${later}]]`,
+            attachments: [{ kind: 'artifact', artifactId: id, artifactKind: 'table', title: artifact.title }]
+          },
+          {
+            ...answer,
+            id: 'later',
+            attachments: [{ kind: 'artifact', artifactId: later, artifactKind: 'table', title: 'Plus tard' }]
+          }
+        ]}
+        onOpenArtifact={open}
+      />
+    );
+    const button = screen.getByRole('button', { name: 'Voir la source : Échéances' });
+    expect(button.closest('p')).toHaveTextContent('Solde de 50 000.');
+    expect(screen.queryByRole('button', { name: 'Voir la source : Plus tard' })).toBeNull();
+    expect(container).not.toHaveTextContent('[[source:');
+    fireEvent.click(button);
+    expect(open).toHaveBeenCalledOnce();
+    expect(open).toHaveBeenCalledWith(id, 2);
   });
 });

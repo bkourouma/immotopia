@@ -248,7 +248,9 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
     if (artifactCount === 0) setDrawerOpen(false);
   }, [artifactCount]);
 
-  const openArtifact = (id: string) => {
+  const [versionLink, setVersionLink] = useState<{ id: string; version?: number; request: number }>();
+  const openArtifact = (id: string, version?: number) => {
+    setVersionLink(previous => ({ id, version, request: (previous?.request ?? 0) + 1 }));
     chat.selectArtifact(id);
     setDesktopOpen(true);
     setDrawerOpen(true);
@@ -269,7 +271,8 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
   );
   const panel = (
     <ArtifactPanel
-      key={conversationId ?? ''}
+      key={`${conversationId ?? ''}:${versionLink?.request ?? 0}`}
+      initialVersion={versionLink?.id === chat.selectedArtifactId ? versionLink?.version : undefined}
       onReadVersion={conversationId && !streaming ? readVersion : undefined}
       artifacts={chat.artifacts}
       selectedId={chat.selectedArtifactId}

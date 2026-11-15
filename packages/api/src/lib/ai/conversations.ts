@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { t } from '../../i18n';
 import { ConflictError, NotFoundError } from '../../middleware/error-middleware';
 import { prisma } from '../../utils/database';
-import { analysisSources } from './artifact-sources';
+import { analysisSources, withoutSourceMarkers } from './artifact-sources';
 import { buildTurnHistory } from './conversation-history';
 import { fallbackConversationTitle } from './conversation-title';
 import { COPILOT_MAX_MESSAGES, type ChatRequest, type CopilotSseEvent } from './contracts';
@@ -272,7 +272,11 @@ export async function saveResponseFeedback(
     if (!locked.count) throw new ConflictError(t('La réponse a déjà été modifiée.'));
     const current = await tx.assistantTurn.findFirstOrThrow({ where, select: { response: true } });
     const key = { ...owner, turnId, revision: input.revision };
-    const data = { helpful: input.helpful, comment: input.comment, excerpt: current.response.slice(0, 300) };
+    const data = {
+      helpful: input.helpful,
+      comment: input.comment,
+      excerpt: withoutSourceMarkers(current.response).slice(0, 300)
+    };
     await tx.assistantResponseFeedback.upsert({
       where: { tenantId: owner.tenantId, tenantId_ownerId_turnId_revision: key },
       create: { ...key, ...data },

@@ -812,6 +812,30 @@ it('prépare une relance sur la version du résultat affichée', async () => {
 it('rouvre le fil et ses artefacts depuis le lien de conversation', async () => {
   getStatus.mockResolvedValue(ENABLED);
   const id = '5258bdd1-74d6-47ea-a37f-ab4d1e8eae45';
+  const sourceId = 'fd0ca857-d4e6-44e1-98be-f5445573c9f1';
+  const source = {
+    id: sourceId,
+    kind: 'table' as const,
+    title: 'Tableau locatif',
+    columns: [{ key: 'balance', label: 'Solde', type: 'number' as const }],
+    rows: [{ balance: 75000 }],
+    provenance: {
+      source: 'Échéances locatives',
+      href: '/tenant/t1/rental/installments',
+      period: '2026-10',
+      calculatedAt: '2026-11-15T00:00:00Z',
+      rules: ['Solde après règlements.']
+    }
+  };
+  vi.mocked(copilotService.getArtifactVersion).mockResolvedValue({
+    artifact: source,
+    version: 1,
+    latest: 2,
+    versions: [
+      { version: 2, createdAt: null },
+      { version: 1, createdAt: null }
+    ]
+  });
   getConversation.mockResolvedValue({
     id,
     title: 'Analyse',
@@ -823,8 +847,8 @@ it('rouvre le fil et ses artefacts depuis le lien de conversation', async () => 
         id: 'tour-1',
         question: 'Bilan du mois',
         attachments: [{ name: 'bilan.pdf', position: 0 }],
-        response: 'Voici le bilan.',
-        result: [ARTIFACT_EVENT],
+        response: `Voici le bilan. [[source:${sourceId}]]`,
+        result: [ARTIFACT_EVENT, { type: 'artifact', artifact: source }],
         outcome: 'end_turn'
       }
     ]
@@ -844,6 +868,10 @@ it('rouvre le fil et ses artefacts depuis le lien de conversation', async () => 
   fireEvent.click(screen.getByRole('button', { name: 'bilan.pdf' }));
   await waitFor(() => expect(saveBlob).toHaveBeenCalledWith(file, 'bilan.pdf'));
   expect(copilotService.downloadAttachment).toHaveBeenCalledWith('t1', id, 'tour-1', 0);
+  fireEvent.click(screen.getByRole('button', { name: 'Voir la source : Tableau locatif' }));
+  const results = await screen.findByRole('dialog', { name: 'Résultats et documents' });
+  expect(await within(results).findByText('Comment j’ai calculé')).toBeInTheDocument();
+  expect(copilotService.getArtifactVersion).toHaveBeenCalledWith('t1', id, sourceId, 1);
 });
 
 describe('AssistantPage — hauteur', () => {
