@@ -4,9 +4,18 @@ import { z } from 'zod';
 import { t } from '../../../i18n';
 import { BadRequestError, NotFoundError } from '../../../middleware/error-middleware';
 import { prisma } from '../../../utils/database';
-import { OPEN_TICKET_STATUSES } from '../../../utils/maintenance-ticket-status';
+import {
+  isOpenMaintenanceOverdue,
+  OPEN_TICKET_STATUSES,
+  startOfMaintenanceDay
+} from '../../../utils/maintenance-ticket-status';
 import { getPropertyForTenant, propertyTenantWhere } from '../../../utils/property-tenant-guard';
-import type { AnalysisTable, CopilotToolContext, CopilotToolDefinition } from '../contracts';
+import {
+  COPILOT_ARTIFACT_MAX_ROWS,
+  type AnalysisTable,
+  type CopilotToolContext,
+  type CopilotToolDefinition
+} from '../contracts';
 import { assertToolPermission, outcome } from './tool-utils';
 
 const permission = 'MAINTENANCE_ADMIN';
@@ -17,14 +26,15 @@ const inputSchema = z
     propertyId: z.string().uuid().optional(),
     vendorId: z.string().uuid().optional(),
     priority: z.nativeEnum(MaintenanceTicketPriority).optional(),
-    status: z.nativeEnum(MaintenanceTicketStatus).optional()
+    status: z.nativeEnum(MaintenanceTicketStatus).optional(),
+    onlyOverdue: z.boolean().optional()
   })
   .strict();
 
 export const maintenanceOverviewTool: CopilotToolDefinition<typeof inputSchema> = {
   name: 'maintenance_overview',
   description:
-    'Analyse les tickets de maintenance actuels par statut et priorité. Compte les tickets ouverts et urgents, mesure leur ancienneté moyenne et le délai moyen des tickets résolus. Filtres facultatifs par bien, prestataire, priorité ou statut.',
+    'Analyse les tickets actuels par statut et priorité, dont les tickets ouverts dont la date contractuelle est dépassée. onlyOverdue liste ces tickets individuellement. Filtres facultatifs par bien, prestataire, priorité ou statut.',
   inputSchema,
   jsonSchema: {
     type: 'object',
@@ -33,7 +43,8 @@ export const maintenanceOverviewTool: CopilotToolDefinition<typeof inputSchema> 
       propertyId: { type: 'string', format: 'uuid' },
       vendorId: { type: 'string', format: 'uuid' },
       priority: { type: 'string', enum: Object.values(MaintenanceTicketPriority) },
-      status: { type: 'string', enum: Object.values(MaintenanceTicketStatus) }
+      status: { type: 'string', enum: Object.values(MaintenanceTicketStatus) },
+      onlyOverdue: { type: 'boolean' }
     }
   },
   requiredPermission: permission,
@@ -47,7 +58,7 @@ export const syndicateMaintenanceTool: CopilotToolDefinition<typeof syndicateInp
   ...maintenanceOverviewTool,
   name: 'syndicate_maintenance',
   description:
-    'Analyse les tickets liés à une copropriété. Utilise son identifiant trouvé dans ImmoTopia. Accepte aussi les filtres bien, prestataire, statut et priorité.',
+    'Analyse les tickets liés à une copropriété. Utilise son identifiant trouvé dans ImmoTopia. Accepte les filtres bien, prestataire, statut et priorité. onlyOverdue liste les tickets ouverts dont la date contractuelle est dépassée.',
   inputSchema: syndicateInputSchema,
   jsonSchema: {
     ...maintenanceOverviewTool.jsonSchema,
@@ -87,6 +98,7 @@ async function analyzeMaintenance(
   )
     throw new NotFoundError();
   const now = new Date();
+  const today = startOfMaintenanceDay(now);
   const tickets = await prisma.maintenanceTicket.findMany({
     where: {
       tenant_id: ctx.tenantId,
@@ -95,10 +107,23 @@ async function analyzeMaintenance(
       assigned_vendor_id: input.vendorId,
       priority: input.priority,
       status: input.status,
+      ...(input.onlyOverdue
+        ? { AND: [{ status: { in: OPEN_TICKET_STATUSES }, contract_due_date: { lt: today } }] }
+        : {}),
       ...(syndicateId ? { syndicateLink: { is: { syndicateId, syndicate: { tenantId: ctx.tenantId } } } } : {})
     },
-    select: { status: true, priority: true, declared_at: true, resolved_at: true },
-    take: maxTickets + 1
+    select: {
+      id: true,
+      title: true,
+      status: true,
+      priority: true,
+      declared_at: true,
+      resolved_at: true,
+      contract_due_date: true,
+      property: { select: { title: true } }
+    },
+    orderBy: input.onlyOverdue ? [{ contract_due_date: 'asc' }, { id: 'asc' }] : undefined,
+    take: (input.onlyOverdue ? COPILOT_ARTIFACT_MAX_ROWS : maxTickets) + 1
   });
   if (tickets.length > maxTickets)
     throw new BadRequestError(t('Le volume des tickets dépasse la limite de cette analyse.'));
@@ -110,12 +135,15 @@ async function analyzeMaintenance(
       count: number;
       open: number;
       openDays: number;
+      overdue: number;
+      withoutDeadline: number;
       resolved: number;
       resolutionDays: number;
     }
   >();
   let open = 0;
   let urgent = 0;
+  let overdue = 0;
   for (const ticket of tickets) {
     const { status, priority } = ticket;
     const key = status + '/' + priority;
@@ -125,6 +153,8 @@ async function analyzeMaintenance(
       count: 0,
       open: 0,
       openDays: 0,
+      overdue: 0,
+      withoutDeadline: 0,
       resolved: 0,
       resolutionDays: 0
     };
@@ -134,6 +164,11 @@ async function analyzeMaintenance(
       group.openDays += Math.max(0, now.getTime() - ticket.declared_at.getTime()) / dayMs;
       open++;
       if (priority === MaintenanceTicketPriority.URGENT) urgent++;
+      if (isOpenMaintenanceOverdue(status, ticket.contract_due_date, today)) {
+        group.overdue++;
+        overdue++;
+      }
+      if (!ticket.contract_due_date) group.withoutDeadline++;
     }
     if (status === MaintenanceTicketStatus.RESOLVED && ticket.resolved_at && ticket.resolved_at >= ticket.declared_at) {
       group.resolved++;
@@ -141,7 +176,7 @@ async function analyzeMaintenance(
     }
     groups.set(key, group);
   }
-  const rows = [...groups.values()]
+  const summaryRows = [...groups.values()]
     .sort((a, b) => b.count - a.count || a.status.localeCompare(b.status) || a.priority.localeCompare(b.priority))
     .map(group => ({
       status: group.status,
@@ -149,30 +184,54 @@ async function analyzeMaintenance(
       count: group.count,
       open: group.open,
       urgent: group.priority === MaintenanceTicketPriority.URGENT ? group.open : 0,
+      overdue: group.overdue,
+      withoutDeadline: group.withoutDeadline,
       averageAge: group.open ? Math.round((group.openDays / group.open) * 10) / 10 : null,
       averageResolution: group.resolved ? Math.round((group.resolutionDays / group.resolved) * 10) / 10 : null
     }));
   const period = now.toISOString().slice(0, 10);
+  const href = '/tenant/' + encodeURIComponent(ctx.tenantId) + '/admin/maintenance/tickets';
+  const rows = input.onlyOverdue
+    ? tickets.slice(0, COPILOT_ARTIFACT_MAX_ROWS).map(ticket => ({
+        ticket: ticket.title,
+        href: `${href}/${encodeURIComponent(ticket.id)}`,
+        property: ticket.property.title,
+        status: ticket.status,
+        priority: ticket.priority,
+        contractDueDate: ticket.contract_due_date?.toISOString().slice(0, 10) ?? null
+      }))
+    : summaryRows;
   const artifact: AnalysisTable = {
     kind: 'table',
     id: randomUUID(),
-    title: t('Suivi des tickets de maintenance'),
+    title: input.onlyOverdue ? t('Tickets de maintenance en retard') : t('Suivi des tickets de maintenance'),
     query: syndicateId
       ? { ...input, tool: 'syndicate_maintenance', syndicateId }
       : { ...input, tool: 'maintenance_overview' },
-    columns: [
-      { key: 'status', label: t('Statut') },
-      { key: 'priority', label: t('Priorité') },
-      { key: 'count', label: t('Nombre de tickets'), type: 'number' },
-      { key: 'open', label: t('Tickets ouverts'), type: 'number' },
-      { key: 'urgent', label: t('Tickets urgents ouverts'), type: 'number' },
-      { key: 'averageAge', label: t('Ancienneté moyenne des tickets ouverts (jours)'), type: 'number' },
-      { key: 'averageResolution', label: t('Délai moyen de résolution (jours)'), type: 'number' }
-    ],
+    columns: input.onlyOverdue
+      ? [
+          { key: 'ticket', label: t('Ticket'), linkKey: 'href' },
+          { key: 'property', label: t('Bien') },
+          { key: 'status', label: t('Statut') },
+          { key: 'priority', label: t('Priorité') },
+          { key: 'contractDueDate', label: t('Échéance contractuelle'), type: 'date' }
+        ]
+      : [
+          { key: 'status', label: t('Statut') },
+          { key: 'priority', label: t('Priorité') },
+          { key: 'count', label: t('Nombre de tickets'), type: 'number' },
+          { key: 'open', label: t('Tickets ouverts'), type: 'number' },
+          { key: 'urgent', label: t('Tickets urgents ouverts'), type: 'number' },
+          { key: 'overdue', label: t('Tickets en retard'), type: 'number' },
+          { key: 'withoutDeadline', label: t('Tickets ouverts sans échéance'), type: 'number' },
+          { key: 'averageAge', label: t('Ancienneté moyenne des tickets ouverts (jours)'), type: 'number' },
+          { key: 'averageResolution', label: t('Délai moyen de résolution (jours)'), type: 'number' }
+        ],
     rows,
+    truncated: input.onlyOverdue === true && tickets.length > rows.length,
     provenance: {
       source: t('Maintenance'),
-      href: '/tenant/' + encodeURIComponent(ctx.tenantId) + '/admin/maintenance/tickets',
+      href,
       period,
       calculatedAt: now.toISOString(),
       rules: [
@@ -181,6 +240,9 @@ async function analyzeMaintenance(
         ),
         t(
           'L’ancienneté part de la déclaration. Le délai de résolution utilise les dates enregistrées des tickets résolus.'
+        ),
+        t(
+          'Un ticket ouvert est en retard à partir du lendemain de son échéance contractuelle, en UTC. Les tickets ouverts sans échéance sont comptés à part.'
         ),
         ...(syndicate ? [t('Copropriété retenue : {{name}}', { name: syndicate.name })] : []),
         ...(input.propertyId ? [t('Cette analyse est filtrée sur un seul bien.')] : []),
@@ -193,9 +255,7 @@ async function analyzeMaintenance(
   return outcome(
     {
       artifactId: artifact.id,
-      total: tickets.length,
-      open,
-      urgent,
+      ...(artifact.truncated ? { truncated: true } : { total: tickets.length, open, urgent, overdue }),
       columns: artifact.columns.map(column => column.key),
       items: rows.slice(0, 8)
     },

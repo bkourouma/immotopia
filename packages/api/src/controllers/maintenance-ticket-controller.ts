@@ -23,12 +23,14 @@ import {
   MaintenanceTicketCommentAuthorType,
   MaintenanceTicketStatus,
   MaintenanceTicketPriority,
-  MaintenanceTicketCategory
+  MaintenanceTicketCategory,
+  type MaintenanceTicket
 } from '@prisma/client';
 import { parsePagination } from '../utils/pagination-helper';
 import { parseEnumParam } from '../utils/query-params';
 import { BadRequestError } from '../middleware/error-middleware';
 import { t } from '../i18n';
+import { isOpenMaintenanceOverdue, startOfMaintenanceDay } from '../utils/maintenance-ticket-status';
 import { dayEnd, dayStart, zDay, zSearch } from '../utils/list-query-schemas';
 
 /** Recherche libre (briques partagées) : rognée, 100 caractères au plus, vide = pas de filtre, sinon 400. */
@@ -302,6 +304,14 @@ function transformTicketFields(ticket: any): any {
   };
 
   return transformed;
+}
+
+function contractTiming(ticket: Pick<MaintenanceTicket, 'contract_due_date' | 'status'>) {
+  const date = ticket.contract_due_date ?? null;
+  return {
+    contractDueDate: date?.toISOString().slice(0, 10) ?? null,
+    contractOverdue: isOpenMaintenanceOverdue(ticket.status, date, startOfMaintenanceDay(new Date()))
+  };
 }
 
 /**
@@ -735,7 +745,7 @@ export async function getTicketHandler(req: Request, res: Response): Promise<voi
 
     res.status(200).json({
       success: true,
-      data: transformedTicket
+      data: { ...transformedTicket, ...contractTiming(ticket) }
     });
   } catch (error) {
     if (repondreErreurPortee(res, error)) {
@@ -786,7 +796,7 @@ export async function updateTicketHandler(req: Request, res: Response): Promise<
 
     res.status(200).json({
       success: true,
-      data: ticket
+      data: { ...ticket, ...contractTiming(ticket) }
     });
   } catch (error) {
     if (repondreErreurPortee(res, error)) {

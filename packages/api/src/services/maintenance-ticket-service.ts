@@ -1178,6 +1178,10 @@ export async function updateTicket(tenantId: string, ticketId: string, data: Upd
     updateData.resolution_notes = data.resolutionNotes;
   }
 
+  if (data.contractDueDate !== undefined) {
+    updateData.contract_due_date = data.contractDueDate ? new Date(data.contractDueDate + 'T00:00:00Z') : null;
+  }
+
   if (data.assignedVendorId !== undefined) {
     if (data.assignedVendorId) {
       // Validate shared provider exists and keep maintenance mirror in sync.

@@ -3231,5 +3231,11 @@
   "Prochaine échéance": "Next due date",
   "Programme / immeuble": "Development / building",
   "Toiture / étanchéité": "Roofing / waterproofing",
-  "Échéances du carnet antérieures au {{date}}. Le carnet ne suit pas la réalisation de l’intervention suivante.": "Maintenance log dates before {{date}}. The log does not track whether the next intervention took place."
+  "Échéances du carnet antérieures au {{date}}. Le carnet ne suit pas la réalisation de l’intervention suivante.": "Maintenance log dates before {{date}}. The log does not track whether the next intervention took place.",
+  "Ticket": "Ticket",
+  "Tickets de maintenance en retard": "Overdue maintenance tickets",
+  "Tickets en retard": "Overdue tickets",
+  "Tickets ouverts sans échéance": "Open tickets without a due date",
+  "Un ticket ouvert est en retard à partir du lendemain de son échéance contractuelle, en UTC. Les tickets ouverts sans échéance sont comptés à part.": "An open ticket becomes overdue on the UTC day after its contractual due date. Open tickets without a due date are counted separately.",
+  "Échéance contractuelle": "Contractual due date"
 }

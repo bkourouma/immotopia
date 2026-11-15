@@ -62,7 +62,10 @@ const TOOL_CAPABILITIES: Record<CopilotToolName, { group: string; text: string }
     group: 'syndicateMaintenance',
     text: 'les tickets de maintenance par copropriété autorisée'
   },
-  maintenance_overview: { group: 'maintenance', text: 'les tickets de maintenance ouverts, urgents et leurs délais' },
+  maintenance_overview: {
+    group: 'maintenance',
+    text: 'les tickets de maintenance ouverts, urgents et en retard sur leur échéance contractuelle'
+  },
   rental_receipts: { group: 'rentalReceipts', text: 'les encaissements locatifs par mois clos et devise' },
   rental_due_comparison: {
     group: 'rentalComparison',

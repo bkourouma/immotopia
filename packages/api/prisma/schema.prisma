@@ -3519,6 +3519,7 @@ model MaintenanceTicket {
   assigned_to_user_id String? @map("assigned_to_user_id")
 
   resolution_notes String? @map("resolution_notes") @db.Text
+  contract_due_date DateTime? @map("contract_due_date") @db.Date
 
   // Status timestamps
   declared_at    DateTime  @default(now()) @map("declared_at")

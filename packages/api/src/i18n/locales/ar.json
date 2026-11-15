@@ -3231,5 +3231,11 @@
   "Prochaine échéance": "موعد الاستحقاق التالي",
   "Programme / immeuble": "المشروع / المبنى",
   "Toiture / étanchéité": "الأسقف / العزل المائي",
-  "Échéances du carnet antérieures au {{date}}. Le carnet ne suit pas la réalisation de l’intervention suivante.": "مواعيد سجل الصيانة السابقة لتاريخ {{date}}. لا يتتبع السجل تنفيذ التدخل التالي."
+  "Échéances du carnet antérieures au {{date}}. Le carnet ne suit pas la réalisation de l’intervention suivante.": "مواعيد سجل الصيانة السابقة لتاريخ {{date}}. لا يتتبع السجل تنفيذ التدخل التالي.",
+  "Ticket": "التذكرة",
+  "Tickets de maintenance en retard": "تذاكر الصيانة المتأخرة",
+  "Tickets en retard": "التذاكر المتأخرة",
+  "Tickets ouverts sans échéance": "التذاكر المفتوحة بلا موعد",
+  "Un ticket ouvert est en retard à partir du lendemain de son échéance contractuelle, en UTC. Les tickets ouverts sans échéance sont comptés à part.": "تُعد التذكرة المفتوحة متأخرة بدءًا من اليوم التالي لموعدها التعاقدي بالتوقيت العالمي. تُحسب التذاكر المفتوحة بلا موعد بشكل منفصل.",
+  "Échéance contractuelle": "الموعد التعاقدي"
 }

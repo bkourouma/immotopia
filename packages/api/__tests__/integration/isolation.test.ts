@@ -1702,6 +1702,92 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       }
     });
 
+    it('partage la règle de retard contractuel entre la fiche et les analyses de maintenance', async () => {
+      const agency = await createTestTenant('Délais-Maintenance');
+      createdTenantIds.push(agency.id);
+      const admin = await createTenantAdminUser(agency, 'maintenance-deadlines');
+      const property = await createPropertyDirect(agency.id, 'Bien du contrat');
+      const foreignProperty = await createPropertyDirect(tenantB.id, 'Bien du contrat privé');
+      const lateId = await createMaintenanceTicketDirect(agency.id, property, 'Échéance passée');
+      const todayId = await createMaintenanceTicketDirect(agency.id, property, 'Échéance aujourd’hui');
+      const noDateId = await createMaintenanceTicketDirect(agency.id, property, 'Sans échéance');
+      const resolvedId = await createMaintenanceTicketDirect(agency.id, property, 'Résolu');
+      const foreignId = await createMaintenanceTicketDirect(tenantB.id, foreignProperty, 'Ticket privé');
+      const today = new Date().toISOString().slice(0, 10);
+      const past = '2000-01-01';
+      const base = `/api/tenants/${agency.id}`;
+      const pathFor = (id: string) => `${base}/maintenance/admin/tickets/${id}`;
+      const change = (id: string, contractDueDate: string | null) =>
+        request(app).patch(pathFor(id)).set(authed(admin)).send({ contractDueDate });
+      try {
+        await prisma.maintenanceTicket.updateMany({
+          where: { tenant_id: agency.id, id: resolvedId },
+          data: { status: 'RESOLVED', contract_due_date: new Date(past) }
+        });
+        expect((await change(foreignId, past)).status).toBe(404);
+        expect((await change(lateId, '2026-02-30')).status).toBe(400);
+        expect((await change(lateId, past)).body.data).toMatchObject({ contractDueDate: past, contractOverdue: true });
+        expect((await change(todayId, today)).body.data).toMatchObject({
+          contractDueDate: today,
+          contractOverdue: false
+        });
+        expect((await request(app).get(pathFor(noDateId)).set(authed(admin))).body.data).toMatchObject({
+          contractDueDate: null,
+          contractOverdue: false
+        });
+        const detail = await request(app).get(pathFor(lateId)).set(authed(admin));
+        expect(detail.status).toBe(200);
+        expect(detail.body.data).toMatchObject({ contractDueDate: past, contractOverdue: true });
+        mockFakeScript = [
+          {
+            toolCalls: [
+              { name: 'maintenance_overview', input: {} },
+              { name: 'maintenance_overview', input: { onlyOverdue: true } }
+            ]
+          },
+          { text: 'Délais contractuels.' }
+        ];
+        const response = await request(app)
+          .post(base + '/ai/chat')
+          .set(authed(admin))
+          .send({
+            turnId: randomUUID(),
+            messages: [{ role: 'user', content: 'Quels tickets sont en retard ?' }]
+          });
+        expect(response.status).toBe(200);
+        const events = response.text
+          .split('\n')
+          .filter(line => line.startsWith('data: {'))
+          .map(line => JSON.parse(line.slice(6)));
+        const results = events.filter(event => event.type === 'artifact').map(event => event.artifact);
+        const summary = results.find(artifact => !artifact.query.onlyOverdue);
+        const late = results.find(artifact => artifact.query.onlyOverdue);
+        expect(summary.rows).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ status: 'DECLARED', open: 3, overdue: 1, withoutDeadline: 1 }),
+            expect.objectContaining({ status: 'RESOLVED', overdue: 0 })
+          ])
+        );
+        expect(late.rows).toEqual([
+          expect.objectContaining({
+            ticket: 'Échéance passée',
+            contractDueDate: past,
+            href: expect.stringContaining(lateId)
+          })
+        ]);
+        expect((await change(lateId, null)).body.data).toMatchObject({ contractDueDate: null, contractOverdue: false });
+        const conversationId = events.find(event => event.type === 'meta').conversationId;
+        const replay = await request(app)
+          .post(`${base}/ai/conversations/${conversationId}/artifacts/${late.id}`)
+          .set(authed(admin))
+          .send({ expectedVersion: 1 });
+        expect(replay.status).toBe(201);
+        expect(replay.body.data.artifact.rows).toEqual([]);
+      } finally {
+        mockFakeScript = undefined;
+      }
+    });
+
     it('analyse les charges par lot et devise, et recalcule les affectations partielles', async () => {
       const syndicate = await prisma.syndicate.create({
         data: { tenantId: tenantA.id, name: 'Résidence des charges', address: 'Cocody' }

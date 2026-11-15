@@ -729,5 +729,7 @@
   "Moteur de transcription": "محرك النسخ الصوتي",
   "Navigateur uniquement": "المتصفح فقط",
   "Modèle de transcription": "نموذج النسخ الصوتي",
-  "Durée audio estimée (s)": "مدة الصوت التقديرية (ث)"
+  "Durée audio estimée (s)": "مدة الصوت التقديرية (ث)",
+  "Échéance contractuelle": "الموعد التعاقدي",
+  "Échéance contractuelle dépassée": "تجاوز الموعد التعاقدي"
 }

@@ -729,5 +729,7 @@
   "Moteur de transcription": "Transcription engine",
   "Navigateur uniquement": "Browser only",
   "Modèle de transcription": "Transcription model",
-  "Durée audio estimée (s)": "Estimated audio duration (s)"
+  "Durée audio estimée (s)": "Estimated audio duration (s)",
+  "Échéance contractuelle": "Contractual due date",
+  "Échéance contractuelle dépassée": "Contractual due date has passed"
 }

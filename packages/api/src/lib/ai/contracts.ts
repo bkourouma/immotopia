@@ -408,6 +408,7 @@ export interface ChartScene {
 }
 
 type MaintenanceQueryFilters = {
+  onlyOverdue?: boolean;
   propertyId?: string;
   vendorId?: string;
   priority?: MaintenanceTicketPriority;
