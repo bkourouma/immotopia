@@ -188,7 +188,7 @@ stricte vérifie quatre homonymes étrangers, la recherche de lot avec une copro
 de caractères génériques, le refus sans droit de lecture et la réouverture d’un fil antérieur. Le wiki et le budget web
 passent. Restent la suite de l’audit de parité et la qualification avec des comptes fournisseurs actifs.
 
-**Briefing multi-module (commit de cette passation)** — `GET /ai/briefing` charge les lignes de la file métier sans
+**Briefing multi-module (`59b63d00`)** — `GET /ai/briefing` charge les lignes de la file métier sans
 demander les agrégats du tableau de bord. Il ajoute les fins de bail et de mandat actifs sur les 30 prochains jours
 et les appels de fonds non soldés dont l’échéance est passée. Les dates de début et de fin de la fenêtre utilisent les
 jours UTC. Les liens ouvrent la fiche ou la liste des charges du lot filtrée sur le statut En retard. L’API relit les
@@ -197,6 +197,10 @@ partiellement réglées et échues intègrent la file commune. Les nouvelles car
 La recette PostgreSQL couvre l’ordre des cartes, un compte limité aux baux, deux agences et le retrait d’une carte
 lorsque le contrat est révoqué, le paiement soldé ou l’échéance déplacée. Le wiki est synchronisé. Restent la
 qualification des fournisseurs actifs et les derniers contrôles transversaux du plan.
+
+**Crédits IA (commit de cette passation)** — Le plan rapproche le journal d’un tour et les mesures par appel au
+fournisseur des exigences FR-001 à FR-009 de la spécification 028. Il indique les écarts de granularité, d’idempotence
+et de coût avant un raccordement de la facturation.
 
 ## chore/deps-patch-minor — 2026-11-11
 
