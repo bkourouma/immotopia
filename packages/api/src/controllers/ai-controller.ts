@@ -708,7 +708,7 @@ async function sendArtifactExport(
   const file = await exporter.build(artifact);
   const filename =
     artifact.title
-      .replace(/[^\p{L}\p{N} ._-]+/gu, ' ')
+      .replace(/[^\p{L}\p{M}\p{N} ._-]+/gu, ' ')
       .trim()
       .slice(0, 100) || 'ImmoTopia';
   res.set('Cache-Control', 'private, no-store');

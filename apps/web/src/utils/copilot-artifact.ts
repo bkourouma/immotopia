@@ -310,27 +310,31 @@ export const looksLikeUuid = (text: string): boolean => UUID.test(text.trim());
 // --- Affichage ---------------------------------------------------------------
 
 /** Montant : 0 décimale pour un entier, sinon toujours 2 (« 90 000 » et « 90 000,50 », jamais « 90 000,5 »). */
-export function formatArtifactAmount(value: number): string {
+export function formatArtifactAmount(value: number, locale = activeLocale()): string {
   const decimals = Number.isInteger(value) ? 0 : 2;
-  return new Intl.NumberFormat(activeLocale(), {
+  return new Intl.NumberFormat(locale, {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals
   }).format(value);
 }
 
 /** Cellule formatée pour l'écran (nombre, devise, date selon la langue active). */
-export function formatArtifactCell(value: ArtifactCell, type?: 'text' | 'number' | 'currency' | 'date'): string {
+export function formatArtifactCell(
+  value: ArtifactCell,
+  type?: 'text' | 'number' | 'currency' | 'date',
+  locale = activeLocale()
+): string {
   if (value === null || value === undefined) return '';
   if ((type === 'number' || type === 'currency') && typeof value === 'number') {
-    if (type === 'currency') return formatArtifactAmount(value);
-    return new Intl.NumberFormat(activeLocale(), { maximumFractionDigits: 6 }).format(value);
+    if (type === 'currency') return formatArtifactAmount(value, locale);
+    return new Intl.NumberFormat(locale, { maximumFractionDigits: 6 }).format(value);
   }
   if (type === 'date') {
     const text = String(value);
     const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(text);
     const date = new Date(dateOnly ? `${text}T00:00:00Z` : text);
     if (Number.isNaN(date.getTime())) return text;
-    return new Intl.DateTimeFormat(activeLocale(), {
+    return new Intl.DateTimeFormat(locale, {
       dateStyle: 'short',
       ...(dateOnly ? { timeZone: 'UTC' } : {})
     }).format(date);
@@ -339,12 +343,12 @@ export function formatArtifactCell(value: ArtifactCell, type?: 'text' | 'number'
 }
 
 /** Comparaison pour le tri : les valeurs vides toujours en dernier. */
-export function compareCells(a: ArtifactCell, b: ArtifactCell): number {
+export function compareCells(a: ArtifactCell, b: ArtifactCell, locale = activeLocale()): number {
   if (a === null && b === null) return 0;
   if (a === null) return 1;
   if (b === null) return -1;
   if (typeof a === 'number' && typeof b === 'number') return a - b;
-  return String(a).localeCompare(String(b), activeLocale(), { numeric: true });
+  return String(a).localeCompare(String(b), locale, { numeric: true });
 }
 
 // --- Export ------------------------------------------------------------------
@@ -358,10 +362,10 @@ export function neutralizeFormula(text: string): string {
   return /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
 }
 
-/** Séparateur CSV : « ; » en français et en arabe (virgule décimale), « , » sinon. */
+/** Séparateur CSV usuel pour la locale, assorti au format des décimales. */
 export function csvSeparator(locale: string = activeLocale()): ';' | ',' {
   const lang = locale.toLowerCase().split('-')[0];
-  return lang === 'fr' || lang === 'ar' ? ';' : ',';
+  return lang === 'fr' || lang === 'ar' || lang === 'es' ? ';' : ',';
 }
 
 function csvField(value: ArtifactCell, sep: string): string {
@@ -394,7 +398,8 @@ export function chartXLabel(artifact: Extract<CopilotArtifact, { kind: 'chart' }
 
 /** Colonnes et lignes à exporter pour un tableau ou les données d'un graphique. */
 export function exportableTable(
-  artifact: CopilotArtifact
+  artifact: CopilotArtifact,
+  translate: typeof t = t
 ): { columns: { key: string; label: string }[]; rows: Record<string, ArtifactCell>[] } | null {
   if (artifact.kind === 'table') {
     return { columns: artifact.columns, rows: artifact.totals ? [...artifact.rows, artifact.totals] : artifact.rows };
@@ -402,12 +407,12 @@ export function exportableTable(
   if (artifact.kind === 'indicators') {
     return {
       columns: [
-        { key: 'label', label: t('Indicateur') },
-        { key: 'value', label: t('Valeur') },
-        { key: 'currency', label: t('Devise') },
-        { key: 'comparisonLabel', label: t('Comparaison') },
-        { key: 'comparisonValue', label: t('Valeur de référence') },
-        { key: 'change', label: t('Variation (%)') }
+        { key: 'label', label: translate('Indicateur') },
+        { key: 'value', label: translate('Valeur') },
+        { key: 'currency', label: translate('Devise') },
+        { key: 'comparisonLabel', label: translate('Comparaison') },
+        { key: 'comparisonValue', label: translate('Valeur de référence') },
+        { key: 'change', label: translate('Variation (%)') }
       ],
       rows: artifact.cards.map(card => ({
         label: card.label,
@@ -436,7 +441,7 @@ export function exportableTable(
 export function safeFilename(title: string, fallback = 'artefact'): string {
   const cleaned = title
     .normalize('NFC')
-    .replace(/[^\p{L}\p{N}._-]+/gu, '-')
+    .replace(/[^\p{L}\p{M}\p{N}._-]+/gu, '-')
     .replace(/\.{2,}/g, '.')
     .replace(/^[-.]+|[-.]+$/g, '')
     .slice(0, 80)

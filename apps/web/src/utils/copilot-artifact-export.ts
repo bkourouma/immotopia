@@ -1,6 +1,6 @@
 import type { CopilotArtifact } from '../types/copilot';
 import { t } from '../i18n/t';
-import { exportableTable, neutralizeFormula, safeFilename, toCsv } from './copilot-artifact';
+import { csvSeparator, exportableTable, neutralizeFormula, safeFilename, toCsv } from './copilot-artifact';
 import { saveBlob } from './save-blob';
 
 /**
@@ -11,46 +11,58 @@ import { saveBlob } from './save-blob';
 
 const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
-function provenanceRows(artifact: CopilotArtifact): string[][] {
+interface ExportLocale {
+  t: typeof t;
+  locale: string;
+  rtl: boolean;
+}
+
+function provenanceRows(artifact: CopilotArtifact, translate: typeof t): string[][] {
   if (artifact.kind === 'markdown' || artifact.kind === 'document') return [];
-  const notices = artifact.kind === 'chart' ? (artifact.notices ?? []).map(notice => [t('Information'), notice]) : [];
+  const notices =
+    artifact.kind === 'chart' ? (artifact.notices ?? []).map(notice => [translate('Information'), notice]) : [];
   const provenance = artifact.provenance;
   if (!provenance) return notices;
   return [
     ...notices,
-    [t('Source'), provenance.source],
-    [t('Période'), provenance.period],
-    [t('Date de calcul'), provenance.calculatedAt],
-    ...provenance.rules.map(rule => [t('Règle de calcul'), rule])
+    [translate('Source'), provenance.source],
+    [translate('Période'), provenance.period],
+    [translate('Date de calcul'), provenance.calculatedAt],
+    ...provenance.rules.map(rule => [translate('Règle de calcul'), rule])
   ];
 }
 
-export function downloadCsv(artifact: CopilotArtifact): void {
-  const data = exportableTable(artifact);
+export function downloadCsv(artifact: CopilotArtifact, settings?: ExportLocale): void {
+  const translate = settings?.t ?? t;
+  const data = exportableTable(artifact, translate);
   if (!data) return;
-  const meta = provenanceRows(artifact);
-  const main = toCsv(data.columns, data.rows);
+  const meta = provenanceRows(artifact, translate);
+  const separator = csvSeparator(settings?.locale);
+  const main = toCsv(data.columns, data.rows, separator);
   const csv = meta.length
     ? main +
       '\r\n\r\n' +
       toCsv(
         [
-          { key: 'key', label: t('Provenance') },
-          { key: 'value', label: t('Valeur') }
+          { key: 'key', label: translate('Provenance') },
+          { key: 'value', label: translate('Valeur') }
         ],
-        meta.map(([key, value]) => ({ key, value }))
+        meta.map(([key, value]) => ({ key, value })),
+        separator
       )
     : main;
   // BOM : Excel lit alors correctement l'UTF-8 (accents, arabe).
   saveBlob(new Blob(['﻿', csv], { type: 'text/csv;charset=utf-8' }), `${safeFilename(artifact.title)}.csv`);
 }
 
-export async function downloadXlsx(artifact: CopilotArtifact): Promise<void> {
-  const data = exportableTable(artifact);
+export async function downloadXlsx(artifact: CopilotArtifact, settings?: ExportLocale): Promise<void> {
+  const translate = settings?.t ?? t;
+  const data = exportableTable(artifact, translate);
   if (!data) return;
   const ExcelJS = await import('exceljs');
   const workbook = new ExcelJS.Workbook();
-  const sheet = workbook.addWorksheet(safeFilename(artifact.title, 'Feuille1').slice(0, 31));
+  const options = { views: [{ rightToLeft: settings?.rtl ?? false }] };
+  const sheet = workbook.addWorksheet(safeFilename(artifact.title, translate('Feuille1')).slice(0, 31), options);
   sheet.addRow(data.columns.map(c => neutralizeFormula(c.label)));
   sheet.getRow(1).font = { bold: true };
   for (const row of data.rows) {
@@ -64,9 +76,9 @@ export async function downloadXlsx(artifact: CopilotArtifact): Promise<void> {
   data.columns.forEach((c, i) => {
     sheet.getColumn(i + 1).width = Math.min(Math.max(c.label.length + 2, 12), 50);
   });
-  const meta = provenanceRows(artifact);
+  const meta = provenanceRows(artifact, translate);
   if (meta.length) {
-    const provenance = workbook.addWorksheet(t('Provenance'));
+    const provenance = workbook.addWorksheet(translate('Provenance'), options);
     for (const row of meta) provenance.addRow(row.map(neutralizeFormula));
     provenance.getColumn(1).width = 25;
     provenance.getColumn(2).width = 70;
@@ -75,7 +87,7 @@ export async function downloadXlsx(artifact: CopilotArtifact): Promise<void> {
   saveBlob(new Blob([buffer], { type: XLSX_TYPE }), `${safeFilename(artifact.title)}.xlsx`);
 }
 
-export function downloadMarkdown(artifact: CopilotArtifact): void {
+export function downloadMarkdown(artifact: CopilotArtifact, settings?: ExportLocale): void {
   if (artifact.kind !== 'markdown' && artifact.kind !== 'document') return;
   const content =
     artifact.kind === 'markdown'
@@ -85,11 +97,11 @@ export function downloadMarkdown(artifact: CopilotArtifact): void {
           ...artifact.blocks.flatMap(block => {
             if (block.kind === 'text') return [block.content];
             const { table } = block;
-            const code = toCsv(table.columns, table.rows).replace(/```/g, '` ` `');
+            const code = toCsv(table.columns, table.rows, csvSeparator(settings?.locale)).replace(/```/g, '` ` `');
             return [
               `## ${table.title}`,
               '```csv\n' + code + '\n```',
-              ...provenanceRows(table).map(([label, value]) => `- ${label} — ${value}`)
+              ...provenanceRows(table, settings?.t ?? t).map(([label, value]) => `- ${label} — ${value}`)
             ];
           })
         ].join('\n\n');

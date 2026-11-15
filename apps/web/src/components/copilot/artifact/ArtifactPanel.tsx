@@ -2,7 +2,7 @@ import React, { Suspense, useEffect, useRef, useState } from 'react';
 import { CloseOutlined, DownloadOutlined } from '@ant-design/icons';
 import { Button, Dropdown, Input, Modal, Select, Skeleton, Typography } from 'antd';
 import { feedback } from '../../../lib/feedback';
-import { t } from '../../../i18n/t';
+import { useAssistantTranslation } from '../../../i18n/useAssistantTranslation';
 import type { ArtifactVersionChange } from '../../../types/copilot';
 import type {
   ArtifactDownloadFormat,
@@ -14,7 +14,6 @@ import { downloadChartPng, downloadCsv, downloadMarkdown, downloadXlsx } from '.
 import { SafeMarkdown } from '../SafeMarkdown';
 import { ArtifactTable } from './ArtifactTable';
 import { formatArtifactAmount } from '../../../utils/copilot-artifact';
-import { activeLocale } from '../../../i18n/format';
 
 // recharts reste hors du bundle de la page : chargé à l'affichage d'un graphique.
 const ArtifactChart = React.lazy(() => import('./ArtifactChart'));
@@ -51,6 +50,7 @@ export interface ArtifactPanelProps {
 }
 
 function ArtifactSource({ provenance }: { provenance: ArtifactProvenance }) {
+  const { t, locale } = useAssistantTranslation();
   return (
     <details style={{ marginBlock: 8 }}>
       <summary>{t('Comment j’ai calculé')}</summary>
@@ -62,12 +62,13 @@ function ArtifactSource({ provenance }: { provenance: ArtifactProvenance }) {
           <li key={index}>{rule}</li>
         ))}
       </ul>
-      <time dateTime={provenance.calculatedAt}>{new Date(provenance.calculatedAt).toLocaleString(activeLocale())}</time>
+      <time dateTime={provenance.calculatedAt}>{new Date(provenance.calculatedAt).toLocaleString(locale)}</time>
     </details>
   );
 }
 
 function ArtifactBody({ artifact }: { artifact: CopilotArtifact }): React.ReactElement {
+  const { t, locale } = useAssistantTranslation();
   switch (artifact.kind) {
     case 'document':
       return (
@@ -107,7 +108,7 @@ function ArtifactBody({ artifact }: { artifact: CopilotArtifact }): React.ReactE
               <dd style={{ marginInlineStart: 0 }}>
                 <Typography.Text strong style={{ fontSize: '1.35rem' }}>
                   <bdi>
-                    {formatArtifactAmount(card.value)}
+                    {formatArtifactAmount(card.value, locale)}
                     {card.currency ? ' ' + card.currency : ''}
                   </bdi>
                 </Typography.Text>
@@ -115,13 +116,13 @@ function ArtifactBody({ artifact }: { artifact: CopilotArtifact }): React.ReactE
                   <div style={{ marginBlockStart: 4 }}>
                     {card.comparison.label && <span>{card.comparison.label} · </span>}
                     <bdi>
-                      {formatArtifactAmount(card.comparison.value)}
+                      {formatArtifactAmount(card.comparison.value, locale)}
                       {card.currency ? ' ' + card.currency : ''}
                     </bdi>
                     {card.comparison.change !== undefined && (
                       <Typography.Text type="secondary" style={{ display: 'block' }}>
                         <bdi>
-                          {new Intl.NumberFormat(activeLocale(), {
+                          {new Intl.NumberFormat(locale, {
                             style: 'percent',
                             signDisplay: 'exceptZero',
                             maximumFractionDigits: 2
@@ -162,6 +163,8 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
   onRewriteSection,
   onDownloadFile
 }) => {
+  const { t, locale, language } = useAssistantTranslation();
+  const exportLocale = { t, locale, rtl: language === 'ar' };
   const bodyRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -280,8 +283,8 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
     }
   }
 
-  const csv = () => run(() => (onDownloadFile ? downloadFile('csv') : downloadCsv(artifact)));
-  const xlsx = () => run(() => (onDownloadFile ? downloadFile('xlsx') : downloadXlsx(artifact)));
+  const csv = () => run(() => (onDownloadFile ? downloadFile('csv') : downloadCsv(artifact, exportLocale)));
+  const xlsx = () => run(() => (onDownloadFile ? downloadFile('xlsx') : downloadXlsx(artifact, exportLocale)));
   const downloadOptions =
     artifact.kind === 'table' || artifact.kind === 'indicators'
       ? [
@@ -298,7 +301,13 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
             { key: 'csv', label: t('Données (.csv)'), onClick: csv },
             { key: 'xlsx', label: t('Excel (.xlsx)'), onClick: xlsx }
           ]
-        : [{ key: 'md', label: t('Markdown (.md)'), onClick: () => run(() => downloadMarkdown(artifact)) }];
+        : [
+            {
+              key: 'md',
+              label: t('Markdown (.md)'),
+              onClick: () => run(() => downloadMarkdown(artifact, exportLocale))
+            }
+          ];
   const downloads = serverDownloadsOnly
     ? downloadOptions.filter(option => option.key !== 'png' && option.key !== 'md')
     : downloadOptions;
@@ -402,7 +411,10 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
           </Button>
         )}
         {!onDownloadFile && (artifact.kind === 'markdown' || artifact.kind === 'document') ? (
-          <Button icon={<DownloadOutlined aria-hidden />} onClick={() => void run(() => downloadMarkdown(artifact))}>
+          <Button
+            icon={<DownloadOutlined aria-hidden />}
+            onClick={() => void run(() => downloadMarkdown(artifact, exportLocale))}
+          >
             {t('Télécharger')}
           </Button>
         ) : (

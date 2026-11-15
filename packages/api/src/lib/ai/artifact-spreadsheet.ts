@@ -19,7 +19,8 @@ export function buildArtifactCsv(artifact: CopilotArtifact): Buffer {
   if (sections.length !== 1 || grid?.kind !== 'grid') {
     throw new AppError(t('Ce résultat ne peut pas être exporté en CSV.'), 422);
   }
-  const sep = currentAssistantLanguage() === 'en' ? ',' : ';';
+  const language = currentAssistantLanguage();
+  const sep = language === 'fr' || language === 'ar' || language === 'es' ? ';' : ',';
   const rows: ArtifactCell[][] = [grid.headers, ...grid.rows];
   if (grid.truncated || grid.provenance || grid.notes?.length) {
     rows.push([]);

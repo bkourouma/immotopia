@@ -1,3 +1,4 @@
+/// <reference lib="es2022.intl" />
 import React, { useMemo, useState } from 'react';
 import {
   Area,
@@ -19,7 +20,7 @@ import {
   XAxis,
   YAxis
 } from 'recharts';
-import { t } from '../../../i18n/t';
+import { useAssistantTranslation } from '../../../i18n/useAssistantTranslation';
 import { useLanguage } from '../../../i18n/useLanguage';
 import type { ChartScene, CopilotArtifact } from '../../../types/copilot';
 import { chartXLabel, formatArtifactCell } from '../../../utils/copilot-artifact';
@@ -48,54 +49,59 @@ function cssVar(name: string, fallback: string): string {
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 
 /** Tableau de données de repli, lisible par les lecteurs d'écran. */
-const DataFallback: React.FC<{ artifact: ChartArtifact }> = ({ artifact }) => (
-  <details style={{ marginBlockStart: 8 }}>
-    <summary>{t('Afficher les données du graphique')}</summary>
-    <div style={{ overflow: 'auto', maxHeight: 240 }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <caption style={{ textAlign: 'start' }}>{artifact.title}</caption>
-        <thead>
-          <tr>
-            <th scope="col" style={{ textAlign: 'start' }}>
-              {chartXLabel(artifact)}
-            </th>
-            {artifact.groupKey && (
+const DataFallback: React.FC<{ artifact: ChartArtifact }> = ({ artifact }) => {
+  const { t, locale } = useAssistantTranslation();
+  return (
+    <details style={{ marginBlockStart: 8 }}>
+      <summary>{t('Afficher les données du graphique')}</summary>
+      <div style={{ overflow: 'auto', maxHeight: 240 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <caption style={{ textAlign: 'start' }}>{artifact.title}</caption>
+          <thead>
+            <tr>
               <th scope="col" style={{ textAlign: 'start' }}>
-                {artifact.groupLabel ?? artifact.groupKey}
-              </th>
-            )}
-            {artifact.series.map(s => (
-              <th key={s.key} scope="col" style={{ textAlign: 'start' }}>
-                {s.label}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {artifact.data.map((row, i) => (
-            <tr key={i}>
-              <th scope="row" style={{ textAlign: 'start', fontWeight: 'normal' }}>
-                <bdi>
-                  {artifact.chartType === 'scatter'
-                    ? formatArtifactCell(row[artifact.xKey] ?? null, 'number')
-                    : String(row[artifact.xKey] ?? '')}
-                </bdi>
+                {chartXLabel(artifact)}
               </th>
               {artifact.groupKey && (
-                <td>
-                  <bdi>{String(row[artifact.groupKey] ?? '')}</bdi>
-                </td>
+                <th scope="col" style={{ textAlign: 'start' }}>
+                  {artifact.groupLabel ?? artifact.groupKey}
+                </th>
               )}
               {artifact.series.map(s => (
-                <td key={s.key}>{formatArtifactCell(row[s.key] ?? null, 'number')}</td>
+                <th key={s.key} scope="col" style={{ textAlign: 'start' }}>
+                  {s.label}
+                </th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  </details>
-);
+          </thead>
+          <tbody>
+            {artifact.data.map((row, i) => (
+              <tr key={i}>
+                <th scope="row" style={{ textAlign: 'start', fontWeight: 'normal' }}>
+                  <bdi>
+                    {artifact.chartType === 'scatter'
+                      ? formatArtifactCell(row[artifact.xKey] ?? null, 'number', locale)
+                      : String(row[artifact.xKey] ?? '')}
+                  </bdi>
+                </th>
+                {artifact.groupKey && (
+                  <td>
+                    <bdi>{String(row[artifact.groupKey] ?? '')}</bdi>
+                  </td>
+                )}
+                {artifact.series.map(s => (
+                  <td key={s.key}>{formatArtifactCell(row[s.key] ?? null, 'number', locale)}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  );
+};
+
+const segmenter = typeof Intl.Segmenter === 'function' ? new Intl.Segmenter() : undefined;
 
 function SceneFigure({ scene, rtl }: { scene: ChartScene; rtl: boolean }) {
   return (
@@ -113,7 +119,9 @@ function SceneFigure({ scene, rtl }: { scene: ChartScene; rtl: boolean }) {
               {mark.tip && <title>{mark.tip}</title>}
             </rect>
           );
-        const letters = Array.from(mark.text);
+        const letters = segmenter
+          ? Array.from(segmenter.segment(mark.text), item => item.segment)
+          : Array.from(mark.text);
         const size = Math.min(22, mark.h * 0.8, Math.max(9, mark.w / (Math.max(1, letters.length) * 0.58)));
         const cap = Math.max(1, Math.floor(mark.w / (size * 0.58)));
         const label = letters.length > cap ? letters.slice(0, cap - 1).join('') + '…' : mark.text;
@@ -125,7 +133,7 @@ function SceneFigure({ scene, rtl }: { scene: ChartScene; rtl: boolean }) {
             x={x + from}
             y={mark.y + mark.h / 2}
             fill={`#${mark.color}`}
-            fontFamily={t('Arial, sans-serif')}
+            fontFamily="Arial, sans-serif"
             fontSize={size}
             dominantBaseline="central"
             direction={rtl ? 'rtl' : 'ltr'}
@@ -141,7 +149,10 @@ function SceneFigure({ scene, rtl }: { scene: ChartScene; rtl: boolean }) {
 }
 
 export const ArtifactChart: React.FC<{ artifact: ChartArtifact }> = ({ artifact }) => {
-  const { direction, rtl } = useLanguage();
+  const { rtl: interfaceRtl } = useLanguage();
+  const { t, selected, locale } = useAssistantTranslation();
+  const rtl = selected ? selected === 'ar' : interfaceRtl;
+  const direction = rtl ? 'rtl' : 'ltr';
   const colors = useMemo(() => PALETTE_TOKENS.map(([name, fallback]) => cssVar(name, fallback)), []);
   const textColor = useMemo(() => cssVar('--text-secondary', '#525252'), []);
   const gridColor = useMemo(() => cssVar('--border-subtle', '#e5e5e5'), []);
@@ -171,7 +182,7 @@ export const ArtifactChart: React.FC<{ artifact: ChartArtifact }> = ({ artifact 
 
   const label = t('Graphique : {{title}} ({{count}} valeurs)', { title: artifact.title, count: data.length });
   const tick = { fill: textColor, fontSize: 12 };
-  const fmt = (v: unknown) => (typeof v === 'number' ? formatArtifactCell(v, 'number') : String(v ?? ''));
+  const fmt = (v: unknown) => (typeof v === 'number' ? formatArtifactCell(v, 'number', locale) : String(v ?? ''));
   const first = artifact.series[0];
   if (artifact.scene) {
     return (

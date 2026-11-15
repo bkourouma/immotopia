@@ -1,7 +1,7 @@
 import React from 'react';
 import { BarChartOutlined, FileTextOutlined, TableOutlined } from '@ant-design/icons';
 import { Button } from 'antd';
-import { t } from '../../../i18n/t';
+import { useAssistantTranslation } from '../../../i18n/useAssistantTranslation';
 import type { CopilotArtifact } from '../../../types/copilot';
 
 const ICONS = {
@@ -18,6 +18,7 @@ export const ArtifactChip: React.FC<{
   kind: CopilotArtifact['kind'];
   onOpen?: () => void;
 }> = ({ title, kind, onOpen }) => {
+  const { t } = useAssistantTranslation();
   const label = title || t('Résultat');
   if (!onOpen) {
     return (

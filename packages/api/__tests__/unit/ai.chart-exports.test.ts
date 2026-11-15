@@ -87,6 +87,17 @@ it('rend des courbes vectorielles en PDF et conserve la mise en page arabe', asy
   expect(segments.join('\n')).toMatch(/ c\r?\n/); // courbes de Bézier des marqueurs
 });
 
+it.each([
+  ['es', ';', '12,5'],
+  ['hi', ',', '12.5'],
+  ['zh', ',', '12.5']
+] as const)('utilise le format numérique CSV de la langue %s', (language, separator, value) => {
+  const csv = runWithAssistantLanguage(language, () =>
+    buildArtifactCsv({ ...pie, data: [{ month: 'A', xof: 12.5 }] })
+  ).toString('utf8');
+  expect(csv).toContain(`"A"${separator}${value}`);
+});
+
 it('incorpore les contours chinois et garde le texte logique hindi dans un export mixte', async () => {
   const title = '租金收入概览';
   const label = 'किराये की आय (XOF)';

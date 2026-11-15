@@ -1,5 +1,5 @@
 import { activeLocale } from '../../i18n/format';
-import { t } from '../../i18n/t';
+import { t, t as applicationTranslation } from '../../i18n/t';
 import type { CopilotToolName } from '../../types/copilot';
 import { humanizeFieldName } from '../../utils/copilot-artifact';
 import { statusLabel } from '../primitives/StatusTag';
@@ -10,7 +10,7 @@ import { statusLabel } from '../primitives/StatusTag';
  * un statut ne doit pas s'appeler autrement selon l'écran. Valeur inconnue :
  * la valeur brute est affichée.
  */
-export function propertyTypeLabel(value: string): string {
+export function propertyTypeLabel(value: string, t: typeof applicationTranslation = applicationTranslation): string {
   const labels: Record<string, string> = {
     APPARTEMENT: t('Appartement'),
     MAISON_VILLA: t('Maison / Villa'),
@@ -110,11 +110,11 @@ const ENUM_CODE = /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/;
  * paiement…), réutilisant les textes des écrans. `null` si le texte n'est pas EXACTEMENT
  * un code connu : un nom, une référence ou une phrase ne sont jamais traduits.
  */
-export function knownEnumLabel(value: string): string | null {
+export function knownEnumLabel(value: string, translate: typeof t = t): string | null {
   if (!ENUM_CODE.test(value)) return null;
-  const type = propertyTypeLabel(value);
+  const type = propertyTypeLabel(value, translate);
   if (type !== value) return type;
-  return statusLabel(value);
+  return statusLabel(value, translate);
 }
 
 /**

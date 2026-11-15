@@ -1,6 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ClearOutlined, DatabaseOutlined } from '@ant-design/icons';
 import { Button, ConfigProvider, Drawer, Result, Skeleton, Switch, Typography } from 'antd';
+import arabic from 'antd/locale/ar_EG';
+import english from 'antd/locale/en_US';
+import spanish from 'antd/locale/es_ES';
+import french from 'antd/locale/fr_FR';
+import hindi from 'antd/locale/hi_IN';
+import chinese from 'antd/locale/zh_CN';
 import type { TextAreaRef } from 'antd/es/input/TextArea';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { getTenantDashboard } from '../../services/dashboard-service';
@@ -34,6 +40,7 @@ import type { CopilotStatus } from '../../types/copilot';
 const READING_WIDTH = 820;
 const ARTIFACT_WIDTH = 380;
 const ARTIFACT_MAX_WIDTH = 680;
+const componentLocales = { ar: arabic, en: english, es: spanish, fr: french, hi: hindi, zh: chinese };
 
 /**
  * Hauteur de la page : la fenêtre moins l'en-tête de la coquille (64 px) et les
@@ -786,7 +793,7 @@ const AssistantPage: React.FC = () => {
   if (!status) return <Skeleton active aria-label={t("Chargement de l'écran")} />;
   if (!status.enabled) return <Result status="info" {...unavailableMessage(status, true)} />;
   return (
-    <ConfigProvider direction={language === 'ar' ? 'rtl' : 'ltr'}>
+    <ConfigProvider direction={language === 'ar' ? 'rtl' : 'ltr'} locale={componentLocales[language]}>
       <ChatPane key={tenantId} tenantId={tenantId} status={status} hasTabs={!isDesktop} showArtifact={isDesktop} />
     </ConfigProvider>
   );

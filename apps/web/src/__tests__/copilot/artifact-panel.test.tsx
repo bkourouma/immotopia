@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { LanguageContext, LanguageProvider } from '../../i18n/LanguageProvider';
 import { useLanguage } from '../../i18n/useLanguage';
+import { selectAssistantLanguage } from '../../i18n/assistant-language';
 import type { CopilotArtifact } from '../../types/copilot';
 
 vi.mock('recharts', () => {
@@ -155,6 +156,40 @@ beforeEach(() => {
 });
 
 describe('ArtifactPanel — rendus', () => {
+  it('applique la langue de l’assistant aux cellules, statuts, contrôles et CSV', async () => {
+    if (table.kind !== 'table') throw new Error('tableau attendu');
+    selectAssistantLanguage('hi');
+    renderPanel([
+      {
+        ...table,
+        rows: [{ name: 'PENDING', amount: 1_234_567.5, due: '2026-03-05' }],
+        provenance: {
+          source: 'Source de test',
+          href: '/test',
+          period: '2026-03',
+          calculatedAt: '2026-03-06T00:00:00Z',
+          rules: []
+        }
+      }
+    ]);
+    expect(screen.getByText('लंबित')).toBeVisible();
+    expect(screen.getByText('12,34,567.50')).toBeVisible();
+    expect(screen.getByText('गणना कैसे हुई')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: /डाउनलोड करें/ }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'CSV' }));
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    const csv = await blobText(save.mock.calls[0][0]);
+    expect(csv).toContain('PENDING,1234567.5,2026-03-05');
+    expect(csv).toContain('स्रोत विवरण,मान');
+  });
+
+  it('traduit la description et le tableau accessible du graphique en chinois', async () => {
+    selectAssistantLanguage('zh');
+    renderPanel([chart]);
+    expect(await screen.findByRole('img', { name: /图表：Revenus/ })).toBeInTheDocument();
+    expect(screen.getByText('显示图表数据')).toBeInTheDocument();
+  });
+
   it('rend un tableau formaté, trié, avec la mention tronqué', () => {
     renderPanel([table]);
     expect(screen.getByRole('heading', { name: 'Loyers mars' })).toBeInTheDocument();

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import i18next, { loadLanguage } from './index';
 import type { TranslationValues } from './t';
 import { useAssistantLanguage } from './useAssistantLanguage';
+import { assistantLanguages } from './assistant-language';
 import es from './locales/assistant-es.json';
 import hi from './locales/assistant-hi.json';
 import zh from './locales/assistant-zh.json';
@@ -32,5 +33,5 @@ export function useAssistantTranslation() {
     }
     return i18next.t(text, { lng: language, defaultValue: text, replace: values }) as string;
   }
-  return { ...settings, t };
+  return { ...settings, locale: assistantLanguages[language].speech, t };
 }
