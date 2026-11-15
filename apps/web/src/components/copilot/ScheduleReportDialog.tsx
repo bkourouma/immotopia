@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Form, Input, Modal, Select } from 'antd';
-import { t } from '../../i18n/t';
+import { useAssistantTranslation } from '../../i18n/useAssistantTranslation';
 import {
   copilotService,
   type ReportFormat,
@@ -21,6 +21,7 @@ export function ScheduleReportDialog({
   onClose(): void;
   onCreated(): void;
 }) {
+  const { t } = useAssistantTranslation();
   const [frequency, setFrequency] = useState<ReportSchedule['frequency']>('weekly');
   const [day, setDay] = useState(1);
   const [time, setTime] = useState('08:00');
@@ -28,7 +29,7 @@ export function ScheduleReportDialog({
   const [formats, setFormats] = useState<ReportFormat[]>(['pdf']);
   const [recipientIds, setRecipientIds] = useState<string[]>([]);
   const [recipients, setRecipients] = useState<Array<{ userId: string; displayName: string }>>([]);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<'load' | 'timezone' | 'submit'>();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const confirmation = useRef<{ payload: string; key: string }>();
@@ -40,7 +41,7 @@ export function ScheduleReportDialog({
         if (active) setRecipients(items);
       })
       .catch(() => {
-        if (active) setError(t('Impossible de charger les destinataires.'));
+        if (active) setError('load');
       });
     return () => {
       active = false;
@@ -50,7 +51,7 @@ export function ScheduleReportDialog({
   async function submit() {
     if (busy) return;
     setBusy(true);
-    setError('');
+    setError(undefined);
     try {
       const input = {
         conversationId: analysis.conversationId,
@@ -75,18 +76,17 @@ export function ScheduleReportDialog({
       }
       onCreated();
     } catch (failure) {
-      setError(
-        failure instanceof RangeError
-          ? t('Fuseau horaire invalide.')
-          : immediate
-            ? t('Impossible de mettre le rapport en file d’envoi.')
-            : t('Impossible de préparer ce rapport.')
-      );
+      setError(failure instanceof RangeError ? 'timezone' : 'submit');
     } finally {
       setBusy(false);
     }
   }
 
+  const errors = {
+    load: t('Impossible de charger les destinataires.'),
+    timezone: t('Fuseau horaire invalide.'),
+    submit: immediate ? t('Impossible de mettre le rapport en file d’envoi.') : t('Impossible de préparer ce rapport.')
+  };
   const weekdays = [t('Lundi'), t('Mardi'), t('Mercredi'), t('Jeudi'), t('Vendredi'), t('Samedi'), t('Dimanche')];
   return (
     <Modal
@@ -114,7 +114,7 @@ export function ScheduleReportDialog({
       {immediate && (
         <p>{t('La confirmation partage aussi l’analyse en lecture seule avec les collègues sélectionnés.')}</p>
       )}
-      {error && <Alert type="error" message={error} />}
+      {error && <Alert type="error" message={errors[error]} />}
       <Form component={false} layout="vertical" disabled={busy}>
         {immediate ? (
           <Form.Item label={t('Message facultatif')}>

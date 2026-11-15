@@ -19,6 +19,7 @@ vi.mock('../../services/copilot-service', () => {
     getArtifactVersion: vi.fn(),
     listSavedAnalyses: vi.fn(),
     listScheduledReports: vi.fn(),
+    createScheduledReport: vi.fn(),
     listRentalAlerts: vi.fn(),
     rentalAlertProperties: vi.fn(),
     saveRentalAlert: vi.fn(),
@@ -141,6 +142,29 @@ describe('AssistantPage — artefacts', () => {
     }
     fireEvent.change(select, { target: { value: '' } });
     expect(await screen.findByRole('textbox', { name: 'Votre message' })).toBeVisible();
+  });
+
+  it('localise les analyses enregistrées et la programmation sans modifier le titre enregistré', async () => {
+    getStatus.mockResolvedValue(ENABLED);
+    const title = 'Situation locative de décembre';
+    vi.mocked(copilotService.listSavedAnalyses).mockResolvedValueOnce({
+      items: [{ conversationId: 'c1', artifactId: 'a1', title, createdAt: '2026-11-14' }]
+    });
+    vi.mocked(copilotService.listAnalysisRecipients).mockResolvedValueOnce([
+      { userId: 'recipient-1', displayName: 'Camille Destinataire' }
+    ]);
+    selectAssistantLanguage('zh');
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: '我的分析' }));
+    const analyses = await screen.findByRole('dialog', { name: '我的分析' });
+    expect(await within(analyses).findByRole('button', { name: title })).toBeVisible();
+    fireEvent.click(within(analyses).getByRole('button', { name: '安排定期报告' }));
+    const save = await screen.findByRole('button', { name: '保存草稿' });
+    const report = within(save.closest<HTMLElement>('[role="dialog"]')!);
+    expect(report.getByText('安排定期报告')).toBeInTheDocument();
+    expect(report.getByLabelText('频率')).toBeInTheDocument();
+    expect(save).toBeDisabled();
+    expect(copilotService.createScheduledReport).not.toHaveBeenCalled();
   });
 
   it('préremplit et enregistre une alerte locative seulement après validation', async () => {

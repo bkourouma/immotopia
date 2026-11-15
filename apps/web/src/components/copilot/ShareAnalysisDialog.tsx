@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Input, Modal, Select } from 'antd';
-import { t } from '../../i18n/t';
+import { Alert, Input, Modal, Select } from 'antd';
+import { useAssistantTranslation } from '../../i18n/useAssistantTranslation';
 import { feedback } from '../../lib/feedback';
 import { copilotService, type SavedAnalysisReference } from '../../services/copilot-service';
 
@@ -13,19 +13,22 @@ export function ShareAnalysisDialog({
   reference: Omit<SavedAnalysisReference, 'artifactId'> & { artifactId?: string };
   onClose(): void;
 }) {
+  const { t } = useAssistantTranslation();
   const [recipients, setRecipients] = useState<Array<{ userId: string; displayName: string }>>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [message, setMessage] = useState('');
+  const [failed, setFailed] = useState(false);
   const [sharing, setSharing] = useState(false);
   useEffect(() => {
     let active = true;
+    setFailed(false);
     void copilotService
       .listAnalysisRecipients(tenantId)
       .then(items => {
         if (active) setRecipients(items);
       })
       .catch(() => {
-        if (active) feedback.error(t('Impossible de charger les destinataires.'));
+        if (active) setFailed(true);
       });
     return () => {
       active = false;
@@ -64,6 +67,7 @@ export function ShareAnalysisDialog({
           ? t('Le collègue voit les résultats recalculés selon vos droits communs.')
           : t('Le partage affiche les résultats autorisés. Les messages et les pièces jointes restent privés.')}
       </p>
+      {failed && <Alert type="error" message={t('Impossible de charger les destinataires.')} />}
       <Select
         mode="multiple"
         maxCount={20}

@@ -1,7 +1,7 @@
-import { t } from '../../i18n/t';
+import { t as applicationTranslation } from '../../i18n/t';
 import type { RentalAlertRule } from '../../types/copilot';
 
-export function rentalAlertLabels() {
+export function rentalAlertLabels(t: typeof applicationTranslation = applicationTranslation) {
   return {
     lease_expiry: t('Fin de bail'),
     declaration_pending: t('Déclaration en attente'),
@@ -9,7 +9,10 @@ export function rentalAlertLabels() {
   };
 }
 
-export function rentalAlertDescription(rule: RentalAlertRule) {
+export function rentalAlertDescription(
+  rule: RentalAlertRule,
+  t: typeof applicationTranslation = applicationTranslation
+) {
   if (rule.kind === 'lease_expiry') return t('Bail actif se terminant dans les {{days}} prochains jours', rule);
   if (rule.kind === 'declaration_pending')
     return t('Déclaration en attente depuis au moins {{days}} jours ouvrés', rule);

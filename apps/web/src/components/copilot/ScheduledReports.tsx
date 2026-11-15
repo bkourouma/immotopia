@@ -1,27 +1,25 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, Button, Card, Drawer, Empty, Popconfirm, Space, Spin, Tag } from 'antd';
-import { activeLocale } from '../../i18n/format';
-import { t } from '../../i18n/t';
+import { useAssistantTranslation } from '../../i18n/useAssistantTranslation';
 import { copilotService, type ScheduledReport } from '../../services/copilot-service';
 
-function reportDate(value: string, timeZone?: string) {
-  return new Intl.DateTimeFormat(activeLocale(), { dateStyle: 'medium', timeStyle: 'short', timeZone }).format(
-    new Date(value)
-  );
+function reportDate(value: string, locale: string, timeZone?: string) {
+  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone }).format(new Date(value));
 }
 
 export function ScheduledReports({ tenantId, onClose }: { tenantId: string; onClose(): void }) {
+  const { locale, t } = useAssistantTranslation();
   const [items, setItems] = useState<ScheduledReport[]>([]);
   const [cursor, setCursor] = useState<string>();
   const [next, setNext] = useState<string>();
   const [revision, setRevision] = useState(0);
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState<string>();
-  const [error, setError] = useState('');
+  const [error, setError] = useState<'load' | 'update'>();
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
-    setError('');
+    setError(undefined);
     void copilotService
       .listScheduledReports(tenantId, cursor, controller.signal)
       .then(page => {
@@ -30,7 +28,7 @@ export function ScheduledReports({ tenantId, onClose }: { tenantId: string; onCl
         setNext(page.nextCursor);
       })
       .catch(() => {
-        if (!controller.signal.aborted) setError(t('Impossible de charger les rapports.'));
+        if (!controller.signal.aborted) setError('load');
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
@@ -45,7 +43,7 @@ export function ScheduledReports({ tenantId, onClose }: { tenantId: string; onCl
 
   async function update(report: ScheduledReport, action: 'toggle' | 'share' | 'remove' = 'toggle') {
     setPending(report.id);
-    setError('');
+    setError(undefined);
     try {
       if (action === 'remove') await copilotService.deleteScheduledReport(tenantId, report.id);
       else
@@ -57,7 +55,7 @@ export function ScheduledReports({ tenantId, onClose }: { tenantId: string; onCl
         );
       refresh();
     } catch {
-      setError(t('Impossible de modifier ce rapport.'));
+      setError('update');
     } finally {
       setPending(undefined);
     }
@@ -75,7 +73,15 @@ export function ScheduledReports({ tenantId, onClose }: { tenantId: string; onCl
   return (
     <Drawer open size="min(780px, 100vw)" title={t('Rapports')} onClose={onClose}>
       <div style={{ display: 'grid', gap: 12 }} aria-busy={loading}>
-        {error && <Alert type="error" message={error} action={<Button onClick={refresh}>{t('Réessayer')}</Button>} />}
+        {error && (
+          <Alert
+            type="error"
+            message={
+              error === 'load' ? t('Impossible de charger les rapports.') : t('Impossible de modifier ce rapport.')
+            }
+            action={<Button onClick={refresh}>{t('Réessayer')}</Button>}
+          />
+        )}
         {loading && <Spin />}
         {!loading && !error && !items.length && <Empty description={t('Aucun rapport à afficher.')} />}
         {items.map(report => {
@@ -115,12 +121,12 @@ export function ScheduledReports({ tenantId, onClose }: { tenantId: string; onCl
               </p>
               {schedule && report.nextRunAt && (
                 <p>
-                  {t('Prochaine échéance')} · {reportDate(report.nextRunAt, schedule.timeZone)}
+                  {t('Prochaine échéance')} · {reportDate(report.nextRunAt, locale, schedule.timeZone)}
                 </p>
               )}
               {report.lastRunAt && (
                 <p>
-                  {t('Dernière exécution')} · {reportDate(report.lastRunAt, schedule?.timeZone)}
+                  {t('Dernière exécution')} · {reportDate(report.lastRunAt, locale, schedule?.timeZone)}
                   {schedule && ` · ${statuses[report.lastStatus ?? ''] ?? '—'}`}
                 </p>
               )}

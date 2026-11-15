@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Form, Input, Modal, Select } from 'antd';
-import { t } from '../../i18n/t';
+import { useAssistantTranslation } from '../../i18n/useAssistantTranslation';
 import { copilotService, type SavedAnalysis, type TaskPriority } from '../../services/copilot-service';
 import { taskPriorities } from './AssistantTasks';
 
@@ -15,13 +15,14 @@ export function CreateAssistantTaskDialog({
   onClose(): void;
   onCreated(id: string): void;
 }) {
+  const { t } = useAssistantTranslation();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [priority, setPriority] = useState<TaskPriority>('normal');
   const [assigneeId, setAssigneeId] = useState<string>();
   const [recipients, setRecipients] = useState<Array<{ userId: string; displayName: string }>>([]);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<'load' | 'submit'>();
   const [busy, setBusy] = useState(false);
   const confirmation = useRef<{ payload: string; id: string }>();
   useEffect(() => {
@@ -32,7 +33,7 @@ export function CreateAssistantTaskDialog({
         if (active) setRecipients(items);
       })
       .catch(() => {
-        if (active) setError(t('Impossible de charger les destinataires.'));
+        if (active) setError('load');
       });
     return () => {
       active = false;
@@ -41,7 +42,7 @@ export function CreateAssistantTaskDialog({
 
   async function submit() {
     if (!title.trim() || !assigneeId || busy) return;
-    setError('');
+    setError(undefined);
     setBusy(true);
     try {
       const input = {
@@ -57,13 +58,13 @@ export function CreateAssistantTaskDialog({
       const result = await copilotService.createTask(tenantId, { ...input, requestId: confirmation.current.id });
       onCreated(result.id);
     } catch {
-      setError(t('Impossible de créer cette tâche.'));
+      setError('submit');
     } finally {
       setBusy(false);
     }
   }
 
-  const labels = taskPriorities();
+  const labels = taskPriorities(t);
   return (
     <Modal
       open
@@ -83,7 +84,14 @@ export function CreateAssistantTaskDialog({
           {t('Si vous assignez la tâche à un collègue, il recevra aussi un accès en lecture seule à l’analyse.')}
         </p>
       )}
-      {error && <Alert type="error" message={error} />}
+      {error && (
+        <Alert
+          type="error"
+          message={
+            error === 'load' ? t('Impossible de charger les destinataires.') : t('Impossible de créer cette tâche.')
+          }
+        />
+      )}
       <Form component={false} layout="vertical" disabled={busy}>
         <Form.Item label={t('Titre')} required>
           <Input

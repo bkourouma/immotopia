@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Form, Input, Modal, Select } from 'antd';
-import { t } from '../../i18n/t';
+import { useAssistantTranslation } from '../../i18n/useAssistantTranslation';
 import { feedback } from '../../lib/feedback';
 import { copilotService, type SavedAnalysis } from '../../services/copilot-service';
 
@@ -13,10 +13,11 @@ export function NotifyColleaguesDialog({
   analysis?: SavedAnalysis;
   onClose(): void;
 }) {
+  const { t } = useAssistantTranslation();
   const [recipientIds, setRecipientIds] = useState<string[]>([]);
   const [message, setMessage] = useState('');
   const [members, setMembers] = useState<Array<{ userId: string; displayName: string }>>([]);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<'load' | 'submit'>();
   const [busy, setBusy] = useState(false);
   const confirmation = useRef<{ payload: string; id: string }>();
   useEffect(() => {
@@ -27,7 +28,7 @@ export function NotifyColleaguesDialog({
         if (active) setMembers(items);
       })
       .catch(() => {
-        if (active) setError(t('Impossible de charger les destinataires.'));
+        if (active) setError('load');
       });
     return () => {
       active = false;
@@ -37,7 +38,7 @@ export function NotifyColleaguesDialog({
   async function send() {
     if (busy || !recipientIds.length || !message.trim()) return;
     setBusy(true);
-    setError('');
+    setError(undefined);
     try {
       const input = {
         recipientIds,
@@ -50,7 +51,7 @@ export function NotifyColleaguesDialog({
       feedback.success(t('Notification envoyée.'));
       onClose();
     } catch {
-      setError(t('Impossible d’envoyer cette notification.'));
+      setError('submit');
     } finally {
       setBusy(false);
     }
@@ -76,7 +77,16 @@ export function NotifyColleaguesDialog({
           {t('La confirmation partage aussi l’analyse en lecture seule avec les collègues sélectionnés.')}
         </p>
       )}
-      {error && <Alert type="error" message={error} />}
+      {error && (
+        <Alert
+          type="error"
+          message={
+            error === 'load'
+              ? t('Impossible de charger les destinataires.')
+              : t('Impossible d’envoyer cette notification.')
+          }
+        />
+      )}
       <Form component={false} layout="vertical" disabled={busy}>
         <Form.Item label={t('Destinataires')} required>
           <Select

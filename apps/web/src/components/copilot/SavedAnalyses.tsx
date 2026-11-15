@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, Button, Drawer, Empty, Popconfirm, Spin } from 'antd';
-import { t } from '../../i18n/t';
+import { useAssistantTranslation } from '../../i18n/useAssistantTranslation';
 import { feedback } from '../../lib/feedback';
 import { copilotService, type SavedAnalysis, type SavedAnalysisReference } from '../../services/copilot-service';
 import type { CopilotArtifact } from '../../types/copilot';
@@ -19,13 +19,14 @@ function SavedAnalysisPreview({
   item: SavedAnalysisReference;
   onBack(): void;
 }) {
+  const { t } = useAssistantTranslation();
   const [artifact, setArtifact] = useState<CopilotArtifact>();
   const [failed, setFailed] = useState(false);
   const read = useCallback(
     async (id: string, version?: number) => {
       const result = await copilotService.getArtifactVersion(tenantId, item.conversationId, id, version);
       const safe = sanitizeArtifact(result.artifact);
-      if (!safe || safe.id !== id) throw new Error(t('Cette version est indisponible.'));
+      if (!safe || safe.id !== id) throw new Error();
       return { ...result, artifact: safe };
     },
     [tenantId, item.conversationId]
@@ -82,6 +83,7 @@ export function SavedAnalyses({
   onCreateTask(analysis: SavedAnalysis): void;
   onNotify(analysis: SavedAnalysis): void;
 }) {
+  const { t } = useAssistantTranslation();
   const [items, setItems] = useState<SavedAnalysis[]>([]);
   const [selected, setSelected] = useState<SavedAnalysisReference | undefined>(initialAnalysis);
   const [cursor, setCursor] = useState<SavedAnalysisReference>();

@@ -25,6 +25,8 @@ import { useLanguage } from '../../../i18n/useLanguage';
 import type { ChartScene, CopilotArtifact } from '../../../types/copilot';
 import { chartXLabel, formatArtifactCell } from '../../../utils/copilot-artifact';
 
+const chartFontFamily = 'Arial, sans-serif';
+
 type ChartArtifact = Extract<CopilotArtifact, { kind: 'chart' }>;
 
 /** Jetons du thème et leur repli ; résolus en valeurs pour que le PNG exporté garde les couleurs. */
@@ -133,7 +135,7 @@ function SceneFigure({ scene, rtl }: { scene: ChartScene; rtl: boolean }) {
             x={x + from}
             y={mark.y + mark.h / 2}
             fill={`#${mark.color}`}
-            fontFamily="Arial, sans-serif"
+            fontFamily={chartFontFamily}
             fontSize={size}
             dominantBaseline="central"
             direction={rtl ? 'rtl' : 'ltr'}

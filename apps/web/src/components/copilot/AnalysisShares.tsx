@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, Button, Drawer, Empty, Popconfirm, Segmented, Spin } from 'antd';
-import { t } from '../../i18n/t';
+import { useAssistantTranslation } from '../../i18n/useAssistantTranslation';
 import { feedback } from '../../lib/feedback';
 import { copilotService, type AnalysisShare } from '../../services/copilot-service';
 import type { CopilotArtifact } from '../../types/copilot';
@@ -17,6 +17,7 @@ export function AnalysisShares({
   onClose(): void;
   initialShareId?: string;
 }) {
+  const { language, locale, t } = useAssistantTranslation();
   const [direction, setDirection] = useState<'incoming' | 'outgoing'>('incoming');
   const [items, setItems] = useState<AnalysisShare[]>([]);
   const [cursor, setCursor] = useState<string>();
@@ -55,6 +56,9 @@ export function AnalysisShares({
   useEffect(() => {
     if (!selection) return;
     let active = true;
+    setArtifact(undefined);
+    setThreadArtifacts(undefined);
+    setUnavailable(false);
     void copilotService
       .getSharedAnalysis(tenantId, selection)
       .then(payload => {
@@ -81,7 +85,7 @@ export function AnalysisShares({
     return () => {
       active = false;
     };
-  }, [tenantId, selection]);
+  }, [tenantId, selection, language]);
 
   async function revoke(id: string) {
     try {
@@ -158,7 +162,7 @@ export function AnalysisShares({
                       <strong>{row.title}</strong> ·{' '}
                     </>
                   )}
-                  {row.colleague || t('Collaborateur')} · {new Date(row.createdAt).toLocaleDateString()}
+                  {row.colleague || t('Collaborateur')} · {new Date(row.createdAt).toLocaleDateString(locale)}
                   {row.message && (
                     <span style={{ display: 'block', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
                       {row.message}

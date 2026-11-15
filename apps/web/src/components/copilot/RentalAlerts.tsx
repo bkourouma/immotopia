@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Card, Drawer, Empty, Form, Input, InputNumber, Modal, Popconfirm, Select, Spin } from 'antd';
-import { t } from '../../i18n/t';
+import { useAssistantTranslation } from '../../i18n/useAssistantTranslation';
 import { copilotService } from '../../services/copilot-service';
 import type { CopilotToolName, RentalAlertRule } from '../../types/copilot';
 import { rentalAlertDescription, rentalAlertLabels } from './rental-alert-labels';
@@ -25,6 +25,7 @@ function RentalAlertForm({
   onClose(): void;
   onSaved(): void;
 }) {
+  const { t } = useAssistantTranslation();
   const proposedKind = params?.get('regle') as Kind;
   const [kind, setKind] = useState<Kind>(() => (available.includes(proposedKind) ? proposedKind : available[0]));
   const [days, setDays] = useState<number | null>(() => Number(params?.get('jours')) || null);
@@ -92,7 +93,7 @@ function RentalAlertForm({
       setBusy(false);
     }
   }
-  const labels = rentalAlertLabels();
+  const labels = rentalAlertLabels(t);
   const daysLabel = {
     lease_expiry: t('Jours avant la fin du bail'),
     declaration_pending: t('Jours ouvrés en attente'),
@@ -178,6 +179,7 @@ export function RentalAlerts({
   onClose(): void;
   onDraftClosed(): void;
 }) {
+  const { t } = useAssistantTranslation();
   const available = (Object.keys(kinds) as Kind[]).filter(kind => tools.includes(kinds[kind]));
   const hasDraft = available.includes(params.get('regle') as Kind);
   const [open, setOpen] = useState(false);
@@ -186,12 +188,12 @@ export function RentalAlerts({
   const [next, setNext] = useState<string>();
   const [revision, setRevision] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const labels = rentalAlertLabels();
+  const [error, setError] = useState<'load' | 'remove'>();
+  const labels = rentalAlertLabels(t);
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
-    setError('');
+    setError(undefined);
     void copilotService
       .listRentalAlerts(tenantId, cursor, controller.signal)
       .then(page => {
@@ -200,7 +202,7 @@ export function RentalAlerts({
         setNext(page.nextCursor);
       })
       .catch(() => {
-        if (!controller.signal.aborted) setError(t('Impossible de charger les alertes locatives.'));
+        if (!controller.signal.aborted) setError('load');
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
@@ -220,7 +222,7 @@ export function RentalAlerts({
       await copilotService.deleteRentalAlert(tenantId, id);
       refresh();
     } catch {
-      setError(t('Impossible de supprimer cette alerte.'));
+      setError('remove');
     }
   }
   return (
@@ -239,12 +241,22 @@ export function RentalAlerts({
         }
       >
         <div style={{ display: 'grid', gap: 12 }} aria-busy={loading}>
-          {error && <Alert type="error" message={error} action={<Button onClick={refresh}>{t('Réessayer')}</Button>} />}
+          {error && (
+            <Alert
+              type="error"
+              message={
+                error === 'load'
+                  ? t('Impossible de charger les alertes locatives.')
+                  : t('Impossible de supprimer cette alerte.')
+              }
+              action={<Button onClick={refresh}>{t('Réessayer')}</Button>}
+            />
+          )}
           {loading && <Spin />}
           {!loading && !error && !items.length && <Empty description={t('Aucune alerte locative.')} />}
           {items.map(({ id, rule, property }) => (
             <Card key={id} title={rule ? labels[rule.kind] : t('Alerte indisponible')}>
-              {rule && <p>{rentalAlertDescription(rule)}</p>}
+              {rule && <p>{rentalAlertDescription(rule, t)}</p>}
               {rule && (
                 <p>
                   {property

@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, Button, Card, Drawer, Empty, Space, Spin, Tag } from 'antd';
 import { Link } from 'react-router-dom';
-import { activeLocale } from '../../i18n/format';
-import { t } from '../../i18n/t';
+import { t as applicationTranslation } from '../../i18n/t';
+import { useAssistantTranslation } from '../../i18n/useAssistantTranslation';
 import { copilotService, type AssistantTask } from '../../services/copilot-service';
 
-export function taskPriorities() {
+export function taskPriorities(t: typeof applicationTranslation = applicationTranslation) {
   return { low: t('Basse'), normal: t('Normale'), high: t('Haute') };
 }
 
@@ -20,17 +20,18 @@ export function AssistantTasks({
   onClose(): void;
   onCreate(): void;
 }) {
+  const { locale, t } = useAssistantTranslation();
   const [items, setItems] = useState<AssistantTask[]>([]);
   const [cursor, setCursor] = useState<string>();
   const [next, setNext] = useState<string>();
   const [revision, setRevision] = useState(0);
   const [loading, setLoading] = useState(true);
   const [changing, setChanging] = useState<string>();
-  const [error, setError] = useState('');
+  const [error, setError] = useState<'load' | 'update'>();
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
-    setError('');
+    setError(undefined);
     void copilotService
       .listTasks(tenantId, cursor, cursor ? undefined : focus, controller.signal)
       .then(page => {
@@ -41,7 +42,7 @@ export function AssistantTasks({
         setNext(page.nextCursor);
       })
       .catch(() => {
-        if (!controller.signal.aborted) setError(t('Impossible de charger les tâches.'));
+        if (!controller.signal.aborted) setError('load');
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
@@ -60,13 +61,13 @@ export function AssistantTasks({
       await copilotService.setTaskCompleted(tenantId, task.id, !task.completedAt);
       refresh();
     } catch {
-      setError(t('Impossible de modifier cette tâche.'));
+      setError('update');
     } finally {
       setChanging(undefined);
     }
   }
 
-  const priorities = taskPriorities();
+  const priorities = taskPriorities(t);
   return (
     <Drawer
       open
@@ -80,7 +81,15 @@ export function AssistantTasks({
       }
     >
       <div style={{ display: 'grid', gap: 12 }} aria-busy={loading}>
-        {error && <Alert type="error" message={error} action={<Button onClick={refresh}>{t('Réessayer')}</Button>} />}
+        {error && (
+          <Alert
+            type="error"
+            message={
+              error === 'load' ? t('Impossible de charger les tâches.') : t('Impossible de modifier cette tâche.')
+            }
+            action={<Button onClick={refresh}>{t('Réessayer')}</Button>}
+          />
+        )}
         {loading && <Spin />}
         {!loading && !error && !items.length && <Empty description={t('Aucune tâche à afficher.')} />}
         {items.map(task => {
@@ -104,7 +113,7 @@ export function AssistantTasks({
               {task.dueDate && (
                 <p>
                   {t('Échéance')} ·{' '}
-                  {new Intl.DateTimeFormat(activeLocale(), { dateStyle: 'medium', timeZone: 'UTC' }).format(
+                  {new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeZone: 'UTC' }).format(
                     new Date(task.dueDate)
                   )}
                 </p>
