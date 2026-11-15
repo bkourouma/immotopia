@@ -1,5 +1,5 @@
 import React, { Suspense, useEffect, useRef, useState } from 'react';
-import { CloseOutlined, DownloadOutlined } from '@ant-design/icons';
+import { CloseOutlined, DownloadOutlined, FullscreenOutlined } from '@ant-design/icons';
 import { Button, Dropdown, Input, Modal, Select, Skeleton, Typography } from 'antd';
 import { feedback } from '../../../lib/feedback';
 import { useAssistantTranslation } from '../../../i18n/useAssistantTranslation';
@@ -24,6 +24,9 @@ export interface ArtifactPanelProps {
   initialVersion?: number;
   onSelect(id: string): void;
   onClose(): void;
+  onExpand?(): void;
+  expandButtonRef?: React.Ref<HTMLButtonElement>;
+  onViewVersion?(id: string, version?: number): void;
   serverDownloadsOnly?: boolean;
   onSaveAnalysis?(artifactId: string): Promise<void>;
   onFollowUp?(artifact: CopilotArtifact, version: number): void;
@@ -156,6 +159,9 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
   initialVersion,
   onSelect,
   onClose,
+  onExpand,
+  expandButtonRef,
+  onViewVersion,
   serverDownloadsOnly,
   onSaveAnalysis,
   onRefresh,
@@ -208,6 +214,9 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
     }
   }
   const viewed = requested?.id === rootId ? requested?.version : undefined;
+  useEffect(() => {
+    if (rootId) onViewVersion?.(rootId, viewed);
+  }, [rootId, viewed, onViewVersion]);
   useEffect(() => {
     if (!rootId || !onReadVersion) return;
     let cancelled = false;
@@ -441,6 +450,15 @@ export const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
           >
             {t('Enregistrer dans Mes analyses')}
           </Button>
+        )}
+        {onExpand && (
+          <Button
+            ref={expandButtonRef}
+            type="text"
+            icon={<FullscreenOutlined aria-hidden />}
+            aria-label={t('Agrandir le panneau de résultats')}
+            onClick={onExpand}
+          />
         )}
         <Button
           type="text"

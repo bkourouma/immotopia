@@ -107,11 +107,11 @@ const ARTIFACT_EVENT = {
   }
 };
 
-function setDesktop(desktop: boolean) {
+function setDesktop(desktop: boolean, wide = desktop) {
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
     value: (query: string) => ({
-      matches: desktop && /min-width/.test(query),
+      matches: desktop && /min-width/.test(query) && (wide || !/(1200|1600)/.test(query)),
       media: query,
       onchange: null,
       addListener: () => undefined,
@@ -547,8 +547,53 @@ describe('AssistantPage — artefacts', () => {
     expect(within(panel).getByText('important')).toBeInTheDocument();
     fireEvent.click(within(panel).getByRole('button', { name: 'Fermer le panneau' }));
     await waitFor(() => expect(screen.queryByRole('complementary')).not.toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: 'Ouvrir : Synthèse du mois' }));
-    expect(await screen.findByRole('complementary')).toBeInTheDocument();
+    const chip = screen.getByRole('button', { name: 'Ouvrir : Synthèse du mois' });
+    chip.focus();
+    fireEvent.click(chip);
+    const reopened = await screen.findByRole('complementary', { name: 'Résultats et documents' });
+    await waitFor(() => expect(reopened).toHaveFocus());
+    fireEvent.click(within(reopened).getByRole('button', { name: 'Fermer le panneau' }));
+    await waitFor(() => expect(chip).toHaveFocus());
+  });
+
+  it('ordinateur : redimensionne au clavier, agrandit le résultat et rend le focus', async () => {
+    localStorage.removeItem('immotopia.assistant.resultWidth');
+    setDesktop(true);
+    await sendWithArtifact();
+    const resize = await screen.findByRole('separator', { name: 'Redimensionner le panneau de résultats' });
+    const initial = Number(resize.getAttribute('aria-valuenow'));
+    fireEvent.keyDown(resize, { key: 'ArrowLeft' });
+    expect(resize).toHaveAttribute('aria-valuenow', String(initial + 24));
+    fireEvent.keyDown(resize, { key: 'Home' });
+    expect(resize).toHaveAttribute('aria-valuenow', '360');
+    expect(localStorage.getItem('immotopia.assistant.resultWidth')).toBe('360');
+    const expand = screen.getByRole('button', { name: 'Agrandir le panneau de résultats' });
+    expand.focus();
+    fireEvent.click(expand);
+    const dialog = await screen.findByRole('dialog', { name: 'Résultats et documents' });
+    expect(within(dialog).getByText('important')).toBeInTheDocument();
+    expect(screen.queryByRole('separator', { name: 'Redimensionner le panneau de résultats' })).toBeNull();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Fermer le panneau' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Agrandir le panneau de résultats' })).toHaveFocus());
+    expect(screen.getByRole('separator', { name: 'Redimensionner le panneau de résultats' })).toHaveAttribute(
+      'aria-valuenow',
+      '360'
+    );
+    localStorage.removeItem('immotopia.assistant.resultWidth');
+  });
+
+  it('écran intermédiaire : garde l’historique et ouvre le résultat en recouvrement', async () => {
+    setDesktop(true, false);
+    await sendWithArtifact();
+    const chip = await screen.findByRole('button', { name: 'Ouvrir : Synthèse du mois' });
+    expect(screen.getByRole('navigation', { name: 'Historique des conversations' })).toBeInTheDocument();
+    expect(screen.queryByRole('complementary')).toBeNull();
+    chip.focus();
+    fireEvent.click(chip);
+    const dialog = await screen.findByRole('dialog', { name: 'Résultats et documents' });
+    expect(within(dialog).getByText('important')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Fermer le panneau' }));
+    await waitFor(() => expect(chip).toHaveFocus());
   });
 
   it('mobile : le panneau reste replié, la pastille ouvre un tiroir', async () => {

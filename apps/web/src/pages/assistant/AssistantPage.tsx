@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { ClearOutlined, DatabaseOutlined } from '@ant-design/icons';
-import { Button, ConfigProvider, Drawer, Result, Skeleton, Switch, Typography } from 'antd';
+import { Button, ConfigProvider, Drawer, Modal, Result, Skeleton, Switch, Typography } from 'antd';
 import type { TextAreaRef } from 'antd/es/input/TextArea';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { getTenantDashboard } from '../../services/dashboard-service';
@@ -30,11 +30,30 @@ import { assistantLanguageCodes, assistantLanguages, isAssistantLanguage } from 
 import { assistantComponentLocales } from '../../i18n/assistant-component-locales';
 import { useAssistantTranslation } from '../../i18n/useAssistantTranslation';
 import type { CopilotStatus } from '../../types/copilot';
+import {
+  MAX_RESULT_WIDTH,
+  MIN_RESULT_WIDTH,
+  ResultPaneDivider,
+  readResultWidth,
+  saveResultWidth
+} from './ResultPaneDivider';
+import './result-pane.css';
 
 /** Colonne de lecture : les messages ne s'étirent pas sur tout un grand écran. */
 const READING_WIDTH = 820;
-const ARTIFACT_WIDTH = 380;
-const ARTIFACT_MAX_WIDTH = 680;
+
+function cycleResultFocus(event: React.KeyboardEvent<HTMLDivElement>) {
+  const { currentTarget, target, shiftKey } = event;
+  if (event.key !== 'Tab' || !(target instanceof HTMLElement) || !currentTarget.contains(target)) return;
+  const controls = Array.from(
+    currentTarget.querySelectorAll<HTMLElement>('button, a[href], input, select, textarea, summary, [tabindex]')
+  ).filter(control => control.tabIndex >= 0 && !control.matches(':disabled') && control.getClientRects().length > 0);
+  const first = controls[0];
+  const last = controls.at(-1);
+  if (!first || !last || target !== (shiftKey ? first : last)) return;
+  event.preventDefault();
+  (shiftKey ? last : first).focus();
+}
 
 /**
  * Hauteur de la page : la fenêtre moins l'en-tête de la coquille (64 px) et les
@@ -73,11 +92,11 @@ export function unavailableMessage(
   };
 }
 
-const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boolean; showArtifact: boolean }> = ({
+const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boolean; dockResults: boolean }> = ({
   tenantId,
   status,
   hasTabs,
-  showArtifact
+  dockResults
 }) => {
   const { language, selected, t } = useAssistantTranslation();
   const [savingLanguage, setSavingLanguage] = useState(false);
@@ -237,10 +256,39 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
   }, [activeId, location.key, location.state, navigate, pathname, send, tenantId]);
   const artifactCount = chat.artifacts.length;
   const hasArtifacts = artifactCount > 0;
-  // Ordinateur : le panneau apparaît seul à chaque nouvel artefact. Mobile : tiroir,
-  // ouvert seulement à la demande (la pastille du message).
   const [desktopOpen, setDesktopOpen] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [savedWidth, setSavedWidth] = useState(readResultWidth);
+  const [maxWidth, setMaxWidth] = useState(MAX_RESULT_WIDTH);
+  const frameRef = useRef<HTMLDivElement>(null);
+  const dockRef = useRef<HTMLElement>(null);
+  const historyRef = useRef<HTMLElement>(null);
+  const conversationRef = useRef<HTMLElement>(null);
+  const triggerRef = useRef<HTMLElement>();
+  const resultsRef = useRef<HTMLButtonElement>(null);
+  const expandRef = useRef<HTMLButtonElement>(null);
+  const dockId = useId();
+  const width = Math.min(savedWidth, maxWidth);
+  useEffect(() => {
+    const locked = expanded || (!dockResults && drawerOpen);
+    historyRef.current?.toggleAttribute('inert', locked);
+    conversationRef.current?.toggleAttribute('inert', locked);
+  }, [dockResults, drawerOpen, expanded]);
+  useEffect(() => {
+    const frame = frameRef.current;
+    if (!dockResults || !frame || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(([entry]) => {
+      // La zone de conversation démarre après l’historique et l’espacement.
+      const usable = entry.contentRect.width - 246;
+      setMaxWidth(Math.max(MIN_RESULT_WIDTH, Math.min(MAX_RESULT_WIDTH, Math.floor(usable * 0.6))));
+    });
+    observer.observe(frame);
+    return () => observer.disconnect();
+  }, [dockResults]);
+  useEffect(() => {
+    if (!dockResults || !hasArtifacts) setExpanded(false);
+  }, [dockResults, hasArtifacts]);
   useEffect(() => {
     if (artifactCount > 0) setDesktopOpen(true);
   }, [artifactCount, chat.selectedArtifactId]);
@@ -249,15 +297,50 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
   }, [artifactCount]);
 
   const [versionLink, setVersionLink] = useState<{ id: string; version?: number; request: number }>();
+  const viewedVersion = useRef<{ id: string; version?: number }>();
+  const onViewVersion = useCallback((id: string, version?: number) => {
+    viewedVersion.current = { id, version };
+  }, []);
+  const rememberVersion = () => {
+    const view = viewedVersion.current;
+    if (view) setVersionLink(previous => ({ ...view, request: previous?.request ?? 0 }));
+  };
+  const openResults = () => {
+    const trigger = document.activeElement;
+    triggerRef.current = trigger instanceof HTMLElement && trigger !== document.body ? trigger : undefined;
+    if (dockResults) {
+      setDesktopOpen(true);
+      requestAnimationFrame(() => dockRef.current?.focus());
+    } else setDrawerOpen(true);
+  };
   const openArtifact = (id: string, version?: number) => {
     setVersionLink(previous => ({ id, version, request: (previous?.request ?? 0) + 1 }));
     chat.selectArtifact(id);
-    setDesktopOpen(true);
-    setDrawerOpen(true);
+    openResults();
+  };
+  const restorePanelFocus = (clear = true) => {
+    const trigger = triggerRef.current;
+    if (clear) triggerRef.current = undefined;
+    if (trigger?.isConnected) trigger.focus();
+    else if (resultsRef.current) resultsRef.current.focus();
+    else inputRef.current?.focus();
+  };
+  const focusExpand = () => requestAnimationFrame(() => expandRef.current?.focus());
+  const collapse = () => {
+    rememberVersion();
+    setExpanded(false);
+    focusExpand();
   };
   const closePanel = () => {
-    setDesktopOpen(false);
-    setDrawerOpen(false);
+    if (expanded) {
+      collapse();
+    } else if (dockResults) {
+      setDesktopOpen(false);
+      requestAnimationFrame(() => restorePanelFocus());
+    } else {
+      setDrawerOpen(false);
+      requestAnimationFrame(() => restorePanelFocus(false));
+    }
   };
   const readVersion = useCallback(
     async (artifactId: string, version?: number) => {
@@ -278,6 +361,16 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
       selectedId={chat.selectedArtifactId}
       onSelect={chat.selectArtifact}
       onClose={closePanel}
+      onExpand={
+        dockResults && !expanded
+          ? () => {
+              rememberVersion();
+              setExpanded(true);
+            }
+          : undefined
+      }
+      expandButtonRef={expandRef}
+      onViewVersion={onViewVersion}
       onSaveAnalysis={
         conversationId && !streaming
           ? async artifactId => {
@@ -291,7 +384,10 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
           ? (artifact, version) => {
               setFocus({ artifactId: artifact.id, version, title: artifact.title });
               setDraft(previous => previous || t('Explique les points importants de ce résultat.'));
-              closePanel();
+              setExpanded(false);
+              setDesktopOpen(false);
+              setDrawerOpen(false);
+              triggerRef.current = undefined;
               requestAnimationFrame(() => inputRef.current?.focus());
             }
           : undefined
@@ -433,6 +529,7 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
   const direction = language === 'ar' ? 'rtl' : 'ltr';
   return (
     <div
+      ref={frameRef}
       dir={direction}
       lang={language}
       style={{ display: 'flex', height: pageHeight(hasTabs), minHeight: 320, gap: 'var(--space-4)' }}
@@ -548,8 +645,8 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
           }}
         />
       )}
-      {showArtifact ? (
-        <nav aria-label={t('Historique des conversations')} style={{ flex: '0 0 230px', minWidth: 0 }}>
+      {!hasTabs ? (
+        <nav ref={historyRef} aria-label={t('Historique des conversations')} style={{ flex: '0 0 230px', minWidth: 0 }}>
           {history}
         </nav>
       ) : (
@@ -563,6 +660,7 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
         </Drawer>
       )}
       <section
+        ref={conversationRef}
         aria-label={t('Conversation')}
         style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}
       >
@@ -637,17 +735,13 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
                 {t('Partager la conversation')}
               </Button>
             )}
-            {!showArtifact && (
+            {hasTabs && (
               <Button type="text" onClick={() => setHistoryOpen(true)}>
                 {t('Historique')}
               </Button>
             )}
-            {hasArtifacts && (showArtifact ? !desktopOpen : true) && (
-              <Button
-                type="text"
-                icon={<DatabaseOutlined aria-hidden />}
-                onClick={() => (showArtifact ? setDesktopOpen(true) : setDrawerOpen(true))}
-              >
+            {hasArtifacts && (!dockResults || !desktopOpen) && (
+              <Button type="text" icon={<DatabaseOutlined aria-hidden />} ref={resultsRef} onClick={openResults}>
                 {t('Résultats ({{count}})', { count: artifactCount })}
               </Button>
             )}
@@ -748,11 +842,15 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
           )}
         </div>
       </section>
-      {showArtifact && desktopOpen && hasArtifacts && (
+      {dockResults && desktopOpen && hasArtifacts && !expanded && (
         <aside
+          ref={dockRef}
+          id={dockId}
+          tabIndex={-1}
           aria-label={t('Résultats et documents')}
           style={{
-            flex: `0 0 clamp(${ARTIFACT_WIDTH}px, 42%, ${ARTIFACT_MAX_WIDTH}px)`,
+            position: 'relative',
+            flex: `0 0 ${width}px`,
             minWidth: 0,
             padding: 'var(--space-4)',
             border: '1px solid var(--border-subtle, #d9d9d9)',
@@ -760,16 +858,54 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
             background: 'var(--surface-card, transparent)'
           }}
         >
+          <ResultPaneDivider
+            label={t('Redimensionner le panneau de résultats')}
+            width={width}
+            maximum={maxWidth}
+            rtl={direction === 'rtl'}
+            controls={dockId}
+            onResize={value => {
+              setSavedWidth(value);
+              saveResultWidth(value);
+            }}
+          />
           {panel}
         </aside>
       )}
-      {!showArtifact && (
+      {dockResults && (
+        <Modal
+          open={expanded}
+          title={t('Résultats et documents')}
+          onCancel={collapse}
+          afterOpenChange={open => {
+            if (!open) focusExpand();
+          }}
+          focusable={{ trap: true, focusTriggerAfterClose: false }}
+          footer={null}
+          closable={false}
+          width="calc(100vw - 32px)"
+          style={{ top: 16 }}
+          styles={{ wrapper: { position: 'fixed' }, body: { height: 'calc(100dvh - 116px)' } }}
+          destroyOnHidden
+        >
+          {expanded && (
+            <div onKeyDown={cycleResultFocus} style={{ height: '100%' }}>
+              {panel}
+            </div>
+          )}
+        </Modal>
+      )}
+      {!dockResults && (
         <Drawer
           open={drawerOpen}
-          onClose={() => setDrawerOpen(false)}
+          onClose={closePanel}
+          afterOpenChange={open => {
+            if (!open && triggerRef.current) requestAnimationFrame(() => restorePanelFocus());
+          }}
           title={t('Résultats et documents')}
           placement={direction === 'rtl' ? 'left' : 'right'}
-          size="100%"
+          size={hasTabs ? '100%' : 'min(720px, 100%)'}
+          focusable={{ trap: true, focusTriggerAfterClose: false }}
           destroyOnHidden
         >
           {panel}
@@ -786,7 +922,7 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
  */
 const AssistantPage: React.FC = () => {
   const { tenantId } = useParams<{ tenantId: string }>();
-  const { isDesktop } = useBreakpoint();
+  const { isDesktop, screens } = useBreakpoint();
   const status = useCopilotStatus(tenantId);
   const { language } = useAssistantTranslation();
 
@@ -795,7 +931,13 @@ const AssistantPage: React.FC = () => {
   if (!status.enabled) return <Result status="info" {...unavailableMessage(status, true)} />;
   return (
     <ConfigProvider direction={language === 'ar' ? 'rtl' : 'ltr'} locale={assistantComponentLocales[language]}>
-      <ChatPane key={tenantId} tenantId={tenantId} status={status} hasTabs={!isDesktop} showArtifact={isDesktop} />
+      <ChatPane
+        key={tenantId}
+        tenantId={tenantId}
+        status={status}
+        hasTabs={!isDesktop}
+        dockResults={Boolean(screens.xl)}
+      />
     </ConfigProvider>
   );
 };
