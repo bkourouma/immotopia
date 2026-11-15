@@ -260,13 +260,22 @@ et empêche le transfert du brouillon ou des fichiers entre agences. Les 37 test
 du lanceur et du tiroir passent. Les nouveaux scénarios utilisent le contrat du flux et une transcription
 simulée. Le wiki est synchronisé. La qualification avec les comptes actifs des fournisseurs reste à faire.
 
-**Garde d’export et CI (commit de cette passation)** — La CI `43687466169` valide l’infrastructure, le build web,
+**Garde d’export et CI (`e968a408`)** — La CI `43687466169` valide l’infrastructure, le build web,
 l’isolation sur base dédiée et trois lots web. Elle relève cinq échecs API et un échec web. L’export global d’agence
 classe explicitement les données privées de l’Assistant hors du ZIP, y compris les notifications et leurs envois.
 Les lectures et exports individuels restent régis par les droits de l’Assistant. L’ouverture du panneau annule le
 retour de focus d’une fermeture devenue obsolète. Les autres échecs API concernent les fixtures des permissions,
 des mandats, du statut Assistant et du catalogue OpenRouter. Les 135 tests API ciblés et les quatre scénarios web
-du panneau passent. Le prochain contrôle complet porte sur ces corrections.
+du panneau passent. Les huit contrôles de la CI `43690072361` sur `e968a408` ont réussi.
+
+**Limites des imports (commit de cette passation)** — Le chat rejette d’avance une demande multipart dont la taille
+annoncée dépasse cinq fois 10 Mio, avec 64 Kio pour le formulaire. Une pièce au-delà de 10 Mio reçoit la même erreur
+localisée. Les noms sont relus en UTF-8 et raccourcis en conservant l’extension et les caractères Unicode entiers.
+La recette PostgreSQL en garde stricte vérifie la réouverture et le téléchargement d’un nom multilingue, le refus
+anticipé, le sixième fichier, l’octet excédentaire et l’envoi valide de cinq fichiers dont un de 10 Mio. Le scénario
+utilise une agence et un compte dédiés pour éviter qu’un quota consommé par les autres cas masque le contrôle
+multipart. Les 38 scénarios PostgreSQL Assistant en garde stricte et les 57 tests ciblés passent. Le catalogue
+généré reste identique. Le plan indique les suites de recette et la vérification externe restant à réaliser.
 
 ## chore/deps-patch-minor — 2026-11-11
 

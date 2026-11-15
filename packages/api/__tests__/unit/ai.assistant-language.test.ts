@@ -12,6 +12,17 @@ import { extractAssistantFile } from '../../src/lib/ai/assistant-files';
 import { buildSystemPrompt } from '../../src/lib/ai/system-prompt';
 
 describe('Langues de l’assistant', () => {
+  it('conserve l’extension après avoir raccourci le nom Unicode sans couper un caractère', async () => {
+    const base = '文'.repeat(175);
+    const name = base + '🏠échéances.txt';
+    const file = {
+      originalname: Buffer.from(name, 'utf8').toString('latin1'),
+      buffer: Buffer.from('Échéance')
+    } as Express.Multer.File;
+    await expect(extractAssistantFile(file, 't1')).resolves.toEqual({ name: base + '.txt', excerpt: 'Échéance' });
+    await expect(extractAssistantFile({ ...file, originalname: 'txt' }, 't1')).rejects.toThrow('Formats acceptés');
+  });
+
   test.each([
     ['es-ES', 'es', 'espagnol', 'Fuente de datos'],
     ['zh-CN', 'zh', 'chinois', '数据来源'],

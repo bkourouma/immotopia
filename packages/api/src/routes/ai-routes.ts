@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type RequestHandler } from 'express';
 import {
   getRentalAlertPropertiesHandler,
   listRentalAlertsHandler,
@@ -12,7 +12,9 @@ import {
   transcribeHandler
 } from '../controllers/ai-transcription-controller';
 import { MAX_ASSISTANT_FILES, MAX_ASSISTANT_FILE_BYTES } from '../lib/ai/assistant-files';
+import { t } from '../i18n';
 import { authenticate } from '../middleware/auth-middleware';
+import { AppError, ErrorCode } from '../middleware/error-middleware';
 import { requireTenantAccess, requireTenantCollaborator } from '../middleware/tenant-middleware';
 import { requireAiAssistantAccess, requireAiStatusAccess } from '../middleware/ai-access-middleware';
 import { resolveAssistantLanguage } from '../middleware/language-middleware';
@@ -74,10 +76,26 @@ import {
  * refusé ; 503 `AI_DISABLED` sauf pour le statut).
  */
 const router = Router({ mergeParams: true });
+const maxChatFormBytes = MAX_ASSISTANT_FILES * MAX_ASSISTANT_FILE_BYTES + 64 * 1024;
 const chatFiles = multer({
   storage: multer.memoryStorage(),
   limits: { files: MAX_ASSISTANT_FILES, fileSize: MAX_ASSISTANT_FILE_BYTES, fields: 1, fieldSize: 32_768 }
 }).array('files', MAX_ASSISTANT_FILES);
+
+const chatFilesTooLarge = () =>
+  new AppError(t('Le fichier envoyé dépasse la taille maximale autorisée.'), 413, ErrorCode.BAD_REQUEST);
+
+const parseChatFiles: RequestHandler = (req, res, next) => {
+  if (req.is('multipart/form-data') && Number(req.get('content-length')) > maxChatFormBytes) {
+    return next(chatFilesTooLarge());
+  }
+  chatFiles(req, res, error => {
+    if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+      return next(chatFilesTooLarge());
+    }
+    next(error);
+  });
+};
 
 router.use(resolveAssistantLanguage);
 router.use(authenticate);
@@ -181,7 +199,7 @@ router.post(
   aiChatDailyLimiter,
   aiTenantChatRateLimiter,
   aiTenantDailyLimiter,
-  chatFiles,
+  parseChatFiles,
   chatHandler
 );
 

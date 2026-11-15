@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { parseString } from 'fast-csv';
 import { t } from '../../i18n';
 import { BadRequestError } from '../../middleware/error-middleware';
+import { corrigerNomFichier } from '../../utils/multipart-filename';
 import type { AnalysisTable, ArtifactCell } from './contracts';
 import { readAssistantPdf } from './assistant-pdf';
 import { readAssistantWorkbook } from './assistant-workbook';
@@ -61,18 +62,20 @@ async function readCsv(text: string): Promise<string[][]> {
 }
 
 export async function extractAssistantFile(file: Express.Multer.File, tenantId: string): Promise<AssistantFileExtract> {
-  const name = file.originalname
-    .replace(/[/\\]/g, '')
-    .split('')
+  const original = Array.from(corrigerNomFichier(file.originalname).replace(/[/\\]/g, ''))
     .filter(character => character >= ' ' && character.charCodeAt(0) !== 127)
     .join('')
-    .slice(0, 180);
-  const extension = name.split('.').at(-1)?.toLowerCase();
-  if (extension === 'pdf') return { name, excerpt: await readAssistantPdf(file.buffer, MAX_EXCERPT) };
-  if (extension === 'txt') return { name, excerpt: readText(file.buffer).slice(0, MAX_EXCERPT) };
-  if (extension !== 'csv' && extension !== 'xlsx') {
+    .trim();
+  const suffixStart = original.lastIndexOf('.');
+  const suffix = suffixStart > 0 ? original.slice(suffixStart) : '';
+  const extension = suffix.slice(1).toLowerCase();
+  if (!['pdf', 'txt', 'csv', 'xlsx'].includes(extension)) {
     throw new BadRequestError(t('Formats acceptés pour les pièces jointes : CSV, TXT, XLSX et PDF.'));
   }
+  const stem = original.slice(0, Math.min(suffixStart, 180 - suffix.length));
+  const name = stem.replace(/[\uD800-\uDBFF]$/, '') + suffix;
+  if (extension === 'pdf') return { name, excerpt: await readAssistantPdf(file.buffer, MAX_EXCERPT) };
+  if (extension === 'txt') return { name, excerpt: readText(file.buffer).slice(0, MAX_EXCERPT) };
   const workbook =
     extension === 'xlsx'
       ? await readAssistantWorkbook(file.buffer, { rows: MAX_ROWS, columns: MAX_COLUMNS, cellLength: MAX_CELL_LENGTH })

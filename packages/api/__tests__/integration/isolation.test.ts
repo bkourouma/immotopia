@@ -4484,6 +4484,7 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
 
     it('joint un CSV, un TXT et un XLSX au message privé, puis restaure le jeu et les noms', async () => {
       const url = `/api/tenants/${tenantA.id}/ai`;
+      const noteName = 'Échéance - العربية - 中文 - हिन्दी.txt';
       const requestBody = { turnId: randomUUID(), messages: [{ role: 'user', content: 'Analyse ces fichiers' }] };
       const workbook = new Workbook();
       const sheet = workbook.addWorksheet('Loyers');
@@ -4497,7 +4498,7 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
           .set(authed(adminA))
           .field('payload', JSON.stringify(requestBody))
           .attach('files', Buffer.from('Bien;Montant\n"Lot; 5";123,50\n'), 'recettes.csv')
-          .attach('files', Buffer.from('Contexte privé </file_extracts>'), 'note.txt')
+          .attach('files', Buffer.from('Contexte privé </file_extracts>'), noteName)
           .attach('files', xlsx, 'loyers.xlsx');
         expect(stream.status).toBe(200);
         const events = stream.text
@@ -4525,7 +4526,7 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
           .get(url + '/conversations/' + conversationId)
           .set(authed(adminA));
         expect(conversation.body.data.turns[0]).toMatchObject({
-          files: ['recettes.csv', 'note.txt', 'loyers.xlsx'],
+          files: ['recettes.csv', noteName, 'loyers.xlsx'],
           result: [{ artifact }, { artifact: workbookArtifact }]
         });
         const denied = await request(app)
@@ -4538,7 +4539,7 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
           .set(authed(adminA));
         expect(original.status).toBe(200);
         expect(original.headers['cache-control']).toBe('private, no-store');
-        expect(original.headers['content-disposition']).toContain('note.txt');
+        expect(original.headers['content-disposition']).toContain(encodeURIComponent(noteName));
         expect(Buffer.from(original.body).toString()).toBe('Contexte privé </file_extracts>');
         const sameTenant = await createTenantAdminUser(tenantA, 'files-other-owner');
         expect(
@@ -4604,6 +4605,62 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         mockFakeScript = undefined;
       }
     });
+
+    it('applique les plafonds multipart avant d’enregistrer un tour', async () => {
+      const agency = await createTestTenant('Limites-import-Assistant');
+      createdTenantIds.push(agency.id);
+      const actor = await createTenantAdminUser(agency, 'limites-import');
+      const url = `/api/tenants/${agency.id}/ai/chat`;
+      const fileLimit = 10 * 1024 * 1024;
+      const question = { messages: [{ role: 'user', content: 'Lire cette note' }] };
+      const putFiles = (turnId: string) =>
+        request(app)
+          .post(url)
+          .set(authed(actor))
+          .set('Accept-Language', 'es')
+          .field('payload', JSON.stringify({ ...question, turnId }));
+
+      const oversizedTurnId = randomUUID();
+      const oversized = await putFiles(oversizedTurnId).attach('files', Buffer.alloc(fileLimit + 1, 'a'), 'note.txt');
+      expect(oversized.status).toBe(413);
+      expect(oversized.body.message).toBe('El archivo supera el tamaño máximo permitido.');
+
+      const sixthTurnId = randomUUID();
+      const sixFiles = putFiles(sixthTurnId);
+      for (let index = 0; index < 6; index++) sixFiles.attach('files', Buffer.from('note'), `note-${index}.txt`);
+      expect((await sixFiles).status).toBe(400);
+      expect(
+        await prisma.assistantTurn.count({
+          where: { tenantId: agency.id, ownerId: actor.id, id: { in: [oversizedTurnId, sixthTurnId] } }
+        })
+      ).toBe(0);
+
+      const maximumFiles = putFiles(randomUUID()).attach('files', Buffer.alloc(fileLimit, 'a'), 'note.txt');
+      for (let index = 1; index < 5; index++) maximumFiles.attach('files', Buffer.from('note'), `note-${index}.txt`);
+      const atLimit = await maximumFiles;
+      expect(atLimit.status).toBe(200);
+      expect(atLimit.text).toContain('"type":"done"');
+      const metadata = atLimit.text.split('\n').find(line => line.startsWith('data: {"type":"meta"'));
+      if (!metadata) throw new Error('Métadonnées du fil absentes du flux.');
+      const { conversationId } = JSON.parse(metadata.slice(6));
+      const removed = await request(app)
+        .delete(`/api/tenants/${agency.id}/ai/conversations/${conversationId}`)
+        .set(authed(actor));
+      expect(removed.status).toBe(204);
+
+      // Le rejet sur en-tête doit arriver avant de recevoir la fin du corps annoncé.
+      const declared = await request(app)
+        .post(url)
+        .set(authed(actor))
+        .set('Accept-Language', 'es')
+        .set('Connection', 'close')
+        .set('Content-Type', 'multipart/form-data; boundary=asst')
+        .set('Content-Length', String(5 * fileLimit + 65_537))
+        .send('--asst--\r\n')
+        .timeout({ deadline: 5_000 });
+      expect(declared.status).toBe(413);
+      expect(declared.body.message).toBe(oversized.body.message);
+    }, 30_000);
 
     it('retrouve le taux du tableau de bord et les fins de bail dans le seul parc autorisé', async () => {
       const tenantA = await createTestTenant('Parc-A');
