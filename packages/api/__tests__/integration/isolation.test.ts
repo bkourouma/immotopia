@@ -380,6 +380,37 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         overdue: '1'
       });
 
+      const properties = `/api/tenants/${agency.id}/properties`;
+      const own = await request(app)
+        .get(properties + '/' + partial.propertyId)
+        .set(authed(actor));
+      expect(own.status).toBe(200);
+      expect(own.body.data.id).toBe(partial.propertyId);
+      expect(own.body.data).not.toHaveProperty('mandates');
+      const foreignUrl = properties + '/' + foreign.propertyId;
+      expect((await request(app).get(foreignUrl).set(authed(actor))).status).toBe(404);
+      const mandate = await prisma.propertyMandate.create({
+        data: {
+          tenantId: agency.id,
+          propertyId: foreign.propertyId,
+          ownerUserId: adminB.id,
+          startDate: start
+        }
+      });
+      try {
+        const managed = await request(app).get(foreignUrl).set(authed(actor));
+        expect(managed.status).toBe(200);
+        expect(managed.body.data.id).toBe(foreign.propertyId);
+        expect(managed.body.data).not.toHaveProperty('mandates');
+        await prisma.propertyMandate.updateMany({
+          where: { tenantId: agency.id, id: mandate.id },
+          data: { isActive: false }
+        });
+        expect((await request(app).get(foreignUrl).set(authed(actor))).status).toBe(404);
+      } finally {
+        await prisma.propertyMandate.deleteMany({ where: { tenantId: agency.id, id: mandate.id } });
+      }
+
       const history = await request(app)
         .get(base + '/conversations')
         .set(authed(actor));

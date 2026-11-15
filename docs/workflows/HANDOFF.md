@@ -237,7 +237,7 @@ Les rapports structurés proposent Excel dans le fil et dans Mes analyses. Le te
 le flux et la lecture de version en attente, puis vérifie le téléchargement du classeur de la version 2. Un autre
 test contrôle que le graphique conserve le PNG quand les exports de données attendent. Le wiki est synchronisé.
 
-**Scénario du dernier mois clos (commit de cette passation)** — Le fournisseur de recette reconnaît la question du
+**Scénario du dernier mois clos (`e2118fed`)** — Le fournisseur de recette reconnaît la question du
 plan sur les impayés et déclenche le calcul réel. Le tableau ouvre la fiche du bien si le membre peut la consulter.
 Avec le seul droit de lecture des échéances, le lien ouvre les échéances en retard du mois, filtrées sur la
 référence ou le titre. La recette PostgreSQL en garde stricte lance la question depuis le chat, vérifie le rang,
@@ -245,6 +245,12 @@ les pénalités, le règlement partiel, la période et l’exclusion des soldés
 fil, télécharge la version 1, vérifie le refus du même fil au second compte, lit son lien métier et ouvre
 l’analyse épinglée. Un rapport mensuel recalcule le solde après un règlement supplémentaire et prépare le CSV
 selon les droits du destinataire. Transport e-mail simulé. Deux scénarios PostgreSQL et 41 tests unitaires passent.
+
+**Lien vers la fiche du bien (commit de cette passation)** — La lecture filtre d’abord le bien par agence.
+Un mandat actif vérifié dans le périmètre de l’agence donne accès à la fiche si le bien y a été confié.
+L’appel HTTP réel vérifie les réponses pour le bien de l’agence, le bien externe, le mandat actif puis révoqué,
+sans divulguer les mandats dans la réponse. Deux parcours Assistant PostgreSQL en garde stricte, 25 tests unitaires
+et le typecheck API passent. Restent le résultat complet de la CI et la qualification des fournisseurs réels.
 
 ## chore/deps-patch-minor — 2026-11-11
 

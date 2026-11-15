@@ -8,10 +8,12 @@
  */
 
 const propertyFindUnique = jest.fn();
+const propertyMandateFindFirst = jest.fn();
 
 jest.mock('../../src/utils/database', () => ({
   prisma: {
-    property: { findUnique: (...a: any[]) => propertyFindUnique(...a) }
+    property: { findUnique: (...a: any[]) => propertyFindUnique(...a) },
+    propertyMandate: { findFirst: (...a: any[]) => propertyMandateFindFirst(...a) }
   }
 }));
 
@@ -33,7 +35,10 @@ function bien(overrides: Record<string, unknown>) {
   };
 }
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  propertyMandateFindFirst.mockResolvedValue(null);
+});
 
 describe('getPropertyById — isolation par agence', () => {
   it.each(['TENANT', 'CLIENT', 'PUBLIC'])("refuse un bien %s d'une autre agence", async ownershipType => {
@@ -48,13 +53,22 @@ describe('getPropertyById — isolation par agence', () => {
     const property = await getPropertyById('p1', 'tenant-A', 'user-A');
 
     expect(property?.id).toBe('p1');
+    expect(propertyFindUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'p1', tenantId: 'tenant-A' } })
+    );
+    expect(propertyMandateFindFirst).not.toHaveBeenCalled();
     expect(property).not.toHaveProperty('mandates');
   });
 
   it("rend un bien d'une autre agence quand l'agence detient un mandat actif", async () => {
-    propertyFindUnique.mockResolvedValue(bien({ ownershipType: 'CLIENT', mandates: [{ tenantId: 'tenant-A' }] }));
-
+    propertyFindUnique.mockResolvedValue(null);
+    propertyMandateFindFirst.mockResolvedValue({
+      property: bien({ ownershipType: 'CLIENT', mandates: [{ tenantId: 'tenant-A' }] })
+    });
     await expect(getPropertyById('p1', 'tenant-A', 'user-A')).resolves.not.toBeNull();
+    expect(propertyMandateFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { tenantId: 'tenant-A', propertyId: 'p1', isActive: true } })
+    );
   });
 
   it('hors agence, un bien PUBLIC publie reste visible, un bien CLIENT non', async () => {

@@ -24,7 +24,8 @@ import {
   PropertyMediaType,
   RentalLeaseStatus,
   MembershipStatus,
-  GlobalRole
+  GlobalRole,
+  type Prisma
 } from '@prisma/client';
 import { t } from '../i18n';
 
@@ -562,67 +563,78 @@ export async function getPropertyById(
   tenantId?: string | null,
   userId?: string | null
 ): Promise<PropertyDetail | null> {
-  const property = await prisma.property.findUnique({
-    where: { id: propertyId },
-    include: {
-      tenant: {
-        select: {
-          id: true,
-          name: true
+  const include = {
+    tenant: {
+      select: {
+        id: true,
+        name: true
+      }
+    },
+    owner: {
+      select: {
+        id: true,
+        email: true,
+        fullName: true
+      }
+    },
+    media: {
+      select: PROPERTY_MEDIA_SELECT,
+      orderBy: {
+        displayOrder: 'asc'
+      }
+    },
+    // Jamais `filePath` (chemin disque) dans le detail du bien : select
+    // explicite, meme ensemble que `property-document-service.ts`.
+    documents: { select: PROPERTY_DOCUMENT_SELECT },
+    statusHistory: {
+      orderBy: {
+        createdAt: 'desc'
+      },
+      take: 10
+    },
+    mandates: {
+      where: { isActive: true },
+      select: { tenantId: true }
+    },
+    containerParent: {
+      select: {
+        id: true,
+        internalReference: true,
+        title: true,
+        rooms: true,
+        propertyType: true
+      }
+    },
+    containerChildren: {
+      where: childAccessWhere(tenantId),
+      include: {
+        media: {
+          select: PROPERTY_MEDIA_SELECT,
+          orderBy: {
+            displayOrder: 'asc'
+          },
+          take: 1
         }
       },
-      owner: {
-        select: {
-          id: true,
-          email: true,
-          fullName: true
-        }
-      },
-      media: {
-        select: PROPERTY_MEDIA_SELECT,
-        orderBy: {
-          displayOrder: 'asc'
-        }
-      },
-      // Jamais `filePath` (chemin disque) dans le detail du bien : select
-      // explicite, meme ensemble que `property-document-service.ts`.
-      documents: { select: PROPERTY_DOCUMENT_SELECT },
-      statusHistory: {
-        orderBy: {
-          createdAt: 'desc'
-        },
-        take: 10
-      },
-      mandates: {
-        where: { isActive: true },
-        select: { tenantId: true }
-      },
-      containerParent: {
-        select: {
-          id: true,
-          internalReference: true,
-          title: true,
-          rooms: true,
-          propertyType: true
-        }
-      },
-      containerChildren: {
-        where: childAccessWhere(tenantId),
-        include: {
-          media: {
-            select: PROPERTY_MEDIA_SELECT,
-            orderBy: {
-              displayOrder: 'asc'
-            },
-            take: 1
-          }
-        },
-        orderBy: {
-          title: 'asc'
-        }
+      orderBy: {
+        title: 'asc'
       }
     }
+  } satisfies Prisma.PropertyInclude;
+  const directlyAccessible = await prisma.property.findUnique({
+    where: { id: propertyId, ...(tenantId ? propertyTenantWhere(tenantId) : {}) },
+    include
   });
+  // Un mandat actif autorise la lecture via sa propre agence, y compris
+  // quand le bien a été créé dans une autre agence.
+  const mandate =
+    tenantId && !directlyAccessible
+      ? await prisma.propertyMandate.findFirst({
+          where: { tenantId, propertyId, isActive: true },
+          select: { property: { include } }
+        })
+      : null;
+  const property = directlyAccessible ?? mandate?.property;
 
   if (!property) {
     return null;
