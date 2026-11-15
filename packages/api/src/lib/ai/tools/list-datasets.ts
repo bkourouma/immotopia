@@ -53,6 +53,14 @@ export function withDatasetCatalog(tools: readonly CopilotToolDefinition[]): rea
       const tool = allowed.find(candidate => candidate.name === dataset);
       if (!tool || !isDatasetName(dataset)) throw new NotFoundError(t('Jeu de données indisponible.'));
       const entry = datasetCatalog[dataset];
+      const filters = Object.fromEntries(
+        Object.entries((tool.jsonSchema.properties ?? {}) as Record<string, unknown>).map(([key, filter]) => [
+          key,
+          filter && typeof filter === 'object' && 'description' in filter && typeof filter.description === 'string'
+            ? { ...filter, description: t(filter.description) }
+            : filter
+        ])
+      );
       return outcome({
         id: dataset,
         title: t(entry.title),
@@ -66,7 +74,7 @@ export function withDatasetCatalog(tools: readonly CopilotToolDefinition[]): rea
           format: unit === 'currency' || unit === 'XOF' ? 'currency' : unit === 'percent' ? 'percent' : 'number',
           definition: t(definition)
         })),
-        filters: tool.jsonSchema.properties,
+        filters,
         requiredFilters: tool.jsonSchema.required ?? [],
         defaultPeriod: t(entry.defaultPeriod),
         granularities: entry.granularities,

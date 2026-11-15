@@ -300,6 +300,30 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         .map(event => event.text)
         .join('');
       expect(answer).toContain('Encaissements locatifs');
+      const beforeSpanish = mockProviderRequests.length;
+      mockFakeScript = [
+        { toolCalls: [{ name: 'list_datasets', input: { dataset: 'rental_receipts' } }] },
+        { text: 'Ficha de los cobros.' }
+      ];
+      try {
+        const spanish = await request(app)
+          .post(base + '/chat')
+          .set(authed(owner))
+          .set('Accept-Language', 'es')
+          .send({
+            turnId: randomUUID(),
+            messages: [{ role: 'user', content: 'Describe el conjunto de datos de cobros.' }]
+          });
+        expect(spanish.status).toBe(200);
+        expect(spanish.headers['content-language']).toBe('es');
+        const details = JSON.stringify(mockProviderRequests[beforeSpanish + 1].messages);
+        expect(details).toContain('Un mes y una moneda.');
+        expect(details).toContain('Suma de los pagos exitosos según su fecha efectiva de cobro.');
+        expect(details).toContain('rental_receipts');
+        expect(details).not.toContain('Un mois et une devise.');
+      } finally {
+        mockFakeScript = undefined;
+      }
     });
 
     it('borne les étapes de huit conversations simultanées en modes standard et approfondi', async () => {
