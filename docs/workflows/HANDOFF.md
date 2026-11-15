@@ -19,7 +19,7 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 ## orch/2026-11-14-aide-interne — 2026-11-14
 
-**État** — Branche d'intégration `orch/2026-11-14-aide-interne` depuis `origin/main` `af33a6da`, poussée ; PR vers `main` (fusion par l'utilisateur). Rien déployé ; migration `20261114100000_help_feedback` (additive : une table) appliquée sur aucune base. Orchestration chef-orchestre : lots A, 0/0b, C1 à C7, Z1 à Z3 ; suivi local dans `.orchestration/2026-11-14-aide-interne/suivi.md`.
+**État** — PR 222. Branche d'intégration `orch/2026-11-14-aide-interne` depuis `origin/main` `af33a6da`, poussée ; PR vers `main` (fusion par l'utilisateur). Rien déployé ; migration `20261114100000_help_feedback` (additive : une table) appliquée sur aucune base. Orchestration chef-orchestre : lots A, 0/0b, C1 à C7, Z1 à Z3 ; suivi local dans `.orchestration/2026-11-14-aide-interne/suivi.md`.
 
 **Fait** — Aide interne contextuelle : un « ? » sur chaque page, tableau, carte, section et onglet. Il ouvre un panneau qui présente l'objectif, la lecture (colonnes, statuts), la procédure, les conséquences, une FAQ, les droits et des liens « voir aussi ». S'y ajoutent :
 
@@ -38,13 +38,26 @@ Le contenu est en fr, en et ar, hors catalogues i18n (ADR-009) : 1018 fiches par
 - jest : 844 suites, sans échec une fois le client Prisma régénéré ;
 - vitest, dossier par dossier : aucun échec réel. Les timeouts sont repassés seuls.
 
-**Reste** :
+**Recette navigateur (2026-11-15, démo figée `68e29d51`)** — Scénarios dans `docs/recette/aide-interne/README.md` (AI-01 à AI-18). Bilan : 15 cas passés, AI-08 passé dans la variante « assistant indisponible » (Copilot inactif dans la démo), 3 cas bloqués faute de compte.
 
-- Contrôle visuel en navigateur, non fait : placement des « ? » dans les modales et les tiroirs, panneau au-dessus des modales, visites, RTL arabe.
+- AI-13 : aucun membre de l'agence A sans droit d'audit. Le contrôle de substitution, fait depuis une autre agence, passe.
+- AI-14 : mot de passe du super-admin inconnu.
+- AI-18 : aucun compte de portail locataire, et aucune action « Inviter au portail » pour un locataire côté agence (elle n'existe que pour les copropriétaires).
+
+Six anomalies sont passées dans le bus (BUG-2026-11-15-001 à 006) : corrigées, retestées, passées. La principale : la visite automatique n'était pas proposée au chargement direct d'une URL ; elle est maintenant réessayée.
+
+La démo tourne sur `68e29d51`. Elle contient 4 avis d'aide de recette dans l'agence A.
+
+**Reste**
+
+- La CI échoue sur l'étape « Budget du chunk d'entrée » : 235 720 o pour 234 496 o.
+  - Le relèvement du plafond (+2 Kio, motif daté dans `apps/web/scripts/measure-entry.mjs`) a été refusé par le classifieur de permissions quand un agent l'a tenté. Il attend la décision de l'utilisateur.
+  - L'autre voie est un réglage global de `build.modulePreload`.
 - Relecture de l'arabe par un arabophone.
-- Test d'isolation HelpFeedback contre une vraie base (`test:isolation`).
-- Option : `help:check --strict` en CI.
-- Écarts de code et de catalogue relevés pendant la rédaction (liste dans la PR) : Vendors.tsx sans modale, « Modules activés » toujours à 4, catalogue ar « Bon » = جيد, « Révoquer » traduit deux fois en ar…
+- Test d'isolation `HelpFeedback` en base réelle.
+- AI-13, AI-14 et AI-18 à rejouer avec des comptes adaptés.
+- Écarts de code et de catalogue relevés pendant la rédaction (liste dans la PR).
+- Avertissement antd « Drawer `width` » venant de `NotificationBell.tsx` (préexistant).
 
 **Pièges** :
 
