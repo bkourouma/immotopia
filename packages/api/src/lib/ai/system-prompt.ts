@@ -36,6 +36,15 @@ const TOOL_CAPABILITIES: Record<CopilotToolName, { group: string; text: string }
   construction_budget: { group: 'constructionBudget', text: 'les budgets actuels et les écarts des chantiers' },
   owner_statements: { group: 'ownerStatements', text: 'les montants des relevés de gérance' },
   owner_payouts: { group: 'ownerPayouts', text: 'les reversements propriétaires validés' },
+  owner_balances: { group: 'ownerBalances', text: 'les soldes comptabilisés à reverser aux propriétaires' },
+  patrimony_net_worth: {
+    group: 'patrimony',
+    text: 'la valorisation du patrimoine et l’évolution mensuelle de sa valeur nette'
+  },
+  patrimony_history: {
+    group: 'patrimony',
+    text: 'la valorisation du patrimoine et l’évolution mensuelle de sa valeur nette'
+  },
   syndicate_budget: {
     group: 'syndicateBudget',
     text: 'le prévisionnel, le réalisé et les écarts des budgets de copropriété'

@@ -97,8 +97,19 @@ describe('ImmoCopilot — outils et prompt par pack', () => {
   });
   it('garde les relevés et les reversements séparés selon les permissions locatives', () => {
     expect(toolsForUser(['OWNER_STATEMENTS_VIEW'], ['RENTAL']).map(tool => tool.name)).toEqual(['owner_statements']);
-    expect(toolsForUser(['FINANCE_ACCOUNTS_READ'], ['RENTAL']).map(tool => tool.name)).toEqual(['owner_payouts']);
+    expect(toolsForUser(['FINANCE_ACCOUNTS_READ'], ['RENTAL']).map(tool => tool.name)).toEqual([
+      'owner_payouts',
+      'owner_balances'
+    ]);
     expect(toolsForUser(['OWNER_STATEMENTS_VIEW', 'FINANCE_ACCOUNTS_READ'], ['CORE'])).toEqual([]);
+  });
+  it('réserve les valorisations du patrimoine à son droit personnel et à son module', () => {
+    expect(toolsForUser(['PATRIMOINE_PERSONAL_VIEW'], ['PATRIMOINE']).map(tool => tool.name)).toEqual([
+      'patrimony_net_worth',
+      'patrimony_history'
+    ]);
+    expect(toolsForUser(['PROPERTIES_VIEW'], ['PATRIMOINE'])).toEqual([]);
+    expect(toolsForUser(['PATRIMOINE_PERSONAL_VIEW'], ['CORE'])).toEqual([]);
   });
   it('expose chaque analyse commerciale uniquement avec son module et son droit de lecture', () => {
     const permissions = ['CRM_DEALS_VIEW', 'FINANCE_REPORTS_READ'];

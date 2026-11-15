@@ -3201,5 +3201,16 @@
   "Seules les {{count}} périodes les plus récentes sont affichées.": "Only the {{count}} most recent periods are shown.",
   "Un graphique en parts exige au moins deux catégories et des valeurs positives ou nulles.": "A part-to-whole chart requires at least two categories and nonnegative values.",
   "La langue ou la durée de cet enregistrement est invalide.": "The recording language or duration is invalid.",
-  "Durée audio estimée (s)": "Estimated audio duration (s)"
+  "Durée audio estimée (s)": "Estimated audio duration (s)",
+  "Actifs exclus": "Excluded assets",
+  "Dettes exclues": "Excluded debts",
+  "Évolution de la valeur nette": "Net worth trend",
+  "Valorisation du patrimoine": "Portfolio valuation",
+  "Part peu fiable ou inconnue (%)": "Low or unknown reliability share (%)",
+  "Chaque actif retenu utilise sa dernière valorisation à la date étudiée, convertie en XOF au taux enregistré.": "Included assets use their latest valuation as of the selected date, converted to XOF at the recorded rate.",
+  "Les dettes correspondent au capital restant dû des prêts actuellement actifs. Les montants sans taux de change exploitable sont écartés.": "Debts are the outstanding principal of currently active loans. Amounts without a usable exchange rate are excluded.",
+  "La valeur nette est égale au total des actifs moins le total des dettes.": "Net worth equals total assets minus total debts.",
+  "Soldes à reverser aux propriétaires": "Balances payable to property owners",
+  "Solde à reverser": "Balance payable",
+  "Seuls les soldes positifs issus des écritures déjà inscrites sont affichés. La consultation ne synchronise pas les comptes.": "Only positive balances from posted entries are shown. Viewing the report does not synchronize accounts."
 }

@@ -11,6 +11,7 @@ import { assertTreasuryAccountUsableTx, resolveTreasuryAccountTx } from '../trea
 import { ensureRentalAccountsTx, journalResolver } from './accounts';
 import { auPlusDeuxDecimales } from '../../utils/montant';
 import {
+  agencyOwnerWhere,
   getOrCreateOwnerAccountTx,
   listAgencyOwners,
   OWNER_SOURCE,
@@ -289,6 +290,29 @@ export async function listOwnerAccounts(tenantId: string) {
         : null
     };
   });
+}
+
+/** Soldes créditeurs déjà inscrits, sans matérialiser d'écritures à la lecture. */
+export async function listPostedOwnerBalances(tenantId: string, ownerClientId: string | undefined, take: number) {
+  const records = await prisma.thirdPartyAccount.findMany({
+    where: {
+      tenantId,
+      kind: 'OWNER',
+      tenantClientId: ownerClientId,
+      tenantClient: { is: agencyOwnerWhere(tenantId) },
+      balance: { lt: 0 }
+    },
+    select: {
+      balance: true,
+      currency: true,
+      tenantClient: { select: { id: true, user: { select: { fullName: true } } } }
+    },
+    orderBy: [{ currency: 'asc' }, { balance: 'asc' }, { id: 'asc' }],
+    take
+  });
+  return records.flatMap(({ tenantClient, balance, currency }) =>
+    tenantClient ? [{ id: tenantClient.id, name: tenantClient.user.fullName, balance: due(balance), currency }] : []
+  );
 }
 
 /** Plus grand montant d'un reversement accepté. */

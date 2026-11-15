@@ -9,11 +9,11 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Finance | 198 |
 | CRM et Ventes | 72 |
 | Maintenance | 34 |
-| Communication et Documents | 116 |
+| Communication et Documents | 119 |
 | Syndic copropriete | 247 |
 | Administration plateforme | 145 |
 | Portails externes | 84 |
-| **Total** | **1277** |
+| **Total** | **1280** |
 
 ## Sous-fonctionnalités
 
@@ -847,6 +847,9 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Titrer automatiquement une conversation | Proposer un titre court avec le modèle rapide après une réponse réussie. Le titre choisi par le propriétaire est conservé. | Première question et réponse réussie, avec extraits bornés | Titre enregistré dans l’historique, avec repli sur la première ligne de la question | Conversation privée avec un titre en attente | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | authenticate + requireTenantAccess + requireTenantCollaborator + requireAiStatusAccess | Disponible | Assistant > Historique |
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Reprendre automatiquement une étape du chat | Reprendre jusqu’à trois fois une étape interrompue par une panne transitoire du fournisseur avant le premier contenu. Un délai dépassé ou une annulation termine l’étape. | Question en cours et contexte de l’étape | Réponse dans le même fil ou erreur du fournisseur si les tentatives sont épuisées | Fournisseur de chat disponible et tentative sans contenu | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | authenticate + requireTenantAccess + requireTenantCollaborator + requireAiStatusAccess | Disponible | Assistant > Chat |
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Assistant IA ImmoCopilot | Construire un tableau croisé | Croiser des dimensions d’un jeu de données de la conversation et calculer somme, moyenne, minimum, maximum ou nombre. Les totaux utilisent les lignes source filtrées et les devises différentes restent séparées. | Jeu source, dimensions en lignes et colonnes, mesures et filtres facultatifs | Tableau croisé et total, provenance, recalcul et exports selon les droits actuels | Jeu source complet et accès à ses données | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | PROPERTIES_VIEW et accès au jeu source | Disponible | Assistant > Résultats et documents |
+| Patrimoine, Opérateur intégré, extension Patrimoine | PATRIMOINE | Assistant IA ImmoCopilot | Analyser la valorisation du patrimoine | Consulter la valeur des actifs, des dettes actives et la valeur nette à une date selon le calcul de l’écran Patrimoine. | Date de valorisation facultative | Tableau recalculable en XOF, part peu fiable ou inconnue et nombres d’exclusions | Module Patrimoine | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | PATRIMOINE_PERSONAL_VIEW | Disponible | Assistant > Résultats et documents |
+| Patrimoine, Opérateur intégré, extension Patrimoine | PATRIMOINE | Assistant IA ImmoCopilot | Analyser l’évolution mensuelle de la valeur nette | Consulter jusqu’à 60 points mensuels selon le calcul de l’écran Patrimoine. Les dettes sont celles des prêts actuellement actifs. | Bornes facultatives | Série mensuelle recalculable en XOF avec provenance et exports | Module Patrimoine | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | PATRIMOINE_PERSONAL_VIEW | Disponible | Assistant > Résultats et documents |
+| Agence, Opérateur intégré et packs compatibles avec la gestion pour tiers | RENTAL | Assistant IA ImmoCopilot | Consulter les soldes comptabilisés à reverser | Consulter par propriétaire et devise les soldes positifs des comptes déjà comptabilisés, en lecture seule. | Compte client propriétaire facultatif | Tableau recalculable avec lien vers le compte, montant et devise | Comptes propriétaires et gestion pour tiers autorisée | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | FINANCE_ACCOUNTS_READ | Disponible | Assistant > Résultats et documents |
 
 ### Syndic copropriete
 

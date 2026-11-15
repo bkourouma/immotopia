@@ -51,6 +51,9 @@ export type CopilotToolName =
   | 'construction_budget'
   | 'owner_statements'
   | 'owner_payouts'
+  | 'owner_balances'
+  | 'patrimony_net_worth'
+  | 'patrimony_history'
   | 'chart_analysis'
   | 'pivot_analysis'
   | 'show_indicators'
@@ -434,7 +437,10 @@ export type BaseAnalysisQuery =
       propertyId?: string;
       status?: StatementStatus;
     }
-  | { tool: 'owner_payouts'; periodFrom: string; periodTo: string; ownerClientId?: string };
+  | { tool: 'owner_payouts'; periodFrom: string; periodTo: string; ownerClientId?: string }
+  | { tool: 'owner_balances'; ownerClientId?: string }
+  | { tool: 'patrimony_net_worth'; asOf: string }
+  | { tool: 'patrimony_history'; from?: string; to: string };
 
 export type AnalysisQuery = BaseAnalysisQuery | { tool: 'pivot_analysis'; source: BaseAnalysisQuery; input: unknown };
 
@@ -699,7 +705,7 @@ export interface CopilotToolDefinition<S extends z.ZodTypeAny = z.ZodTypeAny> {
   requiredPermission: string;
   /** Permissions supplémentaires, toutes exigées (ex. voir le document généré pour le télécharger). */
   additionalPermissions?: readonly string[];
-  feature: 'CORE' | 'RENTAL' | 'SYNDIC' | 'CONSTRUCTION' | 'CRM' | 'SALES';
+  feature: 'CORE' | 'RENTAL' | 'SYNDIC' | 'CONSTRUCTION' | 'CRM' | 'SALES' | 'PATRIMOINE';
   kind: 'read' | 'proposal';
   execute(input: z.infer<S>, ctx: CopilotToolContext): Promise<CopilotToolOutcome>;
 }

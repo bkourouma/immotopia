@@ -916,6 +916,53 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         expect(
           await prisma.thirdPartyAccount.count({ where: { tenantId: tenantA.id, tenantClientId: owner.id } })
         ).toBe(0);
+        const account = await prisma.thirdPartyAccount.create({
+          data: {
+            tenantId: tenantA.id,
+            tenantClientId: owner.id,
+            label: 'Compte de recette',
+            kind: 'OWNER',
+            balance: -325.5
+          }
+        });
+        const foreign = await prisma.thirdPartyAccount.create({
+          data: {
+            tenantId: tenantB.id,
+            tenantClientId: foreignOwner.id,
+            label: 'Autre agence',
+            kind: 'OWNER',
+            balance: -1500
+          }
+        });
+        try {
+          mockFakeScript = [
+            {
+              toolCalls: [
+                { name: 'owner_balances', input: {} },
+                { name: 'owner_balances', input: { ownerClientId: foreignOwner.id } }
+              ]
+            },
+            { text: 'Soldes comptabilisés.' }
+          ];
+          const balances = await request(app)
+            .post(base + '/ai/chat')
+            .set(authed(actor))
+            .send({ turnId: randomUUID(), messages: [{ role: 'user', content: 'Que reste-t-il à reverser ?' }] });
+          expect(balances.status).toBe(200);
+          const results = balances.text
+            .split('\n')
+            .filter(line => line.startsWith('data: {'))
+            .map(line => JSON.parse(line.slice(6)))
+            .filter(event => event.type === 'artifact');
+          expect(results).toHaveLength(1);
+          expect(results[0].artifact.rows).toEqual([expect.objectContaining({ balance: 325.5, currency: 'XOF' })]);
+          expect(
+            await prisma.thirdPartyMovement.count({ where: { tenantId: tenantA.id, accountId: account.id } })
+          ).toBe(0);
+        } finally {
+          await prisma.thirdPartyAccount.deleteMany({ where: { tenantId: tenantA.id, id: account.id } });
+          await prisma.thirdPartyAccount.deleteMany({ where: { tenantId: tenantB.id, id: foreign.id } });
+        }
         await prisma.ownerStatement.updateMany({
           where: { tenantId: tenantA.id, id: statement.id },
           data: { netAmount: 800 }
@@ -930,6 +977,96 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       } finally {
         await prisma.ownerPayout.deleteMany({ where: { tenantId: tenantA.id, ownerClientId: owner.id } });
         await prisma.ownerPayout.deleteMany({ where: { tenantId: tenantB.id, ownerClientId: foreignOwner.id } });
+      }
+    });
+
+    it('calcule la valorisation et l’historique du patrimoine selon les mêmes règles que l’écran', async () => {
+      const actor = await createTenantMemberUser(tenantA, 'valuation-assistant', 'TEST_ASSISTANT_VALUATION', [
+        'PATRIMOINE_PERSONAL_VIEW'
+      ]);
+      const assets = await Promise.all([
+        prisma.asset.create({ data: { tenantId: tenantA.id, name: 'Trésorerie de recette', assetClass: 'CASH' } }),
+        prisma.asset.create({ data: { tenantId: tenantB.id, name: 'Trésorerie privée', assetClass: 'CASH' } })
+      ]);
+      try {
+        const valuation = await prisma.assetValuation.create({
+          data: {
+            tenantId: tenantA.id,
+            assetId: assets[0].id,
+            valuatedAt: new Date('2026-09-02'),
+            estimatedValue: 1000
+          }
+        });
+        await prisma.assetValuation.create({
+          data: {
+            tenantId: tenantB.id,
+            assetId: assets[1].id,
+            valuatedAt: new Date('2026-09-02'),
+            estimatedValue: 9000
+          }
+        });
+        const base = `/api/tenants/${tenantA.id}`;
+        const to = '2026-10-30';
+        const from = '2026-08-30';
+        const [snapshot, history] = await Promise.all([
+          request(app)
+            .get(base + '/patrimoine/net-worth')
+            .set(authed(actor))
+            .query({ asOf: to }),
+          request(app)
+            .get(base + '/patrimoine/net-worth/history')
+            .set(authed(actor))
+            .query({ from, to })
+        ]);
+        expect(snapshot.status).toBe(200);
+        expect(history.status).toBe(200);
+        expect(snapshot.body.data.totalAssets).toBe(1000);
+        mockFakeScript = [
+          {
+            toolCalls: [
+              { name: 'patrimony_net_worth', input: { asOf: to } },
+              { name: 'patrimony_history', input: { from, to } }
+            ]
+          },
+          { text: 'Valorisation et évolution.' }
+        ];
+        const response = await request(app)
+          .post(base + '/ai/chat')
+          .set(authed(actor))
+          .send({
+            turnId: randomUUID(),
+            messages: [{ role: 'user', content: 'Analyse la valeur nette.' }]
+          });
+        expect(response.status).toBe(200);
+        const events = response.text
+          .split('\n')
+          .filter(line => line.startsWith('data: {'))
+          .map(line => JSON.parse(line.slice(6)));
+        const artifacts = events.filter(event => event.type === 'artifact').map(event => event.artifact);
+        const current = artifacts.find(artifact => artifact.query.tool === 'patrimony_net_worth');
+        const evolution = artifacts.find(artifact => artifact.query.tool === 'patrimony_history');
+        expect(current.rows[0]).toMatchObject({
+          date: to,
+          totalAssets: 1000,
+          netWorth: 1000,
+          currency: 'XOF'
+        });
+        expect(evolution.rows).toEqual(history.body.data.map((point: object) => ({ ...point, currency: 'XOF' })));
+        await prisma.assetValuation.updateMany({
+          where: { tenantId: tenantA.id, id: valuation.id },
+          data: { estimatedValue: 1100 }
+        });
+        const conversationId = events.find(event => event.type === 'meta').conversationId;
+        const replay = await request(app)
+          .post(`${base}/ai/conversations/${conversationId}/artifacts/${current.id}`)
+          .set(authed(actor))
+          .send({ expectedVersion: 1 });
+        expect(replay.status).toBe(201);
+        expect(replay.body.data.artifact.rows[0]).toMatchObject({ date: to, netWorth: 1100 });
+      } finally {
+        mockFakeScript = undefined;
+        await prisma.asset.deleteMany({ where: { tenantId: tenantA.id, id: assets[0].id } });
+        await prisma.asset.deleteMany({ where: { tenantId: tenantB.id, id: assets[1].id } });
       }
     });
 
@@ -1361,6 +1498,9 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
                 'prepare_rent_arrears_alert',
                 'owner_statements',
                 'owner_payouts',
+                'owner_balances',
+                'patrimony_net_worth',
+                'patrimony_history',
                 'rental_due_comparison',
                 'rental_monthly_review'
               ].includes(name)

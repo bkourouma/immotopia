@@ -3201,5 +3201,16 @@
   "Seules les {{count}} périodes les plus récentes sont affichées.": "تُعرض أحدث {{count}} فترات فقط.",
   "Un graphique en parts exige au moins deux catégories et des valeurs positives ou nulles.": "يتطلب مخطط الحصص فئتين على الأقل وقيماً موجبة أو صفراً.",
   "La langue ou la durée de cet enregistrement est invalide.": "لغة التسجيل أو مدته غير صالحة.",
-  "Durée audio estimée (s)": "مدة الصوت التقديرية (ث)"
+  "Durée audio estimée (s)": "مدة الصوت التقديرية (ث)",
+  "Actifs exclus": "الأصول المستبعدة",
+  "Dettes exclues": "الديون المستبعدة",
+  "Évolution de la valeur nette": "تطور صافي الثروة",
+  "Valorisation du patrimoine": "تقييم الأصول",
+  "Part peu fiable ou inconnue (%)": "حصة التقييمات منخفضة أو غير معروفة الموثوقية (%)",
+  "Chaque actif retenu utilise sa dernière valorisation à la date étudiée, convertie en XOF au taux enregistré.": "يُحتسب كل أصل مشمول وفق آخر تقييم له في التاريخ المحدد، محوّلاً إلى الفرنك الغرب أفريقي بسعر الصرف المسجل.",
+  "Les dettes correspondent au capital restant dû des prêts actuellement actifs. Les montants sans taux de change exploitable sont écartés.": "تمثل الديون أصل المبالغ المتبقية للقروض النشطة حالياً. تُستبعد المبالغ التي لا يتوفر لها سعر صرف صالح.",
+  "La valeur nette est égale au total des actifs moins le total des dettes.": "صافي الثروة يساوي إجمالي الأصول ناقص إجمالي الديون.",
+  "Soldes à reverser aux propriétaires": "الأرصدة المستحقة الدفع للملاك",
+  "Solde à reverser": "الرصيد المستحق الدفع",
+  "Seuls les soldes positifs issus des écritures déjà inscrites sont affichés. La consultation ne synchronise pas les comptes.": "تُعرض فقط الأرصدة الموجبة الناتجة عن القيود المحاسبية المسجلة. لا تؤدي معاينة التقرير إلى مزامنة الحسابات."
 }

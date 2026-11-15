@@ -69,7 +69,8 @@ const ALL_PERMS = [
   'FINANCE_REPORTS_READ',
   'FINANCE_SITES_MANAGE',
   'FINANCE_ACCOUNTS_READ',
-  'OWNER_STATEMENTS_VIEW'
+  'OWNER_STATEMENTS_VIEW',
+  'PATRIMOINE_PERSONAL_VIEW'
 ];
 
 const ctx = (perms: string[] = ALL_PERMS, seen: string[] = [LEASE_ID]): CopilotToolContext => ({
@@ -145,6 +146,9 @@ describe('registre', () => {
         'construction_budget',
         'owner_statements',
         'owner_payouts',
+        'owner_balances',
+        'patrimony_net_worth',
+        'patrimony_history',
         'propose_follow_up',
         'prepare_budget_alert',
         'prepare_lease_expiry_alert',
@@ -174,6 +178,9 @@ describe('registre', () => {
     ['syndicate_budget', 'SYNDIC_VIEW'],
     ['syndicate_charges', 'SYNDIC_VIEW'],
     ['syndicate_maintenance', 'MAINTENANCE_ADMIN'],
+    ['owner_balances', 'FINANCE_ACCOUNTS_READ'],
+    ['patrimony_net_worth', 'PATRIMOINE_PERSONAL_VIEW'],
+    ['patrimony_history', 'PATRIMOINE_PERSONAL_VIEW'],
     ['list_capabilities', 'PROPERTIES_VIEW'],
     ['call_read', 'PROPERTIES_VIEW'],
     ['plan_write', 'PROPERTIES_VIEW']

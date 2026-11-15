@@ -7,7 +7,7 @@ import { assertThirdPartyAllowedForTenant } from '../../../services/own-assets-b
 import { prisma } from '../../../utils/database';
 import { getPropertyForTenant } from '../../../utils/property-tenant-guard';
 import { assertBelongsToTenant } from '../../../utils/tenant-ownership';
-import { payoutNumber } from '../../owner-account/service';
+import { listPostedOwnerBalances, payoutNumber } from '../../owner-account/service';
 import { OWNER_STATEMENT_COMPUTATION_VERSION } from '../../patrimoine/owner-statement-computation';
 import { listOwnerStatementAmounts } from '../../patrimoine/queries';
 import type { AnalysisTable, CopilotToolDefinition } from '../contracts';
@@ -129,6 +129,61 @@ export const ownerStatementsTool: CopilotToolDefinition<typeof statementsSchema>
 };
 
 const payoutsSchema = periodSchema.extend({ ownerClientId: z.string().uuid().optional() }).strict();
+
+const balancesSchema = z.object({ ownerClientId: z.string().uuid().optional() }).strict();
+
+export const ownerBalancesTool: CopilotToolDefinition<typeof balancesSchema> = {
+  name: 'owner_balances',
+  description:
+    'Liste les soldes positifs à reverser aux propriétaires, d’après les écritures déjà inscrites dans leurs comptes. Accepte un identifiant de compte client propriétaire. La consultation ne synchronise pas le grand livre. Aucune période historique.',
+  inputSchema: balancesSchema,
+  jsonSchema: { type: 'object', additionalProperties: false, properties: { ownerClientId: idProperty } },
+  feature: 'RENTAL',
+  requiredPermission: PAYOUT_PERMISSION,
+  kind: 'read',
+  async execute(input, ctx) {
+    assertToolPermission(ctx, PAYOUT_PERMISSION);
+    await assertThirdPartyAllowedForTenant(ctx.tenantId, 'OWNER_ACCOUNT');
+    await assertBelongsToTenant(prisma, 'tenantClient', input.ownerClientId, ctx.tenantId);
+    const balances = await listPostedOwnerBalances(ctx.tenantId, input.ownerClientId, MAX_ROWS + 1);
+    const calculatedAt = new Date().toISOString();
+    const href = `/tenant/${encodeURIComponent(ctx.tenantId)}/finance/owner-accounts`;
+    const rows = balances.slice(0, MAX_ROWS).map(account => ({
+      owner: account.name || t('Propriétaire'),
+      href: `${href}/${encodeURIComponent(account.id)}`,
+      balance: account.balance,
+      currency: account.currency === 'FCFA' ? 'XOF' : account.currency
+    }));
+    const artifact: AnalysisTable = {
+      kind: 'table',
+      id: randomUUID(),
+      title: t('Soldes à reverser aux propriétaires'),
+      query: { tool: 'owner_balances', ...input },
+      columns: [
+        { key: 'owner', label: t('Propriétaire'), linkKey: 'href' },
+        { key: 'balance', label: t('Solde à reverser'), type: 'currency' },
+        { key: 'currency', label: t('Devise') }
+      ],
+      rows,
+      truncated: balances.length > MAX_ROWS,
+      provenance: {
+        source: t('Comptes propriétaires'),
+        href: `${href}?soldeDu=1`,
+        period: calculatedAt.slice(0, 10),
+        calculatedAt,
+        rules: [
+          t(
+            'Seuls les soldes positifs issus des écritures déjà inscrites sont affichés. La consultation ne synchronise pas les comptes.'
+          )
+        ]
+      }
+    };
+    return outcome(
+      { artifactId: artifact.id, rows: rows.slice(0, 10), truncated: artifact.truncated },
+      { type: 'artifact', artifact }
+    );
+  }
+};
 
 export const ownerPayoutsTool: CopilotToolDefinition<typeof payoutsSchema> = {
   name: 'owner_payouts',
