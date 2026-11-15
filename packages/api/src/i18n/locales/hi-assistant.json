@@ -575,5 +575,7 @@
   "Date d’export": "निर्यात की तारीख",
   "Exporté par": "इनके द्वारा निर्यात किया गया",
   "Exporté pour": "इनके लिए निर्यात किया गया",
-  "Provenance": "डेटा का स्रोत"
+  "Provenance": "डेटा का स्रोत",
+  "Le classement des biens par solde restant dû est disponible dans le tableau.": "तालिका में बकाया राशि के अनुसार संपत्तियों की क्रमबद्ध सूची है।",
+  "Aucune échéance non soldée dans cette période.": "इस अवधि में कोई बकाया किस्त नहीं है।"
 }

@@ -3406,5 +3406,7 @@
   "Date d’export": "Export date",
   "Exporté par": "Exported by",
   "Exporté pour": "Exported for",
-  "Provenance": "Provenance"
+  "Provenance": "Provenance",
+  "Le classement des biens par solde restant dû est disponible dans le tableau.": "The table ranks properties by outstanding balance.",
+  "Aucune échéance non soldée dans cette période.": "No outstanding instalments in this period."
 }

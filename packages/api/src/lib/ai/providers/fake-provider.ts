@@ -569,6 +569,21 @@ export class FakeProvider implements LlmProvider {
       };
     }
 
+    if (/\b(?:echeances? (?:locatives? )?en retard|loyers? impayes?)\b/.test(normalize(userText))) {
+      if (offered && !offered.has('rental_arrears'))
+        return { text: t("Je n'ai pas la permission d'accéder à cette donnée.") };
+      if (round === 0) {
+        const month = extractPeriod(userText, new Date())?.period;
+        return call('rental_arrears', month ? { month } : {});
+      }
+      const summary = results.find(result => result.name === 'rental_arrears')?.data as { count?: number } | undefined;
+      return {
+        text: summary?.count
+          ? t('Le classement des biens par solde restant dû est disponible dans le tableau.')
+          : t('Aucune échéance non soldée dans cette période.')
+      };
+    }
+
     // 000. Écriture : plan_write seulement (création d'une étiquette, modification d'un contact)
     const canPlan = offered === null || offered.has('plan_write');
     if (canPlan && /\b(cree|creer)\b/.test(normalized) && /\b(etiquette|etiquettes|tag)\b/.test(normalized)) {

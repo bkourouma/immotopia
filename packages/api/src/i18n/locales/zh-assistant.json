@@ -575,5 +575,7 @@
   "Date d’export": "导出日期",
   "Exporté par": "导出人",
   "Exporté pour": "导出对象",
-  "Provenance": "数据来源"
+  "Provenance": "数据来源",
+  "Le classement des biens par solde restant dû est disponible dans le tableau.": "表格按未结余额对房产排序。",
+  "Aucune échéance non soldée dans cette période.": "此期间没有未结清的应付款项。"
 }

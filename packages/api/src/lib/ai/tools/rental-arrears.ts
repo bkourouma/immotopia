@@ -52,6 +52,9 @@ export const rentalArrearsTool: CopilotToolDefinition<typeof inputSchema> = {
     const now = new Date();
     const { start, end, period, firstDay, lastDay } = closedMonthBounds(input.month, now);
     const filters = new URLSearchParams({ dueFrom: firstDay, dueTo: lastDay, overdue: '1' });
+    const tenantPath = `/tenant/${encodeURIComponent(ctx.tenantId)}`;
+    const canViewProperties = ctx.permissions.has('PROPERTIES_VIEW');
+    const installmentPath = tenantPath + '/rental/installments';
     const installments = await prisma.rentalInstallment.findMany({
       where: {
         tenant_id: ctx.tenantId,
@@ -85,16 +88,23 @@ export const rentalArrearsTool: CopilotToolDefinition<typeof inputSchema> = {
       const property = item.lease.property;
       const currency = item.currency === 'FCFA' ? 'XOF' : item.currency;
       const key = JSON.stringify([property.id, currency]);
-      const group = grouped.get(key) ?? {
+      const existing = grouped.get(key);
+      if (existing) {
+        existing.count++;
+        existing.balance = existing.balance.plus(balance);
+        continue;
+      }
+      const propertyFilters = new URLSearchParams(filters);
+      propertyFilters.set('q', property.internalReference || property.title);
+      grouped.set(key, {
         property: [property.internalReference, property.title].filter(Boolean).join(' — '),
-        href: `/tenant/${encodeURIComponent(ctx.tenantId)}/properties/${encodeURIComponent(property.id)}`,
+        href: canViewProperties
+          ? `${tenantPath}/properties/${encodeURIComponent(property.id)}`
+          : `${installmentPath}?${propertyFilters}`,
         currency,
-        count: 0,
-        balance: new Prisma.Decimal(0)
-      };
-      group.count++;
-      group.balance = group.balance.plus(balance);
-      grouped.set(key, group);
+        count: 1,
+        balance
+      });
     }
     const rows = [...grouped.values()]
       .sort(
@@ -119,7 +129,7 @@ export const rentalArrearsTool: CopilotToolDefinition<typeof inputSchema> = {
       truncated: rows.length > 500,
       provenance: {
         source: t('Échéances locatives'),
-        href: `/tenant/${encodeURIComponent(ctx.tenantId)}/rental/installments?${filters}`,
+        href: `${installmentPath}?${filters}`,
         period,
         calculatedAt: now.toISOString(),
         rules: [

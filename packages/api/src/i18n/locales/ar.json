@@ -3406,5 +3406,7 @@
   "Date d’export": "تاريخ التصدير",
   "Exporté par": "صدّره",
   "Exporté pour": "صُدّر لصالح",
-  "Provenance": "مصدر البيانات"
+  "Provenance": "مصدر البيانات",
+  "Le classement des biens par solde restant dû est disponible dans le tableau.": "يعرض الجدول العقارات مرتبة حسب الرصيد المستحق.",
+  "Aucune échéance non soldée dans cette période.": "لا توجد مستحقات غير مسددة في هذه الفترة."
 }

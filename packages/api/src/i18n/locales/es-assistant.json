@@ -575,5 +575,7 @@
   "Date d’export": "Fecha de exportación",
   "Exporté par": "Exportado por",
   "Exporté pour": "Exportado para",
-  "Provenance": "Procedencia"
+  "Provenance": "Procedencia",
+  "Le classement des biens par solde restant dû est disponible dans le tableau.": "La tabla ordena los inmuebles por saldo pendiente.",
+  "Aucune échéance non soldée dans cette période.": "No hay cuotas pendientes en este período."
 }

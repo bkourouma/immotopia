@@ -230,12 +230,21 @@ La CI au commit `ae217498` a rencontré quatre 429 dans des scénarios après le
 Assistant utilise désormais une adresse de test dédiée avec les limiteurs en place. Les 166 cas d’isolation
 repassent dans le mode warn de la CI. Les trois scénarios de rapports passent aussi avec la garde stricte.
 
-**Menu des exports (commit de cette passation)** — Dans le fil privé, les formats serveur deviennent disponibles
+**Menu des exports (`5f9ca875`)** — Dans le fil privé, les formats serveur deviennent disponibles
 à la lecture de la version enregistrée. Pendant le flux ou la lecture, les exports CSV/Excel locaux ne prennent plus
 le relais. Le PNG du graphique affiché reste disponible, et le Markdown local reste proposé pour un texte enregistré.
 Les rapports structurés proposent Excel dans le fil et dans Mes analyses. Le test du parcours maintient séparément
 le flux et la lecture de version en attente, puis vérifie le téléchargement du classeur de la version 2. Un autre
 test contrôle que le graphique conserve le PNG quand les exports de données attendent. Le wiki est synchronisé.
+
+**Scénario du dernier mois clos (commit de cette passation)** — Le fournisseur de recette reconnaît la question du
+plan sur les impayés et déclenche le calcul réel. Le tableau ouvre la fiche du bien si le membre peut la consulter.
+Avec le seul droit de lecture des échéances, le lien ouvre les échéances en retard du mois, filtrées sur la
+référence ou le titre. La recette PostgreSQL en garde stricte lance la question depuis le chat, vérifie le rang,
+les pénalités, le règlement partiel, la période et l’exclusion des soldés et de l’agence voisine. Elle rouvre le
+fil, télécharge la version 1, vérifie le refus du même fil au second compte, lit son lien métier et ouvre
+l’analyse épinglée. Un rapport mensuel recalcule le solde après un règlement supplémentaire et prépare le CSV
+selon les droits du destinataire. Transport e-mail simulé. Deux scénarios PostgreSQL et 41 tests unitaires passent.
 
 ## chore/deps-patch-minor — 2026-11-11
 

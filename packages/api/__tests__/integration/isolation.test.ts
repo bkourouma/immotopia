@@ -277,6 +277,219 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       return { Authorization: user.authHeader, 'X-Forwarded-For': `198.51.100.${clientNumber}` };
     }
 
+    it('classe les impayés du dernier mois clos, rouvre le fil et exporte la version affichée', async () => {
+      const agency = await createTestTenant('Recette impayés Assistant');
+      createdTenantIds.push(agency.id);
+      const actor = await createTenantMemberUser(agency, 'arrears-full', 'TEST_ASSISTANT_ARREARS_FULL', [
+        'RENTAL_INSTALLMENTS_VIEW',
+        'PROPERTIES_VIEW'
+      ]);
+      const limited = await createTenantMemberUser(agency, 'arrears-limited', 'TEST_ASSISTANT_ARREARS_LIMITED', [
+        'RENTAL_INSTALLMENTS_VIEW'
+      ]);
+      const [partial, unpaid, paid, outside, foreign] = await Promise.all([
+        createRentalFixtureDirect(agency.id, actor.id, 'arrears-partial'),
+        createRentalFixtureDirect(agency.id, actor.id, 'arrears-unpaid'),
+        createRentalFixtureDirect(agency.id, actor.id, 'arrears-paid'),
+        createRentalFixtureDirect(agency.id, actor.id, 'arrears-outside'),
+        createRentalFixtureDirect(tenantB.id, adminB.id, 'arrears-foreign')
+      ]);
+      const now = new Date();
+      const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+      const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+      const closingDay = new Date(end.getTime() - 86_400_000);
+      const period = start.toISOString().slice(0, 7);
+      const setDue = (
+        fixture: RentalFixture,
+        tenantId: string,
+        data: Parameters<typeof prisma.rentalInstallment.updateMany>[0]['data']
+      ) =>
+        prisma.rentalInstallment.updateMany({
+          where: { tenant_id: tenantId, id: fixture.installmentId },
+          data: { due_date: start, ...data }
+        });
+      await setDue(partial, agency.id, {
+        due_date: closingDay,
+        status: 'PARTIAL',
+        amount_rent: 80_000,
+        penalty_amount: 1_700,
+        amount_paid: 30_000
+      });
+      await prisma.rentalPayment.updateMany({
+        where: { tenant_id: agency.id, id: partial.paymentId },
+        data: { amount: 30_000 }
+      });
+      await prisma.rentalPaymentAllocation.updateMany({
+        where: { tenant_id: agency.id, installment_id: partial.installmentId },
+        data: { amount: 30_000 }
+      });
+      await setDue(unpaid, agency.id, { status: 'OVERDUE', amount_rent: 25_000, amount_paid: 0 });
+      await setDue(paid, agency.id, { status: 'PAID' });
+      await setDue(outside, agency.id, { due_date: end, status: 'DUE', amount_paid: 0 });
+      await setDue(foreign, tenantB.id, { status: 'OVERDUE', amount_rent: 900_000, amount_paid: 0 });
+      for (const [tenantId, fixtures] of [
+        [agency.id, [unpaid, outside]],
+        [tenantB.id, [foreign]]
+      ] as const) {
+        const paymentIds = fixtures.map(fixture => fixture.paymentId);
+        await prisma.rentalPaymentAllocation.deleteMany({
+          where: { tenant_id: tenantId, payment_id: { in: paymentIds } }
+        });
+        await prisma.rentalPayment.updateMany({
+          where: { tenant_id: tenantId, id: { in: paymentIds } },
+          data: { status: 'FAILED' }
+        });
+      }
+
+      const base = `/api/tenants/${agency.id}/ai`;
+      const question = 'Quels biens ont le plus d’échéances en retard au dernier mois clos ?';
+      async function chat(user: TestUser) {
+        const response = await request(app)
+          .post(base + '/chat')
+          .set(authed(user))
+          .set('Accept-Language', 'fr')
+          .send({ turnId: randomUUID(), messages: [{ role: 'user', content: question }] });
+        expect(response.status).toBe(200);
+        expect(response.text).toContain('"tool":"rental_arrears","status":"succeeded"');
+        expect(response.text).toContain('"reason":"end_turn"');
+        expect(response.text).not.toContain(foreign.propertyReference);
+        const events = response.text
+          .split('\n')
+          .filter(line => line.startsWith('data: {'))
+          .map(line => JSON.parse(line.slice(6)));
+        return {
+          conversationId: events.find(event => event.type === 'meta').conversationId,
+          artifact: events.find(event => event.type === 'artifact').artifact
+        };
+      }
+
+      const { conversationId, artifact } = await chat(actor);
+      expect(artifact.rows).toMatchObject([
+        { count: 1, balance: 51_700, currency: 'XOF', href: `/tenant/${agency.id}/properties/${partial.propertyId}` },
+        { count: 1, balance: 25_000, currency: 'XOF', href: `/tenant/${agency.id}/properties/${unpaid.propertyId}` }
+      ]);
+      expect(artifact.provenance).toMatchObject({
+        period,
+        scope: 'agency',
+        rules: expect.arrayContaining([expect.stringContaining('paiements affectés')])
+      });
+      const filters = new URL(artifact.provenance.href, 'https://immotopia.test').searchParams;
+      expect(Object.fromEntries(filters)).toEqual({
+        dueFrom: start.toISOString().slice(0, 10),
+        dueTo: closingDay.toISOString().slice(0, 10),
+        overdue: '1'
+      });
+
+      const history = await request(app)
+        .get(base + '/conversations')
+        .set(authed(actor));
+      expect(history.body.data.items.map((item: { id: string }) => item.id)).toContain(conversationId);
+      const thread = await request(app)
+        .get(base + '/conversations/' + conversationId)
+        .set(authed(actor));
+      expect(thread.status).toBe(200);
+      expect(thread.body.data.turns[0].result).toEqual([{ type: 'artifact', artifact }]);
+      expect(
+        (
+          await request(app)
+            .get(base + '/conversations/' + conversationId)
+            .set(authed(limited))
+        ).status
+      ).toBe(404);
+      const csv = await request(app)
+        .get(`${base}/conversations/${conversationId}/artifacts/${artifact.id}/csv?version=1`)
+        .set(authed(actor))
+        .set('Accept-Language', 'fr');
+      expect(csv.status).toBe(200);
+      expect(csv.text).toContain(';1;51700;"XOF"');
+      expect(csv.text.indexOf(partial.propertyReference)).toBeLessThan(csv.text.indexOf(unpaid.propertyReference));
+      expect(csv.text).toContain('Solde restant dû');
+      expect(csv.text).not.toContain(foreign.propertyReference);
+
+      const limitedView = await chat(limited);
+      const href = new URL(limitedView.artifact.rows[0].href, 'https://immotopia.test');
+      expect(href.pathname).toBe(`/tenant/${agency.id}/rental/installments`);
+      expect(href.searchParams.get('q')).toBe(partial.propertyReference);
+      const linked = await request(app)
+        .get(`/api/tenants/${agency.id}/rental/installments`)
+        .query({ ...Object.fromEntries(filters), overdue: 'true', search: href.searchParams.get('q') })
+        .set(authed(limited));
+      expect(linked.status).toBe(200);
+      expect(linked.body.data.map((installment: { id: string }) => installment.id)).toEqual([partial.installmentId]);
+
+      const analysisPath = `${base}/analyses/${conversationId}/${artifact.id}`;
+      expect((await request(app).put(analysisPath).set(authed(actor))).status).toBe(200);
+      expect(
+        (
+          await request(app)
+            .put(analysisPath + '/pin')
+            .set(authed(actor))
+            .send({ pinned: true })
+        ).status
+      ).toBe(204);
+      const pins = await request(app)
+        .get(base + '/analyses/pins')
+        .set(authed(actor));
+      expect(pins.body.data).toEqual([{ conversationId, artifactId: artifact.id }]);
+      const pinned = await request(app)
+        .get(analysisPath + '/pin')
+        .set(authed(actor));
+      expect(pinned.body.data.artifact.rows[0].balance).toBe(51_700);
+
+      const configured = jest.spyOn(reportEmail, 'isEmailDeliveryConfigured').mockReturnValue(true);
+      const send = jest.spyOn(reportEmail.emailService, 'sendEmail').mockResolvedValue({ sent: true });
+      let reportId: string | undefined;
+      try {
+        await prisma.user.update({ where: { id: limited.id }, data: { preferredLanguage: 'fr' } });
+        const created = await request(app)
+          .post(base + '/reports')
+          .set(authed(actor))
+          .send({
+            conversationId,
+            artifactId: artifact.id,
+            recipientIds: [limited.id],
+            formats: ['csv'],
+            schedule: { frequency: 'monthly', day: 1, time: '07:00', timeZone: 'UTC' }
+          });
+        expect(created.status).toBe(201);
+        reportId = created.body.data.id as string;
+        expect(
+          (
+            await request(app)
+              .patch(base + '/reports/' + reportId)
+              .set(authed(actor))
+              .send({ active: true, share: true })
+          ).status
+        ).toBe(204);
+        const where = { tenantId: agency.id, id: reportId };
+        const dueAt = new Date();
+        await prisma.assistantScheduledReport.updateMany({ where, data: { nextRunAt: dueAt } });
+        await setDue(partial, agency.id, { due_date: closingDay, amount_paid: 35_000 });
+        await prisma.rentalPayment.updateMany({
+          where: { tenant_id: agency.id, id: partial.paymentId },
+          data: { amount: 35_000 }
+        });
+        await prisma.rentalPaymentAllocation.updateMany({
+          where: { tenant_id: agency.id, installment_id: partial.installmentId },
+          data: { amount: 35_000 }
+        });
+        await runAssistantReports(dueAt);
+        expect(send).toHaveBeenCalledTimes(1);
+        const [message] = send.mock.calls[0];
+        expect(message.to).toBe(limited.email);
+        const scheduledCsv = message.attachments?.[0]?.content.toString();
+        expect(scheduledCsv).toContain(';1;46700;"XOF"');
+        expect(scheduledCsv).toContain('Droits communs de l’expéditeur et du destinataire');
+        expect(scheduledCsv).not.toContain(foreign.propertyReference);
+        expect(await prisma.assistantScheduledReport.findFirst({ where })).toMatchObject({ lastStatus: 'SENT' });
+      } finally {
+        configured.mockRestore();
+        send.mockRestore();
+        if (reportId)
+          await prisma.assistantScheduledReport.deleteMany({ where: { tenantId: agency.id, id: reportId } });
+      }
+    });
+
     it('affiche les fins de bail, mandats et appels de fonds dans le briefing autorisé', async () => {
       const actor = await createTenantMemberUser(tenantA, 'assistant-briefing', 'TEST_ASSISTANT_BRIEFING', [
         'RENTAL_LEASES_VIEW',
