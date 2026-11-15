@@ -628,7 +628,7 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
                 title: 'Attendu par mois',
                 dimension: 'period',
                 measure: 'expected',
-                chartType: 'bar'
+                chartType: 'stacked_area'
               }
             }
           ]
@@ -644,10 +644,14 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
           messages: [{ role: 'user', content: 'Trace les échéances attendues.' }]
         });
       expect(chart.status).toBe(200);
-      expect(parseEvents(chart.text).find(event => event.type === 'artifact').artifact.data).toEqual([
-        { category: '2024-10', value0: 80 },
-        { category: period, value0: 117 }
-      ]);
+      const chartArtifact = parseEvents(chart.text).find(event => event.type === 'artifact').artifact;
+      expect(chartArtifact).toMatchObject({
+        chartType: 'stacked_area',
+        data: [
+          { category: '2024-10', value0: 80 },
+          { category: period, value0: 117 }
+        ]
+      });
       mockFakeScript = [
         {
           toolCalls: [
@@ -682,6 +686,10 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         totals: { currency: 'Total', pivot_0: 77, pivot_1: 38.5 }
       });
       await updateDue(agency.id, current.installmentId, { amount_paid: 70 });
+      const chartPath = `${base}/conversations/${conversationId}/artifacts/${chartArtifact.id}`;
+      const chartReplay = await request(app).post(chartPath).set(authed(admin)).send({ expectedVersion: 1 });
+      expect(chartReplay.status).toBe(201);
+      expect(chartReplay.body.data.artifact).toMatchObject({ chartType: 'stacked_area', data: chartArtifact.data });
       const pivotPath = `${base}/conversations/${conversationId}/artifacts/${pivot.id}`;
       const pivotReplay = await request(app).post(pivotPath).set(authed(admin)).send({ expectedVersion: 1 });
       expect(pivotReplay.status).toBe(201);

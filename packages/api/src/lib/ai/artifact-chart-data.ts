@@ -14,10 +14,11 @@ export function chartExportData(artifact: ChartArtifact) {
     })
   }));
   const values = series.flatMap(row => row.values.filter((value): value is number => value !== null));
-  const pie = artifact.chartType === 'pie';
-  const usePie =
-    pie &&
+  const parts = artifact.chartType === 'pie' || artifact.chartType === 'donut';
+  const validParts =
+    parts &&
     series.length === 1 &&
+    labels.length >= 2 &&
     labels.length <= 8 &&
     values.every(value => value >= 0) &&
     values.some(value => value > 0);
@@ -25,7 +26,7 @@ export function chartExportData(artifact: ChartArtifact) {
     labels,
     series,
     values,
-    type: pie ? (usePie ? ('pie' as const) : ('bar' as const)) : artifact.chartType,
-    fallback: pie && !usePie
+    type: parts && !validParts ? ('bar' as const) : artifact.chartType,
+    fallback: parts && !validParts
   };
 }

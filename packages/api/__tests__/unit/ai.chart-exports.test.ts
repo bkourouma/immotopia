@@ -115,3 +115,20 @@ it('exporte un secteur natif et représente les valeurs négatives en barres', a
   expect(fallback).toContain('<c:barChart>');
   await expect(buildArtifactPdf(pie)).resolves.toBeInstanceOf(Buffer);
 });
+
+it('exporte les nouvelles formes dans les composants natifs PowerPoint et les flux vectoriels PDF', async () => {
+  const samples = [
+    { artifact: { ...line, chartType: 'horizontal_bar' as const }, xml: ['<c:barDir val="bar"/>'] },
+    { artifact: { ...line, chartType: 'stacked_bar' as const }, xml: ['<c:grouping val="stacked"/>'] },
+    { artifact: { ...pie, chartType: 'area' as const }, xml: ['<c:areaChart>'] },
+    { artifact: { ...pie, chartType: 'stacked_area' as const }, xml: ['<c:areaChart>', '<c:grouping val="stacked"/>'] },
+    { artifact: { ...pie, chartType: 'donut' as const }, xml: ['<c:doughnutChart>', '<c:holeSize val="60"/>'] }
+  ];
+  for (const { artifact, xml } of samples) {
+    const archive = await JSZip.loadAsync(buildPowerPoint(artifact, 'fr'));
+    const contents = await archive.file('ppt/charts/chart1.xml')?.async('string');
+    for (const part of xml) expect(contents).toContain(part);
+    const pdf = await PDFDocument.load(await buildArtifactPdf(artifact));
+    expect(pdf.getPageCount()).toBeGreaterThan(0);
+  }
+}, 90_000);

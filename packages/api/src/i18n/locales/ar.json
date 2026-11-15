@@ -3171,5 +3171,10 @@
   "Somme": "المجموع",
   "Tableau croisé": "جدول محوري",
   "Total": "الإجمالي",
-  "Valeur moyenne": "المتوسط"
+  "Valeur moyenne": "المتوسط",
+  "Ce graphique exige des valeurs additives de même unité.": "يتطلب هذا المخطط قيماً قابلة للجمع وبالوحدة نفسها.",
+  "Une aire empilée exige des valeurs positives ou nulles.": "يتطلب المخطط المساحي المكدّس قيماً موجبة أو صفراً.",
+  "Un graphique en parts exige de deux à huit catégories et des valeurs positives ou nulles.": "يتطلب مخطط الحصص فئتين إلى ثماني فئات وقيماً موجبة أو صفراً.",
+  "Les valeurs d’une même catégorie et série sont agrégées par moyenne.": "يُحسب متوسط القيم في الفئة والسلسلة نفسيهما.",
+  "Les valeurs d’une même catégorie et série sont additionnées.": "تُجمع القيم في الفئة والسلسلة نفسيهما."
 }

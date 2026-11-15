@@ -61,8 +61,19 @@ export async function buildArtifactPowerPoint(artifact: CopilotArtifact): Promis
     const chart = chartExportData(artifact);
     if (chart.values.length) {
       const page = slide(artifact.title);
+      const horizontal = chart.type === 'horizontal_bar';
+      const parts = chart.type === 'pie' || chart.type === 'donut';
+      const stacked = chart.type === 'stacked_bar' || chart.type === 'stacked_area';
+      const nativeType =
+        chart.type === 'donut'
+          ? 'doughnut'
+          : chart.type === 'area' || chart.type === 'stacked_area'
+            ? 'area'
+            : chart.type === 'line' || chart.type === 'pie'
+              ? chart.type
+              : 'bar';
       page.addChart(
-        pptx.ChartType[chart.type],
+        pptx.ChartType[nativeType],
         chart.series.map(series => ({
           name: series.name,
           labels: chart.labels,
@@ -74,20 +85,37 @@ export async function buildArtifactPowerPoint(artifact: CopilotArtifact): Promis
           y: 1.15,
           w: 12.2,
           h: 5.6,
-          barDir: 'col',
-          barGrouping: 'clustered',
+          barDir: horizontal ? 'bar' : 'col',
+          barGrouping: stacked ? 'stacked' : 'clustered',
+          holeSize: 60,
           displayBlanksAs: 'gap',
           catAxisLabelFontSize: 10,
           catAxisLabelFrequency: String(Math.max(1, Math.ceil(chart.labels.length / 14))),
           catAxisLabelPos: 'low',
           valAxisLabelFontSize: 10,
           // The generator writes this OOXML orientation even though its types only list minMax.
-          catAxisOrientation: rtl ? ('maxMin' as 'minMax') : 'minMax',
+          catAxisOrientation: rtl || horizontal ? ('maxMin' as 'minMax') : 'minMax',
+          valAxisOrientation: rtl && horizontal ? ('maxMin' as 'minMax') : 'minMax',
           legendPos: 'b',
           showLegend: true,
-          chartColors: chart.type === 'pie' ? chartColors : chartColors.slice(0, chart.series.length)
+          chartColors: parts ? chartColors : chartColors.slice(0, chart.series.length)
         }
       );
+      if (chart.type === 'donut') {
+        const total = chart.values.reduce((sum, value) => sum + value, 0);
+        if (Number.isFinite(total)) {
+          page.addText(new Intl.NumberFormat(currentLanguage(), { maximumFractionDigits: 2 }).format(total), {
+            x: 4.65,
+            y: 3.65,
+            w: 4.03,
+            h: 0.45,
+            align: 'center',
+            fontSize: 20,
+            bold: true,
+            color: '19334F'
+          });
+        }
+      }
       if (chart.fallback)
         page.addText(t('Les données sont présentées en barres pour faciliter leur lecture.'), {
           x: 0.55,

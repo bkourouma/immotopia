@@ -1,5 +1,7 @@
 import React, { useMemo } from 'react';
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
@@ -98,26 +100,70 @@ export const ArtifactChart: React.FC<{ artifact: ChartArtifact }> = ({ artifact 
   const tick = { fill: textColor, fontSize: 12 };
   const fmt = (v: unknown) => (typeof v === 'number' ? formatArtifactCell(v, 'number') : String(v ?? ''));
   const first = artifact.series[0];
+  const values = data.flatMap(row =>
+    artifact.series.map(series => num(row[series.key])).filter(value => value !== null)
+  );
+  const parts = artifact.chartType === 'pie' || artifact.chartType === 'donut';
+  const validParts =
+    parts &&
+    artifact.series.length === 1 &&
+    data.length >= 2 &&
+    data.length <= 8 &&
+    values.every(value => value >= 0) &&
+    values.some(value => value > 0);
+  const horizontal = artifact.chartType === 'horizontal_bar';
+  const donut = artifact.chartType === 'donut';
+  const total = donut ? values.reduce((sum, value) => sum + value, 0) : undefined;
 
   const axes = (
     <>
       <CartesianGrid stroke={gridColor} strokeDasharray="3 3" />
-      <XAxis dataKey={artifact.xKey} tick={tick} stroke={gridColor} reversed={rtl} />
-      <YAxis tick={tick} stroke={gridColor} tickFormatter={fmt} orientation={rtl ? 'right' : 'left'} />
+      {horizontal ? (
+        <>
+          <XAxis type="number" tick={tick} stroke={gridColor} tickFormatter={fmt} reversed={rtl} />
+          <YAxis
+            type="category"
+            dataKey={artifact.xKey}
+            tick={tick}
+            stroke={gridColor}
+            orientation={rtl ? 'right' : 'left'}
+            width={112}
+            interval={Math.max(0, Math.ceil(data.length / 20) - 1)}
+          />
+        </>
+      ) : (
+        <>
+          <XAxis dataKey={artifact.xKey} tick={tick} stroke={gridColor} reversed={rtl} />
+          <YAxis tick={tick} stroke={gridColor} tickFormatter={fmt} orientation={rtl ? 'right' : 'left'} />
+        </>
+      )}
       <Tooltip formatter={fmt} />
       <Legend />
     </>
   );
 
   let chart: React.ReactElement;
-  if (artifact.chartType === 'pie') {
+  if (validParts) {
     chart = (
       <PieChart>
-        <Pie data={data} dataKey={first.key} nameKey={artifact.xKey} label isAnimationActive={false} outerRadius="75%">
+        <Pie
+          data={data}
+          dataKey={first.key}
+          nameKey={artifact.xKey}
+          label
+          isAnimationActive={false}
+          outerRadius="75%"
+          innerRadius={donut ? '45%' : 0}
+        >
           {data.map((_, i) => (
             <Cell key={i} fill={colors[i % colors.length]} />
           ))}
         </Pie>
+        {Number.isFinite(total) && (
+          <text x="50%" y="50%" dy="0.3em" textAnchor="middle" fill={textColor}>
+            {fmt(total)}
+          </text>
+        )}
         <Tooltip formatter={fmt} />
         <Legend />
       </PieChart>
@@ -138,12 +184,37 @@ export const ArtifactChart: React.FC<{ artifact: ChartArtifact }> = ({ artifact 
         ))}
       </LineChart>
     );
-  } else {
+  } else if (artifact.chartType === 'area' || artifact.chartType === 'stacked_area') {
     chart = (
-      <BarChart data={data}>
+      <AreaChart data={data}>
         {axes}
         {artifact.series.map((s, i) => (
-          <Bar key={s.key} dataKey={s.key} name={s.label} fill={colors[i % colors.length]} isAnimationActive={false} />
+          <Area
+            key={s.key}
+            dataKey={s.key}
+            name={s.label}
+            stroke={colors[i % colors.length]}
+            fill={colors[i % colors.length]}
+            fillOpacity={0.28}
+            stackId={artifact.chartType === 'stacked_area' ? 'values' : undefined}
+            isAnimationActive={false}
+          />
+        ))}
+      </AreaChart>
+    );
+  } else {
+    chart = (
+      <BarChart data={data} layout={horizontal ? 'vertical' : 'horizontal'} stackOffset="sign">
+        {axes}
+        {artifact.series.map((s, i) => (
+          <Bar
+            key={s.key}
+            dataKey={s.key}
+            name={s.label}
+            fill={colors[i % colors.length]}
+            isAnimationActive={false}
+            stackId={artifact.chartType === 'stacked_bar' ? 'values' : undefined}
+          />
         ))}
       </BarChart>
     );
@@ -155,13 +226,14 @@ export const ArtifactChart: React.FC<{ artifact: ChartArtifact }> = ({ artifact 
         role="img"
         aria-label={label}
         data-testid="artifact-chart"
-        style={{ width: '100%', height: 320 }}
+        style={{ width: '100%', height: horizontal ? Math.min(640, 80 + 28 * data.length) : 320 }}
         dir={direction}
       >
         <ResponsiveContainer width="100%" height="100%">
           {chart}
         </ResponsiveContainer>
       </div>
+      {parts && !validParts && <p>{t('Les données sont présentées en barres pour faciliter leur lecture.')}</p>}
       <DataFallback artifact={artifact} />
     </div>
   );

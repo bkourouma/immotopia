@@ -300,6 +300,17 @@ export interface CopilotStatus {
 
 export type ArtifactCell = string | number | null;
 
+export const ANALYSIS_CHART_TYPES = [
+  'bar',
+  'stacked_bar',
+  'horizontal_bar',
+  'line',
+  'area',
+  'stacked_area',
+  'pie',
+  'donut'
+] as const;
+
 export interface ArtifactProvenance {
   source: string;
   href: string;
@@ -357,7 +368,7 @@ export type CopilotArtifact = { canRefresh?: boolean } & (
       provenance?: ArtifactProvenance;
       id: string;
       title: string;
-      chartType: 'bar' | 'line' | 'pie';
+      chartType: (typeof ANALYSIS_CHART_TYPES)[number];
       xKey: string;
       /** Libellé de l'axe des abscisses, si le serveur en fournit un ; sinon la clé rendue lisible. */
       xLabel?: string;

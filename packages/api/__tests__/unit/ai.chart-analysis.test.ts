@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { CopilotArtifact, CopilotToolContext } from '../../src/lib/ai/contracts';
+import type { AnalysisTable, CopilotArtifact, CopilotToolContext } from '../../src/lib/ai/contracts';
 import { chartAnalysisTool } from '../../src/lib/ai/tools/chart-analysis';
 
 const id = randomUUID();
@@ -65,4 +65,104 @@ it('refuse un tableau étranger à la conversation', async () => {
   await expect(chartAnalysisTool.execute({ ...input, sourceId: randomUUID() }, ctx)).rejects.toMatchObject({
     statusCode: 404
   });
+});
+
+const sourceId = '00000000-0000-4000-8000-000000000001';
+const source: AnalysisTable = {
+  kind: 'table',
+  id: sourceId,
+  title: 'Loyers',
+  columns: [
+    { key: 'period', label: 'Période' },
+    { key: 'zone', label: 'Zone' },
+    { key: 'amount', label: 'Montant', type: 'currency' }
+  ],
+  rows: [
+    { period: '2026-09', zone: 'A', currency: 'XOF', amount: 8 },
+    { period: '2026-09', zone: 'A', currency: 'XOF', amount: 2 },
+    { period: '2026-09', zone: 'B', currency: 'XOF', amount: 6 },
+    { period: '2026-10', zone: 'A', currency: 'XOF', amount: 12 },
+    { period: '2026-10', zone: 'B', currency: 'XOF', amount: 0 }
+  ],
+  provenance: { ...table.provenance!, period: '2026-09' },
+  query: { tool: 'rental_receipts', month: '2026-09' }
+};
+
+const context: CopilotToolContext = {
+  tenantId: 'tenant',
+  userId: 'user',
+  requestId: 'request',
+  conversationId: 'thread',
+  signal: new AbortController().signal,
+  permissions: new Set(['PROPERTIES_VIEW']),
+  seenLeaseIds: new Set(),
+  analysisTables: new Map([[sourceId, source]])
+};
+
+function run(override: Record<string, unknown>, data = source) {
+  const input = chartAnalysisTool.inputSchema.parse({
+    sourceId,
+    title: 'Encaissements',
+    dimension: 'period',
+    measure: 'amount',
+    chartType: 'bar',
+    ...override
+  });
+  return chartAnalysisTool.execute(input, { ...context, analysisTables: new Map([[sourceId, data]]) });
+}
+
+it('agrège les catégories et permet de choisir la série sans perdre les zéros', async () => {
+  const result = await run({ seriesBy: 'zone', chartType: 'stacked_area' });
+  expect(result.uiEvent).toMatchObject({
+    type: 'artifact',
+    artifact: {
+      chartType: 'stacked_area',
+      data: [
+        { category: '2026-09', value0: 10, value1: 6 },
+        { category: '2026-10', value0: 12, value1: 0 }
+      ],
+      provenance: { rules: ['Les valeurs d’une même catégorie et série sont additionnées.'] },
+      replay: { source: source.query, input: { chartType: 'stacked_area', seriesBy: 'zone' } }
+    }
+  });
+  const average = await run({ chartType: 'area', aggregation: 'average' });
+  expect(average.uiEvent).toMatchObject({
+    artifact: {
+      data: [
+        { category: '2026-09', value0: 16 / 3 },
+        { category: '2026-10', value0: 6 }
+      ]
+    }
+  });
+});
+
+it('sépare les montants par devise et refuse l’empilement ou les parts entre devises', async () => {
+  const dataset = { ...source, rows: [...source.rows, { period: '2026-09', zone: 'B', currency: 'EUR', amount: 7 }] };
+  const grouped = await run({ chartType: 'horizontal_bar' }, dataset);
+  expect(grouped.uiEvent).toMatchObject({
+    artifact: {
+      data: [
+        { category: '2026-09', value0: 16, value1: 7 },
+        { category: '2026-10', value0: 12 }
+      ]
+    }
+  });
+  for (const chartType of ['stacked_bar', 'donut']) {
+    expect((await run({ chartType }, dataset)).modelResult).toMatchObject({ error: 'INCOMPATIBLE_UNITS' });
+  }
+});
+
+it('produit un anneau si le jeu satisfait les contraintes des graphiques en parts', async () => {
+  expect((await run({ chartType: 'donut' })).uiEvent).toMatchObject({
+    artifact: {
+      chartType: 'donut',
+      data: [
+        { category: '2026-09', value0: 16 },
+        { category: '2026-10', value0: 12 }
+      ]
+    }
+  });
+  const negative = { ...source, rows: [...source.rows, { period: '2026-11', zone: 'A', currency: 'XOF', amount: -1 }] };
+  expect((await run({ chartType: 'pie' }, negative)).modelResult).toMatchObject({ error: 'INVALID_PARTS' });
+  expect((await run({ chartType: 'stacked_area' }, negative)).modelResult).toMatchObject({ error: 'NEGATIVE_AREA' });
 });

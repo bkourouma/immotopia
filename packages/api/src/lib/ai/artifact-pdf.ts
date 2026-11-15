@@ -84,7 +84,7 @@ export function artifactExportSections(artifact: CopilotArtifact): ExportSection
       return [
         {
           kind: 'grid',
-          headers: [artifact.xKey, ...artifact.series.map(series => series.label)],
+          headers: [artifact.xLabel ?? artifact.xKey, ...artifact.series.map(series => series.label)],
           rows: artifact.data.map(row => [
             row[artifact.xKey] ?? null,
             ...artifact.series.map(series => row[series.key] ?? null)

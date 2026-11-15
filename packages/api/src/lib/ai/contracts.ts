@@ -357,6 +357,18 @@ export interface CopilotStatus {
 /** Données d'affichage seulement : jamais de HTML, jamais d'écriture. L'`id` est généré par le serveur. */
 export type ArtifactCell = string | number | null;
 
+export const ANALYSIS_CHART_TYPES = [
+  'bar',
+  'stacked_bar',
+  'horizontal_bar',
+  'line',
+  'area',
+  'stacked_area',
+  'pie',
+  'donut'
+] as const;
+export type AnalysisChartType = (typeof ANALYSIS_CHART_TYPES)[number];
+
 type MaintenanceQueryFilters = {
   propertyId?: string;
   vendorId?: string;
@@ -440,8 +452,9 @@ export type CopilotArtifact =
       provenance?: ArtifactProvenance;
       id: string;
       title: string;
-      chartType: 'bar' | 'line' | 'pie';
+      chartType: AnalysisChartType;
       xKey: string;
+      xLabel?: string;
       series: { key: string; label: string }[];
       data: Record<string, ArtifactCell>[];
     };

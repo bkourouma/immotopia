@@ -1,6 +1,7 @@
 import { activeLocale } from '../i18n/format';
 import { t } from '../i18n/t';
 import {
+  ANALYSIS_CHART_TYPES,
   ARTIFACT_MAX_CHART_POINTS,
   ARTIFACT_MAX_COLUMNS,
   ARTIFACT_MAX_MARKDOWN_CHARS,
@@ -41,7 +42,6 @@ function cleanRows(raw: unknown, keys: string[], max: number): Record<string, Ar
 }
 
 const COLUMN_TYPES = ['text', 'number', 'currency', 'date'] as const;
-const CHART_TYPES = ['bar', 'line', 'pie'] as const;
 
 export function artifactInternalLink(value: unknown): string | undefined {
   return typeof value === 'string' && /^\/tenant\/[A-Za-z0-9_-]+\/[A-Za-z0-9_/-]+$/.test(value) ? value : undefined;
@@ -191,7 +191,7 @@ export function sanitizeArtifact(raw: unknown): (CopilotArtifact & { canRefresh?
   }
 
   if (raw.kind === 'chart') {
-    const chartType = CHART_TYPES.find(x => x === raw.chartType);
+    const chartType = ANALYSIS_CHART_TYPES.find(x => x === raw.chartType);
     const xKey = str(raw.xKey);
     if (!chartType || !xKey || !Array.isArray(raw.series)) return null;
     const series: { key: string; label: string }[] = [];

@@ -7,8 +7,22 @@ import type { CopilotArtifact } from '../../types/copilot';
 
 vi.mock('recharts', () => {
   const box = (name: string) => {
-    const Stub = (props: { children?: React.ReactNode; reversed?: boolean; orientation?: string }) => (
-      <div data-testid={`rc-${name}`} data-reversed={props.reversed} data-orientation={props.orientation}>
+    const Stub = (props: {
+      children?: React.ReactNode;
+      reversed?: boolean;
+      orientation?: string;
+      stackId?: string;
+      layout?: string;
+      innerRadius?: string | number;
+    }) => (
+      <div
+        data-testid={`rc-${name}`}
+        data-reversed={props.reversed}
+        data-orientation={props.orientation}
+        data-stack={props.stackId}
+        data-layout={props.layout}
+        data-radius={props.innerRadius}
+      >
         {props.children}
       </div>
     );
@@ -16,6 +30,8 @@ vi.mock('recharts', () => {
     return Stub;
   };
   return {
+    AreaChart: box('area-chart'),
+    Area: box('area'),
     ResponsiveContainer: box('container'),
     BarChart: box('bar-chart'),
     LineChart: box('line-chart'),
@@ -173,6 +189,21 @@ describe('ArtifactPanel — rendus', () => {
     expect(screen.getByRole('table', { name: 'Revenus' })).toBeInTheDocument();
     expect(screen.getByText('Fév')).toBeInTheDocument();
   });
+
+  it.each([
+    ['horizontal_bar', 'bar-chart', 'data-layout', 'vertical'],
+    ['stacked_bar', 'bar', 'data-stack', 'values'],
+    ['stacked_area', 'area', 'data-stack', 'values'],
+    ['donut', 'pie', 'data-radius', '45%']
+  ] as const)(
+    'rend la forme %s et conserve le tableau accessible',
+    async (chartType, renderer, attribute, expected) => {
+      if (chart.kind !== 'chart') throw new Error('graphique attendu');
+      renderPanel([{ ...chart, chartType }]);
+      expect(await screen.findByTestId(`rc-${renderer}`)).toHaveAttribute(attribute, expected);
+      expect(screen.getByRole('table', { name: 'Revenus' })).toBeInTheDocument();
+    }
+  );
 
   it('inverse les catégories et place l’axe des valeurs à droite en arabe', async () => {
     function ArabicPanel() {
