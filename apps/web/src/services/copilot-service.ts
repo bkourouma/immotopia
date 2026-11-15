@@ -1,7 +1,13 @@
 import { AxiosHeaders, type AxiosRequestConfig } from 'axios';
 import client from '../utils/api-client';
 import { postEventStream } from '../utils/event-stream';
-import { readAssistantLanguage } from '../i18n/assistant-language';
+import { copilotSessionGeneration } from '../utils/copilot-status-cache';
+import {
+  isAssistantLanguage,
+  readAssistantLanguage,
+  selectAssistantLanguage,
+  type AssistantLanguage
+} from '../i18n/assistant-language';
 import type {
   ActionExecutedPayload,
   ArtifactDownloadFormat,
@@ -54,6 +60,7 @@ const DISABLED_STATUS: CopilotStatus = {
   tools: [],
   limits: { maxMessages: 0, maxMessageChars: 0 }
 };
+let preferenceRevision = 0;
 
 /** Les réponses de l'API sont `{ success, data }` ; on tolère aussi le corps nu. */
 function unwrap<T>(body: unknown): T {
@@ -68,9 +75,19 @@ function unwrap<T>(body: unknown): T {
  */
 async function getStatus(tenantId: string): Promise<CopilotStatus> {
   try {
+    const revision = preferenceRevision;
+    const generation = copilotSessionGeneration;
     const response = await apiClient.get(`/tenants/${tenantId}/ai/status`);
     const status = unwrap<CopilotStatus | undefined>(response.data);
     if (!status || typeof status.enabled !== 'boolean') return DISABLED_STATUS;
+    const preferred = status.preferredAssistantLanguage;
+    if (
+      generation === copilotSessionGeneration &&
+      revision === preferenceRevision &&
+      (preferred === null || isAssistantLanguage(preferred))
+    ) {
+      selectAssistantLanguage(preferred);
+    }
     return { ...DISABLED_STATUS, ...status, tools: status.tools ?? [] };
   } catch (error) {
     // Le statut HTTP distingue « refusé pour ce compte » (403) d'« agence introuvable » (404) ;
@@ -79,6 +96,16 @@ async function getStatus(tenantId: string): Promise<CopilotStatus> {
     if (httpStatus === 401 || httpStatus === 403) return { ...DISABLED_STATUS, reason: 'FORBIDDEN' };
     if (httpStatus === 404) return { ...DISABLED_STATUS, reason: 'NOT_FOUND' };
     return DISABLED_STATUS;
+  }
+}
+
+async function savePreferredLanguage(language: AssistantLanguage | null): Promise<void> {
+  const revision = ++preferenceRevision;
+  const generation = copilotSessionGeneration;
+  await client.patch('/auth/me/language', { assistantLanguage: language });
+  if (generation === copilotSessionGeneration && preferenceRevision === revision) {
+    preferenceRevision++;
+    selectAssistantLanguage(language);
   }
 }
 
@@ -464,6 +491,7 @@ export const copilotService = {
     );
   },
   getStatus,
+  savePreferredLanguage,
   streamChat,
   executeAction,
   executeProposal,

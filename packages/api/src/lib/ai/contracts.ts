@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { AssistantLanguage } from '../../i18n';
 import type {
   BatchType,
   BudgetStatus,
@@ -353,6 +354,7 @@ export interface CapabilityExecutedPayload {
 }
 
 export interface CopilotStatus {
+  preferredAssistantLanguage?: AssistantLanguage | null;
   transcription?: boolean;
   enabled: boolean;
   reason?: 'NOT_CONFIGURED' | 'NO_TOOLS';

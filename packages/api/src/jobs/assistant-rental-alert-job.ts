@@ -1,6 +1,6 @@
 import * as cron from 'node-cron';
 import type { AssistantRentalAlert } from '@prisma/client';
-import { isLanguage, t } from '../i18n';
+import { assistantLanguageFor, t } from '../i18n';
 import { assertAnalysisCollaborator } from '../lib/ai/analysis-shares';
 import { writeAssistantNotification } from '../lib/ai/in-app-notification';
 import { assertRentalAlertPermission, rentalAlertMatches, rentalAlertRule } from '../lib/ai/rental-alerts';
@@ -36,14 +36,14 @@ async function processAlert(alert: AssistantRentalAlert, now: Date) {
     const account = notify
       ? await prisma.user.findFirst({
           where: { id: ownerId, isActive: true, memberships: { some: { tenantId, status: 'ACTIVE' } } },
-          select: { id: true, fullName: true, preferredLanguage: true }
+          select: { id: true, fullName: true, preferredLanguage: true, preferredAssistantLanguage: true }
         })
       : null;
     if (notify && !account) throw new ForbiddenError();
     await prisma.$transaction(async tx => {
       const updated = await tx.assistantRentalAlert.updateMany({ where, data: { matched, nextCheckAt } });
       if (!updated.count || !account) return;
-      const language = isLanguage(account.preferredLanguage) ? account.preferredLanguage : 'fr';
+      const language = assistantLanguageFor(account);
       const titles = {
         lease_expiry: t('Fin de bail à surveiller', undefined, language),
         declaration_pending: t('Déclaration locative en attente', undefined, language),

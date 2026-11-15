@@ -75,5 +75,6 @@
   "Le service de dictée est injoignable.": "No se puede conectar con el servicio de dictado.",
   "La dictée a échoué. Réessayez.": "El dictado ha fallado. Vuelva a intentarlo.",
   "Impossible de transcrire cet enregistrement.": "No se pudo transcribir esta grabación.",
-  "Aucune parole reconnue.": "No se reconoció ninguna palabra."
+  "Aucune parole reconnue.": "No se reconoció ninguna palabra.",
+  "La langue de l’assistant n’a pas pu être enregistrée.": "No se pudo guardar el idioma del asistente."
 }

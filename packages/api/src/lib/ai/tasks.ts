@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { isLanguage, t } from '../../i18n';
+import { assistantLanguageFor, t } from '../../i18n';
 import { ConflictError, NotFoundError } from '../../middleware/error-middleware';
 import { prisma, type PrismaTransactionClient } from '../../utils/database';
 import { createAnalysisSharesInTransaction } from './analysis-shares';
@@ -69,7 +69,7 @@ export async function createAssistantTaskInTransaction(
         userRoles: { some: { tenantId, role: { scope: 'TENANT' } } }
       }
     },
-    select: { user: { select: { fullName: true, preferredLanguage: true } } }
+    select: { user: { select: { fullName: true, preferredLanguage: true, preferredAssistantLanguage: true } } }
   });
   if (!member) throw new NotFoundError();
   if (
@@ -115,7 +115,7 @@ export async function createAssistantTaskInTransaction(
     );
     await tx.assistantTask.updateMany({ where: { ...requested, id }, data: { shareId: share.id } });
   }
-  const language = isLanguage(member.user.preferredLanguage) ? member.user.preferredLanguage : 'fr';
+  const language = assistantLanguageFor(member.user);
   await writeAssistantNotification(tx, owner, { id: assigneeId, fullName: member.user.fullName }, language, {
     key: 'ASSISTANT_TASK_ASSIGNED',
     title: t('Une tâche vous a été assignée', undefined, language),

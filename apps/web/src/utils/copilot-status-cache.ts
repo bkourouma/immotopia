@@ -1,8 +1,9 @@
+import { PERSONAL_DATA_PURGED_EVENT } from './personal-local-data';
+
 /**
  * Partage la lecture de `GET /ai/status` entre les composants montés ensemble
  * (coquille, bouton flottant, page de l'assistant) : une seule requête par
- * agence, réutilisée pendant un court instant. Module volontairement sans
- * dépendance, pour que les tests puissent le réinitialiser sans charger le réseau.
+ * agence, réutilisée pendant un court instant.
  */
 
 /** Durée de réutilisation d'une réponse : assez longue pour une rafale, assez courte pour suivre un réglage. */
@@ -15,6 +16,7 @@ interface Entry<T> {
 }
 
 const entries = new Map<string, Entry<unknown>>();
+export let copilotSessionGeneration = 0;
 
 /**
  * Renvoie la promesse en cours ou récente de l'agence, sinon lance `fetcher`.
@@ -49,4 +51,9 @@ export function sharedCopilotStatus<T>(
 /** Vide le cache (tests, déconnexion). */
 export function resetCopilotStatusCache(): void {
   entries.clear();
+  copilotSessionGeneration++;
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener(PERSONAL_DATA_PURGED_EVENT, resetCopilotStatusCache);
 }

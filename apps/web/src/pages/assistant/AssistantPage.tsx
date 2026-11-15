@@ -26,12 +26,7 @@ import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { useCopilotChat } from '../../hooks/useCopilotChat';
 import { useCopilotStatus } from '../../hooks/useCopilotStatus';
 import { t } from '../../i18n/t';
-import {
-  assistantLanguageCodes,
-  assistantLanguages,
-  isAssistantLanguage,
-  selectAssistantLanguage
-} from '../../i18n/assistant-language';
+import { assistantLanguageCodes, assistantLanguages, isAssistantLanguage } from '../../i18n/assistant-language';
 import { useAssistantTranslation } from '../../i18n/useAssistantTranslation';
 import type { CopilotStatus } from '../../types/copilot';
 
@@ -84,6 +79,17 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
   showArtifact
 }) => {
   const { language, selected, t } = useAssistantTranslation();
+  const [savingLanguage, setSavingLanguage] = useState(false);
+  async function changeLanguage(value: string) {
+    setSavingLanguage(true);
+    try {
+      await copilotService.savePreferredLanguage(isAssistantLanguage(value) ? value : null);
+    } catch {
+      feedback.error(t('La langue de l’assistant n’a pas pu être enregistrée.'));
+    } finally {
+      setSavingLanguage(false);
+    }
+  }
   const location = useLocation();
   const { pathname } = location;
   const navigate = useNavigate();
@@ -562,11 +568,8 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
             <select
               aria-label={t('Langue de l’assistant')}
               value={selected ?? ''}
-              disabled={streaming}
-              onChange={event => {
-                const value = event.target.value;
-                selectAssistantLanguage(isAssistantLanguage(value) ? value : null);
-              }}
+              disabled={streaming || savingLanguage}
+              onChange={event => void changeLanguage(event.target.value)}
               style={{
                 maxInlineSize: '100%',
                 minBlockSize: 32,

@@ -2940,5 +2940,6 @@
   "Première catégorie visible": "أول فئة ظاهرة",
   "Catégories {{first}} à {{last}} sur {{total}}": "الفئات من {{first}} إلى {{last}} من أصل {{total}}",
   "Langue de l’assistant": "لغة المساعد",
-  "Langue de l’interface": "لغة الواجهة"
+  "Langue de l’interface": "لغة الواجهة",
+  "La langue de l’assistant n’a pas pu être enregistrée.": "تعذّر حفظ لغة المساعد."
 }

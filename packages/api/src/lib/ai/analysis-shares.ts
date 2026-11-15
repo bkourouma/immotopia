@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { isLanguage, t } from '../../i18n';
+import { assistantLanguageFor, t } from '../../i18n';
 import { NotFoundError } from '../../middleware/error-middleware';
 import { prisma, type PrismaTransactionClient } from '../../utils/database';
 import type { AssistantOwner } from './conversations';
@@ -135,14 +135,16 @@ export async function createAnalysisSharesInTransaction(
           userRoles: { some: { tenantId: owner.tenantId, role: { scope: 'TENANT' } } }
         }
       },
-      select: { id: true, recipient: { select: { fullName: true, preferredLanguage: true } } }
+      select: {
+        id: true,
+        recipient: { select: { fullName: true, preferredLanguage: true, preferredAssistantLanguage: true } }
+      }
     });
     if (!share) throw new NotFoundError();
     // The notification and its in-app delivery commit with the new share. An
     // idempotent retry returns the existing share without notifying again.
     if (created && notifyRecipient) {
-      const preferred = share.recipient.preferredLanguage;
-      const language = isLanguage(preferred) ? preferred : 'fr';
+      const language = assistantLanguageFor(share.recipient);
       await writeAssistantNotification(tx, owner, { id: recipientId, fullName: share.recipient.fullName }, language, {
         key: 'ASSISTANT_ANALYSIS_SHARED',
         title: location.artifactId

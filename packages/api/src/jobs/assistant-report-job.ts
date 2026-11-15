@@ -1,6 +1,6 @@
 import * as cron from 'node-cron';
 import type { AssistantScheduledReport } from '@prisma/client';
-import { isLanguage, runWithLanguage, t } from '../i18n';
+import { assistantLanguageFor, runWithAssistantLanguage, t } from '../i18n';
 import { AppError, ForbiddenError, NotFoundError } from '../middleware/error-middleware';
 import { resolveAvailableTools } from '../lib/ai/access-scope';
 import { assertAnalysisCollaborator } from '../lib/ai/analysis-shares';
@@ -71,15 +71,15 @@ async function deliver(report: AssistantScheduledReport, dueAt: Date, recipientI
         emailVerified: true,
         memberships: { some: { tenantId, status: 'ACTIVE' } }
       },
-      select: { email: true, preferredLanguage: true }
+      select: { email: true, preferredLanguage: true, preferredAssistantLanguage: true }
     })
   ]);
   if (!account?.email) return 'SKIPPED';
   const stored = await readReportSource(report, owner);
   const permissions = new Set([...recipient.permissions].filter(permission => owner.permissions.has(permission)));
   const tools = recipient.tools.filter(tool => owner.tools.some(source => source.name === tool.name));
-  const language = isLanguage(account.preferredLanguage) ? account.preferredLanguage : 'fr';
-  return runWithLanguage(language, async () => {
+  const language = assistantLanguageFor(account);
+  return runWithAssistantLanguage(language, async () => {
     const artifact = await replayArtifact(
       stored.artifact,
       { tenantId, userId: recipientId, conversationId, permissions, tools },
@@ -189,8 +189,11 @@ async function processReport(report: AssistantScheduledReport, now: Date) {
     data: { active: nextRunAt !== null, nextRunAt, lastRunAt: now, lastStatus: status }
   });
   if (currentResult.count) {
-    const owner = await prisma.user.findFirst({ where: { id: report.ownerId }, select: { preferredLanguage: true } });
-    const language = isLanguage(owner?.preferredLanguage) ? owner.preferredLanguage : 'fr';
+    const owner = await prisma.user.findFirst({
+      where: { id: report.ownerId },
+      select: { preferredLanguage: true, preferredAssistantLanguage: true }
+    });
+    const language = assistantLanguageFor(owner);
     await notify({
       tenantId,
       recipients: [{ userId: report.ownerId }],

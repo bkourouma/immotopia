@@ -1,4 +1,4 @@
-import { t, type Language } from '../../i18n';
+import { t, type AssistantLanguage } from '../../i18n';
 import type { PrismaTransactionClient } from '../../utils/database';
 import type { AssistantOwner } from './conversations';
 
@@ -7,7 +7,7 @@ export function writeAssistantNotification(
   tx: PrismaTransactionClient,
   owner: AssistantOwner,
   recipient: { id: string; fullName: string | null },
-  language: Language,
+  language: AssistantLanguage,
   notice: {
     key: string;
     title: string;

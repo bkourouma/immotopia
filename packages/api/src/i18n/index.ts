@@ -27,6 +27,20 @@ export function isLanguage(value: unknown): value is Language {
   return typeof value === 'string' && (LANGUAGES as readonly string[]).includes(value);
 }
 
+export function isAssistantLanguage(value: unknown): value is AssistantLanguage {
+  return typeof value === 'string' && (ASSISTANT_LANGUAGES as readonly string[]).includes(value);
+}
+
+export function assistantLanguageFor(
+  account?: {
+    preferredAssistantLanguage?: string | null;
+    preferredLanguage?: string | null;
+  } | null
+): AssistantLanguage {
+  if (isAssistantLanguage(account?.preferredAssistantLanguage)) return account.preferredAssistantLanguage;
+  return isLanguage(account?.preferredLanguage) ? account.preferredLanguage : DEFAULT_LANGUAGE;
+}
+
 /**
  * Langue de la requete en cours.
  *

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { isLanguage, t } from '../../i18n';
+import { assistantLanguageFor, t } from '../../i18n';
 import { ConflictError, NotFoundError } from '../../middleware/error-middleware';
 import { prisma, type PrismaTransactionClient } from '../../utils/database';
 import { createAnalysisSharesInTransaction } from './analysis-shares';
@@ -65,7 +65,9 @@ export async function notifyAssistantColleaguesInTransaction(
         userRoles: { some: { tenantId, role: { scope: 'TENANT' } } }
       }
     },
-    select: { user: { select: { id: true, fullName: true, preferredLanguage: true } } }
+    select: {
+      user: { select: { id: true, fullName: true, preferredLanguage: true, preferredAssistantLanguage: true } }
+    }
   });
   if (accounts.length !== recipientIds.length) throw new NotFoundError();
   if (
@@ -82,7 +84,7 @@ export async function notifyAssistantColleaguesInTransaction(
       : [];
   const base = `/tenant/${encodeURIComponent(tenantId)}/assistant`;
   for (const { user } of accounts) {
-    const language = isLanguage(user.preferredLanguage) ? user.preferredLanguage : 'fr';
+    const language = assistantLanguageFor(user);
     const shareId = shares.find(share => share.recipientId === user.id)?.id;
     const link = shareId
       ? `${base}?partage=${shareId}`

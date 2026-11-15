@@ -478,7 +478,8 @@ model User {
   /// et laisse le navigateur trancher au premier rendu. Une colonne
   /// `DEFAULT 'fr'` aurait rendu ce cas indistinguable d'un choix explicite du
   /// francais, et impose le francais a un utilisateur arabophone.
-  preferredLanguage String?  @map("preferred_language")
+  preferredLanguage          String? @map("preferred_language")
+  preferredAssistantLanguage String? @map("preferred_assistant_language")
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
 

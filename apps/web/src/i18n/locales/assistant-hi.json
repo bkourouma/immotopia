@@ -75,5 +75,6 @@
   "Le service de dictée est injoignable.": "बोलकर लिखने की सेवा से संपर्क नहीं हो सका।",
   "La dictée a échoué. Réessayez.": "बोलकर लिखने में समस्या आई। फिर कोशिश करें।",
   "Impossible de transcrire cet enregistrement.": "इस रिकॉर्डिंग का लिप्यंतरण नहीं हो सका।",
-  "Aucune parole reconnue.": "कोई शब्द पहचाना नहीं गया।"
+  "Aucune parole reconnue.": "कोई शब्द पहचाना नहीं गया।",
+  "La langue de l’assistant n’a pas pu être enregistrée.": "असिस्टेंट की भाषा सेव नहीं हो सकी।"
 }

@@ -2232,8 +2232,20 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
     it('enregistre un brouillon de rapport dans le périmètre du propriétaire', async () => {
       const owner = await createTenantAdminUser(tenantA, 'report-owner');
       const recipient = await createTenantAdminUser(tenantA, 'report-recipient');
+      const spanish = await createTenantAdminUser(tenantA, 'report-recipient-es');
       const disabled = await createTenantAdminUser(tenantA, 'report-disabled');
       await prisma.user.update({ where: { id: recipient.id }, data: { emailVerified: true, preferredLanguage: 'en' } });
+      await prisma.user.update({ where: { id: spanish.id }, data: { emailVerified: true, preferredLanguage: 'en' } });
+      const preferenceRoute = '/api/auth/me/language';
+      expect((await request(app).patch(preferenceRoute).send({ assistantLanguage: 'es' })).status).toBe(401);
+      const rejected = await request(app).patch(preferenceRoute).set(authed(spanish)).send({ assistantLanguage: 'ru' });
+      expect(rejected.status).toBe(400);
+      const preference = await request(app)
+        .patch(preferenceRoute)
+        .set(authed(spanish))
+        .send({ assistantLanguage: 'es' });
+      expect(preference.status).toBe(200);
+      expect(preference.body.user).toEqual({ preferredAssistantLanguage: 'es' });
       const configured = jest.spyOn(reportEmail, 'isEmailDeliveryConfigured').mockReturnValue(true);
       const send = jest.spyOn(reportEmail.emailService, 'sendEmail').mockResolvedValue({ sent: true });
       const base = `/api/tenants/${tenantA.id}/ai`;
@@ -2242,7 +2254,7 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         const input = {
           conversationId,
           artifactId,
-          recipientIds: [recipient.id, disabled.id],
+          recipientIds: [recipient.id, spanish.id, disabled.id],
           formats: ['csv'],
           schedule: { frequency: 'weekly', day: 1, time: '08:15', timeZone: 'Africa/Abidjan' }
         };
@@ -2292,7 +2304,7 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         });
         await Promise.all([runAssistantReports(dueAt), runAssistantReports(dueAt)]);
         await runAssistantReports(dueAt);
-        expect(send).toHaveBeenCalledTimes(1);
+        expect(send).toHaveBeenCalledTimes(2);
         expect(send).toHaveBeenCalledWith(
           expect.objectContaining({
             to: recipient.email,
@@ -2300,6 +2312,31 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
             attachments: [expect.objectContaining({ filename: 'ImmoTopia.csv' })]
           })
         );
+        expect(send).toHaveBeenCalledWith(
+          expect.objectContaining({
+            to: spanish.email,
+            subject: 'Su informe de ImmoTopia',
+            text: 'Adjuntamos el informe programado.'
+          })
+        );
+        const spanishDelivery = send.mock.calls.find(([delivery]) => delivery.to === spanish.email)?.[0];
+        expect(spanishDelivery?.attachments?.[0]?.content.toString()).toContain('Importe cobrado');
+        const status = await request(app)
+          .get(base + '/status')
+          .set(authed(spanish));
+        expect(status.body.data.preferredAssistantLanguage).toBe('es');
+        const profile = await prisma.user.findFirstOrThrow({
+          where: { id: spanish.id },
+          select: { preferredLanguage: true }
+        });
+        expect(profile.preferredLanguage).toBe('en');
+        expect(
+          (await request(app).patch(preferenceRoute).set(authed(spanish)).send({ assistantLanguage: null })).status
+        ).toBe(200);
+        const resetStatus = await request(app)
+          .get(base + '/status')
+          .set(authed(spanish));
+        expect(resetStatus.body.data.preferredAssistantLanguage).toBeNull();
         expect((await request(app).get(reports).set(authed(owner))).body.data.items[0]).toMatchObject({
           active: true,
           nextRunAt: '2030-01-14T08:15:00.000Z',
@@ -2528,7 +2565,10 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
     it('notifie des collègues une seule fois et associe un partage révocable', async () => {
       const owner = await createTenantAdminUser(tenantA, 'notice-sender');
       const recipient = await createTenantAdminUser(tenantA, 'notice-recipient');
-      await prisma.user.update({ where: { id: recipient.id }, data: { preferredLanguage: 'en' } });
+      await prisma.user.update({
+        where: { id: recipient.id },
+        data: { preferredLanguage: 'en', preferredAssistantLanguage: 'hi' }
+      });
       const base = `/api/tenants/${tenantA.id}/ai`;
       const path = base + '/notifications';
       const analysis = await saveReportAnalysis(base, owner);
@@ -2570,9 +2610,7 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       const inbox = await request(app).get(`/api/tenants/${tenantA.id}/notifications`).set(authed(recipient));
       expect(inbox.status).toBe(200);
       expect(inbox.body.data.items).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ title: 'A message from your team', body: input.message, link })
-        ])
+        expect.arrayContaining([expect.objectContaining({ title: 'आपकी टीम का एक संदेश', body: input.message, link })])
       );
       const shareId = new URLSearchParams(link.split('?')[1]).get('partage');
       expect(

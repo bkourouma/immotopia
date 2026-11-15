@@ -10,6 +10,7 @@ import type { CopilotStatus } from '../../types/copilot';
 vi.mock('../../services/copilot-service', () => {
   const service = {
     getStatus: vi.fn(),
+    savePreferredLanguage: vi.fn(),
     streamChat: vi.fn(),
     executeProposal: vi.fn(),
     listConversations: vi.fn().mockResolvedValue({ items: [] }),
@@ -79,6 +80,9 @@ function renderPage(path = '/tenant/t1/assistant') {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(copilotService.savePreferredLanguage).mockImplementation(async language =>
+    selectAssistantLanguage(language)
+  );
   delete w.SpeechRecognition;
   delete w.webkitSpeechRecognition;
   streamChat.mockImplementation(async (_t, _r, opts) => {
@@ -133,6 +137,7 @@ describe('AssistantPage — artefacts', () => {
       fireEvent.change(select, { target: { value: language } });
       expect(await screen.findByRole('textbox', { name: message })).toBeVisible();
       expect(readAssistantLanguage()).toBe(language);
+      await waitFor(() => expect(select).toBeEnabled());
     }
     fireEvent.change(select, { target: { value: '' } });
     expect(await screen.findByRole('textbox', { name: 'Votre message' })).toBeVisible();

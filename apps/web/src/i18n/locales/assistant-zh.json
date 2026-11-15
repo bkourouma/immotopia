@@ -75,5 +75,6 @@
   "Le service de dictée est injoignable.": "无法连接语音输入服务。",
   "La dictée a échoué. Réessayez.": "语音输入失败。请重试。",
   "Impossible de transcrire cet enregistrement.": "无法转写这段录音。",
-  "Aucune parole reconnue.": "未识别到任何语音。"
+  "Aucune parole reconnue.": "未识别到任何语音。",
+  "La langue de l’assistant n’a pas pu être enregistrée.": "无法保存助手语言。"
 }

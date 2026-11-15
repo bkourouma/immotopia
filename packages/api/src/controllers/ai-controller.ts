@@ -45,7 +45,7 @@ import { buildArtifactCsv, buildArtifactXlsx } from '../lib/ai/artifact-spreadsh
 import type { Request, Response } from 'express';
 import { AiDisabledError } from '../middleware/ai-access-middleware';
 import { AppError, asyncHandler, ConflictError, ForbiddenError, NotFoundError } from '../middleware/error-middleware';
-import { t } from '../i18n';
+import { isAssistantLanguage, t } from '../i18n';
 import {
   chatRequestSchema,
   COPILOT_MAX_MESSAGE_CHARS,
@@ -94,6 +94,7 @@ import { getSubscriptionEnforcement } from '../lib/subscription/enforcement';
 import { getEntitlements } from '../services/subscription-v2-service';
 import { hasPermission } from '../services/permission-service';
 import { listAssignableMembers } from '../services/membership-service';
+import { getPreferredAssistantLanguage } from '../services/auth-service';
 import { assertModuleAccess, assertSubscriptionWritable } from '../lib/subscription/guards';
 import { logger } from '../utils/logger';
 
@@ -823,7 +824,12 @@ export const getStatusHandler = asyncHandler(async (req: Request, res: Response)
         : { enabled: true, provider: provider.id, tools: tools.map(tool => tool.name), limits };
   }
   if (status.enabled && (await getTranscriptionEngine())) status.transcription = true;
-  res.json({ success: true, data: status });
+  if (status.enabled) {
+    const account = await getPreferredAssistantLanguage(userId);
+    const preferred = account?.preferredAssistantLanguage;
+    status.preferredAssistantLanguage = isAssistantLanguage(preferred) ? preferred : null;
+  }
+  res.set('Cache-Control', 'private, no-store').json({ success: true, data: status });
 });
 
 /**

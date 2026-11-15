@@ -2940,5 +2940,6 @@
   "Première catégorie visible": "First visible category",
   "Catégories {{first}} à {{last}} sur {{total}}": "Categories {{first}} to {{last}} of {{total}}",
   "Langue de l’assistant": "Assistant language",
-  "Langue de l’interface": "Interface language"
+  "Langue de l’interface": "Interface language",
+  "La langue de l’assistant n’a pas pu être enregistrée.": "Could not save the assistant language."
 }
