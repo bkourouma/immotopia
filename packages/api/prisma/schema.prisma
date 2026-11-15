@@ -1471,6 +1471,7 @@ model PlatformAiSettings {
   effort          String   @default("low")
   refusalFallback Boolean  @default(true) @map("refusal_fallback")
   modelsByMode    Json     @default("{}") @map("models_by_mode")
+  transcription   Json?
   updatedById     String?  @map("updated_by_id")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
@@ -11603,6 +11604,7 @@ model AssistantProviderUsage {
   status           String   @db.VarChar(20)
   upstreamStatus   Int?     @map("upstream_status")
   durationMs       Int      @map("duration_ms")
+  audioSeconds     Int?     @map("audio_seconds")
   inputTokens      Int?     @map("input_tokens")
   outputTokens     Int?     @map("output_tokens")
   cacheReadTokens  Int?     @map("cache_read_tokens")

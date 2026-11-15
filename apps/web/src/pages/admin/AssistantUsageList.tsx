@@ -42,7 +42,13 @@ export function AssistantUsageList() {
     return () => controller.abort();
   }, [filters, offset]);
 
-  const modes = { standard: t('Standard'), deep: t('Approfondi'), fast: t('Rapide'), rewrite: t('Réécriture') };
+  const modes = {
+    standard: t('Standard'),
+    deep: t('Approfondi'),
+    fast: t('Rapide'),
+    rewrite: t('Réécriture'),
+    transcription: t('Transcription de la dictée')
+  };
   const statuses = {
     ok: t('Réussi'),
     error: t('Erreur'),
@@ -50,7 +56,13 @@ export function AssistantUsageList() {
     refused: t('Refusé'),
     truncated: t('Tronqué')
   };
-  const providers = { openrouter: 'OpenRouter', anthropic: 'Anthropic', fake: t('Faux (recette)') };
+  const providers = {
+    openrouter: 'OpenRouter',
+    anthropic: 'Anthropic',
+    fake: t('Faux (recette)'),
+    openai: 'OpenAI',
+    google: t('Google Gemini')
+  };
   const number = (value: number | null) => (value === null ? '—' : formatNumber(value));
   const apply = (next: AssistantUsageFilters) => {
     setOffset(0);
@@ -123,7 +135,8 @@ export function AssistantUsageList() {
         </Space>
       )
     },
-    { title: t('Durée moyenne (ms)'), dataIndex: 'averageDurationMs', render: number }
+    { title: t('Durée moyenne (ms)'), dataIndex: 'averageDurationMs', render: number },
+    { title: t('Durée audio estimée (s)'), dataIndex: 'audioSeconds', render: value => number(value ?? null) }
   ];
 
   async function exportCsv() {

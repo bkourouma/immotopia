@@ -412,12 +412,14 @@ export const copilotService = {
   async saveResponseFeedback(tenantId: string, conversationId: string, turnId: string, vote: ResponseFeedback) {
     await apiClient.put(`/tenants/${tenantId}/ai/conversations/${conversationId}/turns/${turnId}/feedback`, vote);
   },
-  async transcribe(tenantId: string, audio: Blob, signal: AbortSignal) {
+  async transcribe(tenantId: string, audio: Blob, signal: AbortSignal, durationSeconds: number) {
     const data = new FormData();
     data.set('audio', audio, 'dictation');
+    data.set('durationSeconds', durationSeconds.toFixed(3));
     const response = await apiClient.post(`/tenants/${tenantId}/ai/transcribe`, data, {
       headers: { 'Content-Type': 'multipart/form-data' },
-      signal
+      signal,
+      timeout: 90_000
     });
     return unwrap<{ text: string }>(response.data).text;
   },

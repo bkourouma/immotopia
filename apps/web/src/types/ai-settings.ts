@@ -8,6 +8,8 @@ export type AiEffort = 'low' | 'medium' | 'high';
 export type AiSettingsSource = 'database' | 'environment';
 export type AiMode = 'standard' | 'deep' | 'fast';
 export type AiModelsByMode = Partial<Record<Exclude<AiMode, 'standard'>, string>>;
+export type TranscriptionProvider = 'openai' | 'google';
+export type TranscriptionSettings = { provider: 'disabled' } | { provider: TranscriptionProvider; model: string };
 
 export interface AiProviderInfo {
   id: AiProviderId;
@@ -26,6 +28,8 @@ export interface AiSettings {
   updatedByName: string | null;
   providers: AiProviderInfo[];
   keys: { openrouter: boolean; anthropic: boolean };
+  transcription?: TranscriptionSettings;
+  transcriptionKeys?: Record<TranscriptionProvider, boolean>;
   source: AiSettingsSource;
 }
 
@@ -35,6 +39,7 @@ export interface AiSettingsUpdate {
   effort: AiEffort;
   refusalFallback: boolean;
   modelsByMode?: AiModelsByMode;
+  transcription?: TranscriptionSettings;
 }
 
 export interface AiModelOption {

@@ -39,6 +39,7 @@ import { assistantScope, getConversation } from '../../src/lib/ai/conversations'
 import { toolsForUser } from '../../src/lib/ai/tools/registry';
 import { getUserPermissions } from '../../src/services/permission-service';
 import { flushAuditEvents } from '../../src/services/audit-service';
+import { invalidateAiConfigCache } from '../../src/services/ai-settings-service';
 import { encodeAuditCursor } from '../../src/services/audit-read-service';
 import { updateMemberRoles } from '../../src/services/membership-service';
 import { generateAccessToken } from '../../src/utils/jwt-utils';
@@ -2655,9 +2656,15 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
     it('transcrit un enregistrement audio et refuse les formats falsifiés', async () => {
       const savedKey = env.AI_TRANSCRIPTION_OPENAI_KEY;
       env.AI_TRANSCRIPTION_OPENAI_KEY = 'test-only';
-      const provider = jest
-        .spyOn(global, 'fetch')
-        .mockResolvedValue(new Response(JSON.stringify({ text: 'Bilan des loyers' })));
+      const provider = jest.spyOn(global, 'fetch').mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            text: 'Bilan des loyers',
+            languages: [{ code: 'fr' }],
+            usage: { seconds: 6, input_tokens: 17, output_tokens: 5 }
+          })
+        )
+      );
       try {
         const url = `/api/tenants/${tenantA.id}/ai/transcribe`;
         const malformed = await request(app)
@@ -2670,12 +2677,14 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         const ok = await request(app)
           .post(url)
           .set(authed(adminA))
+          .field('durationSeconds', '5.75')
           .attach('audio', audio, { filename: 'micro.webm', contentType: 'audio/webm' });
         expect(ok.status).toBe(200);
         expect(ok.headers['cache-control']).toBe('private, no-store');
-        expect(ok.body.data).toEqual({ text: 'Bilan des loyers' });
+        expect(ok.body.data).toEqual({ text: 'Bilan des loyers', language: 'fr', durationSeconds: 6 });
         const input = provider.mock.calls[0][1]?.body as FormData;
         expect(input.get('model')).toBe(env.AI_TRANSCRIPTION_MODEL);
+        expect(input.get('languages[]')).toBe('fr');
         expect(Buffer.from(await (input.get('file') as Blob).arrayBuffer())).toEqual(audio);
         expect(
           (
@@ -2686,9 +2695,96 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
           ).status
         ).toBe(403);
         expect(provider).toHaveBeenCalledTimes(1);
+        const rows = await prisma.assistantProviderUsage.findMany({
+          where: { tenantId: tenantA.id, provider: 'openai', mode: 'transcription' }
+        });
+        expect(rows).toMatchObject([
+          { audioSeconds: 6, inputTokens: 17, outputTokens: 5, costUsd: null, status: 'ok' }
+        ]);
       } finally {
         provider.mockRestore();
         env.AI_TRANSCRIPTION_OPENAI_KEY = savedKey;
+      }
+    });
+
+    it('transcrit avec Gemini et respecte la désactivation explicite et les erreurs sans changer de moteur', async () => {
+      const oldOpenAiKey = env.AI_TRANSCRIPTION_OPENAI_KEY;
+      const oldGoogleKey = env.GEMINI_API_KEY;
+      env.AI_TRANSCRIPTION_OPENAI_KEY = 'openai-test-only';
+      env.GEMINI_API_KEY = 'google-test-only';
+      const google = jest.spyOn(global, 'fetch');
+      const route = `/api/tenants/${tenantA.id}/ai`;
+      const waveform = Buffer.from('RIFF0000WAVE', 'ascii');
+      const submit = () =>
+        request(app)
+          .post(route + '/transcribe')
+          .set(authed(adminA))
+          .field('language', 'en')
+          .field('durationSeconds', '2')
+          .attach('audio', waveform, { filename: 'dictation', contentType: 'application/octet-stream' });
+      try {
+        await prisma.platformAiSettings.create({
+          data: { provider: 'fake', model: 'fake', transcription: { provider: 'disabled' } }
+        });
+        invalidateAiConfigCache();
+        const disabled = await request(app)
+          .post(route + '/transcribe')
+          .set(authed(adminA));
+        expect(disabled.status).toBe(503);
+        const status = await request(app)
+          .get(route + '/status')
+          .set(authed(adminA));
+        expect(status.body.data).not.toHaveProperty('transcription');
+        expect(google).not.toHaveBeenCalled();
+
+        await prisma.platformAiSettings.update({
+          where: { id: 'default' },
+          data: { transcription: { provider: 'google', model: 'gemini-3.5-transcribe' } }
+        });
+        invalidateAiConfigCache();
+        google
+          .mockResolvedValueOnce(
+            new Response(
+              JSON.stringify({
+                status: 'completed',
+                steps: [{ type: 'model_output', content: [{ type: 'text', text: 'Rent summary' }] }],
+                usage: { total_input_tokens: 40, total_output_tokens: 3 }
+              })
+            )
+          )
+          .mockResolvedValueOnce(new Response(null, { status: 429 }));
+        const statusWithGoogle = await request(app)
+          .get(route + '/status')
+          .set(authed(adminA));
+        expect(statusWithGoogle.body.data.transcription).toBe(true);
+        const ok = await submit();
+        expect(ok.status).toBe(200);
+        expect(ok.body.data).toEqual({ text: 'Rent summary', language: 'en', durationSeconds: 2 });
+        const [url, requestOptions] = google.mock.calls[0];
+        expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/interactions');
+        expect(JSON.parse(requestOptions?.body as string)).toMatchObject({
+          model: 'models/gemini-3.5-transcribe',
+          store: false,
+          input: [{ type: 'audio', mime_type: 'audio/wav', data: waveform.toString('base64') }],
+          generation_config: { transcription_config: { language_codes: ['en-US'] } }
+        });
+        expect((await submit()).status).toBe(502);
+        expect(google).toHaveBeenCalledTimes(2);
+        expect(google.mock.calls[1][0]).toBe(url);
+        const rows = await prisma.assistantProviderUsage.findMany({
+          where: { tenantId: tenantA.id, provider: 'google', mode: 'transcription' },
+          orderBy: { status: 'asc' }
+        });
+        expect(rows).toMatchObject([
+          { audioSeconds: 2, costUsd: null, status: 'error', upstreamStatus: 429 },
+          { audioSeconds: 2, costUsd: null, status: 'ok', inputTokens: 40, outputTokens: 3 }
+        ]);
+      } finally {
+        google.mockRestore();
+        env.AI_TRANSCRIPTION_OPENAI_KEY = oldOpenAiKey;
+        env.GEMINI_API_KEY = oldGoogleKey;
+        await prisma.platformAiSettings.deleteMany({ where: { id: 'default' } });
+        invalidateAiConfigCache();
       }
     });
 

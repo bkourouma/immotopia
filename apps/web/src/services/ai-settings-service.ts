@@ -42,8 +42,8 @@ export async function listAssistantFeedback(
   return unwrap<{ items: AssistantFeedbackEntry[]; hasNext: boolean }>(response.data);
 }
 
-export type AssistantUsageMode = AiMode | 'rewrite';
-export type AssistantUsageProvider = 'anthropic' | 'openrouter' | 'fake';
+export type AssistantUsageMode = AiMode | 'rewrite' | 'transcription';
+export type AssistantUsageProvider = 'anthropic' | 'openrouter' | 'fake' | 'openai' | 'google';
 export type AssistantUsageStatus = 'ok' | 'error' | 'aborted' | 'refused' | 'truncated';
 export interface AssistantUsageFilters {
   from?: string;
@@ -71,6 +71,7 @@ export interface AssistantUsageItem {
   cacheReadTokens: number | null;
   cacheWriteTokens: number | null;
   averageDurationMs: number | null;
+  audioSeconds: number | null;
   costUsd: string | null;
   unknownCosts: number;
 }

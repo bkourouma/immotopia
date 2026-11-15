@@ -104,6 +104,45 @@ describe("contrôle d'accès", () => {
 describe('super-admin', () => {
   beforeEach(() => asRole('SUPER_ADMIN'));
 
+  it('valide la configuration du moteur audio indépendamment du chat et sans exposer la clé', async () => {
+    const transcription = { provider: 'google', model: 'gemini-3.5-transcribe' };
+    const url = '/api/platform/ai-settings';
+    expect(
+      (
+        await request(app)
+          .put(url)
+          .send({ ...body, transcription })
+      ).status
+    ).toBe(422);
+    mockEnv.GEMINI_API_KEY = 'sensitive-google-test-key';
+    try {
+      expect(
+        (
+          await request(app)
+            .put(url)
+            .send({
+              ...body,
+              transcription: { ...transcription, model: '../models/unsafe' }
+            })
+        ).status
+      ).toBe(400);
+      mockPrisma.platformAiSettings.findUnique.mockResolvedValue({ ...body, transcription });
+      const saved = await request(app)
+        .put(url)
+        .send({ ...body, transcription });
+      expect(saved.status).toBe(200);
+      expect(mockPrisma.platformAiSettings.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          update: expect.objectContaining({ transcription })
+        })
+      );
+      expect(saved.body.data).toMatchObject({ transcription, transcriptionKeys: { google: true, openai: false } });
+      expect(saved.text).not.toContain(mockEnv.GEMINI_API_KEY);
+    } finally {
+      delete mockEnv.GEMINI_API_KEY;
+    }
+  });
+
   it('liste les avis filtrés avec des extraits bornés et sans identité du compte', async () => {
     const updatedAt = new Date('2026-11-14T10:00:00Z');
     mockPrisma.assistantResponseFeedback.findMany.mockResolvedValue(

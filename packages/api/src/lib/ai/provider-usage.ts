@@ -3,12 +3,38 @@ import { logger } from '../../utils/logger';
 import type { LlmProvider } from './contracts';
 import { isAbortError, LlmProviderError } from './providers/anthropic-provider';
 
-export const usageModes = ['standard', 'deep', 'fast', 'rewrite'] as const;
-export const usageProviders = ['anthropic', 'openrouter', 'fake'] as const;
+export const usageModes = ['standard', 'deep', 'fast', 'rewrite', 'transcription'] as const;
+export const usageProviders = ['anthropic', 'openrouter', 'fake', 'openai', 'google'] as const;
 export type UsageMode = (typeof usageModes)[number];
 
 function count(value: number | undefined) {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 2_147_483_647 ? value : null;
+}
+
+export async function recordTranscriptionUsage(attempt: {
+  tenantId: string;
+  userId: string;
+  provider: 'openai' | 'google';
+  model: string;
+  durationMs: number;
+  audioSeconds: number;
+  status: 'ok' | 'error' | 'aborted';
+  upstreamStatus?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+}) {
+  try {
+    await prisma.assistantProviderUsage.create({
+      data: {
+        ...attempt,
+        mode: 'transcription',
+        inputTokens: count(attempt.inputTokens),
+        outputTokens: count(attempt.outputTokens)
+      }
+    });
+  } catch {
+    logger.warn('ImmoCopilot : échec de l’enregistrement des mesures du fournisseur', { provider: attempt.provider });
+  }
 }
 
 export function measuredProvider(

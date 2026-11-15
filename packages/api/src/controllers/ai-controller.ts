@@ -44,7 +44,6 @@ import {
 import { buildArtifactCsv, buildArtifactXlsx } from '../lib/ai/artifact-spreadsheet';
 import type { Request, Response } from 'express';
 import { AiDisabledError } from '../middleware/ai-access-middleware';
-import { env } from '../config/env';
 import { AppError, asyncHandler, ConflictError, ForbiddenError, NotFoundError } from '../middleware/error-middleware';
 import { t } from '../i18n';
 import {
@@ -63,6 +62,7 @@ import { AuditActionKey } from '../types/audit-types';
 import { runChat } from '../lib/ai/orchestrator';
 import { resolvePageContext } from '../lib/ai/page-context';
 import { getLlmProvider } from '../lib/ai/providers';
+import { getTranscriptionEngine } from '../services/ai-settings-service';
 import { measuredProvider } from '../lib/ai/provider-usage';
 import { loopbackHeadersFor } from '../lib/ai/gateway/loopback-auth';
 import { openSseStream } from '../lib/ai/sse';
@@ -822,7 +822,7 @@ export const getStatusHandler = asyncHandler(async (req: Request, res: Response)
         ? { enabled: false, reason: 'NO_TOOLS', provider: provider.id, tools: [], limits }
         : { enabled: true, provider: provider.id, tools: tools.map(tool => tool.name), limits };
   }
-  if (status.enabled && env.AI_TRANSCRIPTION_OPENAI_KEY) status.transcription = true;
+  if (status.enabled && (await getTranscriptionEngine())) status.transcription = true;
   res.json({ success: true, data: status });
 });
 

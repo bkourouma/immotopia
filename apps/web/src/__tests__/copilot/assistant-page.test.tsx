@@ -609,7 +609,12 @@ describe('AssistantPage', () => {
       fireEvent.click(await screen.findByRole('button', { name: 'Dicter un message' }));
       fireEvent.click(await screen.findByRole('button', { name: 'Arrêter la dictée' }));
       await waitFor(() => expect(screen.getByLabelText('Votre message')).toHaveValue('Bilan des loyers'));
-      expect(copilotService.transcribe).toHaveBeenCalledWith('t1', expect.any(Blob), expect.any(AbortSignal));
+      expect(copilotService.transcribe).toHaveBeenCalledWith(
+        't1',
+        expect.any(Blob),
+        expect.any(AbortSignal),
+        expect.any(Number)
+      );
       expect(stopTrack).toHaveBeenCalled();
       expect(streamChat).not.toHaveBeenCalled();
     } finally {

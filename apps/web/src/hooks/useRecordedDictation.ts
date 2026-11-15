@@ -4,7 +4,7 @@ import { t } from '../i18n/t';
 const audioTypes = ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/mp4'];
 
 export function useRecordedDictation(
-  transcribe: ((audio: Blob, signal: AbortSignal) => Promise<string>) | undefined,
+  transcribe: ((audio: Blob, signal: AbortSignal, durationSeconds: number) => Promise<string>) | undefined,
   onFinal: (text: string) => void
 ) {
   const [phase, setPhase] = useState<'idle' | 'starting' | 'recording' | 'processing'>('idle');
@@ -72,6 +72,7 @@ export function useRecordedDictation(
         if (event.data.size) parts.push(event.data);
       };
       recorder.onerror = fail;
+      const started = performance.now();
       recorder.onstop = async () => {
         clearTimeout(session.timer);
         stream.getTracks().forEach(track => track.stop());
@@ -79,7 +80,8 @@ export function useRecordedDictation(
         setPhase('processing');
         try {
           const audio = new Blob(parts, { type: recorder.mimeType.split(';')[0] || mime.split(';')[0] });
-          const text = await transcribe(audio, session.abort.signal);
+          const durationSeconds = Math.min(3600, (performance.now() - started) / 1000);
+          const text = await transcribe(audio, session.abort.signal, durationSeconds);
           if (active.current === session) {
             if (text) final.current(text);
             else setError(t('Aucune parole reconnue.'));

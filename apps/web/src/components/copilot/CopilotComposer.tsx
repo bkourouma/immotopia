@@ -14,7 +14,7 @@ export interface CopilotComposerProps {
   onSubmit(value: string): void;
   onStop(): void;
   streaming: boolean;
-  transcribe?(audio: Blob, signal: AbortSignal): Promise<string>;
+  transcribe?(audio: Blob, signal: AbortSignal, durationSeconds: number): Promise<string>;
   files?: File[];
   onFilesChange?(files: File[]): void;
   maxChars?: number;

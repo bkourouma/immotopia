@@ -3199,5 +3199,7 @@
   "Seule la période la plus récente est affichée.": "تُعرض أحدث فترة فقط.",
   "Seule la première série est affichée dans ce graphique en parts.": "تُعرض السلسلة الأولى فقط في مخطط الحصص.",
   "Seules les {{count}} périodes les plus récentes sont affichées.": "تُعرض أحدث {{count}} فترات فقط.",
-  "Un graphique en parts exige au moins deux catégories et des valeurs positives ou nulles.": "يتطلب مخطط الحصص فئتين على الأقل وقيماً موجبة أو صفراً."
+  "Un graphique en parts exige au moins deux catégories et des valeurs positives ou nulles.": "يتطلب مخطط الحصص فئتين على الأقل وقيماً موجبة أو صفراً.",
+  "La langue ou la durée de cet enregistrement est invalide.": "لغة التسجيل أو مدته غير صالحة.",
+  "Durée audio estimée (s)": "مدة الصوت التقديرية (ث)"
 }

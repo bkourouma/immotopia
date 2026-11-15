@@ -6,7 +6,11 @@ import {
   saveRentalAlertHandler
 } from '../controllers/assistant-rental-alert-controller';
 import multer from 'multer';
-import { MAX_DICTATION_BYTES, transcribeHandler } from '../controllers/ai-transcription-controller';
+import {
+  MAX_DICTATION_BYTES,
+  requireTranscriptionEngine,
+  transcribeHandler
+} from '../controllers/ai-transcription-controller';
 import { MAX_ASSISTANT_FILES, MAX_ASSISTANT_FILE_BYTES } from '../lib/ai/assistant-files';
 import { authenticate } from '../middleware/auth-middleware';
 import { requireTenantAccess, requireTenantCollaborator } from '../middleware/tenant-middleware';
@@ -157,9 +161,11 @@ router.post(
   aiTenantChatRateLimiter,
   aiChatDailyLimiter,
   aiTenantDailyLimiter,
-  multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_DICTATION_BYTES, files: 1, fields: 0 } }).single(
-    'audio'
-  ),
+  requireTranscriptionEngine,
+  multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: MAX_DICTATION_BYTES, files: 1, fields: 2, fieldSize: 64 }
+  }).single('audio'),
   transcribeHandler
 );
 

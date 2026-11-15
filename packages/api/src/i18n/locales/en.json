@@ -3199,5 +3199,7 @@
   "Seule la période la plus récente est affichée.": "Only the most recent period is shown.",
   "Seule la première série est affichée dans ce graphique en parts.": "Only the first series is shown in this part-to-whole chart.",
   "Seules les {{count}} périodes les plus récentes sont affichées.": "Only the {{count}} most recent periods are shown.",
-  "Un graphique en parts exige au moins deux catégories et des valeurs positives ou nulles.": "A part-to-whole chart requires at least two categories and nonnegative values."
+  "Un graphique en parts exige au moins deux catégories et des valeurs positives ou nulles.": "A part-to-whole chart requires at least two categories and nonnegative values.",
+  "La langue ou la durée de cet enregistrement est invalide.": "The recording language or duration is invalid.",
+  "Durée audio estimée (s)": "Estimated audio duration (s)"
 }

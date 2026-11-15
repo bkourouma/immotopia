@@ -679,7 +679,8 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
                 key={activeId ?? 'new'}
                 transcribe={
                   status.transcription
-                    ? (audio, signal) => copilotService.transcribe(tenantId, audio, signal)
+                    ? (audio, signal, durationSeconds) =>
+                        copilotService.transcribe(tenantId, audio, signal, durationSeconds)
                     : undefined
                 }
                 inputRef={inputRef}

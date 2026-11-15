@@ -6,6 +6,7 @@ import {
   Button,
   Card,
   Collapse,
+  Input,
   Radio,
   Select,
   Skeleton,
@@ -25,7 +26,9 @@ import type {
   AiModelOption,
   AiModelsByMode,
   AiProviderId,
-  AiSettings
+  AiSettings,
+  TranscriptionProvider,
+  TranscriptionSettings
 } from '../../types/ai-settings';
 import { handleApiError } from '../../utils/error-handler';
 import { dateFormat } from '../../i18n/format';
@@ -39,6 +42,15 @@ interface Draft {
   effort: AiEffort;
   refusalFallback: boolean;
   modelsByMode: AiModelsByMode;
+  transcription: TranscriptionSettings;
+}
+
+const audioModels = { openai: 'gpt-transcribe', google: 'gemini-3.5-transcribe' } as const;
+const audioProviders = { openai: 'OpenAI', google: 'Google Gemini' } as const;
+const audioModelId = /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/;
+
+function normalizeTranscription(config: TranscriptionSettings): TranscriptionSettings {
+  return config.provider === 'disabled' ? config : { ...config, model: config.model.trim() };
 }
 
 function modeModels(input: AiModelsByMode = {}): AiModelsByMode {
@@ -53,7 +65,8 @@ function toDraft(settings: AiSettings): Draft {
     model: settings.model ?? '',
     effort: settings.effort,
     refusalFallback: settings.refusalFallback,
-    modelsByMode: modeModels(settings.modelsByMode)
+    modelsByMode: modeModels(settings.modelsByMode),
+    transcription: settings.transcription ?? { provider: 'disabled' }
   };
 }
 
@@ -148,6 +161,7 @@ export const AiSettingsPage: React.FC = () => {
       base.model.trim() !== draft.model.trim() ||
       base.effort !== draft.effort ||
       base.refusalFallback !== draft.refusalFallback ||
+      JSON.stringify(base.transcription) !== JSON.stringify(normalizeTranscription(draft.transcription)) ||
       JSON.stringify(base.modelsByMode) !== JSON.stringify(modeModels(draft.modelsByMode))
     );
   }, [settings, draft]);
@@ -173,13 +187,16 @@ export const AiSettingsPage: React.FC = () => {
     setSaving(true);
     setSaveError(null);
     try {
-      const { modelsByMode, ...base } = draft;
+      const { modelsByMode, transcription, ...base } = draft;
       const normalized = modeModels(modelsByMode);
       const changed = JSON.stringify(normalized) !== JSON.stringify(modeModels(settings?.modelsByMode));
+      const audio = normalizeTranscription(transcription);
+      const audioChanged = settings && JSON.stringify(audio) !== JSON.stringify(toDraft(settings).transcription);
       const saved = await updateAiSettings({
         ...base,
         model: base.model.trim(),
-        ...(changed ? { modelsByMode: normalized } : {})
+        ...(changed ? { modelsByMode: normalized } : {}),
+        ...(audioChanged ? { transcription: audio } : {})
       });
       setSettings(saved);
       setDraft(toDraft(saved));
@@ -411,6 +428,49 @@ export const AiSettingsPage: React.FC = () => {
         </Card>
       )}
 
+      {settings.transcriptionKeys && (
+        <Card title={t('Transcription de la dictée')}>
+          <Space direction="vertical" style={{ width: '100%' }}>
+            <Text type="secondary">
+              {t('Ce moteur prend le relais lorsque la dictée du navigateur est indisponible.')}
+            </Text>
+            <Radio.Group
+              aria-label={t('Moteur de transcription')}
+              value={draft.transcription.provider}
+              onChange={e => {
+                const provider = e.target.value as TranscriptionProvider | 'disabled';
+                patch({
+                  transcription: provider === 'disabled' ? { provider } : { provider, model: audioModels[provider] }
+                });
+              }}
+            >
+              <Space wrap>
+                <Radio value="disabled">{t('Navigateur uniquement')}</Radio>
+                {(Object.keys(audioProviders) as TranscriptionProvider[]).map(provider => (
+                  <Radio key={provider} value={provider} disabled={!settings.transcriptionKeys?.[provider]}>
+                    {audioProviders[provider]}{' '}
+                    {!settings.transcriptionKeys?.[provider] && <Tag color="red">{t('Clé manquante')}</Tag>}
+                  </Radio>
+                ))}
+              </Space>
+            </Radio.Group>
+            {draft.transcription.provider !== 'disabled' && (
+              <Input
+                aria-label={t('Modèle de transcription')}
+                placeholder={t('Modèle de transcription')}
+                value={draft.transcription.model}
+                maxLength={200}
+                onChange={e => {
+                  if (draft.transcription.provider !== 'disabled') {
+                    patch({ transcription: { ...draft.transcription, model: e.target.value } });
+                  }
+                }}
+              />
+            )}
+          </Space>
+        </Card>
+      )}
+
       <Collapse
         items={[
           { key: 'feedback', label: t('Avis sur les réponses de l’assistant'), children: <AssistantFeedbackList /> },
@@ -421,7 +481,16 @@ export const AiSettingsPage: React.FC = () => {
       {saveError ? <Alert type="error" showIcon message={saveError} role="alert" /> : null}
 
       <Space wrap align="center" size="middle">
-        <Button type="primary" icon={<SaveOutlined />} disabled={!dirty} loading={saving} onClick={() => void onSave()}>
+        <Button
+          type="primary"
+          icon={<SaveOutlined />}
+          disabled={
+            !dirty ||
+            (draft.transcription.provider !== 'disabled' && !audioModelId.test(draft.transcription.model.trim()))
+          }
+          loading={saving}
+          onClick={() => void onSave()}
+        >
           {t('Enregistrer')}
         </Button>
         <Tag>{settings.source === 'database' ? t('Base de données') : t('Variables d’environnement')}</Tag>

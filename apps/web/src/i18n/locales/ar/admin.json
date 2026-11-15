@@ -723,5 +723,11 @@
   "Mode du test": "وضع الاختبار",
   "Rapide": "سريع",
   "Test effectué avec le fournisseur de recette.": "اكتمل الاختبار باستخدام مزوّد الاختبار.",
-  "Connexion réussie en {{count}} ms.": "تم الاتصال خلال {{count}} مللي ثانية."
+  "Connexion réussie en {{count}} ms.": "تم الاتصال خلال {{count}} مللي ثانية.",
+  "Transcription de la dictée": "نسخ الإملاء الصوتي",
+  "Ce moteur prend le relais lorsque la dictée du navigateur est indisponible.": "يُستخدم هذا المحرك عند تعذّر الإملاء في المتصفح.",
+  "Moteur de transcription": "محرك النسخ الصوتي",
+  "Navigateur uniquement": "المتصفح فقط",
+  "Modèle de transcription": "نموذج النسخ الصوتي",
+  "Durée audio estimée (s)": "مدة الصوت التقديرية (ث)"
 }

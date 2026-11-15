@@ -32,6 +32,21 @@ const MODELS_FETCH_TIMEOUT_MS = 5_000;
 const modelOverride = z.string().trim().min(1).max(200).regex(/^\S+$/);
 const modelsByModeSchema = z.object({ deep: modelOverride.optional(), fast: modelOverride.optional() }).strict();
 export type AiModelsByMode = z.infer<typeof modelsByModeSchema>;
+const transcriptionProviders = ['openai', 'google'] as const;
+type TranscriptionProvider = (typeof transcriptionProviders)[number];
+const transcriptionSchema = z.union([
+  z.object({ provider: z.literal('disabled') }).strict(),
+  z
+    .object({
+      provider: z.enum(transcriptionProviders),
+      model: z
+        .string()
+        .trim()
+        .regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/)
+    })
+    .strict()
+]);
+type TranscriptionConfig = z.infer<typeof transcriptionSchema>;
 
 export const aiSettingsInputSchema = z
   .object({
@@ -39,7 +54,8 @@ export const aiSettingsInputSchema = z
     model: z.string().trim().min(1).max(200),
     effort: z.enum(AI_EFFORTS),
     refusalFallback: z.boolean(),
-    modelsByMode: modelsByModeSchema.optional()
+    modelsByMode: modelsByModeSchema.optional(),
+    transcription: transcriptionSchema.optional()
   })
   .strict();
 export type AiSettingsInput = z.infer<typeof aiSettingsInputSchema>;
@@ -67,6 +83,8 @@ export interface AiSettingsView {
   updatedByName: string | null;
   providers: AiProviderAvailability[];
   keys: { openrouter: boolean; anthropic: boolean };
+  transcription: TranscriptionConfig;
+  transcriptionKeys: Record<TranscriptionProvider, boolean>;
   source: 'database' | 'environment';
 }
 
@@ -112,9 +130,13 @@ export async function getEffectiveAiConfig(): Promise<EffectiveAiConfig> {
         effort: row.effort,
         refusalFallback: row.refusalFallback
       });
+      if (row.transcription != null) {
+        value.transcription = transcriptionSchema.catch({ provider: 'disabled' }).parse(row.transcription);
+      }
       if (parsed.success) {
         value = {
           ...parsed.data,
+          transcription: value.transcription,
           modelsByMode: modelsByModeSchema.catch({}).parse(row.modelsByMode),
           source: 'database',
           updatedAt: row.updatedAt
@@ -124,6 +146,7 @@ export async function getEffectiveAiConfig(): Promise<EffectiveAiConfig> {
       }
     }
   } catch (error) {
+    value.transcription = configCache?.value.transcription;
     // Base indisponible ou migration pas encore appliquée : l'assistant garde le comportement d'environnement.
     logger.warn("ImmoCopilot : lecture du réglage impossible, valeurs d'environnement utilisées", {
       errorName: error instanceof Error ? error.name : typeof error
@@ -153,6 +176,26 @@ export function resolveAiMode(config: EffectiveAiConfig, mode: AiMode): Provider
 /** Présence des clés (booléens uniquement : la valeur ne sort jamais de `env`). */
 export function aiKeysPresent(): { openrouter: boolean; anthropic: boolean } {
   return { openrouter: Boolean(env.OPENROUTER_API_KEY), anthropic: Boolean(env.ANTHROPIC_API_KEY) };
+}
+
+function transcriptionKey(provider: TranscriptionProvider): string | undefined {
+  return provider === 'openai' ? env.AI_TRANSCRIPTION_OPENAI_KEY : env.GEMINI_API_KEY;
+}
+
+function resolveTranscription(config: EffectiveAiConfig): TranscriptionConfig {
+  return (
+    config.transcription ??
+    (env.AI_TRANSCRIPTION_OPENAI_KEY
+      ? { provider: 'openai', model: env.AI_TRANSCRIPTION_MODEL }
+      : { provider: 'disabled' })
+  );
+}
+
+export async function getTranscriptionEngine() {
+  const config = resolveTranscription(await getEffectiveAiConfig());
+  if (config.provider === 'disabled') return null;
+  const key = transcriptionKey(config.provider);
+  return key ? { ...config, key } : null;
 }
 
 export function listAiProviders(): AiProviderAvailability[] {
@@ -214,6 +257,8 @@ export async function getAiSettingsView(): Promise<AiSettingsView> {
     updatedByName,
     providers: listAiProviders(),
     keys: aiKeysPresent(),
+    transcription: resolveTranscription(config),
+    transcriptionKeys: { openai: Boolean(transcriptionKey('openai')), google: Boolean(transcriptionKey('google')) },
     source: config.source
   };
 }
@@ -221,6 +266,10 @@ export async function getAiSettingsView(): Promise<AiSettingsView> {
 function assertSettingsAllowed(input: AiSettingsInput): void {
   const errors: Array<{ field: string; message: string }> = [];
   const keys = aiKeysPresent();
+  const audio = input.transcription;
+  if (audio && audio.provider !== 'disabled' && !transcriptionKey(audio.provider)) {
+    errors.push({ field: 'transcription.provider', message: t('Clé API absente du serveur.') });
+  }
   if (input.provider === 'openrouter') {
     if (!keys.openrouter) {
       errors.push({ field: 'provider', message: t("La clé OpenRouter n'est pas configurée sur le serveur.") });
@@ -276,6 +325,7 @@ export async function updateAiSettings(input: AiSettingsInput, userId: string): 
           effort: before.effort,
           refusalFallback: before.refusalFallback,
           modelsByMode: before.modelsByMode,
+          transcription: resolveTranscription(before),
           source: before.source
         },
         after: data

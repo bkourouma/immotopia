@@ -55,7 +55,14 @@ export async function assistantUsageReport(
       { status: 'asc' }
     ],
     _count: { id: true, costUsd: true },
-    _sum: { inputTokens: true, outputTokens: true, cacheReadTokens: true, cacheWriteTokens: true, costUsd: true },
+    _sum: {
+      inputTokens: true,
+      outputTokens: true,
+      cacheReadTokens: true,
+      cacheWriteTokens: true,
+      costUsd: true,
+      audioSeconds: true
+    },
     _avg: { durationMs: true },
     skip: offset,
     take: limit + 1
@@ -105,7 +112,8 @@ export function assistantUsageCsv(report: Awaited<ReturnType<typeof assistantUsa
     t('Jetons écrits dans le cache'),
     t('Coût communiqué (USD)'),
     t('Appels sans coût communiqué'),
-    t('Durée moyenne (ms)')
+    t('Durée moyenne (ms)'),
+    t('Durée audio estimée (s)')
   ];
   const rows = report.items.map(row => [
     report.from,
@@ -123,7 +131,8 @@ export function assistantUsageCsv(report: Awaited<ReturnType<typeof assistantUsa
     row.cacheWriteTokens,
     row.costUsd,
     row.unknownCosts,
-    row.averageDurationMs
+    row.averageDurationMs,
+    row.audioSeconds
   ]);
   const csvCell = (value: string | number | null) => {
     if (typeof value === 'number') return String(value);

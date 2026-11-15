@@ -105,6 +105,30 @@ describe('AiSettingsPage', () => {
     expect(screen.getByRole('button', { name: /Enregistrer/ })).toBeDisabled();
   });
 
+  it('choisit le moteur de dictée indépendamment du fournisseur de chat', async () => {
+    const settings = {
+      ...SETTINGS,
+      transcription: { provider: 'disabled' },
+      transcriptionKeys: { google: true, openai: false }
+    };
+    const transcription = { provider: 'google', model: 'gemini-3.5-transcribe' };
+    getAiSettings.mockResolvedValue(settings);
+    updateAiSettings.mockResolvedValue({ ...settings, transcription });
+    mount();
+    expect(await screen.findByRole('radio', { name: /OpenAI/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole('radio', { name: 'Google Gemini' }));
+    expect(screen.getByRole('textbox', { name: 'Modèle de transcription' })).toHaveValue(transcription.model);
+    fireEvent.click(screen.getByRole('button', { name: /Enregistrer/ }));
+    await waitFor(() =>
+      expect(updateAiSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          provider: 'openrouter',
+          transcription
+        })
+      )
+    );
+  });
+
   it('enregistre le modèle rapide et teste uniquement le réglage sauvegardé', async () => {
     const modelsByMode = { fast: 'openai/quick' };
     updateAiSettings.mockResolvedValue({ ...SETTINGS, modelsByMode });
