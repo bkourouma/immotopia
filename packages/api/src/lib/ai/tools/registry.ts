@@ -26,6 +26,7 @@ import { ownerBalancesTool, ownerPayoutsTool, ownerStatementsTool } from './owne
 import { patrimonyHistoryTool, patrimonyNetWorthTool } from './patrimoine-analysis';
 import { maintenanceLogTool } from './maintenance-log';
 import { reservedPropertiesTool } from './reserved-properties';
+import { rentalReceiptsSqlTool, rentalInstallmentsSqlTool } from './rental-sql';
 import { rentalDueComparisonTool, rentalMonthlyReviewTool } from './rental-monthly-review';
 
 /**
@@ -56,6 +57,8 @@ export const ALL_TOOLS: readonly CopilotToolDefinition[] = [
   patrimonyHistoryTool,
   maintenanceLogTool,
   reservedPropertiesTool,
+  rentalReceiptsSqlTool,
+  rentalInstallmentsSqlTool,
   chartAnalysisTool,
   pivotAnalysisTool,
   showIndicatorsTool,

@@ -9,11 +9,11 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Finance | 198 |
 | CRM et Ventes | 72 |
 | Maintenance | 35 |
-| Communication et Documents | 122 |
+| Communication et Documents | 123 |
 | Syndic copropriete | 247 |
 | Administration plateforme | 145 |
 | Portails externes | 84 |
-| **Total** | **1284** |
+| **Total** | **1285** |
 
 ## Sous-fonctionnalités
 
@@ -854,6 +854,7 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Packs ouvrant Patrimoine | PATRIMOINE | Assistant IA ImmoCopilot | Analyser les interventions du carnet d’entretien | Lire les coûts saisis et les échéances déclarées du carnet. Une échéance passée ne donne pas le statut de l’intervention suivante. | Bien, catégorie, prestataire, période d’intervention ou date de référence facultatifs | Tableau recalculable, liens vers les carnets, coûts et devises | Carnet d’entretien et module Patrimoine | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | PROPERTIES_VIEW | Disponible | Assistant > Résultats et documents |
 | Packs ouvrant Ventes | SALES | Assistant IA ImmoCopilot | Lister les biens et lots réservés à la vente | Lire le statut Réservé actuel des biens mis en vente et des lots d’un programme. | Programme ou immeuble parent facultatif | Tableau recalculable avec références, prix affichés et devises | Fiches des biens et module Ventes | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | PROPERTIES_VIEW | Disponible | Assistant > Résultats et documents |
 | Packs ouvrant la maintenance ou le Syndic | CORE / SYNDIC | Assistant IA ImmoCopilot | Analyser les tickets en retard contractuel | Identifier les tickets ouverts dont l’échéance contractuelle est dépassée. Les tickets ouverts sans date sont comptés séparément. | Filtres par bien, prestataire, statut, priorité ou copropriété | Tableau récapitulatif ou liste liée aux fiches, recalcul et export | Échéance renseignée pour établir le retard | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | MAINTENANCE_ADMIN et SYNDIC_VIEW pour une copropriété | Disponible | Assistant > Résultats et documents |
+| Packs ouvrant la gestion locative | RENTAL | Assistant IA ImmoCopilot | Analyser les encaissements et échéances par SQL | Analyser les encaissements réussis ou les échéances actives avec filtres et regroupements dans le périmètre de l’agence. | Question et filtres analytiques | Tableau avec provenance, recalcul et export | Activation par compte PostgreSQL dédié et vues de lecture | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | RENTAL_PAYMENTS_VIEW ou RENTAL_INSTALLMENTS_VIEW selon la vue | Disponible après activation | Assistant > Résultats et documents |
 
 ### Syndic copropriete
 

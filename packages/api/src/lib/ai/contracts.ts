@@ -39,6 +39,8 @@ export type CopilotToolName =
   | 'search_leases'
   | 'rental_arrears'
   | 'rental_receipts'
+  | 'rental_receipts_sql'
+  | 'rental_installments_sql'
   | 'rental_due_comparison'
   | 'rental_monthly_review'
   | 'maintenance_overview'
@@ -454,7 +456,8 @@ export type BaseAnalysisQuery =
       to: string;
       overdueAsOf?: string;
     }
-  | { tool: 'reserved_sale_properties'; programId?: string };
+  | { tool: 'reserved_sale_properties'; programId?: string }
+  | { tool: 'rental_receipts_sql' | 'rental_installments_sql'; sql: string };
 
 export type AnalysisQuery = BaseAnalysisQuery | { tool: 'pivot_analysis'; source: BaseAnalysisQuery; input: unknown };
 

@@ -1702,6 +1702,111 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       }
     });
 
+    it('exécute le secours SQL locatif avec un rôle distinct et le périmètre imposé par le serveur', async () => {
+      const before = env.AI_ASSISTANT_SQL_URL;
+      expect(before).toBeUndefined();
+      await prisma.$executeRaw`
+        DO $$ BEGIN
+          IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'immotopia_assistant_reader') THEN
+            CREATE ROLE immotopia_assistant_reader LOGIN NOINHERIT PASSWORD 'assistant-reader-fixture';
+          END IF;
+        END $$
+      `;
+      await prisma.$executeRaw`GRANT USAGE ON SCHEMA assistant_read TO immotopia_assistant_reader`;
+      await prisma.$executeRaw`GRANT SELECT ON assistant_read.rental_receipts, assistant_read.rental_installments TO immotopia_assistant_reader`;
+      const url = new URL(env.DATABASE_URL);
+      url.username = 'immotopia_assistant_reader';
+      url.password = 'assistant-reader-fixture';
+      url.searchParams.set('connection_limit', '1');
+      const ids = [tenantA.id, tenantB.id];
+      const receivedOn = new Date('2020-01-04T15:00:00Z');
+      const read = (base: string, actor: TestUser, message: string) =>
+        request(app)
+          .post(base + '/chat')
+          .set(authed(actor))
+          .send({ turnId: randomUUID(), messages: [{ role: 'user', content: message }] });
+      const path = (id: string) => `/api/tenants/${id}/ai`;
+      const sql =
+        "SELECT currency, SUM(amount) AS total FROM rental_receipts WHERE received_on = '2020-01-04' GROUP BY currency";
+      const requestSql = (query: string) => {
+        mockFakeScript = [
+          { toolCalls: [{ name: 'rental_receipts_sql', input: { sql: query } }] },
+          { text: 'Résultat.' }
+        ];
+      };
+      const eventsOf = (body: string) =>
+        body
+          .split('\n')
+          .filter(line => line.startsWith('data: {'))
+          .map(line => JSON.parse(line.slice(6)));
+      try {
+        const disabled = await request(app)
+          .get(path(tenantA.id) + '/status')
+          .set(authed(adminA));
+        expect(disabled.body.data.tools).not.toContain('rental_receipts_sql');
+        env.AI_ASSISTANT_SQL_URL = url.toString();
+        await prisma.rentalPayment.createMany({
+          data: [
+            {
+              tenant_id: tenantA.id,
+              method: 'CASH',
+              status: 'SUCCESS',
+              succeeded_at: receivedOn,
+              amount: 125,
+              currency: 'FCFA',
+              idempotency_key: randomUUID()
+            },
+            {
+              tenant_id: tenantA.id,
+              method: 'CASH',
+              status: 'PENDING',
+              succeeded_at: receivedOn,
+              amount: 200,
+              currency: 'FCFA',
+              idempotency_key: randomUUID()
+            },
+            {
+              tenant_id: tenantB.id,
+              method: 'CASH',
+              status: 'SUCCESS',
+              succeeded_at: receivedOn,
+              amount: 700,
+              currency: 'EUR',
+              idempotency_key: randomUUID()
+            }
+          ]
+        });
+        requestSql(sql);
+        const a = eventsOf((await read(path(tenantA.id), adminA, 'Encaissements A')).text);
+        const artifact = a.find(event => event.type === 'artifact')?.artifact;
+        expect(artifact?.rows).toEqual([{ currency: 'XOF', total: 125 }]);
+        const b = eventsOf((await read(path(tenantB.id), adminB, 'Encaissements B')).text);
+        expect(b.find(event => event.type === 'artifact')?.artifact.rows).toEqual([{ currency: 'EUR', total: 700 }]);
+        const { conversationId } = a.find(event => event.type === 'meta');
+        const replay = await request(app)
+          .post(`${path(tenantA.id)}/conversations/${conversationId}/artifacts/${artifact.id}`)
+          .set(authed(adminA))
+          .send({ expectedVersion: 1 });
+        expect(replay.status).toBe(201);
+        expect(replay.body.data.artifact.rows).toEqual(artifact.rows);
+        requestSql('SELECT count(*) FROM public.rental_payments');
+        const denied = eventsOf((await read(path(tenantA.id), adminA, 'Table hors périmètre')).text);
+        expect(denied.some(event => event.type === 'artifact')).toBe(false);
+        await prisma.$executeRaw`GRANT SELECT ON public.rental_payments TO immotopia_assistant_reader`;
+        try {
+          requestSql(sql);
+          const excessive = eventsOf((await read(path(tenantA.id), adminA, 'Rôle trop permissif')).text);
+          expect(excessive.some(event => event.type === 'artifact')).toBe(false);
+        } finally {
+          await prisma.$executeRaw`REVOKE SELECT ON public.rental_payments FROM immotopia_assistant_reader`;
+        }
+      } finally {
+        await prisma.rentalPayment.deleteMany({ where: { tenant_id: { in: ids }, succeeded_at: receivedOn } });
+        mockFakeScript = undefined;
+        env.AI_ASSISTANT_SQL_URL = before;
+      }
+    });
+
     it('partage la règle de retard contractuel entre la fiche et les analyses de maintenance', async () => {
       const agency = await createTestTenant('Délais-Maintenance');
       createdTenantIds.push(agency.id);

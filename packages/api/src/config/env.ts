@@ -451,6 +451,7 @@ const envSchema = z
     // Aucun secret par defaut : ANTHROPIC_API_KEY est exigee si `anthropic`,
     // OPENROUTER_API_KEY si `openrouter`.
     AI_TRANSCRIPTION_OPENAI_KEY: z.string().trim().min(1).optional(),
+    AI_ASSISTANT_SQL_URL: z.string().url().optional(),
     AI_TRANSCRIPTION_MODEL: z.string().trim().min(1).default('gpt-transcribe'),
     AI_PROVIDER: z.enum(['disabled', 'fake', 'anthropic', 'openrouter']).default('disabled'),
     ANTHROPIC_API_KEY: z.string().min(1).optional(),

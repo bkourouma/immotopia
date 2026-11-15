@@ -1,4 +1,5 @@
 import { t } from '../../i18n';
+import { env } from '../../config/env';
 import { AppError } from '../../middleware/error-middleware';
 import { getUserPermissions } from '../../services/permission-service';
 import { getEntitlements } from '../../services/subscription-v2-service';
@@ -51,6 +52,8 @@ export async function resolveAvailableTools(
   const features = await entitledFeatures(tenantId, requireFreshScope);
   // Une proposition prépare une écriture : elle exige l'accès en écriture au module.
   const tools = toolsForUser(permissions, features?.read).filter(tool => {
+    if (!env.AI_ASSISTANT_SQL_URL && (tool.name === 'rental_receipts_sql' || tool.name === 'rental_installments_sql'))
+      return false;
     if (features?.ownAssetsOnly && THIRD_PARTY_TOOLS.has(tool.name)) return false;
     return tool.kind !== 'proposal' || !features || features.write.has(tool.feature);
   });

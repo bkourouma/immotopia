@@ -3237,5 +3237,10 @@
   "Tickets en retard": "Overdue tickets",
   "Tickets ouverts sans échéance": "Open tickets without a due date",
   "Un ticket ouvert est en retard à partir du lendemain de son échéance contractuelle, en UTC. Les tickets ouverts sans échéance sont comptés à part.": "An open ticket becomes overdue on the UTC day after its contractual due date. Open tickets without a due date are counted separately.",
-  "Échéance contractuelle": "Contractual due date"
+  "Échéance contractuelle": "Contractual due date",
+  "La lecture SQL de l’assistant est indisponible.": "The assistant’s SQL reader is unavailable.",
+  "La requête utilise une vue en lecture seule filtrée sur l’agence active.": "The query uses a read-only view filtered to the active agency.",
+  "Les échéances annulées sont exclues. Le reste dû est calculé avec les affectations enregistrées.": "Cancelled installments are excluded. The outstanding balance uses recorded allocations.",
+  "Requête analytique invalide ou hors du périmètre autorisé.": "Invalid analytical query or query outside the authorized scope.",
+  "Selon les filtres de la requête": "Based on query filters"
 }

@@ -3237,5 +3237,10 @@
   "Tickets en retard": "التذاكر المتأخرة",
   "Tickets ouverts sans échéance": "التذاكر المفتوحة بلا موعد",
   "Un ticket ouvert est en retard à partir du lendemain de son échéance contractuelle, en UTC. Les tickets ouverts sans échéance sont comptés à part.": "تُعد التذكرة المفتوحة متأخرة بدءًا من اليوم التالي لموعدها التعاقدي بالتوقيت العالمي. تُحسب التذاكر المفتوحة بلا موعد بشكل منفصل.",
-  "Échéance contractuelle": "الموعد التعاقدي"
+  "Échéance contractuelle": "الموعد التعاقدي",
+  "La lecture SQL de l’assistant est indisponible.": "قراءة SQL في المساعد غير متاحة.",
+  "La requête utilise une vue en lecture seule filtrée sur l’agence active.": "يستخدم الاستعلام عرضًا للقراءة فقط يقتصر على الوكالة النشطة.",
+  "Les échéances annulées sont exclues. Le reste dû est calculé avec les affectations enregistrées.": "تُستبعد الأقساط الملغاة. يُحتسب الرصيد المتبقي بناءً على التخصيصات المسجلة.",
+  "Requête analytique invalide ou hors du périmètre autorisé.": "استعلام تحليلي غير صالح أو خارج النطاق المصرح به.",
+  "Selon les filtres de la requête": "وفقًا لمرشحات الاستعلام"
 }

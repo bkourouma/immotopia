@@ -467,6 +467,15 @@ avertissement est écrit au démarrage. Les plafonds par agence s'ajoutent aux
 limites par utilisateur (20 par minute, 300 par jour). Faire tourner
 `JWT_SECRET` invalide les propositions en cours (5 minutes au plus).
 
+**Activer le secours SQL locatif.** Appliquer les migrations de l’API, puis
+exécuter `packages/api/scripts/provision-assistant-reader.sql` dans la même
+base avec un compte d’administration PostgreSQL. Attribuer un mot de passe au
+rôle `immotopia_assistant_reader` avec `\password immotopia_assistant_reader`
+dans psql ou utiliser l’authentification gérée. Injecter son URL PostgreSQL
+dans le secret `AI_ASSISTANT_SQL_URL` de l’API. Le rôle doit rester dédié,
+sans appartenance à d’autres rôles ni droits sur les tables métier. Les deux
+outils locatifs restent masqués tant que le secret est absent.
+
 **Activer en démonstration.** Poser `AI_PROVIDER=fake` dans la ligne de commande
 de `api-demo` de `.claude/launch.json` (comme `PORT` ou `FRONTEND_URL`), avec
 `NODE_ENV=development` explicite, jamais

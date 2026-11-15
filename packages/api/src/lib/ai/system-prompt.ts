@@ -67,6 +67,14 @@ const TOOL_CAPABILITIES: Record<CopilotToolName, { group: string; text: string }
     text: 'les tickets de maintenance ouverts, urgents et en retard sur leur échéance contractuelle'
   },
   rental_receipts: { group: 'rentalReceipts', text: 'les encaissements locatifs par mois clos et devise' },
+  rental_receipts_sql: {
+    group: 'rentalSql',
+    text: 'les analyses locatives en lecture seule lorsque les outils métier ne couvrent pas la question'
+  },
+  rental_installments_sql: {
+    group: 'rentalSql',
+    text: 'les analyses locatives en lecture seule lorsque les outils métier ne couvrent pas la question'
+  },
   rental_due_comparison: {
     group: 'rentalComparison',
     text: 'les échéances du mois clos et du même mois N-1, par devise'
