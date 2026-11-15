@@ -3,8 +3,8 @@ import { Button, Card, Space, message as antMessage } from 'antd';
 import { Link } from 'react-router-dom';
 import { CopyOutlined, SoundOutlined, StopOutlined } from '@ant-design/icons';
 import { useCopilotSpeech } from '../../hooks/useCopilotSpeech';
-import i18next from '../../i18n';
-import { t } from '../../i18n/t';
+import { useAssistantTranslation } from '../../i18n/useAssistantTranslation';
+import { assistantLanguages } from '../../i18n/assistant-language';
 import { ResponseFeedbackButton } from './ResponseFeedbackButton';
 import { copilotService } from '../../services/copilot-service';
 import { filenameFromDisposition, saveBlob } from '../../utils/save-blob';
@@ -48,6 +48,7 @@ function Attachment({
   streaming,
   conversationId
 }: { attachment: CopilotAttachment } & Omit<CopilotMessageListProps, 'messages'>): React.ReactElement {
+  const { t } = useAssistantTranslation();
   switch (attachment.kind) {
     case 'properties':
       return (
@@ -156,7 +157,8 @@ export function CopilotMessageList({
   onOpenArtifact
 }: CopilotMessageListProps): React.ReactElement {
   const [notifications, notificationContext] = antMessage.useMessage();
-  const { supported, activeId, read, stop } = useCopilotSpeech(i18next.language || 'fr', tenantId);
+  const { language, t } = useAssistantTranslation();
+  const { supported, activeId, read, stop } = useCopilotSpeech(assistantLanguages[language].speech, tenantId);
 
   useEffect(() => {
     if (activeId && (!visible || !messages.some(message => message.id === activeId))) stop();
@@ -194,6 +196,7 @@ export function CopilotMessageList({
             {message.text ? (
               <div
                 data-copilot-answer
+                dir="auto"
                 style={{
                   padding: '8px 12px',
                   borderRadius: 8,

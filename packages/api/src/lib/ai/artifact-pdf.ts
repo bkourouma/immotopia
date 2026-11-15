@@ -1,5 +1,5 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
-import { t, currentLanguage } from '../../i18n';
+import { t, currentAssistantLanguage } from '../../i18n';
 import { AppError } from '../../middleware/error-middleware';
 import { wrapArabicText } from '../documents/pdf-arabic';
 import { embedUnicodeFonts, TextFace } from '../signature/seal-text';
@@ -18,7 +18,7 @@ const lineHeight = 13;
 function formatExportDate(date: Date): string {
   if (!Number.isFinite(date.getTime())) return '—';
   return (
-    new Intl.DateTimeFormat(currentLanguage(), {
+    new Intl.DateTimeFormat(currentAssistantLanguage(), {
       dateStyle: 'medium',
       timeStyle: 'short',
       timeZone: 'UTC'
@@ -128,7 +128,11 @@ export function artifactExportSections(artifact: CopilotArtifact): ExportSection
 function formatPeriod(period: string): string {
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(period)) return period;
   const date = new Date(`${period}-01T00:00:00Z`);
-  return new Intl.DateTimeFormat(currentLanguage(), { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(date);
+  return new Intl.DateTimeFormat(currentAssistantLanguage(), {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC'
+  }).format(date);
 }
 
 export function artifactProvenanceLines(provenance: ArtifactProvenance): string[] {
@@ -142,7 +146,7 @@ export function artifactProvenanceLines(provenance: ArtifactProvenance): string[
 
 export async function buildArtifactPdf(artifact: CopilotArtifact, exportedAt = new Date()): Promise<Buffer> {
   const pdf = await PDFDocument.create();
-  const rtl = currentLanguage() === 'ar';
+  const rtl = currentAssistantLanguage() === 'ar';
   const unicode = await embedUnicodeFonts(pdf);
   if (rtl && !unicode) throw new Error('Police arabe indisponible pour le PDF');
   const direction = rtl ? 'rtl' : 'ltr';

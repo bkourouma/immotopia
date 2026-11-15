@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LanguageProvider } from '../../i18n/LanguageProvider';
+import { readAssistantLanguage, selectAssistantLanguage } from '../../i18n/assistant-language';
 import type { CopilotStatus } from '../../types/copilot';
 
 vi.mock('../../services/copilot-service', () => {
@@ -88,6 +89,7 @@ beforeEach(() => {
 afterEach(() => {
   delete w.SpeechRecognition;
   delete w.webkitSpeechRecognition;
+  selectAssistantLanguage(null);
 });
 
 const ARTIFACT_EVENT = {
@@ -118,6 +120,23 @@ function setDesktop(desktop: boolean) {
 
 describe('AssistantPage — artefacts', () => {
   afterEach(() => setDesktop(false));
+
+  it('applique la langue choisie à l’écran de chat', async () => {
+    getStatus.mockResolvedValue(ENABLED);
+    renderPage();
+    const select = await screen.findByRole('combobox', { name: 'Langue de l’assistant' });
+    for (const [language, message] of [
+      ['es', 'Su mensaje'],
+      ['zh', '您的消息'],
+      ['hi', 'आपका संदेश']
+    ]) {
+      fireEvent.change(select, { target: { value: language } });
+      expect(await screen.findByRole('textbox', { name: message })).toBeVisible();
+      expect(readAssistantLanguage()).toBe(language);
+    }
+    fireEvent.change(select, { target: { value: '' } });
+    expect(await screen.findByRole('textbox', { name: 'Votre message' })).toBeVisible();
+  });
 
   it('préremplit et enregistre une alerte locative seulement après validation', async () => {
     getStatus.mockResolvedValue({ ...ENABLED, tools: [...ENABLED.tools, 'prepare_rent_arrears_alert'] });

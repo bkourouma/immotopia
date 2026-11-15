@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Button, Input, Modal, Space, Switch, Typography } from 'antd';
-import { t } from '../../i18n/t';
+import { useAssistantTranslation } from '../../i18n/useAssistantTranslation';
 import { feedback } from '../../lib/feedback';
 import { copilotService } from '../../services/copilot-service';
 import type { AssistantConversationSummary } from '../../types/copilot';
@@ -15,6 +15,7 @@ interface Props {
 }
 
 export function ConversationHistory({ tenantId, activeId, disabled, refresh, onSelect, onArchive }: Props) {
+  const { t } = useAssistantTranslation();
   const [q, setQuery] = useState('');
   const [archived, setArchived] = useState(false);
   const [items, setItems] = useState<AssistantConversationSummary[]>([]);

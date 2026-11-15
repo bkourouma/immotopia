@@ -1,5 +1,5 @@
 import { rgb, type PDFPage } from 'pdf-lib';
-import { currentLanguage } from '../../i18n';
+import { currentAssistantLanguage } from '../../i18n';
 import { wrapArabicText } from '../documents/pdf-arabic';
 import type { TextFace } from '../signature/seal-text';
 import { chartColors, type chartExportData } from './artifact-chart-data';
@@ -77,7 +77,7 @@ export function drawArtifactChart(
   const square = (at: number, y: number, index: number) =>
     page.drawRectangle({ x: x(at) - (rtl ? 8 : 0), y, width: 8, height: 8, color: palette[index % palette.length] });
 
-  const number = new Intl.NumberFormat(currentLanguage(), { notation: 'compact', maximumFractionDigits: 2 });
+  const number = new Intl.NumberFormat(currentAssistantLanguage(), { notation: 'compact', maximumFractionDigits: 2 });
   if (chart.type === 'scatter') {
     const points = chart.xValues.flatMap((abscissa, index) => {
       const ordinate = chart.series[0].values[index];
@@ -137,7 +137,7 @@ export function drawArtifactChart(
     const max = Math.max(...chart.values);
     const total = chart.values.reduce((sum, value) => sum + value / max, 0);
     let angle = -Math.PI / 2;
-    const percent = new Intl.NumberFormat(currentLanguage(), { style: 'percent', maximumFractionDigits: 1 });
+    const percent = new Intl.NumberFormat(currentAssistantLanguage(), { style: 'percent', maximumFractionDigits: 1 });
     values.forEach((value, index) => {
       const portion = (value ?? 0) / max / total;
       if (portion > 0) {
@@ -168,7 +168,9 @@ export function drawArtifactChart(
       const amount = chart.values.reduce((sum, value) => sum + value, 0);
       if (Number.isFinite(amount)) {
         text(
-          new Intl.NumberFormat(currentLanguage(), { notation: 'compact', maximumFractionDigits: 2 }).format(amount),
+          new Intl.NumberFormat(currentAssistantLanguage(), { notation: 'compact', maximumFractionDigits: 2 }).format(
+            amount
+          ),
           width * 0.3,
           cy - 3,
           radius,

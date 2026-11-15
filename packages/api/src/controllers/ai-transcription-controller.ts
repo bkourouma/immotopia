@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { currentLanguage, t } from '../i18n';
+import { currentAssistantLanguage, t } from '../i18n';
 import { AppError, asyncHandler, BadRequestError, ForbiddenError } from '../middleware/error-middleware';
 import { COPILOT_MAX_MESSAGE_CHARS } from '../lib/ai/contracts';
 import { recordTranscriptionUsage } from '../lib/ai/provider-usage';
@@ -60,7 +60,7 @@ export const transcribeHandler = asyncHandler(async (req, res) => {
   if (!metadata.success) throw new BadRequestError(t('La langue ou la durée de cet enregistrement est invalide.'));
   if (res.destroyed) return;
 
-  const language = metadata.data.language ?? currentLanguage();
+  const language = metadata.data.language ?? currentAssistantLanguage();
   const reportedDuration = Math.max(metadata.data.durationSeconds ?? 0, file.size / 16_000);
   const client = new AbortController();
   const stop = () => client.abort();

@@ -2938,5 +2938,7 @@
   "Les données sont présentées en barres pour faciliter leur lecture.": "تُعرض البيانات بأشرطة لتسهيل قراءتها.",
   "Nombre de catégories visibles": "عدد الفئات الظاهرة",
   "Première catégorie visible": "أول فئة ظاهرة",
-  "Catégories {{first}} à {{last}} sur {{total}}": "الفئات من {{first}} إلى {{last}} من أصل {{total}}"
+  "Catégories {{first}} à {{last}} sur {{total}}": "الفئات من {{first}} إلى {{last}} من أصل {{total}}",
+  "Langue de l’assistant": "لغة المساعد",
+  "Langue de l’interface": "لغة الواجهة"
 }

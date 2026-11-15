@@ -1,5 +1,7 @@
-import apiClient from '../utils/api-client';
+import { AxiosHeaders, type AxiosRequestConfig } from 'axios';
+import client from '../utils/api-client';
 import { postEventStream } from '../utils/event-stream';
+import { readAssistantLanguage } from '../i18n/assistant-language';
 import type {
   ActionExecutedPayload,
   ArtifactDownloadFormat,
@@ -14,6 +16,37 @@ import type {
   ExecuteRequest,
   ResponseFeedback
 } from '../types/copilot';
+
+function localize(config?: AxiosRequestConfig): AxiosRequestConfig | undefined {
+  const language = readAssistantLanguage();
+  if (!language) return config;
+  const headers = new AxiosHeaders(config?.headers as AxiosHeaders | undefined);
+  headers.set('Accept-Language', language);
+  return { ...config, headers };
+}
+
+const apiClient = {
+  get<T = unknown>(url: string, config?: AxiosRequestConfig) {
+    const options = localize(config);
+    return options ? client.get<T>(url, options) : client.get<T>(url);
+  },
+  delete(url: string, config?: AxiosRequestConfig) {
+    const options = localize(config);
+    return options ? client.delete(url, options) : client.delete(url);
+  },
+  post(url: string, data?: unknown, config?: AxiosRequestConfig) {
+    const options = localize(config);
+    return options ? client.post(url, data, options) : client.post(url, data);
+  },
+  put(url: string, data?: unknown, config?: AxiosRequestConfig) {
+    const options = localize(config);
+    return options ? client.put(url, data, options) : client.put(url, data);
+  },
+  patch(url: string, data?: unknown, config?: AxiosRequestConfig) {
+    const options = localize(config);
+    return options ? client.patch(url, data, options) : client.patch(url, data);
+  }
+};
 
 const DISABLED_STATUS: CopilotStatus = {
   enabled: false,
@@ -85,6 +118,7 @@ async function streamChat(
   }
   await postEventStream(`/tenants/${tenantId}/ai/chat`, body, {
     signal: opts.signal,
+    language: readAssistantLanguage() ?? undefined,
     onEvent: ({ event, data }) => {
       if (!KNOWN_EVENTS.has(event)) return;
       let payload: unknown;

@@ -1,6 +1,6 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import { env } from '../../config/env';
-import { currentLanguage, t } from '../../i18n';
+import { currentAssistantLanguage, t } from '../../i18n';
 import { AppError, ForbiddenError } from '../../middleware/error-middleware';
 import { logAuditEvent } from '../../services/audit-service';
 import { AuditActionKey } from '../../types/audit-types';
@@ -183,7 +183,7 @@ export async function runChat(input: RunChatInput): Promise<ChatDoneReason> {
       ? Math.min(64_000, 2 * env.AI_MAX_OUTPUT_TOKENS)
       : env.AI_MAX_OUTPUT_TOKENS;
 
-  const system = buildSystemPrompt(currentLanguage(), input.tools);
+  const system = buildSystemPrompt(currentAssistantLanguage(), input.tools);
   const analysisTables = new Map(
     [...(input.analysisTables ?? []), ...(input.importedTables ?? [])].map(table => [table.id, table])
   );

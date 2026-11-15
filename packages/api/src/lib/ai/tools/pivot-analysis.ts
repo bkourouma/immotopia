@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
-import { currentLanguage, t } from '../../../i18n';
+import { currentAssistantLanguage, t } from '../../../i18n';
 import { NotFoundError } from '../../../middleware/error-middleware';
 import type { AnalysisTable, ArtifactCell, CopilotToolDefinition } from '../contracts';
 import { assertToolPermission, outcome } from './tool-utils';
@@ -233,7 +233,7 @@ export const pivotAnalysisTool: CopilotToolDefinition<typeof pivotInputSchema> =
       return outcome({ error: 'PIVOT_REQUIRES_CURRENCY_DIMENSION' });
     }
     const onlyCurrency = currencies.size === 1 ? [...currencies][0] : undefined;
-    const compareText = new Intl.Collator(currentLanguage(), { numeric: true, sensitivity: 'base' }).compare;
+    const compareText = new Intl.Collator(currentAssistantLanguage(), { numeric: true, sensitivity: 'base' }).compare;
     function order(a: ArtifactCell[], b: ArtifactCell[]) {
       for (const [i, value] of a.entries()) {
         if (value === b[i]) continue;

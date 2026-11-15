@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ClearOutlined, DatabaseOutlined } from '@ant-design/icons';
-import { Button, Drawer, Result, Skeleton, Switch, Typography } from 'antd';
+import { Button, ConfigProvider, Drawer, Result, Skeleton, Switch, Typography } from 'antd';
 import type { TextAreaRef } from 'antd/es/input/TextArea';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { getTenantDashboard } from '../../services/dashboard-service';
@@ -26,6 +26,13 @@ import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { useCopilotChat } from '../../hooks/useCopilotChat';
 import { useCopilotStatus } from '../../hooks/useCopilotStatus';
 import { t } from '../../i18n/t';
+import {
+  assistantLanguageCodes,
+  assistantLanguages,
+  isAssistantLanguage,
+  selectAssistantLanguage
+} from '../../i18n/assistant-language';
+import { useAssistantTranslation } from '../../i18n/useAssistantTranslation';
 import type { CopilotStatus } from '../../types/copilot';
 
 /** Colonne de lecture : les messages ne s'étirent pas sur tout un grand écran. */
@@ -76,6 +83,7 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
   hasTabs,
   showArtifact
 }) => {
+  const { language, selected, t } = useAssistantTranslation();
   const location = useLocation();
   const { pathname } = location;
   const navigate = useNavigate();
@@ -409,8 +417,13 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
     />
   );
 
+  const direction = language === 'ar' ? 'rtl' : 'ltr';
   return (
-    <div style={{ display: 'flex', height: pageHeight(hasTabs), minHeight: 320, gap: 'var(--space-4)' }}>
+    <div
+      dir={direction}
+      lang={language}
+      style={{ display: 'flex', height: pageHeight(hasTabs), minHeight: 320, gap: 'var(--space-4)' }}
+    >
       {sharedConversation && (
         <ShareAnalysisDialog
           tenantId={tenantId}
@@ -528,7 +541,7 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
       ) : (
         <Drawer
           title={t('Historique des conversations')}
-          placement="left"
+          placement={direction === 'rtl' ? 'right' : 'left'}
           open={historyOpen}
           onClose={() => setHistoryOpen(false)}
         >
@@ -546,6 +559,30 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
             {t('Assistant')}
           </Typography.Title>
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4 }}>
+            <select
+              aria-label={t('Langue de l’assistant')}
+              value={selected ?? ''}
+              disabled={streaming}
+              onChange={event => {
+                const value = event.target.value;
+                selectAssistantLanguage(isAssistantLanguage(value) ? value : null);
+              }}
+              style={{
+                maxInlineSize: '100%',
+                minBlockSize: 32,
+                border: '1px solid var(--border-subtle, #d9d9d9)',
+                borderRadius: 6,
+                background: 'var(--surface-card, #fff)',
+                color: 'inherit'
+              }}
+            >
+              <option value="">{t('Langue de l’interface')}</option>
+              {assistantLanguageCodes.map(code => (
+                <option value={code} key={code} lang={code}>
+                  {assistantLanguages[code].label}
+                </option>
+              ))}
+            </select>
             <Button type="text" onClick={() => setAnalysesOpen(true)}>
               {t('Mes analyses')}
             </Button>
@@ -720,7 +757,7 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
           open={drawerOpen}
           onClose={() => setDrawerOpen(false)}
           title={t('Résultats et documents')}
-          placement="right"
+          placement={direction === 'rtl' ? 'left' : 'right'}
           size="100%"
           destroyOnHidden
         >
@@ -740,11 +777,16 @@ const AssistantPage: React.FC = () => {
   const { tenantId } = useParams<{ tenantId: string }>();
   const { isDesktop } = useBreakpoint();
   const status = useCopilotStatus(tenantId);
+  const { language } = useAssistantTranslation();
 
   if (!tenantId) return <Result status="info" {...unavailableMessage(null, false)} />;
   if (!status) return <Skeleton active aria-label={t("Chargement de l'écran")} />;
   if (!status.enabled) return <Result status="info" {...unavailableMessage(status, true)} />;
-  return <ChatPane key={tenantId} tenantId={tenantId} status={status} hasTabs={!isDesktop} showArtifact={isDesktop} />;
+  return (
+    <ConfigProvider direction={language === 'ar' ? 'rtl' : 'ltr'}>
+      <ChatPane key={tenantId} tenantId={tenantId} status={status} hasTabs={!isDesktop} showArtifact={isDesktop} />
+    </ConfigProvider>
+  );
 };
 
 export default AssistantPage;

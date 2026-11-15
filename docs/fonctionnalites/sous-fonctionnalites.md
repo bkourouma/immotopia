@@ -9,11 +9,11 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Finance | 198 |
 | CRM et Ventes | 72 |
 | Maintenance | 35 |
-| Communication et Documents | 124 |
+| Communication et Documents | 125 |
 | Syndic copropriete | 247 |
 | Administration plateforme | 145 |
 | Portails externes | 84 |
-| **Total** | **1286** |
+| **Total** | **1287** |
 
 ## Sous-fonctionnalités
 
@@ -856,6 +856,7 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Packs ouvrant la maintenance ou le Syndic | CORE / SYNDIC | Assistant IA ImmoCopilot | Analyser les tickets en retard contractuel | Identifier les tickets ouverts dont l’échéance contractuelle est dépassée. Les tickets ouverts sans date sont comptés séparément. | Filtres par bien, prestataire, statut, priorité ou copropriété | Tableau récapitulatif ou liste liée aux fiches, recalcul et export | Échéance renseignée pour établir le retard | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | MAINTENANCE_ADMIN et SYNDIC_VIEW pour une copropriété | Disponible | Assistant > Résultats et documents |
 | Packs ouvrant la gestion locative | RENTAL | Assistant IA ImmoCopilot | Analyser les encaissements et échéances par SQL | Analyser les encaissements réussis ou les échéances actives avec filtres et regroupements dans le périmètre de l’agence. | Question et filtres analytiques | Tableau avec provenance, recalcul et export | Activation par compte PostgreSQL dédié et vues de lecture | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | RENTAL_PAYMENTS_VIEW ou RENTAL_INSTALLMENTS_VIEW selon la vue | Disponible après activation | Assistant > Résultats et documents |
 | Packs ouvrant les ventes | SALES | Assistant IA ImmoCopilot | Analyser les compromis de vente signés en cours | Suivre engagements, prix convenu, dépôt prévu et date prévue de l’acte à partir des compromis signés en cours. | Filtres par programme parent, période de signature et acte en retard | Tableau lié aux compromis, recalcul et export | Compromis signé et rattaché à un bien de l’agence | Collaborateur agence éligible | Agence (collaborateur) | POST /api/tenants/:tenantId/ai/chat | CRM_DEALS_VIEW | Disponible | Assistant > Résultats et documents |
+| Packs ouvrant l’assistant | CORE | Assistant IA ImmoCopilot | Choisir la langue de l’assistant | Choisir français, anglais, arabe, espagnol, chinois simplifié ou hindi pour le chat et la voix, ou suivre la langue de l’interface. | Choix de langue sur ce navigateur | Langue préférée envoyée au chat et aux requêtes assistant | Reconnaissance ou synthèse selon les voix disponibles | Collaborateur agence éligible | Agence (collaborateur) | GET et POST /api/tenants/:tenantId/ai/* | Accès assistant | Disponible | Assistant > Langue de l’assistant |
 
 ### Syndic copropriete
 

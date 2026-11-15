@@ -5,7 +5,7 @@ import { logAuditEvent } from '../../../services/audit-service';
 import { prisma } from '../../../utils/database';
 import { logger } from '../../../utils/logger';
 import { AuditActionKey } from '../../../types/audit-types';
-import { currentLanguage, t } from '../../../i18n';
+import { currentAssistantLanguage, t } from '../../../i18n';
 import type { ActionProposal, CopilotToolDefinition, DocumentCardItem, GenerateRentalDocumentArgs } from '../contracts';
 import { signProposal } from '../proposal-token';
 import { assertToolPermission, isoDay, loadLeaseSummary, outcome } from './tool-utils';
@@ -49,13 +49,15 @@ function parseDay(value: string): Date | null {
 }
 
 function formatMonth(year: number, month: number): string {
-  return new Intl.DateTimeFormat(currentLanguage(), { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(
-    new Date(Date.UTC(year, month - 1, 1))
-  );
+  return new Intl.DateTimeFormat(currentAssistantLanguage(), {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC'
+  }).format(new Date(Date.UTC(year, month - 1, 1)));
 }
 
 function formatDay(value: string): string {
-  return new Intl.DateTimeFormat(currentLanguage(), { dateStyle: 'medium', timeZone: 'UTC' }).format(
+  return new Intl.DateTimeFormat(currentAssistantLanguage(), { dateStyle: 'medium', timeZone: 'UTC' }).format(
     new Date(`${value}T00:00:00.000Z`)
   );
 }

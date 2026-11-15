@@ -15,6 +15,7 @@ export interface EventStreamError {
 
 export interface EventStreamOptions {
   signal?: AbortSignal;
+  language?: string;
   onEvent(e: { event: string; data: string }): void;
 }
 
@@ -42,7 +43,7 @@ export async function postEventStream(path: string, body: unknown, opts: EventSt
       headers: {
         ...(!multipart ? { 'Content-Type': 'application/json' } : {}),
         Accept: 'text/event-stream',
-        'Accept-Language': i18next.resolvedLanguage ?? i18next.language
+        'Accept-Language': opts.language ?? i18next.resolvedLanguage ?? i18next.language
       },
       body: multipart ? body : JSON.stringify(body)
     });

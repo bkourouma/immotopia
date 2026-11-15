@@ -15,6 +15,7 @@ import { MAX_ASSISTANT_FILES, MAX_ASSISTANT_FILE_BYTES } from '../lib/ai/assista
 import { authenticate } from '../middleware/auth-middleware';
 import { requireTenantAccess, requireTenantCollaborator } from '../middleware/tenant-middleware';
 import { requireAiAssistantAccess, requireAiStatusAccess } from '../middleware/ai-access-middleware';
+import { resolveAssistantLanguage } from '../middleware/language-middleware';
 import {
   aiActionRateLimiter,
   aiRejectRateLimiter,
@@ -77,6 +78,7 @@ const chatFiles = multer({
   limits: { files: MAX_ASSISTANT_FILES, fileSize: MAX_ASSISTANT_FILE_BYTES, fields: 1, fieldSize: 32_768 }
 }).array('files', MAX_ASSISTANT_FILES);
 
+router.use(resolveAssistantLanguage);
 router.use(authenticate);
 router.use(requireTenantAccess);
 router.use(requireTenantCollaborator);

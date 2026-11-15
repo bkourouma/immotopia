@@ -1,5 +1,5 @@
 import { Workbook } from 'exceljs';
-import { currentLanguage, t } from '../../i18n';
+import { currentAssistantLanguage, t } from '../../i18n';
 import { AppError } from '../../middleware/error-middleware';
 import { artifactExportSections, artifactProvenanceLines } from './artifact-pdf';
 import type { ArtifactCell, CopilotArtifact } from './contracts';
@@ -19,7 +19,7 @@ export function buildArtifactCsv(artifact: CopilotArtifact): Buffer {
   if (sections.length !== 1 || grid?.kind !== 'grid') {
     throw new AppError(t('Ce résultat ne peut pas être exporté en CSV.'), 422);
   }
-  const sep = currentLanguage() === 'en' ? ',' : ';';
+  const sep = currentAssistantLanguage() === 'en' ? ',' : ';';
   const rows: ArtifactCell[][] = [grid.headers, ...grid.rows];
   if (grid.truncated || grid.provenance || grid.notes?.length) {
     rows.push([]);
@@ -36,7 +36,7 @@ export function buildArtifactCsv(artifact: CopilotArtifact): Buffer {
 export async function buildArtifactXlsx(artifact: CopilotArtifact): Promise<Buffer> {
   const workbook = new Workbook();
   workbook.creator = 'ImmoTopia';
-  const rtl = currentLanguage() === 'ar';
+  const rtl = currentAssistantLanguage() === 'ar';
   for (const [index, section] of artifactExportSections(artifact).entries()) {
     const sheet = workbook.addWorksheet(String(index + 1), { views: [{ rightToLeft: rtl }] });
     sheet.addRow([section.kind === 'grid' ? (section.title ?? artifact.title) : artifact.title]).font = { bold: true };

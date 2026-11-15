@@ -1,4 +1,4 @@
-import { currentLanguage, t } from '../../i18n';
+import { currentAssistantLanguage, t } from '../../i18n';
 import type { ChartMark, ChartScene } from './contracts';
 
 const width = 640;
@@ -6,9 +6,10 @@ const height = 300;
 const ink = '172D46';
 const empty = 'E7EDF4';
 const palette = ['245B9B', '166675', '77518E', '975529', '395F9A', '52647A', '5B57A6', '8B4878'];
-const format = (value: number) => new Intl.NumberFormat(currentLanguage(), { maximumFractionDigits: 2 }).format(value);
+const format = (value: number) =>
+  new Intl.NumberFormat(currentAssistantLanguage(), { maximumFractionDigits: 2 }).format(value);
 const compact = (value: number) =>
-  new Intl.NumberFormat(currentLanguage(), { notation: 'compact', maximumFractionDigits: 1 }).format(value);
+  new Intl.NumberFormat(currentAssistantLanguage(), { notation: 'compact', maximumFractionDigits: 1 }).format(value);
 
 type Datum = { category: string; group?: string; value: number | null };
 type Tile = { x: number; y: number; w: number; h: number };

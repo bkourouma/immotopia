@@ -4,8 +4,7 @@ import { Button, Input, Space } from 'antd';
 import type { TextAreaRef } from 'antd/es/input/TextArea';
 import { appendDictation, useSpeechDictation } from '../../hooks/useSpeechDictation';
 import { useRecordedDictation } from '../../hooks/useRecordedDictation';
-import { t } from '../../i18n/t';
-import { useLanguage } from '../../i18n/useLanguage';
+import { useAssistantTranslation } from '../../i18n/useAssistantTranslation';
 
 export interface CopilotComposerProps {
   value: string;
@@ -40,7 +39,7 @@ export const CopilotComposer: React.FC<CopilotComposerProps> = ({
   maxRows = 8,
   inputRef
 }) => {
-  const { language } = useLanguage();
+  const { language, t } = useAssistantTranslation();
   const fileInput = useRef<HTMLInputElement>(null);
   const [fileError, setFileError] = useState('');
   function addFiles(selection: FileList | null) {
@@ -58,11 +57,14 @@ export const CopilotComposer: React.FC<CopilotComposerProps> = ({
   }
   const dictation = useSpeechDictation({
     language,
+    translate: t,
     onFinal: text => onChange(appendDictation(value, text))
   });
-  const recorded = useRecordedDictation(dictation.supported ? undefined : transcribe, text => {
-    onChange(appendDictation(value, text).slice(0, maxChars));
-  });
+  const recorded = useRecordedDictation(
+    dictation.supported ? undefined : transcribe,
+    text => onChange(appendDictation(value, text).slice(0, maxChars)),
+    t
+  );
   const listening = dictation.listening || recorded.phase === 'recording';
   const recordingBusy = recorded.phase !== 'idle';
   const dictationError = dictation.error || recorded.error;
@@ -80,6 +82,7 @@ export const CopilotComposer: React.FC<CopilotComposerProps> = ({
       }}
     >
       <Input.TextArea
+        dir="auto"
         ref={inputRef}
         variant="borderless"
         value={shown}

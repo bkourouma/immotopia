@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { selectAssistantLanguage } from '../../i18n/assistant-language';
 
 vi.mock('../../utils/api-client', () => ({
   default: { get: vi.fn(), post: vi.fn() }
@@ -16,8 +17,17 @@ const mockedPost = vi.mocked(apiClient.post);
 const mockedStream = vi.mocked(postEventStream);
 
 beforeEach(() => vi.clearAllMocks());
+afterEach(() => selectAssistantLanguage(null));
 
 describe('getStatus', () => {
+  it('transmet le choix de langue aux requêtes JSON et SSE de l’assistant', async () => {
+    selectAssistantLanguage('hi');
+    mockedGet.mockResolvedValue({ data: { enabled: true } });
+    await copilotService.getStatus('t1');
+    await copilotService.streamChat('t1', { messages: [{ role: 'user', content: 'नमस्ते' }] }, { onEvent: vi.fn() });
+    expect(mockedGet.mock.calls[0][1]?.headers?.['Accept-Language']).toBe('hi');
+    expect(mockedStream.mock.calls[0][2]?.language).toBe('hi');
+  });
   it("renvoie l'état du serveur", async () => {
     mockedGet.mockResolvedValue({
       data: {

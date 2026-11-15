@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { currentLanguage, t } from '../../i18n';
+import { currentAssistantLanguage, t } from '../../i18n';
 import type { ArtifactCell } from './contracts';
 
 type Row = Record<string, ArtifactCell>;
@@ -34,7 +34,7 @@ export function rankChart(input: Ranking): { data: Row[]; notices: string[] } {
       return [label, values.length ? (input.rankAverage ? total.div(values.length) : total) : null] as const;
     })
   );
-  const collator = new Intl.Collator(currentLanguage(), { numeric: true, sensitivity: 'base' });
+  const collator = new Intl.Collator(currentAssistantLanguage(), { numeric: true, sensitivity: 'base' });
   const compare = (sort: Ranking['order']) => (a: string, b: string) => {
     if (sort === 'date') return a < b ? -1 : a > b ? 1 : 0;
     if (sort !== 'label') {

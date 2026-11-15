@@ -1,5 +1,5 @@
 import PptxGenJS from 'pptxgenjs';
-import { currentLanguage, t } from '../../i18n';
+import { currentAssistantLanguage, t } from '../../i18n';
 import { AppError } from '../../middleware/error-middleware';
 import type { CopilotArtifact } from './contracts';
 import { chartColors, chartExportData } from './artifact-chart-data';
@@ -10,7 +10,7 @@ export async function buildArtifactPowerPoint(artifact: CopilotArtifact): Promis
   pptx.layout = 'LAYOUT_WIDE';
   pptx.title = artifact.title;
   pptx.author = 'ImmoTopia';
-  const rtl = currentLanguage() === 'ar';
+  const rtl = currentAssistantLanguage() === 'ar';
   pptx.rtlMode = rtl;
   const align = rtl ? 'right' : 'left';
 
@@ -173,7 +173,7 @@ export async function buildArtifactPowerPoint(artifact: CopilotArtifact): Promis
       if (chart.type === 'donut') {
         const total = chart.values.reduce((sum, value) => sum + value, 0);
         if (Number.isFinite(total)) {
-          page.addText(new Intl.NumberFormat(currentLanguage(), { maximumFractionDigits: 2 }).format(total), {
+          page.addText(new Intl.NumberFormat(currentAssistantLanguage(), { maximumFractionDigits: 2 }).format(total), {
             x: 4.65,
             y: 3.65,
             w: 4.03,

@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { t } from '../i18n/t';
+import { t as applicationTranslation } from '../i18n/t';
 
 const audioTypes = ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/mp4'];
 
 export function useRecordedDictation(
   transcribe: ((audio: Blob, signal: AbortSignal, durationSeconds: number) => Promise<string>) | undefined,
-  onFinal: (text: string) => void
+  onFinal: (text: string) => void,
+  t: (text: string) => string = applicationTranslation
 ) {
   const [phase, setPhase] = useState<'idle' | 'starting' | 'recording' | 'processing'>('idle');
   const [error, setError] = useState('');

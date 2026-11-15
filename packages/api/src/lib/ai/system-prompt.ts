@@ -1,4 +1,4 @@
-import type { Language } from '../../i18n';
+import type { AssistantLanguage } from '../../i18n';
 import type { CopilotToolDefinition, CopilotToolName } from './contracts';
 import { ALL_TOOLS } from './tools/registry';
 
@@ -18,10 +18,13 @@ import { ALL_TOOLS } from './tools/registry';
  * calculés par le serveur).
  */
 
-const LANGUAGE_NAMES: Record<Language, string> = {
+const LANGUAGE_NAMES: Record<AssistantLanguage, string> = {
   fr: 'français',
   en: 'anglais',
-  ar: 'arabe'
+  ar: 'arabe',
+  es: 'espagnol',
+  zh: 'chinois',
+  hi: 'hindi'
 };
 
 /** Capacité annoncée par outil ; les outils d'un même groupe ne sont cités qu'une fois. */
@@ -112,7 +115,7 @@ const TOOL_CAPABILITIES: Record<CopilotToolName, { group: string; text: string }
  * @param tools Outils exposés à CETTE agence. Sans argument : tous les outils.
  */
 export function buildSystemPrompt(
-  language: Language,
+  language: AssistantLanguage,
   tools: ReadonlyArray<Pick<CopilotToolDefinition, 'name'>> = ALL_TOOLS
 ): string {
   const hasLeases = tools.some(tool => tool.name === 'search_leases');
