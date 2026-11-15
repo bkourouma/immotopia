@@ -6,12 +6,15 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  ComposedChart,
   Legend,
   Line,
   LineChart,
   Pie,
   PieChart,
   ResponsiveContainer,
+  Scatter,
+  ScatterChart,
   Tooltip,
   XAxis,
   YAxis
@@ -67,7 +70,11 @@ const DataFallback: React.FC<{ artifact: ChartArtifact }> = ({ artifact }) => (
           {artifact.data.map((row, i) => (
             <tr key={i}>
               <th scope="row" style={{ textAlign: 'start', fontWeight: 'normal' }}>
-                <bdi>{String(row[artifact.xKey] ?? '')}</bdi>
+                <bdi>
+                  {artifact.chartType === 'scatter'
+                    ? formatArtifactCell(row[artifact.xKey] ?? null, 'number')
+                    : String(row[artifact.xKey] ?? '')}
+                </bdi>
               </th>
               {artifact.series.map(s => (
                 <td key={s.key}>{formatArtifactCell(row[s.key] ?? null, 'number')}</td>
@@ -89,7 +96,9 @@ export const ArtifactChart: React.FC<{ artifact: ChartArtifact }> = ({ artifact 
   const data = useMemo(
     () =>
       artifact.data.map(row => {
-        const out: Record<string, string | number | null> = { [artifact.xKey]: String(row[artifact.xKey] ?? '') };
+        const out: Record<string, string | number | null> = {
+          [artifact.xKey]: artifact.chartType === 'scatter' ? num(row[artifact.xKey]) : String(row[artifact.xKey] ?? '')
+        };
         for (const s of artifact.series) out[s.key] = num(row[s.key]);
         return out;
       }),
@@ -143,7 +152,72 @@ export const ArtifactChart: React.FC<{ artifact: ChartArtifact }> = ({ artifact 
   );
 
   let chart: React.ReactElement;
-  if (validParts) {
+  if (artifact.chartType === 'scatter') {
+    chart = (
+      <ScatterChart margin={{ bottom: 18, top: 12 }}>
+        <CartesianGrid stroke={gridColor} />
+        <XAxis
+          type="number"
+          dataKey={artifact.xKey}
+          name={chartXLabel(artifact)}
+          tick={tick}
+          tickFormatter={fmt}
+          reversed={rtl}
+          domain={['auto', 'auto']}
+          label={{ value: chartXLabel(artifact), position: 'insideBottom', offset: -8 }}
+        />
+        <YAxis
+          type="number"
+          dataKey={first.key}
+          name={first.label}
+          tick={tick}
+          tickFormatter={fmt}
+          orientation={rtl ? 'right' : 'left'}
+          domain={['auto', 'auto']}
+        />
+        <Tooltip formatter={fmt} />
+        <Scatter
+          data={data.filter(row => row[artifact.xKey] !== null && row[first.key] !== null)}
+          name={first.label}
+          fill={colors[0]}
+          isAnimationActive={false}
+        />
+        <Legend verticalAlign="top" />
+      </ScatterChart>
+    );
+  } else if (artifact.chartType === 'combo') {
+    chart = (
+      <ComposedChart data={data}>
+        <CartesianGrid stroke={gridColor} strokeDasharray="3 3" />
+        <XAxis dataKey={artifact.xKey} tick={tick} stroke={gridColor} reversed={rtl} />
+        <YAxis yAxisId="primary" tick={tick} tickFormatter={fmt} orientation={rtl ? 'right' : 'left'} />
+        {artifact.series.some(series => series.axis === 'secondary') && (
+          <YAxis yAxisId="secondary" tick={tick} tickFormatter={fmt} orientation={rtl ? 'left' : 'right'} />
+        )}
+        <Tooltip formatter={fmt} />
+        <Legend />
+        {artifact.series.map((series, index) => {
+          const common = {
+            yAxisId: series.axis ?? 'primary',
+            dataKey: series.key,
+            name: series.label,
+            isAnimationActive: false
+          };
+          return series.form === 'line' ? (
+            <Line
+              key={series.key}
+              {...common}
+              stroke={colors[index % colors.length]}
+              strokeWidth={2}
+              dot={data.length <= 24}
+            />
+          ) : (
+            <Bar key={series.key} {...common} fill={colors[index % colors.length]} maxBarSize={40} />
+          );
+        })}
+      </ComposedChart>
+    );
+  } else if (validParts) {
     chart = (
       <PieChart>
         <Pie

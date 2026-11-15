@@ -656,6 +656,45 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         {
           toolCalls: [
             {
+              name: 'chart_analysis',
+              input: {
+                sourceId: dues.id,
+                title: 'Échéances et retards',
+                dimension: 'period',
+                measure: 'expected',
+                chartType: 'combo',
+                series: [{ measure: 'overdueCount', form: 'line', axis: 'secondary' }]
+              }
+            }
+          ]
+        },
+        { text: 'Graphique combiné prêt.' }
+      ];
+      const combo = await request(app)
+        .post(base + '/chat')
+        .set(authed(admin))
+        .send({
+          conversationId,
+          turnId: randomUUID(),
+          messages: [{ role: 'user', content: 'Compare les montants attendus et le nombre de retards.' }]
+        });
+      expect(combo.status).toBe(200);
+      const comboArtifact = parseEvents(combo.text).find(event => event.type === 'artifact')?.artifact;
+      expect(comboArtifact).toMatchObject({
+        chartType: 'combo',
+        series: [
+          { form: 'bar', axis: 'primary' },
+          { form: 'line', axis: 'secondary' }
+        ],
+        data: [
+          { category: '2024-10', value0: 80, value1: 0 },
+          { category: period, value0: 117, value1: 1 }
+        ]
+      });
+      mockFakeScript = [
+        {
+          toolCalls: [
+            {
               name: 'pivot_analysis',
               input: {
                 title: 'Tableau privé par devise',
@@ -690,6 +729,14 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       const chartReplay = await request(app).post(chartPath).set(authed(admin)).send({ expectedVersion: 1 });
       expect(chartReplay.status).toBe(201);
       expect(chartReplay.body.data.artifact).toMatchObject({ chartType: 'stacked_area', data: chartArtifact.data });
+      const comboPath = `${base}/conversations/${conversationId}/artifacts/${comboArtifact.id}`;
+      const comboReplay = await request(app).post(comboPath).set(authed(admin)).send({ expectedVersion: 1 });
+      expect(comboReplay.status).toBe(201);
+      expect(comboReplay.body.data.artifact).toMatchObject({
+        chartType: 'combo',
+        series: comboArtifact.series,
+        data: comboArtifact.data
+      });
       const pivotPath = `${base}/conversations/${conversationId}/artifacts/${pivot.id}`;
       const pivotReplay = await request(app).post(pivotPath).set(authed(admin)).send({ expectedVersion: 1 });
       expect(pivotReplay.status).toBe(201);

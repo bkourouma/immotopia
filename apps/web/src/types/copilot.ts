@@ -308,8 +308,17 @@ export const ANALYSIS_CHART_TYPES = [
   'area',
   'stacked_area',
   'pie',
-  'donut'
+  'donut',
+  'scatter',
+  'combo'
 ] as const;
+
+export interface AnalysisChartSeries {
+  key: string;
+  label: string;
+  form?: 'bar' | 'line';
+  axis?: 'primary' | 'secondary';
+}
 
 export interface ArtifactProvenance {
   source: string;
@@ -372,7 +381,7 @@ export type CopilotArtifact = { canRefresh?: boolean } & (
       xKey: string;
       /** Libellé de l'axe des abscisses, si le serveur en fournit un ; sinon la clé rendue lisible. */
       xLabel?: string;
-      series: { key: string; label: string }[];
+      series: AnalysisChartSeries[];
       data: Record<string, ArtifactCell>[];
     }
 );

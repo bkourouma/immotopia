@@ -7,12 +7,23 @@ import {
   ANALYSIS_CHART_TYPES,
   COPILOT_ARTIFACT_MAX_CHART_POINTS,
   COPILOT_ARTIFACT_MAX_SERIES,
+  type AnalysisChartSeries,
+  type AnalysisTable,
   type ArtifactCell,
   type CopilotToolDefinition
 } from '../contracts';
 import { assertToolPermission, outcome } from './tool-utils';
 
 const key = z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,39}$/);
+const aggregationSchema = z.enum(['sum', 'average']);
+const seriesSchema = z
+  .object({
+    measure: key,
+    form: z.enum(['bar', 'line']),
+    axis: z.enum(['primary', 'secondary']).optional(),
+    aggregation: aggregationSchema.optional()
+  })
+  .strict();
 const schema = z
   .object({
     sourceId: z.string().uuid(),
@@ -21,14 +32,152 @@ const schema = z
     measure: key,
     chartType: z.enum(ANALYSIS_CHART_TYPES),
     seriesBy: key.optional(),
-    aggregation: z.enum(['sum', 'average']).optional()
+    aggregation: aggregationSchema.optional(),
+    currency: z
+      .string()
+      .regex(/^[A-Z]{3}$/)
+      .optional(),
+    series: z.array(seriesSchema).max(11).optional()
   })
   .strict();
+
+type ChartInput = z.infer<typeof schema>;
+type ChartParts = {
+  xKey: string;
+  xLabel: string;
+  series: AnalysisChartSeries[];
+  data: Record<string, ArtifactCell>[];
+  rule?: string;
+};
+
+const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
+const currencyOf = (value: ArtifactCell | undefined) => (value === 'FCFA' ? 'XOF' : String(value ?? ''));
+const numeric = (column: AnalysisTable['columns'][number] | undefined) =>
+  column?.type === 'number' || column?.type === 'currency';
+
+function publish(input: ChartInput, source: AnalysisTable, { rule, ...parts }: ChartParts) {
+  const id = randomUUID();
+  return outcome(
+    { artifactId: id, sourceId: source.id },
+    {
+      type: 'artifact',
+      artifact: {
+        id,
+        kind: 'chart',
+        title: input.title,
+        chartType: input.chartType,
+        ...parts,
+        provenance:
+          source.provenance && rule
+            ? { ...source.provenance, rules: [...source.provenance.rules, rule] }
+            : source.provenance,
+        ...(source.query ? { replay: { tool: 'chart_analysis' as const, source: source.query, input } } : {})
+      }
+    }
+  );
+}
+
+function plotMeasures(
+  input: ChartInput,
+  source: AnalysisTable,
+  dimension: AnalysisTable['columns'][number],
+  measure: AnalysisTable['columns'][number]
+) {
+  const scatter = input.chartType === 'scatter';
+  const specs = [
+    { measure: input.measure, form: 'bar' as const, axis: 'primary' as const, aggregation: input.aggregation },
+    ...(input.series ?? [])
+  ];
+  const columns = specs.map(spec => source.columns.find(column => column.key === spec.measure));
+  if (
+    input.seriesBy ||
+    (scatter
+      ? !numeric(dimension) || input.aggregation || specs.length !== 1
+      : !specs.some(spec => spec.form === 'line') ||
+        specs.some(spec => spec.measure === dimension.key) ||
+        columns.some(column => !numeric(column)))
+  ) {
+    return outcome({
+      error: 'INVALID_SERIES',
+      message: t('Vérifiez les mesures et les axes demandés pour ce graphique.')
+    });
+  }
+  const selected = source.rows.filter(
+    row => !input.currency || currencyOf(row.currency) === currencyOf(input.currency)
+  );
+  const rows = scatter ? selected.filter(row => finite(row[dimension.key]) && finite(row[measure.key])) : selected;
+  if (scatter && rows.length > COPILOT_ARTIFACT_MAX_CHART_POINTS) {
+    return outcome({ error: 'TOO_MANY_POINTS', message: t('Le résultat dépasse la capacité de ce graphique.') });
+  }
+  const monetary = (scatter && dimension.type === 'currency') || columns.some(column => column?.type === 'currency');
+  const currencies = monetary ? new Set(rows.map(row => currencyOf(row.currency))) : new Set<string>();
+  const units = specs.map((spec, index) => ({ axis: spec.axis ?? 'primary', type: columns[index]?.type }));
+  const incompatibleAxis = ['primary', 'secondary'].some(
+    axis => new Set(units.filter(unit => unit.axis === axis).map(unit => unit.type)).size > 1
+  );
+  if (currencies.size > 1 || (!scatter && incompatibleAxis)) {
+    return outcome({
+      error: 'INCOMPATIBLE_UNITS',
+      message: t('Chaque axe doit utiliser une seule unité et une seule devise.')
+    });
+  }
+  const currency = [...currencies][0];
+  const label = (column: AnalysisTable['columns'][number]) =>
+    [column.label, column.type === 'currency' ? currency : undefined].filter(Boolean).join(' · ');
+  if (scatter) {
+    return publish(input, source, {
+      xKey: 'x',
+      xLabel: label(dimension),
+      series: [{ key: 'value0', label: label(measure) }],
+      data: rows.map(row => ({ x: row[dimension.key], value0: row[measure.key] })),
+      rule: t('Chaque point reprend les deux mesures de la même ligne source.')
+    });
+  }
+
+  const groups = new Map<string, { sum: Prisma.Decimal; count: number }[]>();
+  for (const row of rows) {
+    const category = String(row[dimension.key] ?? '');
+    const buckets = groups.get(category) ?? specs.map(() => ({ sum: new Prisma.Decimal(0), count: 0 }));
+    groups.set(category, buckets);
+    specs.forEach((spec, index) => {
+      const value = row[spec.measure];
+      if (!finite(value)) return;
+      buckets[index].sum = buckets[index].sum.plus(value);
+      buckets[index].count += 1;
+    });
+  }
+  if (groups.size > COPILOT_ARTIFACT_MAX_CHART_POINTS) {
+    return outcome({ error: 'TOO_MANY_POINTS', message: t('Le résultat dépasse la capacité de ce graphique.') });
+  }
+  const data = [...groups].map(([category, buckets]) => ({
+    category,
+    ...Object.fromEntries(
+      buckets.map(({ sum, count }, index) => {
+        const value = count ? (specs[index].aggregation === 'average' ? sum.div(count) : sum).toNumber() : null;
+        return [`value${index}`, finite(value) ? value : null];
+      })
+    )
+  }));
+  if (dimension.key === 'period' || dimension.type === 'date')
+    data.sort((a, b) => a.category.localeCompare(b.category));
+  return publish(input, source, {
+    xKey: 'category',
+    xLabel: dimension.label,
+    series: specs.map((spec, index) => ({
+      key: `value${index}`,
+      label: label(columns[index]!),
+      form: spec.form,
+      axis: spec.axis ?? 'primary'
+    })),
+    data,
+    rule: t('Les séries du graphique combiné utilisent leur agrégation et leur axe respectifs.')
+  });
+}
 
 export const chartAnalysisTool: CopilotToolDefinition<typeof schema> = {
   name: 'chart_analysis',
   description:
-    'Publie un graphique fondé sur un tableau de cette conversation. Réutilise son artifactId et ses clés. seriesBy sépare les valeurs en séries. Pour un taux, demande aggregation=average. Une forme empilée ou en parts exige des valeurs additives et une seule devise.',
+    'Publie un graphique fondé sur un tableau du fil. seriesBy répartit les séries. Pour un taux, utilise aggregation=average. Les parts et empilements utilisent une unité. Pour scatter, dimension et measure sont deux mesures numériques sans agrégation. Pour combo, measure est la barre principale et series décrit les autres mesures : form bar ou line, axis primary ou secondary. Pour scatter et combo, currency peut sélectionner une devise.',
   inputSchema: schema,
   jsonSchema: {
     type: 'object',
@@ -41,7 +190,23 @@ export const chartAnalysisTool: CopilotToolDefinition<typeof schema> = {
       measure: { type: 'string' },
       chartType: { type: 'string', enum: ANALYSIS_CHART_TYPES },
       seriesBy: { type: 'string' },
-      aggregation: { type: 'string', enum: ['sum', 'average'] }
+      aggregation: { type: 'string', enum: ['sum', 'average'] },
+      currency: { type: 'string', pattern: '^[A-Z]{3}$' },
+      series: {
+        type: 'array',
+        maxItems: 11,
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['measure', 'form'],
+          properties: {
+            measure: { type: 'string' },
+            form: { type: 'string', enum: ['bar', 'line'] },
+            axis: { type: 'string', enum: ['primary', 'secondary'] },
+            aggregation: { type: 'string', enum: ['sum', 'average'] }
+          }
+        }
+      }
     }
   },
   requiredPermission: 'PROPERTIES_VIEW',
@@ -66,6 +231,14 @@ export const chartAnalysisTool: CopilotToolDefinition<typeof schema> = {
 
     if (source.truncated) {
       return outcome({ error: 'TOO_MANY_POINTS', message: t('Le résultat dépasse la capacité de ce graphique.') });
+    }
+    if (input.chartType === 'scatter' || input.chartType === 'combo')
+      return plotMeasures(input, source, dimension, measure);
+    if (input.currency || input.series?.length) {
+      return outcome({
+        error: 'INVALID_SERIES',
+        message: t('Vérifiez les mesures et les axes demandés pour ce graphique.')
+      });
     }
     const monetary = measure.type === 'currency';
     const parts = input.chartType === 'pie' || input.chartType === 'donut';
@@ -134,35 +307,12 @@ export const chartAnalysisTool: CopilotToolDefinition<typeof schema> = {
     } else if (dimension.key === 'period' || dimension.type === 'date') {
       data.sort((a, b) => String(a[xKey]).localeCompare(String(b[xKey])));
     }
-    const id = randomUUID();
-    return outcome(
-      { artifactId: id, sourceId: source.id },
-      {
-        type: 'artifact',
-        artifact: {
-          id,
-          kind: 'chart',
-          title: input.title,
-          chartType: input.chartType,
-          xKey,
-          xLabel: dimension.label,
-          series: [...series.values()],
-          data,
-          provenance:
-            source.provenance && (combined || input.aggregation === 'average')
-              ? {
-                  ...source.provenance,
-                  rules: [
-                    ...source.provenance.rules,
-                    input.aggregation === 'average'
-                      ? t('Les valeurs d’une même catégorie et série sont agrégées par moyenne.')
-                      : t('Les valeurs d’une même catégorie et série sont additionnées.')
-                  ]
-                }
-              : source.provenance,
-          ...(source.query ? { replay: { tool: 'chart_analysis' as const, source: source.query, input } } : {})
-        }
-      }
-    );
+    const rule =
+      input.aggregation === 'average'
+        ? t('Les valeurs d’une même catégorie et série sont agrégées par moyenne.')
+        : combined
+          ? t('Les valeurs d’une même catégorie et série sont additionnées.')
+          : undefined;
+    return publish(input, source, { xKey, xLabel: dimension.label, series: [...series.values()], data, rule });
   }
 };

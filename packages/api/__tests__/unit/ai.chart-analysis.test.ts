@@ -166,3 +166,59 @@ it('produit un anneau si le jeu satisfait les contraintes des graphiques en part
   expect((await run({ chartType: 'pie' }, negative)).modelResult).toMatchObject({ error: 'INVALID_PARTS' });
   expect((await run({ chartType: 'stacked_area' }, negative)).modelResult).toMatchObject({ error: 'NEGATIVE_AREA' });
 });
+
+it('garde les points de même abscisse et écarte les paires incomplètes du nuage', async () => {
+  const dataset: AnalysisTable = {
+    ...source,
+    columns: [...source.columns, { key: 'surfaces', label: 'Surface', type: 'number' }],
+    rows: [
+      { surfaces: 0, amount: 7, currency: 'XOF' },
+      { surfaces: 0, amount: 2, currency: 'XOF' },
+      { surfaces: 30, amount: null, currency: 'XOF' },
+      { surfaces: 40, amount: 11, currency: 'EUR' }
+    ]
+  };
+  const args = { chartType: 'scatter', dimension: 'surfaces' };
+  expect((await run(args, dataset)).modelResult).toMatchObject({ error: 'INCOMPATIBLE_UNITS' });
+  const result = await run({ ...args, currency: 'XOF' }, dataset);
+  expect(result.uiEvent).toMatchObject({
+    artifact: {
+      xLabel: 'Surface',
+      series: [{ label: 'Montant · XOF' }],
+      data: [
+        { x: 0, value0: 7 },
+        { x: 0, value0: 2 }
+      ]
+    }
+  });
+});
+
+it('mélange barres et courbes sur des axes distincts et applique l’agrégat de chaque série', async () => {
+  const dataset: AnalysisTable = {
+    ...source,
+    columns: [...source.columns, { key: 'rate', label: 'Taux', type: 'number' }],
+    rows: [
+      { period: '2026-10', amount: 80, rate: 60, currency: 'XOF' },
+      { period: '2026-10', amount: 120, rate: 90, currency: 'XOF' },
+      { period: '2026-11', amount: 180, rate: null, currency: 'XOF' }
+    ]
+  };
+  const series = [{ measure: 'rate', form: 'line', axis: 'secondary', aggregation: 'average' }];
+  const chart = await run({ chartType: 'combo', series }, dataset);
+  expect(chart.uiEvent).toMatchObject({
+    artifact: {
+      series: [
+        { key: 'value0', form: 'bar', axis: 'primary' },
+        { key: 'value1', form: 'line', axis: 'secondary' }
+      ],
+      data: [
+        { category: '2026-10', value0: 200, value1: 75 },
+        { category: '2026-11', value0: 180, value1: null }
+      ],
+      replay: { input: { series } }
+    }
+  });
+  expect(
+    (await run({ chartType: 'combo', series: [{ ...series[0], axis: 'primary' }] }, dataset)).modelResult
+  ).toMatchObject({ error: 'INCOMPATIBLE_UNITS' });
+});

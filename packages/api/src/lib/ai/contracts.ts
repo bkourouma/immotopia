@@ -365,9 +365,18 @@ export const ANALYSIS_CHART_TYPES = [
   'area',
   'stacked_area',
   'pie',
-  'donut'
+  'donut',
+  'scatter',
+  'combo'
 ] as const;
 export type AnalysisChartType = (typeof ANALYSIS_CHART_TYPES)[number];
+
+export interface AnalysisChartSeries {
+  key: string;
+  label: string;
+  form?: 'bar' | 'line';
+  axis?: 'primary' | 'secondary';
+}
 
 type MaintenanceQueryFilters = {
   propertyId?: string;
@@ -455,7 +464,7 @@ export type CopilotArtifact =
       chartType: AnalysisChartType;
       xKey: string;
       xLabel?: string;
-      series: { key: string; label: string }[];
+      series: AnalysisChartSeries[];
       data: Record<string, ArtifactCell>[];
     };
 

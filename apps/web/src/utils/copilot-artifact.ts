@@ -9,6 +9,7 @@ import {
   ARTIFACT_MAX_ROWS,
   ARTIFACT_MAX_SERIES,
   type ArtifactCell,
+  type AnalysisChartSeries,
   type ArtifactIndicator,
   type ArtifactDocumentBlock,
   type ArtifactProvenance,
@@ -194,13 +195,18 @@ export function sanitizeArtifact(raw: unknown): (CopilotArtifact & { canRefresh?
     const chartType = ANALYSIS_CHART_TYPES.find(x => x === raw.chartType);
     const xKey = str(raw.xKey);
     if (!chartType || !xKey || !Array.isArray(raw.series)) return null;
-    const series: { key: string; label: string }[] = [];
+    const series: AnalysisChartSeries[] = [];
     for (const s of raw.series) {
       if (!isRecord(s)) continue;
       const key = str(s.key);
       if (!key || series.some(x => x.key === key)) continue;
-      series.push({ key, label: typeof s.label === 'string' && s.label ? s.label : key });
-      if (series.length >= ARTIFACT_MAX_SERIES) break;
+      series.push({
+        key,
+        label: typeof s.label === 'string' && s.label ? s.label : key,
+        ...(chartType === 'combo' && (s.form === 'bar' || s.form === 'line') ? { form: s.form } : {}),
+        ...(chartType === 'combo' && s.axis === 'secondary' ? { axis: 'secondary' } : {})
+      });
+      if (series.length >= (chartType === 'combo' ? 12 : ARTIFACT_MAX_SERIES)) break;
     }
     if (series.length === 0) return null;
     const provenance = sanitizeProvenance(raw.provenance);

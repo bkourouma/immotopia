@@ -30,6 +30,9 @@ vi.mock('recharts', () => {
     return Stub;
   };
   return {
+    ComposedChart: box('composed-chart'),
+    ScatterChart: box('scatter-chart'),
+    Scatter: box('scatter'),
     AreaChart: box('area-chart'),
     Area: box('area'),
     ResponsiveContainer: box('container'),
@@ -222,6 +225,38 @@ describe('ArtifactPanel — rendus', () => {
     expect(await screen.findByTestId('artifact-chart')).toHaveAttribute('dir', 'rtl');
     expect(screen.getByTestId('rc-x')).toHaveAttribute('data-reversed', 'true');
     expect(screen.getByTestId('rc-y')).toHaveAttribute('data-orientation', 'right');
+  });
+
+  it('rend le combiné avec ses deux axes et les données du nuage sans les réduire', async () => {
+    const combo: CopilotArtifact = {
+      ...chart,
+      chartType: 'combo',
+      series: [
+        { key: 'v', label: 'Montant', form: 'bar' },
+        { key: 'taux', label: 'Taux', form: 'line', axis: 'secondary' }
+      ]
+    };
+    const { unmount } = render(
+      <LanguageProvider>
+        <ArtifactPanel artifacts={[combo]} selectedId={combo.id} onSelect={vi.fn()} onClose={vi.fn()} />
+      </LanguageProvider>
+    );
+    expect(await screen.findByTestId('rc-composed-chart')).toBeInTheDocument();
+    expect(screen.getAllByTestId('rc-y')).toHaveLength(2);
+    expect(screen.getByTestId('rc-bar')).toBeInTheDocument();
+    expect(screen.getByTestId('rc-line')).toBeInTheDocument();
+    unmount();
+    const scatter: CopilotArtifact = {
+      ...chart,
+      chartType: 'scatter',
+      data: [
+        { mois: 0, v: 7 },
+        { mois: 0, v: 3 }
+      ]
+    };
+    renderPanel([scatter]);
+    expect(await screen.findByTestId('rc-scatter')).toBeInTheDocument();
+    expect(screen.getAllByRole('rowheader', { name: '0' })).toHaveLength(2);
   });
 
   it('propose un sélecteur quand il y a plusieurs artefacts et ferme le panneau', () => {

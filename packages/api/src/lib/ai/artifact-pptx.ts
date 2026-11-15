@@ -64,6 +64,7 @@ export async function buildArtifactPowerPoint(artifact: CopilotArtifact): Promis
       const horizontal = chart.type === 'horizontal_bar';
       const parts = chart.type === 'pie' || chart.type === 'donut';
       const stacked = chart.type === 'stacked_bar' || chart.type === 'stacked_area';
+      const secondary = chart.series.some(series => series.axis === 'secondary');
       const nativeType =
         chart.type === 'donut'
           ? 'doughnut'
@@ -72,35 +73,74 @@ export async function buildArtifactPowerPoint(artifact: CopilotArtifact): Promis
             : chart.type === 'line' || chart.type === 'pie'
               ? chart.type
               : 'bar';
-      page.addChart(
-        pptx.ChartType[nativeType],
-        chart.series.map(series => ({
-          name: series.name,
-          labels: chart.labels,
-          // PptxGenJS ignores falsy workbook values. "0" emits a numeric zero in the embedded XML.
-          values: series.values.map(value => (value === 0 ? '0' : value))
-        })),
-        {
-          x: 0.55,
-          y: 1.15,
-          w: 12.2,
-          h: 5.6,
-          barDir: horizontal ? 'bar' : 'col',
-          barGrouping: stacked ? 'stacked' : 'clustered',
-          holeSize: 60,
-          displayBlanksAs: 'gap',
-          catAxisLabelFontSize: 10,
-          catAxisLabelFrequency: String(Math.max(1, Math.ceil(chart.labels.length / 14))),
-          catAxisLabelPos: 'low',
-          valAxisLabelFontSize: 10,
-          // The generator writes this OOXML orientation even though its types only list minMax.
-          catAxisOrientation: rtl || horizontal ? ('maxMin' as 'minMax') : 'minMax',
-          valAxisOrientation: rtl && horizontal ? ('maxMin' as 'minMax') : 'minMax',
-          legendPos: 'b',
-          showLegend: true,
-          chartColors: parts ? chartColors : chartColors.slice(0, chart.series.length)
-        }
-      );
+      // PptxGenJS ignores falsy workbook values. "0" emits a numeric zero in the embedded XML.
+      const encodeValues = (values: (number | null)[]) => values.map(value => (value === 0 ? '0' : value));
+      const datasets = chart.series.map(series => ({
+        name: series.name,
+        labels: chart.labels,
+        values: encodeValues(series.values)
+      }));
+      const options: PptxGenJS.IChartOpts = {
+        x: 0.55,
+        y: 1.15,
+        w: 12.2,
+        h: 5.6,
+        barDir: horizontal ? 'bar' : 'col',
+        barGrouping: stacked ? 'stacked' : 'clustered',
+        holeSize: 60,
+        displayBlanksAs: 'gap',
+        catAxisLabelFontSize: 10,
+        catAxisLabelFrequency: String(Math.max(1, Math.ceil(chart.labels.length / 14))),
+        catAxisLabelPos: 'low',
+        valAxisLabelFontSize: 10,
+        // The generator writes this OOXML orientation even though its types only list minMax.
+        catAxisOrientation: rtl || horizontal ? ('maxMin' as 'minMax') : 'minMax',
+        valAxisOrientation: rtl && horizontal ? ('maxMin' as 'minMax') : 'minMax',
+        legendPos: 'b',
+        showLegend: true,
+        chartColors: parts ? chartColors : chart.series.map((_, index) => chartColors[index % chartColors.length])
+      };
+      if (chart.type === 'scatter') {
+        const points = chart.xValues.flatMap((x, index) => {
+          const y = chart.series[0].values[index];
+          return x === null || y === null ? [] : [{ x, y }];
+        });
+        page.addChart(
+          pptx.ChartType.scatter,
+          [
+            { name: chart.xLabel, values: encodeValues(points.map(point => point.x)) },
+            { name: chart.series[0].name, values: encodeValues(points.map(point => point.y)) }
+          ],
+          {
+            ...options,
+            lineSize: 0,
+            lineDataSymbol: 'circle',
+            showLegend: false,
+            showCatAxisTitle: true,
+            catAxisTitle: chart.xLabel,
+            showValAxisTitle: true,
+            valAxisTitle: chart.series[0].name
+          }
+        );
+      } else if (chart.type === 'combo') {
+        const layers: PptxGenJS.IChartMulti[] = chart.series.map((series, index) => ({
+          type: series.form === 'line' ? pptx.ChartType.line : pptx.ChartType.bar,
+          data: [{ ...datasets[index], values: datasets[index].values as number[] }],
+          options: {
+            chartColors: [chartColors[index % chartColors.length]],
+            secondaryValAxis: series.axis === 'secondary',
+            secondaryCatAxis: series.axis === 'secondary'
+          }
+        }));
+        const comboOptions: PptxGenJS.IChartOpts = {
+          ...options,
+          ...(secondary ? { valAxes: [{}, {}], catAxes: [{}, { catAxisHidden: true }] } : {})
+        };
+        // Multi-type charts take their options as the second argument at runtime.
+        page.addChart(layers, comboOptions as unknown as PptxGenJS.OptsChartData[]);
+      } else {
+        page.addChart(pptx.ChartType[nativeType], datasets, options);
+      }
       if (chart.type === 'donut') {
         const total = chart.values.reduce((sum, value) => sum + value, 0);
         if (Number.isFinite(total)) {

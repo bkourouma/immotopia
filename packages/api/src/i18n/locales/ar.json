@@ -3176,5 +3176,9 @@
   "Une aire empilée exige des valeurs positives ou nulles.": "يتطلب المخطط المساحي المكدّس قيماً موجبة أو صفراً.",
   "Un graphique en parts exige de deux à huit catégories et des valeurs positives ou nulles.": "يتطلب مخطط الحصص فئتين إلى ثماني فئات وقيماً موجبة أو صفراً.",
   "Les valeurs d’une même catégorie et série sont agrégées par moyenne.": "يُحسب متوسط القيم في الفئة والسلسلة نفسيهما.",
-  "Les valeurs d’une même catégorie et série sont additionnées.": "تُجمع القيم في الفئة والسلسلة نفسيهما."
+  "Les valeurs d’une même catégorie et série sont additionnées.": "تُجمع القيم في الفئة والسلسلة نفسيهما.",
+  "Vérifiez les mesures et les axes demandés pour ce graphique.": "تحقق من المقاييس والمحاور المطلوبة لهذا المخطط.",
+  "Chaque axe doit utiliser une seule unité et une seule devise.": "يجب أن يستخدم كل محور وحدةً واحدة وعملةً واحدة.",
+  "Chaque point reprend les deux mesures de la même ligne source.": "تستخدم كل نقطة المقياسين من صف المصدر نفسه.",
+  "Les séries du graphique combiné utilisent leur agrégation et leur axe respectifs.": "تستخدم كل سلسلة في المخطط المركب طريقة التجميع والمحور المخصصين لها."
 }

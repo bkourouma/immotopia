@@ -6,8 +6,10 @@ export const chartColors = ['2164AC', '0B7666', 'A05019', '7746A3', 'AB365C', '5
 
 export function chartExportData(artifact: ChartArtifact) {
   const labels = artifact.data.map(row => String(row[artifact.xKey] ?? '—'));
-  const series = artifact.series.map(({ key, label: name }) => ({
+  const series = artifact.series.map(({ key, label: name, form, axis }) => ({
     name,
+    form,
+    axis,
     values: artifact.data.map(row => {
       const value = row[key];
       return typeof value === 'number' && Number.isFinite(value) ? value : null;
@@ -24,6 +26,14 @@ export function chartExportData(artifact: ChartArtifact) {
     values.some(value => value > 0);
   return {
     labels,
+    xLabel: artifact.xLabel ?? artifact.xKey,
+    xValues:
+      artifact.chartType === 'scatter'
+        ? artifact.data.map(row => {
+            const value = row[artifact.xKey];
+            return typeof value === 'number' && Number.isFinite(value) ? value : null;
+          })
+        : [],
     series,
     values,
     type: parts && !validParts ? ('bar' as const) : artifact.chartType,

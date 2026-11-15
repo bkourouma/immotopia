@@ -132,3 +132,39 @@ it('exporte les nouvelles formes dans les composants natifs PowerPoint et les fl
     expect(pdf.getPageCount()).toBeGreaterThan(0);
   }
 }, 90_000);
+
+it('garde les coordonnées numériques et les axes natifs du nuage et du combiné', async () => {
+  const scatter: ChartArtifact = {
+    ...pie,
+    chartType: 'scatter',
+    xKey: 'x',
+    xLabel: 'Surface',
+    data: [
+      { x: 0, xof: 2 },
+      { x: 0, xof: 4 },
+      { x: 3.4, xof: 8 }
+    ]
+  };
+  const combo: ChartArtifact = {
+    ...line,
+    chartType: 'combo',
+    series: [
+      { key: 'xof', label: 'Montant', form: 'bar', axis: 'primary' },
+      { key: 'eur', label: 'Taux', form: 'line', axis: 'secondary' }
+    ]
+  };
+  const [scatterXml, comboXml] = await Promise.all(
+    [scatter, combo].map(async artifact => {
+      const archive = await JSZip.loadAsync(buildPowerPoint(artifact, 'fr'));
+      await expect(buildArtifactPdf(artifact)).resolves.toBeInstanceOf(Buffer);
+      return archive.file('ppt/charts/chart1.xml')?.async('string');
+    })
+  );
+  expect(scatterXml).toContain('<c:scatterChart>');
+  expect(scatterXml).toMatch(
+    /<c:xVal>[\s\S]*?<c:pt idx="0"><c:v>0<\/c:v><\/c:pt><c:pt idx="1"><c:v>0<\/c:v><\/c:pt><c:pt idx="2"><c:v>3.4<\/c:v>/
+  );
+  expect(comboXml).toContain('<c:lineChart>');
+  expect(comboXml).toContain('<c:barChart>');
+  expect(comboXml?.match(/<c:valAx>/g)).toHaveLength(2);
+}, 45_000);

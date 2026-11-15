@@ -3176,5 +3176,9 @@
   "Une aire empilée exige des valeurs positives ou nulles.": "A stacked area chart requires nonnegative values.",
   "Un graphique en parts exige de deux à huit catégories et des valeurs positives ou nulles.": "A part-to-whole chart requires two to eight categories and nonnegative values.",
   "Les valeurs d’une même catégorie et série sont agrégées par moyenne.": "Values in the same category and series are averaged.",
-  "Les valeurs d’une même catégorie et série sont additionnées.": "Values in the same category and series are summed."
+  "Les valeurs d’une même catégorie et série sont additionnées.": "Values in the same category and series are summed.",
+  "Vérifiez les mesures et les axes demandés pour ce graphique.": "Check the measures and axes requested for this chart.",
+  "Chaque axe doit utiliser une seule unité et une seule devise.": "Each axis must use a single unit and a single currency.",
+  "Chaque point reprend les deux mesures de la même ligne source.": "Each point uses the two measures from the same source row.",
+  "Les séries du graphique combiné utilisent leur agrégation et leur axe respectifs.": "Each series in the combination chart uses its own aggregation and axis."
 }
