@@ -5,14 +5,9 @@ import { t } from '../../i18n';
 import { ConflictError, NotFoundError } from '../../middleware/error-middleware';
 import { prisma } from '../../utils/database';
 import { analysisSources } from './artifact-sources';
+import { buildTurnHistory } from './conversation-history';
 import { fallbackConversationTitle } from './conversation-title';
-import {
-  COPILOT_MAX_MESSAGE_CHARS,
-  COPILOT_MAX_MESSAGES,
-  COPILOT_MAX_TOTAL_CHARS,
-  type ChatRequest,
-  type CopilotSseEvent
-} from './contracts';
+import { COPILOT_MAX_MESSAGES, type ChatRequest, type CopilotSseEvent } from './contracts';
 
 export type AssistantOwner = { tenantId: string; ownerId: string };
 
@@ -330,24 +325,37 @@ export async function deleteConversation(owner: AssistantOwner, id: string) {
   if (result.count === 0) throw new NotFoundError();
 }
 
-function buildTurnHistory(
-  question: string,
-  recent: Array<{ question: string; response: string; outcome: string | null }>
+const TURN_ORDER = [{ startedAt: 'desc' }, { id: 'desc' }] satisfies Prisma.AssistantTurnOrderByWithRelationInput[];
+
+async function* previousSuccessfulTurns(
+  db: Prisma.TransactionClient,
+  owner: AssistantOwner,
+  conversationId: string,
+  scopeKey: string,
+  before?: { startedAt: Date; id: string }
 ) {
-  const messages: ChatRequest['messages'] = [{ role: 'user', content: question }];
-  let remaining = COPILOT_MAX_TOTAL_CHARS - question.length;
-  for (const row of recent) {
-    if (row.outcome !== 'end_turn') continue;
-    const answer = row.response.slice(0, COPILOT_MAX_MESSAGE_CHARS).trim();
-    const size = row.question.length + answer.length;
-    if (size > remaining) break;
-    messages.unshift(
-      { role: 'user', content: row.question },
-      ...(answer ? [{ role: 'assistant' as const, content: answer }] : [])
-    );
-    remaining -= size;
+  // Charge seulement les textes, par lots. Les résultats JSON et les fichiers
+  // sont lus séparément avec leurs propres plafonds.
+  const batchSize = 16;
+  for (;;) {
+    const rows = await db.assistantTurn.findMany({
+      where: {
+        ...owner,
+        conversationId,
+        conversation: { scopeKey, archived: false },
+        outcome: 'end_turn',
+        OR: before
+          ? [{ startedAt: { lt: before.startedAt } }, { startedAt: before.startedAt, id: { lt: before.id } }]
+          : undefined
+      },
+      orderBy: TURN_ORDER,
+      take: batchSize,
+      select: { id: true, startedAt: true, question: true, response: true }
+    });
+    yield* rows;
+    if (rows.length < batchSize) return;
+    before = rows.at(-1)!;
   }
-  return messages;
 }
 
 export async function beginAssistantTurn(
@@ -389,7 +397,7 @@ export async function beginAssistantTurn(
         where: { ...owner, conversationId },
         orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
         take: Math.floor((COPILOT_MAX_MESSAGES - 1) / 2),
-        select: { id: true, question: true, response: true, outcome: true, startedAt: true }
+        select: { id: true, outcome: true, startedAt: true }
       });
       const latest = recent[0];
       if (latest && latest.outcome === null && Date.now() - latest.startedAt.getTime() < 310_000) {
@@ -422,7 +430,10 @@ export async function beginAssistantTurn(
             take: 5
           })
         : [];
-      const messages = buildTurnHistory(input.question, recent);
+      const messages = await buildTurnHistory(
+        input.question,
+        previousSuccessfulTurns(tx, owner, conversationId, scopeKey)
+      );
       const related = await tx.assistantTurn.findMany({
         where: { ...owner, conversationId, outcome: 'end_turn', result: { not: Prisma.DbNull } },
         orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
@@ -462,8 +473,8 @@ export async function prepareRegeneration(owner: AssistantOwner, conversationId:
     take: Math.floor((COPILOT_MAX_MESSAGES + 1) / 2),
     select: {
       id: true,
+      startedAt: true,
       question: true,
-      response: true,
       outcome: true,
       responseRevision: true,
       focus: true,
@@ -484,7 +495,10 @@ export async function prepareRegeneration(owner: AssistantOwner, conversationId:
   return {
     revision: turn.responseRevision,
     focus: turn.focus as ChatRequest['focus'] | null,
-    messages: buildTurnHistory(turn.question, history),
+    messages: await buildTurnHistory(
+      turn.question,
+      previousSuccessfulTurns(prisma, owner, conversationId, scopeKey, turn)
+    ),
     analysisTables: storedAnalysisTables(
       history
         .filter(row => row.outcome === 'end_turn')

@@ -265,6 +265,75 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
   });
 
   describe('Assistant — historique privé', () => {
+    it('compacte les anciens échanges du fil pour le chat et la régénération en conservant le texte stocké', async () => {
+      const actor = await createTenantMemberUser(tenantA, 'assistant-long-thread', 'TEST_ASSISTANT_LONG_THREAD', [
+        'PROPERTIES_VIEW'
+      ]);
+      const base = `/api/tenants/${tenantA.id}/ai`;
+      const send = (payload: Record<string, unknown>, content: string) =>
+        request(app)
+          .post(base + '/chat')
+          .set(authed(actor))
+          .send({ ...payload, messages: [{ role: 'user', content }] });
+      const owner = { tenantId: tenantA.id, ownerId: actor.id };
+      mockFakeScript = [{ text: 'Réponse terminée.' }];
+      try {
+        const initialId = randomUUID();
+        const created = await send({ turnId: initialId }, 'Question initiale');
+        expect(created.status).toBe(200);
+        const initial = await prisma.assistantTurn.findFirstOrThrow({ where: { ...owner, id: initialId } });
+        const { conversationId, startedAt } = initial;
+        const other = await send({ turnId: randomUUID() }, 'Question privée d’un autre fil');
+        expect(other.status).toBe(200);
+        const seeded = Array.from({ length: 18 }, (_, index) => {
+          const answer = `Début de la réponse ${index} ${'a'.repeat(5_000)} Fin de la réponse ${index}.`;
+          return {
+            ...owner,
+            id: randomUUID(),
+            conversationId,
+            question: `Question historique ${index}`,
+            response: answer,
+            outcome: 'end_turn',
+            startedAt: new Date(startedAt.getTime() - 500 - Math.floor(index / 3))
+          };
+        });
+        await prisma.assistantTurn.createMany({
+          data: [
+            ...seeded,
+            {
+              ...seeded[0],
+              id: randomUUID(),
+              outcome: 'aborted',
+              question: 'Question interrompue',
+              response: 'Donnée interrompue'
+            }
+          ]
+        });
+
+        const verifyModelContext = () => {
+          const messages = JSON.stringify(mockProviderRequests.at(-1)?.messages);
+          expect(messages).toContain(seeded[0].response);
+          expect(messages).toContain('Début de la réponse 17');
+          expect(messages).not.toContain('Fin de la réponse 17');
+          expect(messages).not.toContain('Donnée interrompue');
+          expect(messages).not.toContain('Question privée d’un autre fil');
+          expect(messages).toContain('Question de suivi');
+        };
+        const turnId = randomUUID();
+        const continued = await send({ conversationId, turnId }, 'Question de suivi');
+        expect(continued.text).toContain('"reason":"end_turn"');
+        verifyModelContext();
+        const regenerated = await send({ conversationId, regenerateTurnId: turnId }, 'Brouillon ignoré');
+        expect(regenerated.text).toContain('"reason":"end_turn"');
+        verifyModelContext();
+
+        const old = await prisma.assistantTurn.findFirstOrThrow({ where: { ...owner, id: seeded[17].id } });
+        expect(old.response).toBe(seeded[17].response);
+      } finally {
+        mockFakeScript = undefined;
+      }
+    });
+
     it('diffuse le titre automatique avant la fin et conserve un titre choisi pendant la génération', async () => {
       const actor = await createTenantMemberUser(tenantA, 'assistant-title', 'TEST_ASSISTANT_TITLE', [
         'PROPERTIES_VIEW'

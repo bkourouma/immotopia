@@ -191,12 +191,20 @@ export async function runChat(input: RunChatInput): Promise<ChatDoneReason> {
   if (focus) for (const table of analysisSources(focus)) analysisTables.set(table.id, table);
   const sourceRefs = [...analysisTables.values()].map(table => ({
     id: table.id,
+    title: table.title.slice(0, 160),
     period: table.provenance?.period,
-    columns: table.columns.map(column => column.key)
+    source: table.provenance?.source.slice(0, 160),
+    columns: table.columns.map(column => column.key),
+    availableRows: table.rows.length,
+    truncated: table.truncated ?? false
   }));
   const screenContext = formatContextBlock(input.pageContext, input.now?.());
   const contextBlocks = [screenContext];
-  if (sourceRefs.length) contextBlocks.push('<analysis_sources>' + JSON.stringify(sourceRefs) + '</analysis_sources>');
+  if (sourceRefs.length) {
+    contextBlocks.push(
+      '<analysis_sources>' + JSON.stringify(sourceRefs).replace(/</g, '\\u003c') + '</analysis_sources>'
+    );
+  }
   if (input.proposeFollowUp && input.artifactReferences?.length) {
     contextBlocks.push(
       '<recent_results>' + JSON.stringify(input.artifactReferences).replace(/</g, '\\u003c') + '</recent_results>'
