@@ -22,6 +22,12 @@ const getSyndicate = vi.fn();
 const listSyndicateLots = vi.fn();
 const listChargeCalls = vi.fn();
 
+// Réglages des formulaires : défauts (aucun réglage d'agence), sans AuthProvider ni réseau.
+vi.mock(
+  '../../hooks/useFormFieldModes',
+  async () => (await import('../../__tests__/syndics/charges-form-modes-mock')).formModesModule
+);
+
 vi.mock('../../services/syndic-service', () => ({
   getSyndicate: (...args: unknown[]) => getSyndicate(...args),
   listSyndicateLots: (...args: unknown[]) => listSyndicateLots(...args),

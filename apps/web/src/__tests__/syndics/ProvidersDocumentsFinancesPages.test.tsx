@@ -15,6 +15,12 @@ import apiClient from '../../utils/api-client';
 // pas, et n'a donc plus sa place dans ce fichier partagé avec les pages
 // Prestataires et Documents.
 
+// Réglages des formulaires : défauts (aucun réglage d'agence), sans AuthProvider ni réseau.
+vi.mock(
+  '../../hooks/useFormFieldModes',
+  async () => (await import('../../__tests__/syndics/charges-form-modes-mock')).formModesModule
+);
+
 vi.mock('../../utils/api-client', () => ({
   __esModule: true,
   default: {

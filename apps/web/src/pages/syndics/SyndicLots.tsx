@@ -21,6 +21,7 @@ import {
 import { PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { LotTable } from '../../components/syndics/LotTable';
+import { useFormFieldModes } from '../../hooks/useFormFieldModes';
 import { listSyndicDeclarations } from '../../services/syndic-declared-payment-service';
 import { StatCard } from '../../components/primitives';
 import { listContacts } from '../../services/crm-service';
@@ -150,6 +151,8 @@ function buildContactLabel(contact: CrmContact): string {
 
 export const SyndicLots: React.FC = () => {
   const { message, modal } = App.useApp();
+  const lotFm = useFormFieldModes('syndic.lot');
+  const tenantFm = useFormFieldModes('syndic.lot-locataire');
 
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
   const navigate = useNavigate();
@@ -498,6 +501,8 @@ export const SyndicLots: React.FC = () => {
     }
 
     const values = await form.validateFields();
+    // Un champ masqué n'est pas envoyé (ses Form.Item ne sont pas rendus, donc
+    // absents de `values`) : la valeur enregistrée du lot reste inchangée.
     const payload = {
       ...values,
       ownerSince: values.ownerSince ? values.ownerSince.toISOString() : undefined
@@ -508,11 +513,13 @@ export const SyndicLots: React.FC = () => {
       if (editingLot) {
         const updatePayload: UpdateSyndicateLotRequest = {
           ...payload,
-          propertyId: values.propertyId || null,
-          ownerContactId: values.ownerContactId || null,
-          ownerSince: values.ownerSince ? values.ownerSince.toISOString() : null,
-          specialShares: values.specialShares ?? null
+          ownerContactId: values.ownerContactId || null
         };
+        if (lotFm.isVisible('propertyId')) updatePayload.propertyId = values.propertyId || null;
+        if (lotFm.isVisible('ownerSince')) {
+          updatePayload.ownerSince = values.ownerSince ? values.ownerSince.toISOString() : null;
+        }
+        if (lotFm.isVisible('specialShares')) updatePayload.specialShares = values.specialShares ?? null;
         const updated = await updateSyndicateLot(effectiveTenantId, syndicId, editingLot.id, updatePayload);
         message.success(t('Lot mis à jour'));
         showLotWarnings(updated?.warnings);
@@ -605,9 +612,9 @@ export const SyndicLots: React.FC = () => {
       await addLotTenantAssignment(effectiveTenantId, syndicId, tenantLot.id, {
         tenantId: values.tenantId,
         startDate: values.startDate.toISOString(),
-        endDate: values.endDate ? values.endDate.toISOString() : undefined,
-        leaseId: values.leaseId || undefined,
-        notes: values.notes || undefined
+        endDate: tenantFm.isVisible('endDate') && values.endDate ? values.endDate.toISOString() : undefined,
+        leaseId: tenantFm.isVisible('leaseId') ? values.leaseId || undefined : undefined,
+        notes: tenantFm.isVisible('notes') ? values.notes || undefined : undefined
       });
       message.success(t('Locataire assigné au lot'));
       setTenantOpen(false);
@@ -745,16 +752,22 @@ export const SyndicLots: React.FC = () => {
         <Form form={form} layout="vertical" initialValues={{ lotType: 'APARTMENT' }}>
           {/* Le bien d'abord : il remplit le type et le numéro, et propose le
               propriétaire. Saisi après, il écraserait ces champs. */}
-          <Form.Item label={t('Bien lié')} name="propertyId">
-            <Select
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              placeholder={t('Sélectionner un bien existant')}
-              options={lotPropertyOptions}
-              onChange={handlePropertyChange}
-            />
-          </Form.Item>
+          {lotFm.isVisible('propertyId') && (
+            <Form.Item
+              label={t('Bien lié')}
+              name="propertyId"
+              rules={[{ required: lotFm.isRequired('propertyId', false), message: t('Ce champ est obligatoire') }]}
+            >
+              <Select
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                placeholder={t('Sélectionner un bien existant')}
+                options={lotPropertyOptions}
+                onChange={handlePropertyChange}
+              />
+            </Form.Item>
+          )}
           <Form.Item label={t('Propriétaire CRM')} name="ownerContactId">
             <Select
               allowClear
@@ -798,15 +811,29 @@ export const SyndicLots: React.FC = () => {
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
-              <Form.Item label={t('Tantièmes spéciaux')} name="specialShares">
-                <InputNumber min={1} style={{ width: '100%' }} />
-              </Form.Item>
+              {lotFm.isVisible('specialShares') && (
+                <Form.Item
+                  label={t('Tantièmes spéciaux')}
+                  name="specialShares"
+                  rules={[
+                    { required: lotFm.isRequired('specialShares', false), message: t('Ce champ est obligatoire') }
+                  ]}
+                >
+                  <InputNumber min={1} style={{ width: '100%' }} />
+                </Form.Item>
+              )}
             </Col>
           </Row>
 
-          <Form.Item label={t('Propriétaire depuis le')} name="ownerSince">
-            <DatePicker style={{ width: '100%' }} format={dateFormat('short')} />
-          </Form.Item>
+          {lotFm.isVisible('ownerSince') && (
+            <Form.Item
+              label={t('Propriétaire depuis le')}
+              name="ownerSince"
+              rules={[{ required: lotFm.isRequired('ownerSince', false), message: t('Ce champ est obligatoire') }]}
+            >
+              <DatePicker style={{ width: '100%' }} format={dateFormat('short')} />
+            </Form.Item>
+          )}
         </Form>
       </Modal>
 
@@ -910,17 +937,47 @@ export const SyndicLots: React.FC = () => {
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
-              <Form.Item label={t('Date de fin')} name="endDate">
-                <DatePicker style={{ width: '100%' }} format={dateFormat('short')} />
-              </Form.Item>
+              {tenantFm.isVisible('endDate') && (
+                <Form.Item
+                  label={t('Date de fin')}
+                  name="endDate"
+                  rules={[{ required: tenantFm.isRequired('endDate', false), message: t('Ce champ est obligatoire') }]}
+                >
+                  <DatePicker style={{ width: '100%' }} format={dateFormat('short')} />
+                </Form.Item>
+              )}
             </Col>
           </Row>
-          <Form.Item label={t('Référence bail (optionnel)')} name="leaseId">
-            <Input />
-          </Form.Item>
-          <Form.Item label={t('Notes')} name="notes">
-            <Input.TextArea rows={3} />
-          </Form.Item>
+          {tenantFm.isVisible('leaseId') && (
+            <Form.Item
+              label={tenantFm.isRequired('leaseId', false) ? t('Référence bail') : t('Référence bail (optionnel)')}
+              name="leaseId"
+              rules={[
+                {
+                  required: tenantFm.isRequired('leaseId', false),
+                  whitespace: tenantFm.isRequired('leaseId', false),
+                  message: t('Ce champ est obligatoire')
+                }
+              ]}
+            >
+              <Input />
+            </Form.Item>
+          )}
+          {tenantFm.isVisible('notes') && (
+            <Form.Item
+              label={t('Notes')}
+              name="notes"
+              rules={[
+                {
+                  required: tenantFm.isRequired('notes', false),
+                  whitespace: tenantFm.isRequired('notes', false),
+                  message: t('Ce champ est obligatoire')
+                }
+              ]}
+            >
+              <Input.TextArea rows={3} />
+            </Form.Item>
+          )}
         </Form>
       </Modal>
     </>

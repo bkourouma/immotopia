@@ -11,6 +11,12 @@ import type { MandateDto } from '../../services/direct-debit-service';
  * (`MandateActions`). L'API ne limite pas ce téléchargement au brouillon.
  */
 
+// Réglages des formulaires : défauts (aucun réglage d'agence), sans AuthProvider ni réseau.
+vi.mock(
+  '../../hooks/useFormFieldModes',
+  async () => (await import('../../__tests__/syndics/charges-form-modes-mock')).formModesModule
+);
+
 vi.mock('../../services/syndic-direct-debit-service', () => ({
   activateSyndicMandate: vi.fn(),
   downloadSyndicAuthorizationPdf: vi.fn(),

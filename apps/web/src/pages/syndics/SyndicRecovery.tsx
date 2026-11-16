@@ -37,6 +37,7 @@ import {
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { computeLatePenaltyPreview, MAX_MONTHLY_PENALTY_RATE } from '../../utils/syndic-penalty';
 import { t } from '../../i18n/t';
+import { useFormFieldModes } from '../../hooks/useFormFieldModes';
 import { HelpSectionTitle } from '../../help';
 import { dateFormat } from '../../i18n/format';
 import { reminderExclusionLabel, reminderFailureLabel } from '../../components/syndics/reminder-failure';
@@ -100,6 +101,8 @@ export const SyndicRecovery: React.FC = () => {
   const [waiveOpen, setWaiveOpen] = useState(false);
   const [selectedPenalty, setSelectedPenalty] = useState<LatePaymentPenalty | null>(null);
 
+  const fmPenalty = useFormFieldModes('syndic.penalite');
+  const fmSchedule = useFormFieldModes('syndic.echeancier');
   const [manualForm] = Form.useForm();
   const [penaltyForm] = Form.useForm();
   const [scheduleForm] = Form.useForm();
@@ -250,7 +253,7 @@ export const SyndicRecovery: React.FC = () => {
     try {
       await createLatePaymentPenalty(effectiveTenantId, syndicId, values.chargeCallId, {
         penaltyRate: values.penaltyRate,
-        daysLate: values.daysLate
+        ...(fmPenalty.isVisible('daysLate') ? { daysLate: values.daysLate } : {})
       });
       message.success(t('Pénalité appliquée'));
       setPenaltyOpen(false);
@@ -289,7 +292,9 @@ export const SyndicRecovery: React.FC = () => {
     setSubmitting(true);
     try {
       await createPaymentSchedule(effectiveTenantId, syndicId, values.chargeCallId, {
-        agreedAt: values.agreedAt ? values.agreedAt.toISOString() : undefined,
+        ...(fmSchedule.isVisible('agreedAt')
+          ? { agreedAt: values.agreedAt ? values.agreedAt.toISOString() : undefined }
+          : {}),
         totalAmount: values.totalAmount,
         instalments: (values.instalments || []).map((item: any) => ({
           dueDate: item.dueDate.toISOString(),
@@ -481,9 +486,22 @@ export const SyndicRecovery: React.FC = () => {
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
-              <Form.Item label={t('Jours de retard (optionnel)')} name="daysLate">
-                <InputNumber min={1} style={{ width: '100%' }} />
-              </Form.Item>
+              {fmPenalty.isVisible('daysLate') ? (
+                <Form.Item
+                  label={
+                    fmPenalty.isRequired('daysLate', false) ? t('Jours de retard') : t('Jours de retard (optionnel)')
+                  }
+                  name="daysLate"
+                  rules={[
+                    {
+                      required: fmPenalty.isRequired('daysLate', false),
+                      message: t('Les jours de retard sont obligatoires')
+                    }
+                  ]}
+                >
+                  <InputNumber min={1} style={{ width: '100%' }} />
+                </Form.Item>
+              ) : null}
             </Col>
           </Row>
           <Form.Item noStyle shouldUpdate>
@@ -548,9 +566,20 @@ export const SyndicRecovery: React.FC = () => {
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
-              <Form.Item label={t('Date accord (optionnel)')} name="agreedAt">
-                <DatePicker style={{ width: '100%' }} format={dateFormat('short')} />
-              </Form.Item>
+              {fmSchedule.isVisible('agreedAt') ? (
+                <Form.Item
+                  label={fmSchedule.isRequired('agreedAt', false) ? t('Date accord') : t('Date accord (optionnel)')}
+                  name="agreedAt"
+                  rules={[
+                    {
+                      required: fmSchedule.isRequired('agreedAt', false),
+                      message: t('La date d accord est obligatoire')
+                    }
+                  ]}
+                >
+                  <DatePicker style={{ width: '100%' }} format={dateFormat('short')} />
+                </Form.Item>
+              ) : null}
             </Col>
           </Row>
 

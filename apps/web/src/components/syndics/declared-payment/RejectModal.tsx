@@ -100,7 +100,7 @@ export const RejectModal: React.FC<RejectModalProps> = ({
         <Descriptions column={1} size="small" bordered>
           <Descriptions.Item label={t('Déclarant')}>{declaration.declaredBy.name}</Descriptions.Item>
           <Descriptions.Item label={t('Payeur')}>{formatPhone(declaration.payerPhone)}</Descriptions.Item>
-          <Descriptions.Item label={t('Référence')}>{declaration.transactionReference}</Descriptions.Item>
+          <Descriptions.Item label={t('Référence')}>{declaration.transactionReference ?? '—'}</Descriptions.Item>
           <Descriptions.Item label={t('Montant déclaré')}>{formatMoney(declaration.amount)}</Descriptions.Item>
           <Descriptions.Item label={t('Date et heure déclarées')}>
             {formatDateTime(declaration.paidAt)}
@@ -125,7 +125,12 @@ export const RejectModal: React.FC<RejectModalProps> = ({
             placeholder={t('Choisir un motif')}
             value={reason}
             onChange={value => setReason(value)}
-            options={REJECT_REASON_OPTIONS}
+            // « Référence déjà utilisée » n'a pas de sens pour une déclaration sans référence.
+            options={
+              declaration.transactionReference
+                ? REJECT_REASON_OPTIONS
+                : REJECT_REASON_OPTIONS.filter(option => option.value !== 'REFERENCE_USED')
+            }
           />
         </div>
 

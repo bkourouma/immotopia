@@ -20,6 +20,12 @@ const listSyndicOnlineCheckouts = vi.fn();
 const listSyndicGatewayPayouts = vi.fn();
 const listSyndicReceivingNumbers = vi.fn();
 
+// Réglages des formulaires : défauts (aucun réglage d'agence), sans AuthProvider ni réseau.
+vi.mock(
+  '../../../hooks/useFormFieldModes',
+  async () => (await import('../../../__tests__/syndics/charges-form-modes-mock')).formModesModule
+);
+
 vi.mock('../../../services/syndic-online-payment-service', () => ({
   listSyndicOnlineCheckouts: (...a: unknown[]) => listSyndicOnlineCheckouts(...a),
   verifySyndicOnlineCheckout: vi.fn(),

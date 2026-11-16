@@ -15,6 +15,7 @@ import {
 import { saveBlob } from '../../../utils/save-blob';
 import { apiErrorMessage } from '../../rental/direct-debit/direct-debit-shared';
 import { t } from '../../../i18n/t';
+import { useFormFieldModes } from '../../../hooks/useFormFieldModes';
 
 interface SyndicMandateActionsProps {
   tenantId: string;
@@ -44,6 +45,7 @@ export const SyndicMandateActions: React.FC<SyndicMandateActionsProps> = ({
   onToggleSignature
 }) => {
   const { message } = App.useApp();
+  const fm = useFormFieldModes('syndic.mandat-prelevement');
   const [dialog, setDialog] = useState<Dialog>(null);
   const [busy, setBusy] = useState(false);
   const [signedAt, setSignedAt] = useState<Dayjs | null>(null);
@@ -196,9 +198,10 @@ export const SyndicMandateActions: React.FC<SyndicMandateActionsProps> = ({
     const updated = await run(
       () =>
         updateSyndicMandate(tenantId, syndicId, mandate.id, {
-          maxAmount: values.maxAmount ?? null,
-          collectionDay: values.collectionDay ?? null,
-          notes: values.notes?.trim() ? values.notes.trim() : null
+          // Un champ masqué n'est pas envoyé : le mandat garde sa valeur actuelle.
+          ...(fm.isVisible('maxAmount') ? { maxAmount: values.maxAmount ?? null } : {}),
+          ...(fm.isVisible('collectionDay') ? { collectionDay: values.collectionDay ?? null } : {}),
+          ...(fm.isVisible('notes') ? { notes: values.notes?.trim() ? values.notes.trim() : null } : {})
         }),
       t('Mandat mis à jour'),
       t('Erreur lors de la mise à jour du mandat')
@@ -359,15 +362,33 @@ export const SyndicMandateActions: React.FC<SyndicMandateActionsProps> = ({
           message={t("L'IBAN ne se modifie pas : pour changer de compte, révoquez ce mandat puis créez-en un nouveau.")}
         />
         <Form form={editForm} name="syndicMandateEdit" layout="vertical">
-          <Form.Item name="maxAmount" label={t('Plafond par prélèvement (FCFA)')}>
-            <InputNumber min={1} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item name="collectionDay" label={t('Jour de collecte (1 à 28)')}>
-            <InputNumber min={1} max={28} precision={0} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item name="notes" label={t('Notes')}>
-            <Input.TextArea rows={3} />
-          </Form.Item>
+          {fm.isVisible('maxAmount') && (
+            <Form.Item
+              name="maxAmount"
+              label={t('Plafond par prélèvement (FCFA)')}
+              rules={[{ required: fm.isRequired('maxAmount', false), message: t('Champ obligatoire') }]}
+            >
+              <InputNumber min={1} style={{ width: '100%' }} />
+            </Form.Item>
+          )}
+          {fm.isVisible('collectionDay') && (
+            <Form.Item
+              name="collectionDay"
+              label={t('Jour de collecte (1 à 28)')}
+              rules={[{ required: fm.isRequired('collectionDay', false), message: t('Champ obligatoire') }]}
+            >
+              <InputNumber min={1} max={28} precision={0} style={{ width: '100%' }} />
+            </Form.Item>
+          )}
+          {fm.isVisible('notes') && (
+            <Form.Item
+              name="notes"
+              label={t('Notes')}
+              rules={[{ required: fm.isRequired('notes', false), whitespace: true, message: t('Champ obligatoire') }]}
+            >
+              <Input.TextArea rows={3} />
+            </Form.Item>
+          )}
         </Form>
       </Modal>
     </>

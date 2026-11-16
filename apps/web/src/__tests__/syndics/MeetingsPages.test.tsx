@@ -8,6 +8,8 @@ import { SyndicMeetings } from '../../pages/syndics/SyndicMeetings';
 import { SyndicMeetingDetail } from '../../pages/syndics/SyndicMeetingDetail';
 import apiClient from '../../utils/api-client';
 
+vi.mock('../../hooks/useFormFieldModes', async () => (await import('./charges-form-modes-mock')).formModesModule);
+
 vi.mock('../../utils/api-client', () => ({
   __esModule: true,
   default: {

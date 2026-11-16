@@ -4,6 +4,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { EditOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { MoneyValue, Table } from '../../primitives';
+import { useFormFieldModes } from '../../../hooks/useFormFieldModes';
 import { LinkedProviderInvoices } from '../LinkedProviderInvoices';
 import type { Property } from '../../../types/property-types';
 import type { ServiceProvider, SyndicateIncident, SyndicateLot } from '../../../types/syndic-types';
@@ -90,6 +91,7 @@ export const IncidentsTab: React.FC<IncidentsTabProps> = ({
   onEdit,
   onAddImputation
 }) => {
+  const providerFm = useFormFieldModes('syndic.incident-modification');
   const providersById = useMemo(() => new Map(providers.map(provider => [provider.id, provider])), [providers]);
 
   const rows = useMemo<IncidentRow[]>(
@@ -222,20 +224,24 @@ export const IncidentsTab: React.FC<IncidentsTabProps> = ({
       width: 200,
       // Le rendu est un sélecteur : on exporte le nom du prestataire assigné.
       exportValue: (row: IncidentRow) => row.providerName,
-      render: (_, row) => (
-        <Select
-          allowClear
-          showSearch
-          style={{ minWidth: 180 }}
-          placeholder={t('Aucun prestataire')}
-          optionFilterProp="label"
-          value={row.providerId || undefined}
-          loading={assigningProviderIncidentId === row.id}
-          disabled={assigningProviderIncidentId === row.id}
-          options={providerOptions}
-          onChange={value => onAssignProvider(row.id, value)}
-        />
-      )
+      render: (_, row) =>
+        // Champ masqué par l'agence : le prestataire reste affiché mais n'est plus modifiable ici.
+        !providerFm.isVisible('providerId') ? (
+          <Typography.Text>{row.providerName || '—'}</Typography.Text>
+        ) : (
+          <Select
+            allowClear={!providerFm.isRequired('providerId', false)}
+            showSearch
+            style={{ minWidth: 180 }}
+            placeholder={t('Aucun prestataire')}
+            optionFilterProp="label"
+            value={row.providerId || undefined}
+            loading={assigningProviderIncidentId === row.id}
+            disabled={assigningProviderIncidentId === row.id}
+            options={providerOptions}
+            onChange={value => onAssignProvider(row.id, value)}
+          />
+        )
     },
     {
       title: t('Actions'),

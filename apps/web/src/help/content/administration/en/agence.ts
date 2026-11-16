@@ -1351,6 +1351,67 @@ const entries: HelpEntry[] = [
     ],
     related: [{ label: 'Activity log', helpId: 'administration.agence.activite' }],
     keywords: ['details', 'changes', 'before after', 'IP address', 'browser']
+  },
+  // ------------------------------------------------------------------ Forms
+  {
+    id: 'administration.agence.formulaires',
+    kind: 'page',
+    title: 'Forms',
+    summary:
+      'Choose, field by field, what is required, optional or hidden in your agency data-entry forms (Condominium management module).',
+    purpose:
+      'Each form has fields your agency can make required, optional or hidden to match the way it works. For example, the transaction reference of a declared payment can become optional. Data-entry screens and the co-owner portal apply these choices as soon as they are saved.',
+    howToRead: {
+      statuses: [
+        {
+          value: 'REQUIRED',
+          label: 'Required',
+          description: 'The field must be filled in: saving is refused without it.'
+        },
+        { value: 'OPTIONAL', label: 'Optional', description: 'The field is shown and may stay empty.' },
+        { value: 'HIDDEN', label: 'Hidden', description: 'The field no longer appears and its value is not saved.' }
+      ],
+      notes: [
+        'A greyed-out field marked « Setting controlled by ImmoTopia » is a conditional field: only ImmoTopia can allow it to be changed for your agency.',
+        'Some fields cannot be hidden; the « Hidden » option is then not offered.',
+        'Each field shows what the setting changes or breaks: read it before editing.'
+      ]
+    },
+    steps: [
+      { title: 'Find the form', detail: 'Use the search box, or open the module then the form you want.' },
+      { title: 'Pick a mode per field', detail: 'Select Required, Optional or Hidden.' },
+      { title: 'Save the form', detail: 'Each form is saved separately with its own button.' },
+      {
+        title: 'Go back to the default if needed',
+        detail: 'Reset a field to its default mode: the original behaviour returns.'
+      }
+    ],
+    consequences: [
+      'The change applies to every user of the agency, on data-entry screens and on the co-owner portal.',
+      'A hidden field is no longer saved: a value entered before hiding stays in the database but is no longer fed.',
+      'With no saved setting, behaviour stays as it is today.',
+      'Without the right to edit agency settings, the page is read-only.'
+    ],
+    faq: [
+      {
+        q: 'Why can I not change some fields?',
+        a: 'They are conditional fields: ImmoTopia must first allow their setting for your agency. Contact support and explain your need.'
+      },
+      {
+        q: 'Can I undo a setting?',
+        a: 'Yes, put the field back to its default mode and save: the original behaviour returns.'
+      },
+      {
+        q: 'If ImmoTopia locks a field again, do I lose my setting?',
+        a: 'The field goes back to its default mode, but your setting is kept and takes effect again if the field is unlocked.'
+      }
+    ],
+    permissions: {
+      roles: ['Agency administrator'],
+      note: 'Viewing requires the right to view agency settings; saving requires the right to edit them.'
+    },
+    related: [{ label: 'Agency settings', helpId: 'administration.agence.parametres' }],
+    keywords: ['forms', 'field', 'required', 'optional', 'hidden', 'transaction reference', 'settings', 'data entry']
   }
 ];
 

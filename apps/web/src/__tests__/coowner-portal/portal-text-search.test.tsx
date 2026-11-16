@@ -20,6 +20,12 @@ const listMyReceipts = vi.fn();
 const getOnlinePaymentAvailability = vi.fn();
 const getDeclaredAvailability = vi.fn();
 
+// Réglages des formulaires : défauts (aucun réglage d'agence), sans AuthProvider ni réseau.
+vi.mock(
+  '../../hooks/useFormFieldModes',
+  async () => (await import('../../__tests__/syndics/charges-form-modes-mock')).formModesModule
+);
+
 vi.mock('../../services/coowner-portal-service', async () => {
   const actual = await vi.importActual<typeof import('../../services/coowner-portal-service')>(
     '../../services/coowner-portal-service'
