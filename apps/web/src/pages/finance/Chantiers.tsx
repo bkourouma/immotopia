@@ -71,6 +71,17 @@ const ACCESSEURS = {
   cout: (c: ConstructionSite) => c.actualCost
 };
 
+/**
+ * Astérisque des champs exigés par le contrat, posé après le libellé (hors du
+ * `<label>`, dont le texte reste intact) ; `aria-required` porte l'information
+ * aux lecteurs d'écran.
+ */
+const MarqueObligatoire: React.FC = () => (
+  <span className="text-red-500" aria-hidden="true">
+    *
+  </span>
+);
+
 function dateCourte(iso: string | null): string {
   return iso ? new Date(iso).toLocaleDateString(activeLocale()) : '—';
 }
@@ -98,6 +109,9 @@ export const Chantiers: React.FC = () => {
   const [bienChoisi, setBienChoisi] = useState<{ value: string; label: string } | undefined>(undefined);
   const [dateDebut, setDateDebut] = useState<Dayjs | null>(null);
   const [dateFinPrevue, setDateFinPrevue] = useState<Dayjs | null>(null);
+  // Passe à vrai au premier essai d'envoi : les champs obligatoires restés
+  // vides s'affichent alors en erreur, pas avant.
+  const [essaiEnvoi, setEssaiEnvoi] = useState(false);
 
   const {
     data,
@@ -187,6 +201,7 @@ export const Chantiers: React.FC = () => {
     setRechercheBien('');
     setDateDebut(null);
     setDateFinPrevue(null);
+    setEssaiEnvoi(false);
   };
 
   const ouvrirCreation = () => {
@@ -199,17 +214,29 @@ export const Chantiers: React.FC = () => {
   };
 
   const validerCreation = async () => {
+    // Nom, zone et date de début : les trois champs que le contrat exige
+    // (`required: [name, zone, startDate]`), contrôlés avant l'envoi plutôt
+    // que laissés à un refus 400 de l'API.
+    setEssaiEnvoi(true);
     if (!nom.trim()) {
       message.error(t('Le nom du chantier est obligatoire.'));
+      return;
+    }
+    if (!zone.trim()) {
+      message.error(t('La zone du chantier est obligatoire.'));
+      return;
+    }
+    if (!dateDebut) {
+      message.error(t('La date de début du chantier est obligatoire.'));
       return;
     }
     setCreationEnCours(true);
     try {
       const chantier = await createConstructionSite(tenantId, {
         name: nom.trim(),
-        zone: zone.trim() || undefined,
+        zone: zone.trim(),
         propertyId,
-        startDate: dateDebut ? dateDebut.format('YYYY-MM-DD') : undefined,
+        startDate: dateDebut.format('YYYY-MM-DD'),
         plannedEndDate: dateFinPrevue ? dateFinPrevue.format('YYYY-MM-DD') : undefined
       });
       await queryClient.invalidateQueries({ queryKey: entityKeyPrefix('construction-sites', tenantId) });
@@ -314,18 +341,22 @@ export const Chantiers: React.FC = () => {
       >
         <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
           <div>
-            <label htmlFor="chantier-nom">{t('Nom du chantier')}</label>
+            <label htmlFor="chantier-nom">{t('Nom du chantier')}</label> <MarqueObligatoire />
             <Input
               id="chantier-nom"
+              aria-required
+              status={essaiEnvoi && !nom.trim() ? 'error' : undefined}
               value={nom}
               onChange={event => setNom(event.target.value)}
               placeholder={t('Ex. Villa duplex — Angré Centre')}
             />
           </div>
           <div>
-            <label htmlFor="chantier-zone">{t('Zone')}</label>
+            <label htmlFor="chantier-zone">{t('Zone')}</label> <MarqueObligatoire />
             <Input
               id="chantier-zone"
+              aria-required
+              status={essaiEnvoi && !zone.trim() ? 'error' : undefined}
               value={zone}
               onChange={event => setZone(event.target.value)}
               placeholder={t('Ex. Angré, Cocody')}
@@ -353,9 +384,11 @@ export const Chantiers: React.FC = () => {
           </div>
           <Space style={{ width: '100%' }} size="middle">
             <div style={{ flex: 1 }}>
-              <label htmlFor="chantier-debut">{t('Début')}</label>
+              <label htmlFor="chantier-debut">{t('Début')}</label> <MarqueObligatoire />
               <DatePicker
                 id="chantier-debut"
+                aria-required
+                status={essaiEnvoi && !dateDebut ? 'error' : undefined}
                 style={{ width: '100%' }}
                 format="DD/MM/YYYY"
                 value={dateDebut}

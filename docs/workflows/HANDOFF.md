@@ -17,6 +17,18 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 
 Modèle de section : voir le bloc « Modèle de section » plus bas.
 
+## fix/chantier-zone-date-obligatoires — 2026-11-16
+
+**État** — Branche depuis `origin/main` `a8720c3a`, poussée, PR vers `main` (fusion par l'utilisateur). Rien déployé.
+
+**Fait** — Formulaire « Nouveau chantier » (`apps/web/src/pages/finance/Chantiers.tsx`) aligné sur le contrat `CreateConstructionSiteRequest` (`required: [name, zone, startDate]`, `specs/017-finance-fournisseurs-chantiers/contracts/openapi.yaml`) : zone et date de début marquées obligatoires (astérisque, `aria-required`, champ en erreur après un essai), message clair avant l'envoi au lieu d'un 400. Type de `createConstructionSite` resserré (zone et startDate requis). API inchangée. Deux clés traduites en/ar dans `locales/*/finance.json`. Test web ajouté dans `__tests__/finance/chantiers.test.tsx`.
+
+**Vérifié** — Bloc « Chantiers — liste et création » (6 tests) vert ; typecheck web 0 erreur ; lint web 0 erreur.
+
+**Pas vérifié** — Pas de recette navigateur ; suite web complète non relancée.
+
+**Pièges** — `npm run i18n:extract` sur `main` ramasse de la dérive sans rapport (HeaderActions, clés « Seuil budgétaire… » vides) : ne garder que ses propres clés.
+
 ## orch/2026-11-14-aide-interne — 2026-11-14
 
 **État** — PR 222. Branche d'intégration `orch/2026-11-14-aide-interne` depuis `origin/main` `af33a6da`, poussée ; PR vers `main` (fusion par l'utilisateur). Rien déployé ; migration `20261114100000_help_feedback` (additive : une table) appliquée sur aucune base. Orchestration chef-orchestre : lots A, 0/0b, C1 à C7, Z1 à Z3 ; suivi local dans `.orchestration/2026-11-14-aide-interne/suivi.md`.

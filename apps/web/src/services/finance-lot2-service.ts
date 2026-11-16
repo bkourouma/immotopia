@@ -243,7 +243,9 @@ export async function listConstructionSites(
 
 export async function createConstructionSite(
   tenantId: string,
-  params: { name: string; zone?: string; propertyId?: string; startDate?: string; plannedEndDate?: string }
+  // `zone` et `startDate` sont exigés par le contrat (`CreateConstructionSiteRequest`,
+  // `required: [name, zone, startDate]`) : l'API répond 400 sans eux.
+  params: { name: string; zone: string; propertyId?: string; startDate: string; plannedEndDate?: string }
 ): Promise<ConstructionSite> {
   const response = await apiClient.post<ApiResponse<ConstructionSite>>(`${base(tenantId)}/sites`, params);
   return response.data.data;
