@@ -1,6 +1,14 @@
 import { z } from 'zod';
 import { uuidPathParamSchema } from './schemas';
 
+export const budgetAlertThreshold = z.number().int().min(1).max(2147483647);
+export const siteBudgetThresholdInput = z
+  .object({
+    thresholdPercent: budgetAlertThreshold.nullable(),
+    expectedThresholdPercent: z.number().int().min(-2147483648).max(2147483647).nullable()
+  })
+  .strict();
+
 /**
  * Validation Zod des cinq points d'entrée « pilotage » du lot 3 : avancement
  * physique, alerte de dépassement, tableau de bord.

@@ -4,8 +4,7 @@
  * ni les brouillons d'états des lieux, ni le téléphone d'un payeur, ni les
  * hypothèses de rendement d'un autre.
  *
- * Ce module ne dépend que de `active-tenant.ts` (lui-même sans dépendance) :
- * il peut être importé par `AuthContext` et `api-client` sans charger les
+ * Il peut être importé par `AuthContext` et `api-client` sans charger les
  * écrans ni créer de cycle. Chaque module de stockage y prend sa clé (ou son
  * préfixe) et c'est ici que la purge les retrouve : une clé ajoutée ailleurs
  * sans passer par ce fichier ne serait pas purgée.
@@ -21,6 +20,8 @@
  */
 
 import { ACTIVE_TENANT_STORAGE_KEY } from './active-tenant';
+
+export const PERSONAL_DATA_PURGED_EVENT = 'immotopia:personal-data-purged';
 
 /** Brouillons d'états des lieux : une clé par état des lieux. */
 export const INSPECTION_DRAFT_KEY_PREFIX = 'immotopia:inspection-draft:';
@@ -49,14 +50,13 @@ function isPersonalKey(key: string): boolean {
 /** Supprime toutes les clés personnelles. Ne lève jamais (stockage refusé : rien à purger). */
 export function purgePersonalLocalData(): void {
   try {
+    window.dispatchEvent(new Event(PERSONAL_DATA_PURGED_EVENT));
     const storage = window.localStorage;
-    // Clés relevées d'abord : supprimer pendant le parcours décalerait les index.
-    const keys: string[] = [];
-    for (let i = 0; i < storage.length; i += 1) {
+    // Lire en sens inverse pour conserver les index des clés à traiter.
+    for (let i = storage.length - 1; i >= 0; i -= 1) {
       const key = storage.key(i);
-      if (key !== null && isPersonalKey(key)) keys.push(key);
+      if (key !== null && isPersonalKey(key)) storage.removeItem(key);
     }
-    for (const key of keys) storage.removeItem(key);
   } catch {
     // Stockage indisponible ou refusé : rien à nettoyer.
   }

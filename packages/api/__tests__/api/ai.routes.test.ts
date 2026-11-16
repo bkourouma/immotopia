@@ -73,6 +73,8 @@ jest.mock('../../src/services/permission-service', () => ({
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockPrisma: Record<string, any> = {
+  user: { findUnique: jest.fn().mockResolvedValue({ preferredAssistantLanguage: null }) },
+  tenant: { findUnique: jest.fn().mockResolvedValue({ timeZone: 'UTC' }) },
   rentalLease: { findFirst: jest.fn() },
   rentalInstallment: { findFirst: jest.fn() },
   rentalPaymentAllocation: { findMany: jest.fn() },
@@ -194,6 +196,21 @@ beforeEach(() => {
 });
 
 describe('GET /ai/status', () => {
+  const propertyTools = [
+    'call_read',
+    'chart_analysis',
+    'compose_report',
+    'list_capabilities',
+    'list_datasets',
+    'list_property_documents',
+    'pivot_analysis',
+    'plan_write',
+    'property_portfolio',
+    'propose_follow_up',
+    'search_properties',
+    'show_artifact',
+    'show_indicators'
+  ];
   it('assistant désactivé : 200 enabled=false NOT_CONFIGURED (jamais 503)', async () => {
     mockProvider = null;
     const res = await get(`${base()}/status`);
@@ -217,15 +234,10 @@ describe('GET /ai/status', () => {
     expect(res.status).toBe(200);
     expect(res.body.data.enabled).toBe(true);
     expect(res.body.data.provider).toBe('fake');
-    expect([...res.body.data.tools].sort()).toEqual([
-      'call_read',
-      'list_capabilities',
-      'list_property_documents',
-      'plan_write',
-      'search_properties',
-      'show_artifact'
-    ]);
-    expect(mockGetUserPermissions).toHaveBeenCalledWith(currentUser, TENANT_A);
+    expect([...res.body.data.tools].sort()).toEqual(
+      [...propertyTools, 'maintenance_log', 'reserved_sale_properties'].sort()
+    );
+    expect(mockGetUserPermissions).toHaveBeenCalledWith(currentUser, TENANT_A, { fresh: false });
   });
 
   it('aucun outil : enabled=false NO_TOOLS', async () => {
@@ -248,15 +260,8 @@ describe('GET /ai/status', () => {
     });
     const res = await get(`${base()}/status`);
     expect(res.status).toBe(200);
-    expect([...res.body.data.tools].sort()).toEqual([
-      'call_read',
-      'list_capabilities',
-      'list_property_documents',
-      'plan_write',
-      'search_properties',
-      'show_artifact'
-    ]);
-    expect(mockGetEntitlements).toHaveBeenCalledWith(TENANT_A);
+    expect([...res.body.data.tools].sort()).toEqual(propertyTools);
+    expect(mockGetEntitlements).toHaveBeenCalledWith(TENANT_A, { fresh: false });
   });
 
   it('en enforce, un module de location en lecture seule garde la recherche mais perd la proposition', async () => {

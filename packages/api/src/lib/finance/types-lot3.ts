@@ -539,7 +539,7 @@ export interface SiteDashboardRow {
  */
 export type GetSitesDashboard = (
   tenantId: string,
-  filters: { status?: string; onlyOverBudget?: boolean }
+  filters: { status?: string; onlyOverBudget?: boolean; siteId?: string }
 ) => Promise<{ rows: SiteDashboardRow[]; currency: string }>;
 
 // ---------------------------------------------------------------------------

@@ -1,4 +1,16 @@
 import { z } from 'zod';
+import type { AssistantLanguage } from '../../i18n';
+import type {
+  BatchType,
+  BudgetStatus,
+  ConstructionSiteStatus,
+  CrmDealStage,
+  MaintenanceLogCategory,
+  MaintenanceTicketPriority,
+  MaintenanceTicketStatus,
+  PropertyType,
+  StatementStatus
+} from '@prisma/client';
 import { helpIdSchema } from '../help/help-id';
 
 /**
@@ -28,14 +40,77 @@ export const COPILOT_MAX_WRITE_PLANS_PER_REQUEST = 3;
 
 export type CopilotToolName =
   | 'search_properties'
+  | 'search_syndicates'
+  | 'search_syndicate_lots'
+  | 'search_sale_mandates'
+  | 'search_construction_sites'
   | 'search_leases'
+  | 'rental_arrears'
+  | 'rental_receipts'
+  | 'rental_receipts_sql'
+  | 'rental_installments_sql'
+  | 'rental_due_comparison'
+  | 'rental_monthly_review'
+  | 'maintenance_overview'
+  | 'syndicate_maintenance'
+  | 'syndicate_charges'
+  | 'syndicate_budget'
+  | 'property_portfolio'
+  | 'lease_portfolio'
+  | 'crm_pipeline'
+  | 'sale_mandates'
+  | 'construction_budget'
+  | 'owner_statements'
+  | 'owner_payouts'
+  | 'owner_balances'
+  | 'patrimony_net_worth'
+  | 'patrimony_history'
+  | 'maintenance_log'
+  | 'reserved_sale_properties'
+  | 'sale_commitments'
+  | 'chart_analysis'
+  | 'pivot_analysis'
+  | 'show_indicators'
+  | 'compose_report'
   | 'list_lease_documents'
   | 'list_property_documents'
   | 'propose_rental_document'
   | 'show_artifact'
   | 'list_capabilities'
+  | 'list_datasets'
   | 'call_read'
-  | 'plan_write';
+  | 'plan_write'
+  | 'propose_follow_up'
+  | 'prepare_budget_alert'
+  | 'prepare_lease_expiry_alert'
+  | 'prepare_declaration_alert'
+  | 'prepare_rent_arrears_alert';
+
+export type PreparedAlert =
+  | {
+      kind: 'construction_budget';
+      siteId: string;
+      siteName: string;
+      thresholdPercent: number;
+    }
+  | { kind: 'rental'; rule: import('./rental-alerts').RentalAlertRule; propertyLabel?: string };
+
+export type FollowUpProposal = {
+  id: string;
+  kind: 'notify' | 'task' | 'email' | 'schedule';
+  status: 'PENDING' | 'CONFIRMED' | 'DECLINED' | 'FAILED';
+  display: {
+    recipients: string[];
+    artifactTitle?: string;
+    sharesAnalysis?: boolean;
+    message?: string;
+    title?: string;
+    priority?: 'low' | 'normal' | 'high';
+    dueDate?: string;
+    formats?: string[];
+    schedule?: import('./report-schedule').ReportSchedule;
+  };
+};
 
 export type CopilotErrorCode =
   | 'AI_DISABLED'
@@ -56,6 +131,13 @@ export type CopilotErrorCode =
 export const chatRequestSchema = z
   .object({
     conversationId: z.string().uuid().optional(),
+    turnId: z.string().uuid().optional(),
+    regenerateTurnId: z.string().uuid().optional(),
+    focus: z
+      .object({ artifactId: z.string().uuid(), version: z.number().int().positive().max(2147483647) })
+      .strict()
+      .optional(),
+    deep: z.boolean().optional(),
     messages: z
       .array(
         z
@@ -82,6 +164,15 @@ export const chatRequestSchema = z
   })
   .strict()
   .superRefine((value, ctx) => {
+    if (value.focus && (!value.conversationId || !value.turnId)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['focus'], message: 'tour enregistré requis' });
+    }
+    if (value.regenerateTurnId && (!value.conversationId || value.turnId)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['regenerateTurnId'], message: 'conversation requise' });
+    }
+    if ((value.turnId || value.regenerateTurnId) && value.messages.length !== 1) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['messages'], message: 'un seul message par tour enregistré' });
+    }
     const last = value.messages[value.messages.length - 1];
     if (last && last.role !== 'user') {
       ctx.addIssue({
@@ -275,6 +366,9 @@ export interface CapabilityExecutedPayload {
 }
 
 export interface CopilotStatus {
+  agencyTimeZone?: string;
+  preferredAssistantLanguage?: AssistantLanguage | null;
+  transcription?: boolean;
   enabled: boolean;
   reason?: 'NOT_CONFIGURED' | 'NO_TOOLS';
   provider: 'fake' | 'anthropic' | 'openrouter' | null;
@@ -287,31 +381,176 @@ export interface CopilotStatus {
 /** Données d'affichage seulement : jamais de HTML, jamais d'écriture. L'`id` est généré par le serveur. */
 export type ArtifactCell = string | number | null;
 
+export const ANALYSIS_CHART_TYPES = [
+  'bar',
+  'stacked_bar',
+  'horizontal_bar',
+  'line',
+  'area',
+  'stacked_area',
+  'pie',
+  'donut',
+  'scatter',
+  'combo',
+  'heatmap',
+  'treemap',
+  'funnel',
+  'gauge'
+] as const;
+export type AnalysisChartType = (typeof ANALYSIS_CHART_TYPES)[number];
+
+export interface AnalysisChartSeries {
+  key: string;
+  label: string;
+  form?: 'bar' | 'line';
+  axis?: 'primary' | 'secondary';
+}
+
+export type ChartMark =
+  | { kind: 'rect'; x: number; y: number; w: number; h: number; color: string; tip?: string }
+  | {
+      kind: 'text';
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      color: string;
+      text: string;
+      align?: 'start' | 'center' | 'end';
+    };
+
+export interface ChartScene {
+  width: number;
+  height: number;
+  marks: ChartMark[];
+}
+
+type MaintenanceQueryFilters = {
+  onlyOverdue?: boolean;
+  propertyId?: string;
+  vendorId?: string;
+  priority?: MaintenanceTicketPriority;
+  status?: MaintenanceTicketStatus;
+};
+
+export type BaseAnalysisQuery =
+  | { tool: 'syndicate_budget'; syndicateId: string; fiscalYear: number; budgetId?: string; status?: BudgetStatus }
+  | {
+      tool: 'syndicate_charges';
+      syndicateId: string;
+      lotId?: string;
+      year: number;
+      month?: string;
+      batchType?: BatchType;
+    }
+  | { tool: 'rental_arrears' | 'rental_receipts' | 'rental_due_comparison'; month: string }
+  | (MaintenanceQueryFilters &
+      ({ tool: 'maintenance_overview' } | { tool: 'syndicate_maintenance'; syndicateId: string }))
+  | { tool: 'property_portfolio'; groupBy: 'propertyType' | 'zone'; propertyType?: PropertyType; zone?: string }
+  | { tool: 'lease_portfolio'; start: string; end: string; propertyId?: string; onlyEnding?: boolean }
+  | { tool: 'crm_pipeline'; assignedToUserId?: string; stages?: Exclude<CrmDealStage, 'WON' | 'LOST'>[] }
+  | { tool: 'sale_mandates'; start: string; end: string; propertyId?: string; agentUserId?: string }
+  | { tool: 'construction_budget'; siteId?: string; status?: ConstructionSiteStatus; onlyOverBudget?: boolean }
+  | {
+      tool: 'owner_statements';
+      periodFrom: string;
+      periodTo: string;
+      ownerContactId?: string;
+      propertyId?: string;
+      status?: StatementStatus;
+    }
+  | { tool: 'owner_payouts'; periodFrom: string; periodTo: string; ownerClientId?: string }
+  | { tool: 'owner_balances'; ownerClientId?: string }
+  | { tool: 'patrimony_net_worth'; asOf: string }
+  | { tool: 'patrimony_history'; from?: string; to: string }
+  | {
+      tool: 'maintenance_log';
+      propertyId?: string;
+      vendorId?: string;
+      category?: MaintenanceLogCategory;
+      from?: string;
+      to: string;
+      overdueAsOf?: string;
+    }
+  | { tool: 'reserved_sale_properties'; programId?: string }
+  | { tool: 'sale_commitments'; programId?: string; signedFrom?: string; signedTo?: string; onlyOverdue?: boolean }
+  | { tool: 'rental_receipts_sql' | 'rental_installments_sql'; sql: string };
+
+export type AnalysisQuery = BaseAnalysisQuery | { tool: 'pivot_analysis'; source: BaseAnalysisQuery; input: unknown };
+
+export interface ArtifactProvenance {
+  scope?: 'agency' | 'shared' | 'attachment';
+  filters?: Array<{ label: string; value?: string }>;
+  source: string;
+  href: string;
+  period: string;
+  calculatedAt: string;
+  rules: string[];
+}
+
+export interface ArtifactIndicator {
+  label: string;
+  value: number;
+  currency?: string;
+  comparison?: { label: string; value: number; change?: number };
+}
+
+export type ArtifactDocumentBlock = { kind: 'text'; content: string } | { kind: 'table'; table: AnalysisTable };
+
 export type CopilotArtifact =
+  | { kind: 'document'; id: string; title: string; blocks: ArtifactDocumentBlock[] }
+  | {
+      kind: 'indicators';
+      id: string;
+      title: string;
+      cards: ArtifactIndicator[];
+      provenance?: ArtifactProvenance;
+      replay?: DerivedAnalysisQuery;
+    }
   | {
       kind: 'table';
       id: string;
       title: string;
-      columns: { key: string; label: string; type?: 'text' | 'number' | 'currency' | 'date' }[];
+      columns: { key: string; label: string; linkKey?: string; type?: 'text' | 'number' | 'currency' | 'date' }[];
+      provenance?: ArtifactProvenance;
       rows: Record<string, ArtifactCell>[];
+      totals?: Record<string, ArtifactCell>;
+      dimensionColumns?: number;
       truncated?: boolean;
+      query?: AnalysisQuery;
     }
   | { kind: 'markdown'; id: string; title: string; content: string }
   | {
       kind: 'chart';
+      replay?: DerivedAnalysisQuery;
+      provenance?: ArtifactProvenance;
       id: string;
       title: string;
-      chartType: 'bar' | 'line' | 'pie';
+      chartType: AnalysisChartType;
       xKey: string;
-      series: { key: string; label: string }[];
+      xLabel?: string;
+      groupKey?: string;
+      groupLabel?: string;
+      scene?: ChartScene;
+      notices?: string[];
+      series: AnalysisChartSeries[];
       data: Record<string, ArtifactCell>[];
     };
+
+export interface DerivedAnalysisQuery {
+  tool: 'chart_analysis' | 'show_indicators';
+  source: AnalysisQuery;
+  input: unknown;
+}
+
+export type AnalysisTable = Extract<CopilotArtifact, { kind: 'table' }>;
 
 // --- Fil SSE ---------------------------------------------------------------
 
 // "event: <type>\ndata: <JSON de l'objet>\n\n" ; commentaire ": ping" toutes les 15 s
 export type CopilotSseEvent =
   | { type: 'meta'; conversationId: string; requestId: string }
+  | { type: 'conversation_title'; conversationId: string; title: string }
   | { type: 'text_delta'; text: string }
   | {
       type: 'tool_status';
@@ -327,6 +566,8 @@ export type CopilotSseEvent =
     }
   | { type: 'action_proposal'; proposal: ActionProposal }
   | { type: 'write_plan'; plan: WritePlan }
+  | { type: 'follow_up'; proposal: FollowUpProposal }
+  | { type: 'prepared_alert'; alert: PreparedAlert }
   | { type: 'artifact'; artifact: CopilotArtifact }
   | {
       type: 'error';
@@ -422,6 +663,17 @@ export interface LlmTurnResult {
   stopReason: 'end_turn' | 'tool_use' | 'max_tokens' | 'refusal' | 'other';
   assistantContent: LlmBlock[];
   toolCalls: Array<{ id: string; name: string; input: unknown }>;
+  model?: string;
+  usage?: LlmUsage;
+}
+
+export interface LlmUsage {
+  /** Nombre total de jetons d’entrée, cache compris. */
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  costUsd?: number;
 }
 
 /** Réglages relus à chaque tour depuis la configuration effective (voir `services/ai-settings-service.ts`). */
@@ -429,6 +681,7 @@ export interface ProviderRuntimeConfig {
   model: string;
   effort: 'low' | 'medium' | 'high';
   refusalFallback: boolean;
+  timeoutMs?: number;
 }
 
 export interface LlmProvider {
@@ -439,6 +692,7 @@ export interface LlmProvider {
       messages: LlmMessage[];
       tools: LlmToolSpec[];
       maxOutputTokens: number;
+      deep?: boolean;
     },
     onTextDelta: (text: string) => void,
     signal: AbortSignal
@@ -461,6 +715,7 @@ export interface CopilotToolContext {
    * Mutable, propre à la requête.
    */
   seenLeaseIds: Set<string>;
+  analysisTables?: Map<string, Extract<CopilotArtifact, { kind: 'table' }>>;
   /**
    * En-têtes qui rejouent l'authentification de l'utilisateur du chat pour la
    * passerelle (`call_read`, appel loopback). Fonction, et non propriété
@@ -470,6 +725,7 @@ export interface CopilotToolContext {
   loopbackHeaders?: () => Record<string, string>;
   /** Plans d'écriture émis pendant CETTE requête de chat (plafond : `COPILOT_MAX_WRITE_PLANS_PER_REQUEST`). Mutable. */
   writePlansIssued?: number;
+  proposeFollowUp?: (input: import('./follow-ups').FollowUpInput) => Promise<FollowUpProposal>;
 }
 
 export interface CopilotToolOutcome {
@@ -485,7 +741,7 @@ export interface CopilotToolDefinition<S extends z.ZodTypeAny = z.ZodTypeAny> {
   requiredPermission: string;
   /** Permissions supplémentaires, toutes exigées (ex. voir le document généré pour le télécharger). */
   additionalPermissions?: readonly string[];
-  feature: 'CORE' | 'RENTAL';
+  feature: 'CORE' | 'RENTAL' | 'SYNDIC' | 'CONSTRUCTION' | 'CRM' | 'SALES' | 'PATRIMOINE';
   kind: 'read' | 'proposal';
   execute(input: z.infer<S>, ctx: CopilotToolContext): Promise<CopilotToolOutcome>;
 }

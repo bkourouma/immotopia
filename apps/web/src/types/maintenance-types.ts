@@ -68,6 +68,8 @@ export interface Ticket {
 }
 
 export interface TicketDetail extends Ticket {
+  contractDueDate?: string | null;
+  contractOverdue?: boolean;
   attachments: Attachment[];
   comments: Comment[];
   statusHistory: StatusHistory[];

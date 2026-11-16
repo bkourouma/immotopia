@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { t } from '../i18n/t';
+import { assistantLanguages, isAssistantLanguage } from '../i18n/assistant-language';
 
 /**
  * Typage minimal de la Web Speech API : `lib.dom` ne la décrit pas. Seul ce
@@ -34,10 +35,8 @@ export interface SpeechRecognitionLike {
 type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
 
 /** Langue de reconnaissance (BCP-47) pour une langue d'interface. */
-const SPEECH_LANGS: Record<string, string> = { fr: 'fr-FR', en: 'en-US', ar: 'ar' };
-
 export function speechLangFor(language: string): string {
-  return SPEECH_LANGS[language] ?? 'fr-FR';
+  return isAssistantLanguage(language) ? assistantLanguages[language].speech : assistantLanguages.fr.speech;
 }
 
 /** Lu à chaque appel (pas au chargement du module) : le navigateur peut changer, les tests stubent `window`. */
@@ -50,7 +49,7 @@ function getRecognitionCtor(): SpeechRecognitionCtor | null {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
 
-function errorMessage(code: string): string | null {
+function errorMessage(code: string, t: (text: string) => string): string | null {
   switch (code) {
     case 'aborted':
       return null;
@@ -69,8 +68,9 @@ function errorMessage(code: string): string | null {
 }
 
 export interface UseSpeechDictationOptions {
-  /** Code de langue de l'interface (`fr`, `en`, `ar`). */
+  /** Code de langue transmis au moteur de reconnaissance. */
   language: string;
+  translate?(text: string): string;
   /** Texte définitif reconnu : à ajouter à la zone de saisie. Jamais d'envoi automatique. */
   onFinal(text: string): void;
 }
@@ -93,7 +93,11 @@ export interface UseSpeechDictationResult {
  * passe par notre serveur (le navigateur peut toutefois utiliser son propre
  * service de reconnaissance).
  */
-export function useSpeechDictation({ language, onFinal }: UseSpeechDictationOptions): UseSpeechDictationResult {
+export function useSpeechDictation({
+  language,
+  onFinal,
+  translate = t
+}: UseSpeechDictationOptions): UseSpeechDictationResult {
   const [listening, setListening] = useState(false);
   const [interim, setInterim] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -137,7 +141,7 @@ export function useSpeechDictation({ language, onFinal }: UseSpeechDictationOpti
       setInterimText(interimText.trim());
     };
     recognition.onerror = event => {
-      const message = errorMessage(event.error);
+      const message = errorMessage(event.error, translate);
       if (message) setError(message);
     };
     recognition.onend = () => {
@@ -156,9 +160,9 @@ export function useSpeechDictation({ language, onFinal }: UseSpeechDictationOpti
     } catch {
       detach(recognition);
       recognitionRef.current = null;
-      setError(t('La dictée a échoué. Réessayez.'));
+      setError(translate('La dictée a échoué. Réessayez.'));
     }
-  }, [language, detach]);
+  }, [language, detach, translate]);
 
   const stop = useCallback(() => {
     recognitionRef.current?.stop();

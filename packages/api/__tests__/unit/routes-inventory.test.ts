@@ -34,6 +34,7 @@ import { requireSuperAdmin } from '../../src/middleware/super-admin-middleware';
 import { helpFeedbackDailyLimiter, helpFeedbackRateLimiter } from '../../src/middleware/rate-limit-middleware';
 import { requireTenantPortalAccess } from '../../src/middleware/tenant-portal-access';
 import { requireOwnerPortalAccess } from '../../src/middleware/owner-portal-access';
+import { requireSitesManage } from '../../src/middleware/finance-rbac-middleware';
 import { requireCoOwnerPortalAccess } from '../../src/middleware/coowner-portal-access';
 
 /** Une entree de la liste blanche : routes publiques VOLONTAIRES. */
@@ -403,10 +404,49 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
     }
   });
 
-  it('declare les 4 routes de l’assistant ImmoCopilot avec les gardes d’agence et de collaborateur', () => {
+  it('assistant’assistant ImmoCopilot avec les gardes d’agence et de collaborateur', () => {
     const expected: Array<[string, string]> = [
       ['GET', '/api/tenants/:tenantId/ai/status'],
+      ['GET', '/api/tenants/:tenantId/ai/briefing'],
+      ['GET', '/api/tenants/:tenantId/ai/reports'],
+      ['GET', '/api/tenants/:tenantId/ai/rental-alerts'],
+      ['GET', '/api/tenants/:tenantId/ai/rental-alerts/properties'],
+      ['PUT', '/api/tenants/:tenantId/ai/rental-alerts/:id'],
+      ['DELETE', '/api/tenants/:tenantId/ai/rental-alerts/:id'],
+      ['POST', '/api/tenants/:tenantId/ai/notifications'],
+      ['PATCH', '/api/tenants/:tenantId/ai/follow-ups/:id'],
+      ['GET', '/api/tenants/:tenantId/ai/tasks'],
+      ['POST', '/api/tenants/:tenantId/ai/tasks'],
+      ['PATCH', '/api/tenants/:tenantId/ai/tasks/:id'],
+      ['POST', '/api/tenants/:tenantId/ai/reports'],
+      ['DELETE', '/api/tenants/:tenantId/ai/reports/:id'],
+      ['PATCH', '/api/tenants/:tenantId/ai/reports/:id'],
+      ['GET', '/api/tenants/:tenantId/ai/shares'],
+      ['GET', '/api/tenants/:tenantId/ai/shares/pins'],
+      ['PUT', '/api/tenants/:tenantId/ai/shares/:id/pin'],
+      ['GET', '/api/tenants/:tenantId/ai/shares/recipients'],
+      ['POST', '/api/tenants/:tenantId/ai/shares'],
+      ['GET', '/api/tenants/:tenantId/ai/shares/:id'],
+      ['GET', '/api/tenants/:tenantId/ai/shares/:id/:format'],
+      ['DELETE', '/api/tenants/:tenantId/ai/shares/:id'],
+      ['GET', '/api/tenants/:tenantId/ai/analyses'],
+      ['GET', '/api/tenants/:tenantId/ai/analyses/pins'],
+      ['GET', '/api/tenants/:tenantId/ai/analyses/:conversationId/:artifactId/pin'],
+      ['PUT', '/api/tenants/:tenantId/ai/analyses/:conversationId/:artifactId/pin'],
+      ['PUT', '/api/tenants/:tenantId/ai/analyses/:conversationId/:artifactId'],
+      ['DELETE', '/api/tenants/:tenantId/ai/analyses/:conversationId/:artifactId'],
+      ['GET', '/api/tenants/:tenantId/ai/conversations'],
+      ['GET', '/api/tenants/:tenantId/ai/conversations/:id'],
+      ['PUT', '/api/tenants/:tenantId/ai/conversations/:id/turns/:turnId/feedback'],
+      ['GET', '/api/tenants/:tenantId/ai/conversations/:id/turns/:turnId/files/:position'],
+      ['GET', '/api/tenants/:tenantId/ai/conversations/:id/artifacts/:artifactId'],
+      ['POST', '/api/tenants/:tenantId/ai/conversations/:id/artifacts/:artifactId'],
+      ['POST', '/api/tenants/:tenantId/ai/conversations/:id/artifacts/:artifactId/rewrite'],
+      ['GET', '/api/tenants/:tenantId/ai/conversations/:id/artifacts/:artifactId/:format'],
+      ['PATCH', '/api/tenants/:tenantId/ai/conversations/:id'],
+      ['DELETE', '/api/tenants/:tenantId/ai/conversations/:id'],
       ['POST', '/api/tenants/:tenantId/ai/chat'],
+      ['POST', '/api/tenants/:tenantId/ai/transcribe'],
       ['POST', '/api/tenants/:tenantId/ai/actions/execute'],
       ['POST', '/api/tenants/:tenantId/ai/actions/reject']
     ];
@@ -424,7 +464,7 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
     // fixe. Le contrôleur exige GENERATE et VIEW pour une quittance (testé dans ai.routes.capability.test.ts) ;
     // un plan d'écriture est gardé par la route réellement appelée par loopback, sous l'identité du confirmeur.
     expect(executeKeys.filter(key => typeof key === 'string')).toEqual([]);
-    expect(routes.filter(r => r.path.startsWith('/api/tenants/:tenantId/ai'))).toHaveLength(4);
+    expect(routes.filter(r => r.path.startsWith('/api/tenants/:tenantId/ai/'))).toHaveLength(expected.length);
   });
 
   it('declare les 3 routes des avis d’aide (POST authentifie avec limiteurs, GET super-admin, GET agence TENANT_AUDIT_VIEW)', () => {
@@ -454,11 +494,15 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
     expect(routes.filter(r => /help-feedback|\/help\/feedback/.test(r.path))).toHaveLength(3);
   });
 
-  it('declare les 3 routes du reglage IA de la plateforme avec permission PLATFORM et super-admin', () => {
+  it('déclare les routes IA de la plateforme avec permission PLATFORM et garde super-admin', () => {
     const expected: Array<[string, string, string]> = [
       ['GET', '/api/platform/ai-settings', 'PLATFORM_TENANTS_VIEW'],
       ['PUT', '/api/platform/ai-settings', 'PLATFORM_TENANTS_EDIT'],
-      ['GET', '/api/platform/ai-settings/models', 'PLATFORM_TENANTS_VIEW']
+      ['GET', '/api/platform/ai-settings/models', 'PLATFORM_TENANTS_VIEW'],
+      ['POST', '/api/platform/ai-settings/connection-test', 'PLATFORM_TENANTS_EDIT'],
+      ['GET', '/api/platform/ai-settings/feedback', 'PLATFORM_TENANTS_VIEW'],
+      ['GET', '/api/platform/ai-settings/usage', 'PLATFORM_TENANTS_VIEW'],
+      ['GET', '/api/platform/ai-settings/usage/export', 'PLATFORM_TENANTS_VIEW']
     ];
     for (const [method, path, permission] of expected) {
       const route = routes.find(r => r.method === method && r.path === path);
@@ -466,7 +510,15 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
       expect(hasPlatformPermission(route!)).toBe(permission);
       expect(route!.middlewares).toContain(requireSuperAdmin);
     }
-    expect(routes.filter(r => r.path.startsWith('/api/platform/ai-settings'))).toHaveLength(3);
+    expect(routes.filter(r => r.path.startsWith('/api/platform/ai-settings'))).toHaveLength(expected.length);
+  });
+
+  it('protège la lecture et la modification du seuil budgétaire par le droit de gestion des chantiers', () => {
+    const path = '/api/tenants/:tenantId/finance/sites/:siteId/budget-alert-threshold';
+    for (const method of ['GET', 'PATCH']) {
+      const route = routes.find(candidate => candidate.path === path && candidate.method === method);
+      expect(route?.middlewares).toEqual(expect.arrayContaining([requireTenantAccess, requireSitesManage]));
+    }
   });
 
   it('declare les 9 routes agence des acces tiers de confiance (lot B3) avec authentification et garde d’agence', () => {

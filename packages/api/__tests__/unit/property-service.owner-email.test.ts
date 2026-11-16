@@ -16,6 +16,7 @@ jest.mock('../../src/utils/database', () => ({
   prisma: {
     user: { findUnique: (...a: any[]) => userFindUnique(...a), create: (...a: any[]) => userCreate(...a) },
     tenantClient: { findFirst: (...a: any[]) => tenantClientFindFirst(...a) },
+    propertyMandate: { findFirst: jest.fn().mockResolvedValue(null) },
     crmContact: { findFirst: (...a: any[]) => crmContactFindFirst(...a), findMany: jest.fn().mockResolvedValue([]) },
     property: {
       findFirst: (...a: any[]) => propertyFindFirst(...a),

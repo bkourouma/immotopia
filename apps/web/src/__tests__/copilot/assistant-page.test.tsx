@@ -1,20 +1,59 @@
 import React from 'react';
+import { AxiosHeaders } from 'axios';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LanguageProvider } from '../../i18n/LanguageProvider';
+import { readAssistantLanguage, selectAssistantLanguage } from '../../i18n/assistant-language';
 import type { CopilotStatus } from '../../types/copilot';
 
 vi.mock('../../services/copilot-service', () => {
-  const service = { getStatus: vi.fn(), streamChat: vi.fn(), executeProposal: vi.fn() };
+  const service = {
+    getStatus: vi.fn(),
+    getBriefing: vi.fn().mockResolvedValue([]),
+    savePreferredLanguage: vi.fn(),
+    streamChat: vi.fn(),
+    executeProposal: vi.fn(),
+    listConversations: vi.fn().mockResolvedValue({ items: [] }),
+    getConversation: vi.fn(),
+    saveResponseFeedback: vi.fn(),
+    getArtifactVersion: vi.fn(),
+    downloadArtifact: vi.fn(),
+    listSavedAnalyses: vi.fn(),
+    listScheduledReports: vi.fn(),
+    createScheduledReport: vi.fn(),
+    listRentalAlerts: vi.fn(),
+    rentalAlertProperties: vi.fn(),
+    saveRentalAlert: vi.fn(),
+    setScheduledReportActive: vi.fn(),
+    listTasks: vi.fn(),
+    createTask: vi.fn(),
+    notifyColleagues: vi.fn(),
+    decideFollowUp: vi.fn(),
+    setTaskCompleted: vi.fn(),
+    listAnalysisRecipients: vi.fn(),
+    queueImmediateReport: vi.fn(),
+    listAnalysisShares: vi.fn(),
+    setAnalysisPin: vi.fn(),
+    getSharedAnalysis: vi.fn(),
+    removeSavedAnalysis: vi.fn(),
+    downloadAttachment: vi.fn(),
+    transcribe: vi.fn()
+  };
   return { default: service, copilotService: service };
 });
 
+vi.mock('../../utils/save-blob', async importOriginal => ({
+  ...(await importOriginal<typeof import('../../utils/save-blob')>()),
+  saveBlob: vi.fn()
+}));
+import { saveBlob } from '../../utils/save-blob';
 import copilotService from '../../services/copilot-service';
 import AssistantPage, { pageHeight, unavailableMessage } from '../../pages/assistant/AssistantPage';
 
 const getStatus = vi.mocked(copilotService.getStatus);
 const streamChat = vi.mocked(copilotService.streamChat);
+const getConversation = vi.mocked(copilotService.getConversation);
 
 const ENABLED: CopilotStatus = {
   enabled: true,
@@ -26,10 +65,10 @@ const DISABLED: CopilotStatus = { ...ENABLED, enabled: false, tools: [] };
 
 const w = window as unknown as Record<string, unknown>;
 
-function renderPage() {
+function renderPage(path = '/tenant/t1/assistant') {
   return render(
     <LanguageProvider>
-      <MemoryRouter initialEntries={['/tenant/t1/assistant']}>
+      <MemoryRouter initialEntries={[path]}>
         <Routes>
           <Route path="/tenant/:tenantId/assistant" element={<AssistantPage />} />
         </Routes>
@@ -40,6 +79,9 @@ function renderPage() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(copilotService.savePreferredLanguage).mockImplementation(async language =>
+    selectAssistantLanguage(language)
+  );
   delete w.SpeechRecognition;
   delete w.webkitSpeechRecognition;
   streamChat.mockImplementation(async (_t, _r, opts) => {
@@ -50,6 +92,7 @@ beforeEach(() => {
 afterEach(() => {
   delete w.SpeechRecognition;
   delete w.webkitSpeechRecognition;
+  selectAssistantLanguage(null);
 });
 
 const ARTIFACT_EVENT = {
@@ -62,11 +105,11 @@ const ARTIFACT_EVENT = {
   }
 };
 
-function setDesktop(desktop: boolean) {
+function setDesktop(desktop: boolean, wide = desktop) {
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
     value: (query: string) => ({
-      matches: desktop && /min-width/.test(query),
+      matches: desktop && /min-width/.test(query) && (wide || !/(1200|1600)/.test(query)),
       media: query,
       onchange: null,
       addListener: () => undefined,
@@ -81,6 +124,407 @@ function setDesktop(desktop: boolean) {
 describe('AssistantPage — artefacts', () => {
   afterEach(() => setDesktop(false));
 
+  it('applique la langue choisie à l’écran de chat', async () => {
+    getStatus.mockResolvedValue(ENABLED);
+    renderPage();
+    const select = await screen.findByRole('combobox', { name: 'Langue de l’assistant' });
+    for (const [language, message] of [
+      ['es', 'Su mensaje'],
+      ['zh', '您的消息'],
+      ['hi', 'आपका संदेश']
+    ]) {
+      fireEvent.change(select, { target: { value: language } });
+      expect(await screen.findByRole('textbox', { name: message })).toBeVisible();
+      expect(readAssistantLanguage()).toBe(language);
+      await waitFor(() => expect(select).toBeEnabled());
+    }
+    fireEvent.change(select, { target: { value: '' } });
+    expect(await screen.findByRole('textbox', { name: 'Votre message' })).toBeVisible();
+  });
+
+  it('localise les analyses enregistrées et la programmation sans modifier le titre enregistré', async () => {
+    getStatus.mockResolvedValue({ ...ENABLED, agencyTimeZone: 'Asia/Kolkata' });
+    const title = 'Situation locative de décembre';
+    vi.mocked(copilotService.listSavedAnalyses).mockResolvedValueOnce({
+      items: [{ conversationId: 'c1', artifactId: 'a1', title, createdAt: '2026-11-14' }]
+    });
+    vi.mocked(copilotService.listAnalysisRecipients).mockResolvedValueOnce([
+      { userId: 'recipient-1', displayName: 'Camille Destinataire' }
+    ]);
+    selectAssistantLanguage('zh');
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: '我的分析' }));
+    const analyses = await screen.findByRole('dialog', { name: '我的分析' });
+    expect(await within(analyses).findByRole('button', { name: title })).toBeVisible();
+    fireEvent.click(within(analyses).getByRole('button', { name: '安排定期报告' }));
+    const save = await screen.findByRole('button', { name: '保存草稿' });
+    const report = within(save.closest<HTMLElement>('[role="dialog"]')!);
+    expect(report.getByText('安排定期报告')).toBeInTheDocument();
+    expect(report.getByLabelText('频率')).toBeInTheDocument();
+    expect(report.getByLabelText('时区')).toHaveValue('Asia/Kolkata');
+    expect(save).toBeDisabled();
+    expect(copilotService.createScheduledReport).not.toHaveBeenCalled();
+  });
+
+  it('préremplit et enregistre une alerte locative seulement après validation', async () => {
+    getStatus.mockResolvedValue({ ...ENABLED, tools: [...ENABLED.tools, 'prepare_rent_arrears_alert'] });
+    vi.mocked(copilotService.listRentalAlerts).mockResolvedValue({ items: [] });
+    vi.mocked(copilotService.rentalAlertProperties).mockResolvedValue([
+      { id: 'p1', title: 'Atrium', internalReference: 'REF-1' }
+    ]);
+    vi.mocked(copilotService.saveRentalAlert).mockResolvedValue(undefined);
+    renderPage('/tenant/t1/assistant?alertes-locatives=1&regle=overdue_rent&jours=7&bien=p1&minimum=25000&devise=XOF');
+    const amount = await screen.findByLabelText('Solde minimal');
+    expect(amount).toHaveValue('25000');
+    const save = screen.getByRole('button', { name: 'Enregistrer' });
+    await waitFor(() => expect(save).toBeEnabled());
+    expect(copilotService.rentalAlertProperties).toHaveBeenCalledWith('t1', { id: 'p1' }, expect.anything());
+    expect(copilotService.saveRentalAlert).not.toHaveBeenCalled();
+    fireEvent.click(save);
+    expect(copilotService.saveRentalAlert).toHaveBeenCalledWith('t1', expect.any(String), {
+      kind: 'overdue_rent',
+      propertyId: 'p1',
+      days: 7,
+      minimumAmount: 25000,
+      currency: 'XOF'
+    });
+  });
+
+  it('rouvre un formulaire métier depuis une alerte budgétaire conservée dans le fil', async () => {
+    getStatus.mockResolvedValue(ENABLED);
+    getConversation.mockResolvedValueOnce({
+      id: 'c1',
+      title: 'Chantier',
+      pinned: false,
+      archived: false,
+      updatedAt: '2026-11-14',
+      turns: [
+        {
+          id: 't1',
+          question: 'Prépare une alerte à 80 %',
+          response: 'Le formulaire est prêt.',
+          outcome: 'end_turn',
+          result: [
+            {
+              type: 'prepared_alert',
+              alert: {
+                kind: 'construction_budget',
+                siteId: 'site-1',
+                siteName: 'Atrium',
+                thresholdPercent: 80
+              }
+            }
+          ]
+        }
+      ]
+    });
+    renderPage('/tenant/t1/assistant?c=c1');
+    expect(await screen.findByRole('link', { name: 'Ouvrir le formulaire d’alerte' })).toHaveAttribute(
+      'href',
+      '/tenant/t1/finance/chantiers/site-1/budget?alerte-budget=80'
+    );
+    expect(screen.getByText(/Atrium · Seuil de 80 % du budget révisé/)).toBeInTheDocument();
+  });
+
+  it('restaure et confirme une proposition durable dans le fil', async () => {
+    getStatus.mockResolvedValue(ENABLED);
+    getConversation.mockResolvedValueOnce({
+      id: 'c1',
+      title: 'Suivi',
+      pinned: false,
+      archived: false,
+      updatedAt: '2026-11-14',
+      turns: [
+        {
+          id: 't1',
+          question: 'Prépare une notification',
+          response: 'La carte est prête.',
+          result: null,
+          outcome: 'end_turn',
+          followUps: [
+            {
+              id: 'p1',
+              kind: 'notify',
+              status: 'PENDING',
+              display: { recipients: ['Camille'], message: 'Merci de relire le document.' }
+            }
+          ]
+        }
+      ]
+    });
+    vi.mocked(copilotService.decideFollowUp).mockResolvedValueOnce({ status: 'CONFIRMED' });
+    renderPage('/tenant/t1/assistant?c=c1');
+    expect(await screen.findByText('Merci de relire le document.')).toBeInTheDocument();
+    expect(screen.getByText(/Destinataires · Camille/)).toBeInTheDocument();
+    expect(copilotService.decideFollowUp).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }));
+    expect(copilotService.decideFollowUp).toHaveBeenCalledWith('t1', 'p1', true);
+    expect(await screen.findByText('Confirmée')).toBeInTheDocument();
+  });
+
+  it('attend la confirmation avant de notifier des collègues depuis une analyse', async () => {
+    getStatus.mockResolvedValue(ENABLED);
+    vi.mocked(copilotService.listSavedAnalyses).mockResolvedValueOnce({
+      items: [{ conversationId: 'c1', artifactId: 'a1', title: 'Situation locative', createdAt: '2026-11-14' }]
+    });
+    vi.mocked(copilotService.listAnalysisRecipients).mockResolvedValueOnce([
+      { userId: 'recipient-1', displayName: 'Camille Destinataire' }
+    ]);
+    vi.mocked(copilotService.notifyColleagues).mockResolvedValueOnce(undefined);
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Mes analyses' }));
+    const drawer = await screen.findByRole('dialog', { name: 'Mes analyses' });
+    fireEvent.click(await within(drawer).findByRole('button', { name: 'Notifier des collègues' }));
+    const confirm = await screen.findByRole('button', { name: 'Confirmer l’envoi' });
+    const dialog = within(confirm.closest<HTMLElement>('[role="dialog"]')!);
+    expect(dialog.getByText(/partage aussi l’analyse en lecture seule/)).toBeInTheDocument();
+    expect(confirm).toBeDisabled();
+    fireEvent.mouseDown(dialog.getByRole('combobox', { name: 'Destinataires' }));
+    fireEvent.click(await screen.findByText('Camille Destinataire', { selector: '.ant-select-item-option-content' }));
+    fireEvent.change(dialog.getByRole('textbox', { name: 'Message' }), { target: { value: 'Relire le tableau.' } });
+    expect(copilotService.notifyColleagues).not.toHaveBeenCalled();
+    fireEvent.click(confirm);
+    expect(copilotService.notifyColleagues).toHaveBeenCalledWith('t1', {
+      analysis: { conversationId: 'c1', artifactId: 'a1' },
+      recipientIds: ['recipient-1'],
+      message: 'Relire le tableau.',
+      requestId: expect.any(String)
+    });
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Confirmer l’envoi' })).not.toBeInTheDocument());
+  });
+
+  it('ouvre une tâche assignée depuis sa notification et permet de la terminer', async () => {
+    getStatus.mockResolvedValue(ENABLED);
+    const id = 'task-1';
+    const task = {
+      id,
+      title: 'Vérifier les encaissements',
+      description: null,
+      dueDate: '2028-02-29',
+      priority: 'high' as const,
+      completedAt: null,
+      canComplete: true,
+      shareId: 'share-1',
+      creator: { fullName: 'Adama' },
+      assignee: { fullName: 'Camille' }
+    };
+    vi.mocked(copilotService.listTasks)
+      .mockResolvedValueOnce({ items: [task] })
+      .mockResolvedValueOnce({ items: [{ ...task, completedAt: '2028-02-29T08:00:00Z' }] });
+    vi.mocked(copilotService.setTaskCompleted).mockResolvedValueOnce(undefined);
+    renderPage('/tenant/t1/assistant?tache=' + id);
+    const drawer = await screen.findByRole('dialog', { name: 'Tâches' });
+    expect(await within(drawer).findByText(task.title)).toBeInTheDocument();
+    expect(within(drawer).getByRole('link', { name: 'Ouvrir l’analyse' })).toHaveAttribute(
+      'href',
+      '/tenant/t1/assistant?partage=share-1'
+    );
+    expect(copilotService.listTasks).toHaveBeenCalledWith('t1', undefined, id, expect.anything());
+    fireEvent.click(within(drawer).getByRole('button', { name: 'Terminer la tâche' }));
+    expect(copilotService.setTaskCompleted).toHaveBeenCalledWith('t1', id, true);
+    expect(await within(drawer).findByRole('button', { name: 'Rouvrir la tâche' })).toBeEnabled();
+  });
+
+  it('confirme la création d’une tâche depuis Mes analyses', async () => {
+    getStatus.mockResolvedValue(ENABLED);
+    const title = 'Situation locative';
+    vi.mocked(copilotService.listSavedAnalyses).mockResolvedValueOnce({
+      items: [{ conversationId: 'c1', artifactId: 'a1', title, createdAt: '2026-11-14' }]
+    });
+    vi.mocked(copilotService.listAnalysisRecipients).mockResolvedValueOnce([
+      { userId: 'recipient-1', displayName: 'Camille Destinataire' }
+    ]);
+    vi.mocked(copilotService.createTask).mockResolvedValueOnce({ id: 'task-2' });
+    vi.mocked(copilotService.listTasks).mockResolvedValueOnce({ items: [] });
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Mes analyses' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Créer une tâche' }));
+    const confirm = await screen.findByRole('button', { name: 'Confirmer la création' });
+    const dialog = within(confirm.closest<HTMLElement>('[role="dialog"]')!);
+    expect(confirm).toBeDisabled();
+    expect(dialog.getByText(/accès en lecture seule à l’analyse/)).toBeInTheDocument();
+    fireEvent.change(dialog.getByRole('textbox', { name: 'Titre' }), { target: { value: 'Vérifier le dossier' } });
+    fireEvent.mouseDown(dialog.getByRole('combobox', { name: 'Collaborateur assigné' }));
+    fireEvent.click(await screen.findByText('Camille Destinataire', { selector: '.ant-select-item-option-content' }));
+    expect(copilotService.createTask).not.toHaveBeenCalled();
+    fireEvent.click(confirm);
+    expect(copilotService.createTask).toHaveBeenCalledWith(
+      't1',
+      expect.objectContaining({
+        title: 'Vérifier le dossier',
+        assigneeId: 'recipient-1',
+        priority: 'normal',
+        analysis: { conversationId: 'c1', artifactId: 'a1' },
+        requestId: expect.any(String)
+      })
+    );
+    expect(await screen.findByRole('dialog', { name: 'Tâches' })).toBeInTheDocument();
+  });
+
+  it('ouvre les rapports depuis une notification et active le brouillon', async () => {
+    getStatus.mockResolvedValue(ENABLED);
+    const report = {
+      id: 'report-1',
+      schedule: { frequency: 'weekly' as const, day: 1, time: '08:00', timeZone: 'Africa/Abidjan' },
+      formats: ['pdf' as const],
+      active: false,
+      sharesCreated: false,
+      shareRecipients: ['Camille Destinataire'],
+      nextRunAt: null,
+      lastRunAt: null,
+      lastStatus: null,
+      analysis: { title: 'Situation locative' }
+    };
+    vi.mocked(copilotService.listScheduledReports)
+      .mockResolvedValueOnce({ items: [report] })
+      .mockResolvedValueOnce({ items: [{ ...report, active: true, nextRunAt: '2026-11-16T08:00:00Z' }] });
+    vi.mocked(copilotService.setScheduledReportActive).mockResolvedValue(undefined);
+    renderPage('/tenant/t1/assistant?rapports=1');
+
+    const drawer = await screen.findByRole('dialog', { name: 'Rapports' });
+    expect(await within(drawer).findByText('Situation locative')).toBeInTheDocument();
+    fireEvent.click(within(drawer).getByRole('button', { name: 'Activer' }));
+    expect(await screen.findByText('Camille Destinataire')).toBeInTheDocument();
+    expect(copilotService.setScheduledReportActive).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole('button', { name: 'Activer et partager' }));
+    expect(copilotService.setScheduledReportActive).toHaveBeenCalledWith('t1', 'report-1', true, true);
+    await waitFor(
+      () => {
+        const reports = within(screen.getByRole('dialog', { name: 'Rapports' }));
+        expect(reports.getByRole('button', { name: 'Mettre en pause' })).toBeEnabled();
+        expect(reports.getByText(/Prochaine échéance/)).toBeInTheDocument();
+      },
+      { timeout: 3000 }
+    );
+  });
+
+  it('attend la confirmation avant de mettre un envoi ponctuel en file', async () => {
+    getStatus.mockResolvedValue(ENABLED);
+    vi.mocked(copilotService.listSavedAnalyses).mockResolvedValueOnce({
+      items: [{ conversationId: 'c1', artifactId: 'a1', title: 'Situation locative', createdAt: '2026-11-14' }]
+    });
+    vi.mocked(copilotService.listAnalysisRecipients).mockResolvedValueOnce([
+      { userId: 'recipient-1', displayName: 'Camille Destinataire' }
+    ]);
+    vi.mocked(copilotService.queueImmediateReport).mockResolvedValueOnce({ id: 'report-2' });
+    vi.mocked(copilotService.listScheduledReports).mockResolvedValueOnce({
+      items: [
+        {
+          id: 'report-2',
+          schedule: null,
+          sharesCreated: true,
+          shareRecipients: [],
+          formats: ['pdf'],
+          active: true,
+          nextRunAt: '2026-11-16T08:00:00Z',
+          lastRunAt: null,
+          lastStatus: null,
+          analysis: { title: 'Situation locative' }
+        }
+      ]
+    });
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Mes analyses' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Envoyer par e-mail' }));
+    const confirm = await screen.findByRole('button', { name: 'Confirmer l’envoi' });
+    const dialog = confirm.closest<HTMLElement>('[role="dialog"]')!;
+    expect(confirm).toBeDisabled();
+    fireEvent.mouseDown(within(dialog).getByRole('combobox', { name: 'Destinataires' }));
+    fireEvent.click(await screen.findByText('Camille Destinataire', { selector: '.ant-select-item-option-content' }));
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Message facultatif' }), {
+      target: { value: 'Bonjour' }
+    });
+    expect(copilotService.queueImmediateReport).not.toHaveBeenCalled();
+    fireEvent.click(confirm);
+    expect(copilotService.queueImmediateReport).toHaveBeenCalledWith('t1', {
+      conversationId: 'c1',
+      artifactId: 'a1',
+      recipientIds: ['recipient-1'],
+      formats: ['pdf'],
+      message: 'Bonjour',
+      requestId: expect.any(String)
+    });
+    const reports = await screen.findByRole('dialog', { name: 'Rapports' });
+    expect(await within(reports).findByText('En attente d’envoi')).toBeInTheDocument();
+  });
+
+  it('ouvre les résultats d’une conversation partagée en lecture seule', async () => {
+    getStatus.mockResolvedValue(ENABLED);
+    vi.mocked(copilotService.listAnalysisShares).mockResolvedValue({ items: [] });
+    vi.mocked(copilotService.getSharedAnalysis).mockResolvedValueOnce({
+      turns: [{ id: 'turn-1', startedAt: '2026-11-14', artifacts: [ARTIFACT_EVENT.artifact] }]
+    });
+    renderPage('/tenant/t1/assistant?partage=thread-share');
+    const drawer = await screen.findByRole('dialog', { name: 'Partages' });
+    expect(await within(drawer).findByText('important')).toBeInTheDocument();
+    expect(within(drawer).queryByRole('button', { name: 'Enregistrer dans Mes analyses' })).toBeNull();
+  });
+
+  it('ouvre le partage indiqué par le lien de notification', async () => {
+    getStatus.mockResolvedValue(ENABLED);
+    vi.mocked(copilotService.listAnalysisShares).mockResolvedValue({ items: [] });
+    vi.mocked(copilotService.getSharedAnalysis).mockResolvedValueOnce(ARTIFACT_EVENT.artifact);
+    renderPage('/tenant/t1/assistant?partage=notification-share');
+    const drawer = await screen.findByRole('dialog', { name: 'Partages' });
+    expect(await within(drawer).findByText('important')).toBeInTheDocument();
+    expect(copilotService.getSharedAnalysis).toHaveBeenCalledWith('t1', 'notification-share');
+  });
+
+  it('ouvre un tableau reçu dans un panneau en lecture seule', async () => {
+    getStatus.mockResolvedValue(ENABLED);
+    vi.mocked(copilotService.listAnalysisShares).mockResolvedValue({
+      items: [{ id: 'p1', colleague: 'Camille', createdAt: '2026-11-14' }]
+    });
+    vi.mocked(copilotService.getSharedAnalysis).mockResolvedValue({
+      id: 'a1',
+      kind: 'table',
+      title: 'Charges par lot',
+      columns: [{ key: 'lot', label: 'Lot' }],
+      rows: [{ lot: 'A01' }]
+    });
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Partages' }));
+    const drawer = await screen.findByRole('dialog', { name: 'Partages' });
+    fireEvent.click(await within(drawer).findByRole('button', { name: 'Épingler au tableau de bord' }));
+    expect(await within(drawer).findByRole('button', { name: 'Désépingler' })).toBeEnabled();
+    expect(copilotService.setAnalysisPin).toHaveBeenCalledWith('t1', 'p1', true);
+    fireEvent.click(await within(drawer).findByRole('button', { name: 'Ouvrir' }));
+    expect(await within(drawer).findByText('A01')).toBeInTheDocument();
+    expect(within(drawer).getByRole('button', { name: 'Télécharger' })).toBeEnabled();
+    expect(within(drawer).queryByRole('button', { name: 'Enregistrer dans Mes analyses' })).toBeNull();
+  });
+
+  it('ouvre et retire une analyse enregistrée depuis la page Assistant', async () => {
+    getStatus.mockResolvedValue(ENABLED);
+    const item = {
+      conversationId: 'c1',
+      artifactId: 'a1',
+      title: ARTIFACT_EVENT.artifact.title,
+      createdAt: '2026-11-14'
+    };
+    const list = vi.mocked(copilotService.listSavedAnalyses);
+    list.mockResolvedValueOnce({ items: [item] }).mockResolvedValue({ items: [] });
+    const payload = {
+      artifact: ARTIFACT_EVENT.artifact,
+      version: 1,
+      latest: 1,
+      versions: [{ version: 1, createdAt: null }]
+    };
+    vi.mocked(copilotService.getArtifactVersion).mockResolvedValueOnce(payload).mockResolvedValueOnce(payload);
+    vi.mocked(copilotService.removeSavedAnalysis).mockResolvedValue(undefined);
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Mes analyses' }));
+    const drawer = await screen.findByRole('dialog', { name: 'Mes analyses' });
+    fireEvent.click(await within(drawer).findByRole('button', { name: item.title }));
+    expect(await within(drawer).findByText('important')).toBeInTheDocument();
+    fireEvent.click(within(drawer).getByRole('button', { name: 'Retour aux analyses' }));
+    fireEvent.click(within(drawer).getByRole('button', { name: 'Retirer' }));
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Retirer' })).at(-1)!);
+    await waitFor(() => expect(copilotService.removeSavedAnalysis).toHaveBeenCalledWith('t1', item));
+    expect(await within(drawer).findByText('Aucune analyse enregistrée.')).toBeInTheDocument();
+  });
+
   async function sendWithArtifact() {
     getStatus.mockResolvedValue(ENABLED);
     streamChat.mockImplementation(async (_t, _r, opts) => {
@@ -94,6 +538,75 @@ describe('AssistantPage — artefacts', () => {
     fireEvent.keyDown(input, { key: 'Enter' });
   }
 
+  it('attend l’enregistrement avant de télécharger le classeur du rapport depuis le serveur', async () => {
+    setDesktop(true);
+    getStatus.mockResolvedValue(ENABLED);
+    const conversationId = '5258bdd1-74d6-47ea-a37f-ab4d1e8eae45';
+    const document = {
+      id: 'report-1',
+      title: 'Bilan avec tableau',
+      kind: 'document' as const,
+      blocks: [
+        { kind: 'text' as const, content: 'Résumé du rapport' },
+        {
+          kind: 'table' as const,
+          table: {
+            id: 'table-1',
+            title: 'Encaissements',
+            kind: 'table' as const,
+            columns: [{ key: 'month', label: 'Mois' }],
+            rows: [{ month: '2026-10' }]
+          }
+        }
+      ]
+    };
+    let finishStream!: () => void;
+    const streamPending = new Promise<void>(resolve => {
+      finishStream = resolve;
+    });
+    type Version = Awaited<ReturnType<typeof copilotService.getArtifactVersion>>;
+    let finishRead!: (version: Version) => void;
+    const readPending = new Promise<Version>(resolve => {
+      finishRead = resolve;
+    });
+    streamChat.mockImplementationOnce(async (_tenantId, _body, options) => {
+      options.onEvent({ type: 'meta', conversationId, requestId: 'request-1' });
+      options.onEvent({ type: 'artifact', artifact: document });
+      await streamPending;
+      options.onEvent({ type: 'done', reason: 'end_turn' });
+    });
+    vi.mocked(copilotService.getArtifactVersion).mockReturnValueOnce(readPending);
+    const bytes = new Blob(['classeur']);
+    vi.mocked(copilotService.downloadArtifact).mockResolvedValueOnce({
+      data: bytes,
+      headers: { 'content-disposition': 'attachment; filename="bilan.xlsx"' },
+      status: 200,
+      statusText: 'OK',
+      config: { headers: new AxiosHeaders() }
+    });
+    renderPage();
+    const input = await screen.findByLabelText('Votre message');
+    fireEvent.change(input, { target: { value: 'Affiche le bilan' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    const panel = await screen.findByRole('complementary', { name: 'Résultats et documents' });
+    const download = () => within(panel).getByRole('button', { name: 'Télécharger' });
+    expect(download()).toBeDisabled();
+    expect(saveBlob).not.toHaveBeenCalled();
+
+    finishStream();
+    await waitFor(() =>
+      expect(copilotService.getArtifactVersion).toHaveBeenCalledWith('t1', conversationId, document.id, undefined)
+    );
+    expect(download()).toBeDisabled();
+    finishRead({ artifact: document, version: 2, latest: 2, versions: [{ version: 2, createdAt: null }] });
+    await waitFor(() => expect(download()).toBeEnabled());
+    fireEvent.click(download());
+    expect(screen.queryByRole('menuitem', { name: 'CSV' })).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Excel (.xlsx)' }));
+    await waitFor(() => expect(saveBlob).toHaveBeenCalledWith(bytes, 'bilan.xlsx'));
+    expect(copilotService.downloadArtifact).toHaveBeenCalledWith('t1', conversationId, document.id, 'xlsx', 2);
+  });
+
   it('ordinateur : le panneau apparaît seul et peut être refermé', async () => {
     setDesktop(true);
     await sendWithArtifact();
@@ -101,8 +614,53 @@ describe('AssistantPage — artefacts', () => {
     expect(within(panel).getByText('important')).toBeInTheDocument();
     fireEvent.click(within(panel).getByRole('button', { name: 'Fermer le panneau' }));
     await waitFor(() => expect(screen.queryByRole('complementary')).not.toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: 'Ouvrir : Synthèse du mois' }));
-    expect(await screen.findByRole('complementary')).toBeInTheDocument();
+    const chip = screen.getByRole('button', { name: 'Ouvrir : Synthèse du mois' });
+    chip.focus();
+    fireEvent.click(chip);
+    const reopened = await screen.findByRole('complementary', { name: 'Résultats et documents' });
+    await waitFor(() => expect(reopened).toHaveFocus());
+    fireEvent.click(within(reopened).getByRole('button', { name: 'Fermer le panneau' }));
+    await waitFor(() => expect(chip).toHaveFocus());
+  });
+
+  it('ordinateur : redimensionne au clavier, agrandit le résultat et rend le focus', async () => {
+    localStorage.removeItem('immotopia.assistant.resultWidth');
+    setDesktop(true);
+    await sendWithArtifact();
+    const resize = await screen.findByRole('separator', { name: 'Redimensionner le panneau de résultats' });
+    const initial = Number(resize.getAttribute('aria-valuenow'));
+    fireEvent.keyDown(resize, { key: 'ArrowLeft' });
+    expect(resize).toHaveAttribute('aria-valuenow', String(initial + 24));
+    fireEvent.keyDown(resize, { key: 'Home' });
+    expect(resize).toHaveAttribute('aria-valuenow', '360');
+    expect(localStorage.getItem('immotopia.assistant.resultWidth')).toBe('360');
+    const expand = screen.getByRole('button', { name: 'Agrandir le panneau de résultats' });
+    expand.focus();
+    fireEvent.click(expand);
+    const dialog = await screen.findByRole('dialog', { name: 'Résultats et documents' });
+    expect(within(dialog).getByText('important')).toBeInTheDocument();
+    expect(screen.queryByRole('separator', { name: 'Redimensionner le panneau de résultats' })).toBeNull();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Fermer le panneau' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Agrandir le panneau de résultats' })).toHaveFocus());
+    expect(screen.getByRole('separator', { name: 'Redimensionner le panneau de résultats' })).toHaveAttribute(
+      'aria-valuenow',
+      '360'
+    );
+    localStorage.removeItem('immotopia.assistant.resultWidth');
+  });
+
+  it('écran intermédiaire : garde l’historique et ouvre le résultat en recouvrement', async () => {
+    setDesktop(true, false);
+    await sendWithArtifact();
+    const chip = await screen.findByRole('button', { name: 'Ouvrir : Synthèse du mois' });
+    expect(screen.getByRole('navigation', { name: 'Historique des conversations' })).toBeInTheDocument();
+    expect(screen.queryByRole('complementary')).toBeNull();
+    chip.focus();
+    fireEvent.click(chip);
+    const dialog = await screen.findByRole('dialog', { name: 'Résultats et documents' });
+    expect(within(dialog).getByText('important')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Fermer le panneau' }));
+    await waitFor(() => expect(chip).toHaveFocus());
   });
 
   it('mobile : le panneau reste replié, la pastille ouvre un tiroir', async () => {
@@ -116,6 +674,44 @@ describe('AssistantPage — artefacts', () => {
 });
 
 describe('AssistantPage', () => {
+  it('affiche dans un nouveau fil les liens métier du briefing', async () => {
+    getStatus.mockResolvedValue(ENABLED);
+    vi.mocked(copilotService.getBriefing).mockResolvedValueOnce([
+      {
+        id: 'lease-expiry:lease-1',
+        title: 'Bail arrivant à échéance · BAIL-1',
+        description: '15 nov. 2026',
+        occurredAt: '2026-11-15T00:00:00.000Z',
+        severity: 'warning',
+        href: '/tenant/t1/rental/leases/lease-1'
+      }
+    ]);
+    renderPage();
+    const briefing = await screen.findByRole('region', { name: 'Briefing du jour' });
+    expect(within(briefing).getByRole('link', { name: 'Bail arrivant à échéance · BAIL-1' })).toHaveAttribute(
+      'href',
+      '/tenant/t1/rental/leases/lease-1'
+    );
+  });
+
+  it('joint un classeur et peut envoyer le message sans saisie', async () => {
+    getStatus.mockResolvedValue(ENABLED);
+    const { container } = renderPage();
+    const attach = await screen.findByRole('button', { name: 'Joindre des fichiers' });
+    expect(attach).toBeEnabled();
+    const picker = container.querySelector('input[type=file]')!;
+    const file = new File(['workbook'], 'loyers.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    });
+    fireEvent.change(picker, { target: { files: [file] } });
+    expect(screen.getByRole('button', { name: 'Retirer loyers.xlsx' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Envoyer' }));
+    await waitFor(() => expect(streamChat).toHaveBeenCalledTimes(1));
+    expect(streamChat.mock.calls[0][1].messages).toEqual([{ role: 'user', content: 'Analyse les fichiers joints.' }]);
+    expect(streamChat.mock.calls[0][2].files).toEqual([file]);
+    expect(await screen.findByText('loyers.xlsx')).toBeVisible();
+  });
+
   it('affiche le fil, la saisie et l’emplacement de l’artefact', async () => {
     getStatus.mockResolvedValue(ENABLED);
     renderPage();
@@ -160,6 +756,55 @@ describe('AssistantPage', () => {
     expect(screen.queryByRole('button', { name: 'Dicter un message' })).not.toBeInTheDocument();
   });
 
+  it('utilise la transcription serveur et laisse le texte dans le brouillon', async () => {
+    const stopTrack = vi.fn();
+    vi.stubGlobal(
+      'MediaRecorder',
+      class {
+        static isTypeSupported() {
+          return true;
+        }
+        state = 'inactive';
+        mimeType = 'audio/webm;codecs=opus';
+        ondataavailable?: (event: { data: Blob }) => void;
+        onstop?: () => void;
+        start() {
+          this.state = 'recording';
+        }
+        stop() {
+          this.state = 'inactive';
+          this.ondataavailable?.({ data: new Blob(['audio']) });
+          this.onstop?.();
+        }
+      }
+    );
+    const original = Object.getOwnPropertyDescriptor(navigator, 'mediaDevices');
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [{ stop: stopTrack }] }) }
+    });
+    try {
+      getStatus.mockResolvedValue({ ...ENABLED, transcription: true });
+      vi.mocked(copilotService.transcribe).mockResolvedValue('Bilan des loyers');
+      renderPage();
+      fireEvent.click(await screen.findByRole('button', { name: 'Dicter un message' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Arrêter la dictée' }));
+      await waitFor(() => expect(screen.getByLabelText('Votre message')).toHaveValue('Bilan des loyers'));
+      expect(copilotService.transcribe).toHaveBeenCalledWith(
+        't1',
+        expect.any(Blob),
+        expect.any(AbortSignal),
+        expect.any(Number)
+      );
+      expect(stopTrack).toHaveBeenCalled();
+      expect(streamChat).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+      if (original) Object.defineProperty(navigator, 'mediaDevices', original);
+      else Reflect.deleteProperty(navigator, 'mediaDevices');
+    }
+  });
+
   it('dicte du texte dans la zone sans l’envoyer', async () => {
     class Fake {
       static last: Fake;
@@ -189,6 +834,185 @@ describe('AssistantPage', () => {
     await waitFor(() => expect(input).toHaveValue('bonjour'));
     expect(streamChat).not.toHaveBeenCalled();
   });
+});
+
+it('enregistre un avis avec commentaire sur la révision affichée', async () => {
+  getStatus.mockResolvedValue(ENABLED);
+  const id = '5258bdd1-74d6-47ea-a37f-ab4d1e8eae45';
+  getConversation.mockResolvedValueOnce({
+    id,
+    title: 'Analyse',
+    pinned: false,
+    archived: false,
+    updatedAt: '2026-11-14T12:00:00Z',
+    turns: [
+      {
+        id: 'tour-1',
+        question: 'Bilan',
+        response: 'Voici le bilan.',
+        responseRevision: 3,
+        result: null,
+        outcome: 'end_turn'
+      }
+    ]
+  });
+  vi.mocked(copilotService.saveResponseFeedback).mockResolvedValueOnce(undefined);
+  renderPage(`/tenant/t1/assistant?c=${id}`);
+  fireEvent.click(await screen.findByRole('button', { name: 'Donner un avis' }));
+  fireEvent.click(screen.getByRole('radio', { name: 'Peu utile' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Commentaire facultatif' }), {
+    target: { value: 'À préciser.' }
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+  expect(await screen.findByRole('button', { name: 'Modifier mon avis' })).toBeVisible();
+  expect(copilotService.saveResponseFeedback).toHaveBeenCalledWith('t1', id, 'tour-1', {
+    revision: 3,
+    helpful: false,
+    comment: 'À préciser.'
+  });
+});
+
+it('affiche la nouvelle réponse après confirmation du serveur', async () => {
+  getStatus.mockResolvedValue(ENABLED);
+  const id = '5258bdd1-74d6-47ea-a37f-ab4d1e8eae45';
+  const turn = {
+    id: 'tour-1',
+    question: 'Bilan du mois',
+    response: 'Ancien bilan.',
+    result: null,
+    outcome: 'end_turn'
+  };
+  const conversation = {
+    id,
+    title: 'Analyse',
+    pinned: false,
+    archived: false,
+    updatedAt: '2026-11-14T12:00:00Z',
+    turns: [turn]
+  };
+  getConversation.mockResolvedValueOnce(conversation).mockResolvedValueOnce({
+    ...conversation,
+    turns: [{ ...turn, response: 'Nouveau bilan.' }]
+  });
+  renderPage(`/tenant/t1/assistant?c=${id}`);
+  expect(await screen.findByText('Ancien bilan.')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Régénérer la dernière réponse' }));
+  expect(await screen.findByText('Nouveau bilan.')).toBeVisible();
+  expect(screen.queryByText('Ancien bilan.')).toBeNull();
+  expect(streamChat.mock.calls[0][1]).toMatchObject({ conversationId: id, regenerateTurnId: turn.id });
+});
+
+it('prépare une relance sur la version du résultat affichée', async () => {
+  getStatus.mockResolvedValue(ENABLED);
+  const id = '5258bdd1-74d6-47ea-a37f-ab4d1e8eae45';
+  getConversation.mockResolvedValueOnce({
+    id,
+    title: 'Analyse',
+    pinned: false,
+    archived: false,
+    updatedAt: '2026-11-14T12:00:00Z',
+    turns: [
+      {
+        id: 'tour-1',
+        question: 'Bilan du mois',
+        response: 'Voici le bilan.',
+        outcome: 'end_turn',
+        result: [ARTIFACT_EVENT]
+      }
+    ]
+  });
+  vi.mocked(copilotService.getArtifactVersion).mockResolvedValue({
+    artifact: ARTIFACT_EVENT.artifact,
+    version: 2,
+    latest: 2,
+    versions: [{ version: 2, createdAt: null }]
+  });
+  renderPage(`/tenant/t1/assistant?c=${id}`);
+  fireEvent.click(await screen.findByRole('button', { name: 'Ouvrir : Synthèse du mois' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Poser une question sur ce résultat' }));
+  expect(screen.getByLabelText('Votre message')).toHaveValue('Explique les points importants de ce résultat.');
+  expect(streamChat).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Envoyer' }));
+  await waitFor(() =>
+    expect(streamChat.mock.calls[0][1]).toMatchObject({
+      conversationId: id,
+      focus: { artifactId: ARTIFACT_EVENT.artifact.id, version: 2 }
+    })
+  );
+});
+
+it.each([false, true])('rouvre le fil et ses artefacts depuis un lien (avec source %s)', async direct => {
+  getStatus.mockResolvedValue(ENABLED);
+  const id = '5258bdd1-74d6-47ea-a37f-ab4d1e8eae45';
+  const sourceId = 'fd0ca857-d4e6-44e1-98be-f5445573c9f1';
+  const source = {
+    id: sourceId,
+    kind: 'table' as const,
+    title: 'Tableau locatif',
+    columns: [{ key: 'balance', label: 'Solde', type: 'number' as const }],
+    rows: [{ balance: 75000 }],
+    provenance: {
+      source: 'Échéances locatives',
+      href: '/tenant/t1/rental/installments',
+      period: '2026-10',
+      calculatedAt: '2026-11-15T00:00:00Z',
+      rules: ['Solde après règlements.']
+    }
+  };
+  vi.mocked(copilotService.getArtifactVersion).mockResolvedValue({
+    artifact: source,
+    version: 1,
+    latest: 2,
+    versions: [
+      { version: 2, createdAt: null },
+      { version: 1, createdAt: null }
+    ]
+  });
+  getConversation.mockResolvedValue({
+    id,
+    title: 'Analyse',
+    pinned: false,
+    archived: false,
+    updatedAt: '2026-11-14T12:00:00Z',
+    turns: [
+      {
+        id: 'tour-1',
+        question: 'Bilan du mois',
+        attachments: [{ name: 'bilan.pdf', position: 0 }],
+        response: `Voici le bilan. [[source:${sourceId}]]`,
+        result: [ARTIFACT_EVENT, { type: 'artifact', artifact: source }],
+        outcome: 'end_turn'
+      }
+    ]
+  });
+  renderPage(`/tenant/t1/assistant?c=${id}${direct ? `&resultat=${sourceId}&version=1` : ''}`);
+  expect(await screen.findByText('Voici le bilan.')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Ouvrir : Synthèse du mois' })).toBeInTheDocument();
+  expect(getConversation).toHaveBeenCalledWith('t1', id);
+  if (direct) {
+    const linked = await screen.findByRole('dialog', { name: 'Résultats et documents' });
+    expect(await within(linked).findByText('Comment j’ai calculé')).toBeInTheDocument();
+    expect(copilotService.getArtifactVersion).toHaveBeenCalledWith('t1', id, sourceId, 1);
+    fireEvent.click(within(linked).getByRole('button', { name: 'Fermer le panneau' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Résultats et documents' })).not.toBeInTheDocument()
+    );
+  }
+  const file = new Blob(['bilan']);
+  vi.mocked(copilotService.downloadAttachment).mockResolvedValue({
+    data: file,
+    headers: { 'content-disposition': 'attachment; filename="bilan.pdf"' },
+    status: 200,
+    statusText: 'OK',
+    config: { headers: new AxiosHeaders() }
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'bilan.pdf' }));
+  await waitFor(() => expect(saveBlob).toHaveBeenCalledWith(file, 'bilan.pdf'));
+  expect(copilotService.downloadAttachment).toHaveBeenCalledWith('t1', id, 'tour-1', 0);
+  fireEvent.click(screen.getByRole('button', { name: 'Voir la source : Tableau locatif' }));
+  const results = await screen.findByRole('dialog', { name: 'Résultats et documents' });
+  expect(await within(results).findByText('Comment j’ai calculé')).toBeInTheDocument();
+  expect(copilotService.getArtifactVersion).toHaveBeenCalledWith('t1', id, sourceId, 1);
 });
 
 describe('AssistantPage — hauteur', () => {

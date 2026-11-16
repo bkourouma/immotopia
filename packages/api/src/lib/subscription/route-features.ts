@@ -82,6 +82,7 @@ export const TENANT_ROUTE_FEATURES: readonly RouteFeatureRule[] = [
     note: "Synthèse des avis sur les fiches d'aide interne : lecture seule, socle."
   },
   { prefix: '/documents', feature: 'CORE' },
+  { prefix: '/ai/rental-alerts', feature: 'RENTAL' },
   {
     prefix: '/ai',
     feature: 'CORE',

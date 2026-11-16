@@ -1,16 +1,19 @@
 import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { RobotOutlined } from '@ant-design/icons';
-import { Button } from 'antd';
-import { useLocation } from 'react-router-dom';
+import { Button, ConfigProvider, Modal } from 'antd';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { onCopilotOpenRequest } from '../../help/copilot-bridge';
-import { t } from '../../i18n/t';
+import { assistantComponentLocales } from '../../i18n/assistant-component-locales';
+import { useAssistantTranslation } from '../../i18n/useAssistantTranslation';
 import { useCopilotStatus } from '../../hooks/useCopilotStatus';
 import type { CopilotStatus } from '../../types/copilot';
+import { getCopilotPageContext } from './copilot-page-context';
 import type { CopilotPrefill } from './CopilotDrawer';
 
 // Le tiroir (chat, Markdown, cartes) ne se charge qu'à la première ouverture :
 // il reste hors du bundle d'entrée.
 const CopilotDrawer = lazy(() => import('./CopilotDrawer'));
+const LaunchComposer = lazy(() => import('./CopilotComposer').then(module => ({ default: module.CopilotComposer })));
 
 /** Valeur ARIA, pas un texte affiché : ne se traduit pas. */
 const COPILOT_KEYSHORTCUTS = 'Control+J Meta+J';
@@ -52,7 +55,12 @@ const CopilotRoot: React.FC<CopilotRootProps> = ({
   hasAction = false,
   isDesktop = true
 }) => {
-  const { pathname } = useLocation();
+  const { language, selected, t } = useAssistantTranslation();
+  const { pathname, search } = useLocation();
+  const navigate = useNavigate();
+  const [launchOpen, setLaunchOpen] = useState(false);
+  const [question, setQuestion] = useState('');
+  const [useContext, setUseContext] = useState(true);
   const onAssistantPage = isAssistantPagePath(pathname);
   const [open, setOpen] = useState(false);
   const [everOpened, setEverOpened] = useState(false);
@@ -71,7 +79,21 @@ const CopilotRoot: React.FC<CopilotRootProps> = ({
 
   useEffect(() => {
     if (!enabled) return undefined;
+    const launch = () => {
+      if (!onAssistantPage) {
+        setQuestion('');
+        setUseContext(true);
+        setLaunchOpen(true);
+      }
+    };
     const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        if (onAssistantPage) focusPageComposer();
+        else if (launchOpen) setLaunchOpen(false);
+        else launch();
+        return;
+      }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'j') {
         event.preventDefault();
         // Sur la page plein écran : on met le curseur dans la saisie au lieu d'ouvrir un tiroir par-dessus.
@@ -80,8 +102,12 @@ const CopilotRoot: React.FC<CopilotRootProps> = ({
       }
     };
     window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [enabled, onAssistantPage, openDrawer]);
+    window.addEventListener('immotopia:ask-assistant', launch);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('immotopia:ask-assistant', launch);
+    };
+  }, [enabled, launchOpen, onAssistantPage, openDrawer]);
 
   // Demande de l'aide interne : question pré-remplie (jamais envoyée) dans le tiroir.
   useEffect(() => {
@@ -134,17 +160,56 @@ const CopilotRoot: React.FC<CopilotRootProps> = ({
           }}
         />
       )}
-      {everOpened && (
-        <Suspense fallback={null}>
-          <CopilotDrawer
-            tenantId={tenantId}
-            status={status}
-            open={open}
-            onClose={() => setOpen(false)}
-            prefill={prefill}
-          />
-        </Suspense>
-      )}
+      <ConfigProvider
+        direction={selected ? (language === 'ar' ? 'rtl' : 'ltr') : undefined}
+        locale={assistantComponentLocales[language]}
+      >
+        <Modal
+          open={launchOpen && !onAssistantPage}
+          title={t('Demander à ImmoCopilot')}
+          footer={null}
+          onCancel={() => setLaunchOpen(false)}
+          destroyOnHidden
+        >
+          <Suspense fallback={null}>
+            <LaunchComposer
+              value={question}
+              onChange={setQuestion}
+              streaming={false}
+              onStop={() => undefined}
+              maxChars={status.limits.maxMessageChars}
+              onSubmit={value => {
+                const prompt = value.trim();
+                if (!prompt) return;
+                setLaunchOpen(false);
+                navigate(`/tenant/${tenantId}/assistant`, {
+                  state: {
+                    prompt,
+                    sourcePath: useContext ? getCopilotPageContext(pathname, search).currentPath : undefined
+                  }
+                });
+              }}
+            />
+          </Suspense>
+          {useContext && (
+            <Button type="link" onClick={() => setUseContext(false)}>
+              {t('Retirer le contexte de l’écran')}
+            </Button>
+          )}
+        </Modal>
+        {everOpened && (
+          <Suspense fallback={null}>
+            <CopilotDrawer
+              key={tenantId}
+              tenantId={tenantId}
+              status={status}
+              open={open}
+              onClose={() => setOpen(false)}
+              prefill={prefill}
+            />
+          </Suspense>
+        )}
+      </ConfigProvider>
     </>
   );
 };

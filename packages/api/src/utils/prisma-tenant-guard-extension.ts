@@ -410,11 +410,31 @@ export const tenantGuardExtension = {
 
         if (WHERE_GUARDED_OPERATIONS.has(operation)) {
           const where = (args as { where?: unknown })?.where;
-          const clauseState = tenantClause(where, field, tenantId, 0, STRICT_WHERE_OPERATIONS.has(operation));
+          // Le compteur doit conserver la clé unique composée pour l’upsert atomique PostgreSQL.
+          const counter =
+            model === 'DocumentCounter' && operation === 'upsert'
+              ? (args as Prisma.DocumentCounterUpsertArgs)
+              : undefined;
+          const counterKey = counter?.where?.tenant_id_doc_type_period_key;
+          const clauseState = tenantClause(
+            counterKey ? { AND: [where, counterKey] } : where,
+            field,
+            tenantId,
+            0,
+            Boolean(counter) || STRICT_WHERE_OPERATIONS.has(operation)
+          );
           if (clauseState === 'missing') {
             report(`requête ${model}.${operation} sans filtre ${field}`);
           } else if (clauseState === 'foreign') {
             report(`requête ${model}.${operation} avec un filtre ${field} d'une autre agence`);
+          }
+          if (
+            counter &&
+            (counter.create?.tenant_id !== tenantId ||
+              counter.update?.tenant !== undefined ||
+              fieldNamesAnotherTenant(counter.update, field, tenantId))
+          ) {
+            report(`écriture ${model}.${operation} avec ${field} différent de l'agence active`);
           }
         }
 

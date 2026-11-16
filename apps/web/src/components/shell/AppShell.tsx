@@ -45,13 +45,6 @@ const CopilotRoot = lazy(() => import('../copilot/CopilotRoot'));
 const HeaderActions = lazy(() => import('../notifications/HeaderActions'));
 
 /**
- * Page plein écran de l'assistant. Même motif que `isAssistantPagePath` de
- * `copilot/CopilotRoot.tsx`, recopié ici : importer ce module statiquement
- * tirerait CopilotRoot dans le bundle d'entrée, alors qu'il est chargé à part.
- */
-const isAssistantPage = (pathname: string): boolean => /\/assistant\/?$/.test(pathname);
-
-/**
  * `<AppShell>` — coquille unique, montée AU NIVEAU ROUTE (REFONTE_UI_UX.md §4.1).
  *
  * `DashboardLayout` n'était pas un layout de route : il était importé et rendu
@@ -268,10 +261,11 @@ export const AppShell: React.FC = () => {
   // Tant que le persona n'est pas tranché, on rend la coquille sans menu
   // plutôt qu'un menu faux : afficher le menu public à un collaborateur, même
   // une seconde, est pire que de n'afficher aucun menu.
-  const showSidebar = Boolean(nav) && isDesktop;
-  const showRail = Boolean(nav) && isTablet;
+  const assistantPage = /\/assistant\/?$/.test(location.pathname);
+  const showSidebar = Boolean(nav) && isDesktop && !assistantPage;
+  const showRail = Boolean(nav) && isTablet && !assistantPage;
   const showTabs = Boolean(nav) && !isDesktop && (nav?.tabs.length ?? 0) > 0;
-  const canOpenDrawer = Boolean(nav) && !isDesktop;
+  const canOpenDrawer = Boolean(nav) && (!isDesktop || assistantPage);
 
   const sidebarWidth = showSidebar ? 256 : showRail ? 72 : 0;
 
@@ -297,7 +291,7 @@ export const AppShell: React.FC = () => {
     <HelpProvider
       tenantId={navContext.tenantId}
       featureAccess={featureAccess}
-      copilotAvailable={showCopilot && Boolean(copilotStatus?.enabled) && !isAssistantPage(location.pathname)}
+      copilotAvailable={showCopilot && Boolean(copilotStatus?.enabled) && !assistantPage}
     >
       <Layout style={{ minHeight: '100vh', background: 'var(--surface-page)' }}>
         {(showSidebar || showRail) && nav && (
@@ -321,7 +315,10 @@ export const AppShell: React.FC = () => {
               persona === 'locataire' ||
               persona === 'coproprietaire' ? (
                 <Suspense fallback={null}>
-                  <HeaderActions />
+                  <HeaderActions
+                    showAssistant={Boolean(persona === 'collaborateur' && !assistantPage && copilotStatus?.enabled)}
+                    isDesktop={isDesktop}
+                  />
                 </Suspense>
               ) : null
             }

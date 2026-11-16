@@ -56,7 +56,22 @@ const PROPERTY_ID = '44444444-4444-4444-8444-444444444444';
 const PAYMENT_ID = '22222222-2222-4222-8222-222222222222';
 const INSTALLMENT_ID = '33333333-3333-4333-8333-333333333333';
 
-const ALL_PERMS = ['PROPERTIES_VIEW', 'RENTAL_LEASES_VIEW', 'RENTAL_DOCUMENTS_VIEW', 'RENTAL_DOCUMENTS_GENERATE'];
+const ALL_PERMS = [
+  'PROPERTIES_VIEW',
+  'RENTAL_INSTALLMENTS_VIEW',
+  'RENTAL_PAYMENTS_VIEW',
+  'MAINTENANCE_ADMIN',
+  'SYNDIC_VIEW',
+  'RENTAL_LEASES_VIEW',
+  'RENTAL_DOCUMENTS_VIEW',
+  'RENTAL_DOCUMENTS_GENERATE',
+  'CRM_DEALS_VIEW',
+  'FINANCE_REPORTS_READ',
+  'FINANCE_SITES_MANAGE',
+  'FINANCE_ACCOUNTS_READ',
+  'OWNER_STATEMENTS_VIEW',
+  'PATRIMOINE_PERSONAL_VIEW'
+];
 
 const ctx = (perms: string[] = ALL_PERMS, seen: string[] = [LEASE_ID]): CopilotToolContext => ({
   tenantId: TENANT,
@@ -100,7 +115,7 @@ beforeEach(() => {
 });
 
 describe('registre', () => {
-  it('ne contient que les 9 outils du plan, sans outil d’exécution', () => {
+  it('déclare les outils autorisés, sans outil d’exécution', () => {
     expect(ALL_TOOLS.map(t => t.name).sort()).toEqual(
       [
         'call_read',
@@ -111,7 +126,43 @@ describe('registre', () => {
         'propose_rental_document',
         'search_leases',
         'search_properties',
-        'show_artifact'
+        'search_syndicates',
+        'search_syndicate_lots',
+        'search_sale_mandates',
+        'search_construction_sites',
+        'show_artifact',
+        'rental_arrears',
+        'rental_receipts',
+        'rental_receipts_sql',
+        'rental_installments_sql',
+        'chart_analysis',
+        'pivot_analysis',
+        'show_indicators',
+        'compose_report',
+        'property_portfolio',
+        'lease_portfolio',
+        'maintenance_overview',
+        'syndicate_budget',
+        'syndicate_charges',
+        'syndicate_maintenance',
+        'rental_due_comparison',
+        'rental_monthly_review',
+        'crm_pipeline',
+        'sale_mandates',
+        'construction_budget',
+        'owner_statements',
+        'owner_payouts',
+        'owner_balances',
+        'patrimony_net_worth',
+        'patrimony_history',
+        'maintenance_log',
+        'reserved_sale_properties',
+        'sale_commitments',
+        'propose_follow_up',
+        'prepare_budget_alert',
+        'prepare_lease_expiry_alert',
+        'prepare_declaration_alert',
+        'prepare_rent_arrears_alert'
       ].sort()
     );
     expect(ALL_TOOLS.some(t => /execute/i.test(t.name))).toBe(false);
@@ -119,11 +170,35 @@ describe('registre', () => {
 
   it.each([
     ['search_properties', 'PROPERTIES_VIEW'],
+    ['search_syndicates', 'SYNDIC_VIEW'],
+    ['search_syndicate_lots', 'SYNDIC_VIEW'],
+    ['search_sale_mandates', 'CRM_DEALS_VIEW'],
+    ['search_construction_sites', 'FINANCE_ACCOUNTS_READ'],
     ['search_leases', 'RENTAL_LEASES_VIEW'],
     ['list_lease_documents', 'RENTAL_DOCUMENTS_VIEW'],
     ['list_property_documents', 'PROPERTIES_VIEW'],
     ['propose_rental_document', 'RENTAL_DOCUMENTS_GENERATE'],
     ['show_artifact', 'PROPERTIES_VIEW'],
+    ['rental_arrears', 'RENTAL_INSTALLMENTS_VIEW'],
+    ['rental_receipts', 'RENTAL_PAYMENTS_VIEW'],
+    ['rental_receipts_sql', 'RENTAL_PAYMENTS_VIEW'],
+    ['rental_installments_sql', 'RENTAL_INSTALLMENTS_VIEW'],
+    ['chart_analysis', 'PROPERTIES_VIEW'],
+    ['pivot_analysis', 'PROPERTIES_VIEW'],
+    ['show_indicators', 'PROPERTIES_VIEW'],
+    ['compose_report', 'PROPERTIES_VIEW'],
+    ['property_portfolio', 'PROPERTIES_VIEW'],
+    ['lease_portfolio', 'RENTAL_LEASES_VIEW'],
+    ['maintenance_overview', 'MAINTENANCE_ADMIN'],
+    ['syndicate_budget', 'SYNDIC_VIEW'],
+    ['syndicate_charges', 'SYNDIC_VIEW'],
+    ['syndicate_maintenance', 'MAINTENANCE_ADMIN'],
+    ['owner_balances', 'FINANCE_ACCOUNTS_READ'],
+    ['patrimony_net_worth', 'PATRIMOINE_PERSONAL_VIEW'],
+    ['patrimony_history', 'PATRIMOINE_PERSONAL_VIEW'],
+    ['maintenance_log', 'PROPERTIES_VIEW'],
+    ['reserved_sale_properties', 'PROPERTIES_VIEW'],
+    ['sale_commitments', 'CRM_DEALS_VIEW'],
     ['list_capabilities', 'PROPERTIES_VIEW'],
     ['call_read', 'PROPERTIES_VIEW'],
     ['plan_write', 'PROPERTIES_VIEW']
@@ -153,31 +228,46 @@ describe('registre', () => {
         .sort()
     ).toEqual([
       'call_read',
+      'chart_analysis',
+      'compose_report',
       'list_capabilities',
       'list_property_documents',
+      'maintenance_log',
+      'pivot_analysis',
       'plan_write',
+      'property_portfolio',
+      'propose_follow_up',
+      'reserved_sale_properties',
       'search_properties',
-      'show_artifact'
+      'show_artifact',
+      'show_indicators'
     ]);
-    expect(toolsForUser(new Set(ALL_PERMS))).toHaveLength(9);
+    expect(toolsForUser(new Set(ALL_PERMS))).toHaveLength(ALL_TOOLS.length);
   });
 
   it('filtre aussi selon les droits d’abonnement quand ils sont fournis', () => {
     const core = toolsForUser(new Set(ALL_PERMS), new Set(['CORE'] as const));
     expect(core.map(t => t.name).sort()).toEqual([
       'call_read',
+      'chart_analysis',
+      'compose_report',
       'list_capabilities',
       'list_property_documents',
+      'maintenance_overview',
+      'pivot_analysis',
       'plan_write',
+      'property_portfolio',
+      'propose_follow_up',
       'search_properties',
-      'show_artifact'
+      'show_artifact',
+      'show_indicators'
     ]);
     expect(toolsForUser(new Set(ALL_PERMS), [])).toEqual([]);
   });
 
   it('expose des spécifications neutres avec additionalProperties:false', () => {
     const specs = toLlmToolSpecs(toolsForUser(new Set(ALL_PERMS)));
-    expect(specs).toHaveLength(9);
+    expect(specs).toHaveLength(ALL_TOOLS.length);
     for (const spec of specs) expect(spec.inputSchema.additionalProperties).toBe(false);
   });
 
@@ -185,8 +275,9 @@ describe('registre', () => {
     const definition = tool(name);
     // Un schéma affiné (superRefine, ex. show_artifact) enveloppe l'objet dans un ZodEffects.
     const schema = definition.inputSchema as unknown as z.ZodTypeAny;
-    const base = (schema instanceof z.ZodEffects ? schema.innerType() : schema) as z.ZodObject<z.ZodRawShape>;
-    const shape = base.shape;
+    const base = schema instanceof z.ZodEffects ? schema.innerType() : schema;
+    const variants: z.ZodObject<z.ZodRawShape>[] =
+      base instanceof z.ZodDiscriminatedUnion ? base.options : [base as z.ZodObject<z.ZodRawShape>];
     const json = definition.jsonSchema as {
       type: string;
       additionalProperties: boolean;
@@ -195,11 +286,9 @@ describe('registre', () => {
     };
     expect(json.type).toBe('object');
     expect(json.additionalProperties).toBe(false);
-    expect(Object.keys(json.properties).sort()).toEqual(Object.keys(shape).sort());
-    const required = Object.entries(shape)
-      .filter(([, schema]) => !schema.isOptional())
-      .map(([key]) => key)
-      .sort();
+    const properties = [...new Set(variants.flatMap(variant => Object.keys(variant.shape)))].sort();
+    expect(Object.keys(json.properties).sort()).toEqual(properties);
+    const required = properties.filter(key => variants.every(variant => variant.shape[key]?.isOptional() === false));
     expect([...(json.required ?? [])].sort()).toEqual(required);
   });
 

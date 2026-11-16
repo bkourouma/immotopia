@@ -12,7 +12,7 @@ import { AppError, BadRequestError, UnauthorizedError } from '../middleware/erro
 import { AuditActionKey } from '../types/audit-types';
 import { legacySanitizedPassword } from '../middleware/validation-middleware';
 import { getUserPermissions } from './permission-service';
-import type { Language } from '../i18n';
+import type { AssistantLanguage, Language } from '../i18n';
 import {
   isLoginLocked,
   recordLoginFailure,
@@ -924,6 +924,18 @@ export async function setPreferredLanguage(userId: string, language: Language) {
   const { passwordHash: removedPasswordHash, ...userPublic } = user;
   void removedPasswordHash;
   return userPublic;
+}
+
+export function getPreferredAssistantLanguage(userId: string) {
+  return prisma.user.findUnique({ where: { id: userId }, select: { preferredAssistantLanguage: true } });
+}
+
+export function setPreferredAssistantLanguage(userId: string, language: AssistantLanguage | null) {
+  return prisma.user.update({
+    where: { id: userId },
+    data: { preferredAssistantLanguage: language },
+    select: { preferredAssistantLanguage: true }
+  });
 }
 
 /**

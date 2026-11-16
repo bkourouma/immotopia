@@ -37,6 +37,7 @@ import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion } from '../../utils/list-search';
 import { montantCalcule, montantVerrouille } from '../../utils/ligne-quantite-prix';
 import { montantSaisiProps } from '../../utils/montant-saisi';
+import { BudgetAlertThreshold } from '../../components/finance/BudgetAlertThreshold';
 
 import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
@@ -625,13 +626,16 @@ export const BudgetChantier: React.FC = () => {
         subtitle={chantier?.name}
         breadcrumbs={filAriane}
         extra={
-          budget ? (
-            <StatusTag
-              status={budget.status}
-              tone={TONE_BUDGET[budget.status]}
-              label={SITE_BUDGET_STATUS_LABELS[budget.status]}
-            />
-          ) : undefined
+          <Space wrap>
+            {tenantId && siteId && <BudgetAlertThreshold key={siteId} tenantId={tenantId} siteId={siteId} />}
+            {budget && (
+              <StatusTag
+                status={budget.status}
+                tone={TONE_BUDGET[budget.status]}
+                label={SITE_BUDGET_STATUS_LABELS[budget.status]}
+              />
+            )}
+          </Space>
         }
       />
 

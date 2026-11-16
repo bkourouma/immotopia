@@ -2,11 +2,17 @@ import { Request, Response } from 'express';
 import { asyncHandler, BadRequestError } from '../middleware/error-middleware';
 import { prisma } from '../utils/database';
 import { recordSiteProgressTx, listSiteProgress } from '../lib/finance/site-progress';
-import { acknowledgeBudgetAlertTx, listOpenBudgetAlerts } from '../lib/finance/budget-alerts';
+import {
+  acknowledgeBudgetAlertTx,
+  listOpenBudgetAlerts,
+  readSiteBudgetThreshold,
+  setSiteBudgetThreshold
+} from '../lib/finance/budget-alerts';
 import { getSitesDashboard } from '../lib/finance/site-dashboard';
 import type { SiteProgressEntryRecord, SiteBudgetAlertRecord, SiteDashboardRow } from '../lib/finance/types-lot3';
 import {
   recordSiteProgressSchema,
+  siteBudgetThresholdInput,
   sitesDashboardQuerySchema,
   uuidPathParamSchema
 } from '../lib/finance/schemas-pilotage';
@@ -150,6 +156,22 @@ export const listOpenBudgetAlertsHandler = asyncHandler(async (req: Request, res
   const alerts = await listOpenBudgetAlerts(tenantId);
 
   res.status(200).json({ success: true, data: alerts.map(toBudgetAlertResponse) });
+});
+
+export const getSiteBudgetThresholdHandler = asyncHandler(async (req, res) => {
+  const site = await readSiteBudgetThreshold(requireTenantId(req), requireUuidParam(req, 'siteId'));
+  res.set('Cache-Control', 'private, no-store').json({ success: true, data: site });
+});
+
+export const setSiteBudgetThresholdHandler = asyncHandler(async (req, res) => {
+  const { thresholdPercent, expectedThresholdPercent } = siteBudgetThresholdInput.parse(req.body);
+  const data = await setSiteBudgetThreshold(
+    requireTenantId(req),
+    requireUuidParam(req, 'siteId'),
+    thresholdPercent,
+    expectedThresholdPercent
+  );
+  res.json({ success: true, data });
 });
 
 // ---------------------------------------------------------------------------

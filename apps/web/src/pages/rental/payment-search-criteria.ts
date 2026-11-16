@@ -58,6 +58,12 @@ export function paymentCriteria(tenantId: string | undefined, leaseId?: string):
       primary: true,
       api: ['startDate', 'endDate']
     },
+    {
+      key: 'received',
+      type: 'dateRange',
+      label: t('Date d’encaissement'),
+      urlKeys: ['receivedFrom', 'receivedTo']
+    },
     ...(leaseId ? [] : [renterCriterion(tenantId, { api: 'renterClientId' })]),
     {
       key: 'method',

@@ -10,11 +10,12 @@ import {
   logoutUser,
   forgotPassword,
   resetPassword,
-  setPreferredLanguage
+  setPreferredLanguage,
+  setPreferredAssistantLanguage
 } from '../services/auth-service';
 import { RegisterRequest, LoginRequest } from '../types/auth-types';
 import { setAuthCookies, setAccessTokenCookie, clearAuthCookies } from '../utils/auth-cookies';
-import { isLanguage, t } from '../i18n';
+import { isAssistantLanguage, isLanguage, t } from '../i18n';
 import { logger } from '../utils/logger';
 import { BadRequestError, UnauthorizedError } from '../middleware/error-middleware';
 import { markLoginLockedRefusal } from '../middleware/rate-limit-middleware';
@@ -171,7 +172,17 @@ export async function updateMyLanguage(req: Request, res: Response): Promise<voi
     throw new UnauthorizedError();
   }
 
-  const { language } = req.body ?? {};
+  const body = req.body ?? {};
+  if (Object.prototype.hasOwnProperty.call(body, 'assistantLanguage')) {
+    const { assistantLanguage } = body;
+    if (Object.keys(body).length !== 1 || (assistantLanguage !== null && !isAssistantLanguage(assistantLanguage))) {
+      throw new BadRequestError(t('Langue non prise en charge.'));
+    }
+    const user = await setPreferredAssistantLanguage(req.user.userId, assistantLanguage);
+    res.status(200).json({ success: true, user });
+    return;
+  }
+  const { language } = body;
   if (!isLanguage(language)) {
     throw new BadRequestError('Langue non prise en charge.');
   }

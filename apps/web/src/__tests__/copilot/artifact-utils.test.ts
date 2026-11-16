@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   compareCells,
   csvSeparator,
+  exportableTable,
   formatArtifactCell,
   neutralizeFormula,
   safeFilename,
@@ -10,6 +11,72 @@ import {
 } from '../../utils/copilot-artifact';
 
 describe('sanitizeArtifact', () => {
+  it('conserve les liens de provenance locatifs filtrés et rejette les paramètres libres', () => {
+    const provenance = {
+      source: 'Paiements locatifs',
+      period: '2025-10',
+      calculatedAt: '2025-11-01T00:00:00Z',
+      rules: []
+    };
+    const artifact = {
+      kind: 'table',
+      id: 't',
+      title: 'Bilan',
+      columns: [{ key: 'amount', label: 'Montant' }],
+      rows: [{ amount: 80 }]
+    };
+    const payments = '/tenant/t1/rental/payments?receivedFrom=2025-10-01&receivedTo=2025-10-31';
+    const overdue = '/tenant/t1/rental/installments?dueFrom=2025-10-01&dueTo=2025-10-31&overdue=1';
+    const balances = '/tenant/t1/finance/owner-accounts?soldeDu=1';
+    for (const href of [payments, overdue, balances]) {
+      expect(sanitizeArtifact({ ...artifact, provenance: { ...provenance, href } })).toMatchObject({
+        provenance: { href }
+      });
+    }
+    expect(
+      sanitizeArtifact({ ...artifact, provenance: { ...provenance, href: payments + '&redirect=//example.invalid' } })
+    ).not.toHaveProperty('provenance');
+  });
+  it('conserve le dessin et la seconde dimension sans accepter une couleur arbitraire', () => {
+    const item = sanitizeArtifact({
+      kind: 'chart',
+      id: 'heat',
+      title: 'Chaleur',
+      chartType: 'heatmap',
+      xKey: 'month',
+      groupKey: 'zone',
+      groupLabel: 'Zone',
+      series: [{ key: 'count', label: 'Nombre' }],
+      data: [{ month: 'Janvier', zone: 'Nord', count: 0 }],
+      scene: {
+        width: 640,
+        height: 300,
+        marks: [
+          { kind: 'rect', x: 1, y: 1, w: 50, h: 30, color: 'E7EDF4' },
+          { kind: 'rect', x: 1, y: 1, w: 50, h: 30, color: 'url(https://example.invalid)' },
+          { kind: 'rect', x: 1, y: 1, w: 750, h: 30, color: 'FFFFFF' }
+        ]
+      }
+    });
+    expect(item).toMatchObject({ groupKey: 'zone', scene: { marks: [{ kind: 'rect', color: 'E7EDF4' }] } });
+    expect(item && exportableTable(item)?.rows).toEqual([{ month: 'Janvier', zone: 'Nord', count: 0 }]);
+  });
+  it('conserve les colonnes et les totaux du tableau croisé pour l’export', () => {
+    const columns = Array.from({ length: 51 }, (_, index) => ({ key: `c${index}`, label: `Colonne ${index}` }));
+    const table = sanitizeArtifact({
+      kind: 'table',
+      id: 'pivot',
+      title: 'Tableau croisé',
+      columns,
+      rows: [{ c0: 'Cocody', c49: 7 }],
+      totals: { c0: 'Total', c49: 7, c50: 9 }
+    });
+    if (table?.kind !== 'table') throw new Error('table attendue');
+    expect(table.columns).toHaveLength(50);
+    expect(table.totals).toMatchObject({ c0: 'Total', c49: 7 });
+    expect(table.totals).not.toHaveProperty('c50');
+    expect(exportableTable(table)?.rows.at(-1)).toEqual(table.totals);
+  });
   it('accepte un tableau, un texte et un graphique bien formés', () => {
     expect(
       sanitizeArtifact({ kind: 'table', id: 't', title: 'T', columns: [{ key: 'a', label: 'A' }], rows: [{ a: 1 }] })

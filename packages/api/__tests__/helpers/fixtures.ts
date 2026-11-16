@@ -62,6 +62,7 @@ const TENANT_ADMIN_TEST_PERMISSIONS = [
   // creation du role : `getUserPermissions` met les droits en cache 5 minutes
   // par utilisateur, un octroi tardif ne serait pas vu.
   'RENTAL_LEASES_VIEW',
+  'RENTAL_PAYMENTS_VIEW',
   'RENTAL_DOCUMENTS_VIEW',
   'RENTAL_DOCUMENTS_GENERATE',
   // Journal d'activite de l'agence (ADR-006) : octroye des la creation du role.

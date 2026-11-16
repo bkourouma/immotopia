@@ -21,7 +21,9 @@ const mockGetPropertyForTenant = jest.fn();
 const mockResolveTemplate = jest.fn();
 const mockGenerateDocument = jest.fn();
 const mockLogAudit = jest.fn();
+const mockDelay = jest.fn();
 
+jest.mock('node:timers/promises', () => ({ setTimeout: (...args: unknown[]) => mockDelay(...args) }));
 jest.mock('../../src/utils/database', () => ({ prisma: mockPrisma }));
 jest.mock('../../src/utils/logger', () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }
@@ -50,7 +52,9 @@ import { formatContextBlock, resolvePageContext, sanitizeReference } from '../..
 import { FakeProvider, type FakeStep, LlmProviderError } from '../../src/lib/ai/providers';
 import { buildSystemPrompt } from '../../src/lib/ai/system-prompt';
 import { planWriteTool } from '../../src/lib/ai/tools/plan-write';
-import { toolsForUser } from '../../src/lib/ai/tools/registry';
+import { ALL_TOOLS, toolsForUser } from '../../src/lib/ai/tools/registry';
+import { withDatasetCatalog } from '../../src/lib/ai/tools/list-datasets';
+import { datasetCatalog } from '../../src/lib/ai/dataset-catalog';
 import { resetProposalUsageForTests } from '../../src/lib/ai/proposal-token';
 import { env } from '../../src/config/env';
 
@@ -415,6 +419,72 @@ describe('orchestrateur — outils interdits et entrées invalides', () => {
   });
 });
 
+describe('catalogue des jeux métier', () => {
+  it('décrit uniquement les jeux autorisés pour le tour avant tout calcul', async () => {
+    const perms = ['RENTAL_PAYMENTS_VIEW'];
+    const receipt = toolsForUser(perms).find(tool => tool.name === 'rental_receipts')!;
+    const harness = start(
+      scripted([
+        { toolCalls: [{ name: 'list_datasets', input: {} }] },
+        { toolCalls: [{ name: 'list_datasets', input: { dataset: 'rental_receipts' } }] },
+        { toolCalls: [{ name: 'list_datasets', input: { dataset: 'rental_receipts_sql' } }] },
+        { toolCalls: [{ name: 'list_datasets', input: { dataset: 'absent' } }] },
+        { text: 'Catalogue consulté.' }
+      ]),
+      { perms, tools: [receipt] }
+    );
+    await expect(harness.result).resolves.toBe('end_turn');
+    const resultAt = (request: number) => {
+      const { content } = harness.requests[request].at(-1)!.content[0] as { content: string };
+      return JSON.parse(content);
+    };
+    expect(resultAt(1)).toEqual({
+      total: 1,
+      items: [{ id: 'rental_receipts', title: 'Encaissements locatifs', module: 'RENTAL' }]
+    });
+    expect(resultAt(2)).toMatchObject({
+      id: receipt.name,
+      filters: receipt.jsonSchema.properties,
+      defaultPeriod: 'Dernier mois civil clos',
+      granularities: ['month'],
+      measures: expect.arrayContaining([
+        expect.objectContaining({ key: 'amount', unit: 'currency', format: 'currency' })
+      ])
+    });
+    expect(resultAt(3)).toEqual(resultAt(4));
+    expect(resultAt(3)).toMatchObject({ error: 'NOT_FOUND' });
+    expect(harness.events.some(event => event.type === 'artifact')).toBe(false);
+  });
+
+  it('décrit chaque jeu livré dans le plafond de sortie et reprend les filtres de son outil', async () => {
+    const permissions = new Set(
+      ALL_TOOLS.flatMap(tool => [tool.requiredPermission, ...(tool.additionalPermissions ?? [])])
+    );
+    const definition = withDatasetCatalog(ALL_TOOLS).find(tool => tool.name === 'list_datasets')!;
+    const ctx = {
+      tenantId: TENANT,
+      userId: USER,
+      permissions,
+      requestId: 'catalogue',
+      conversationId: 'catalogue',
+      seenLeaseIds: new Set<string>(),
+      signal: new AbortController().signal
+    };
+    const list = await definition.execute({}, ctx);
+    const ids = Object.keys(datasetCatalog);
+    expect(list.modelResult.total).toBe(ids.length);
+    expect(list.modelResult.truncated).toBeUndefined();
+    const details = await Promise.all(ids.map(dataset => definition.execute({ dataset }, ctx)));
+    for (const [index, detail] of details.entries()) {
+      const tool = ALL_TOOLS.find(entry => entry.name === ids[index])!;
+      expect(detail.uiEvent).toBeUndefined();
+      expect(detail.modelResult).toMatchObject({ id: tool.name, filters: tool.jsonSchema.properties });
+      expect(detail.modelResult.truncated).toBeUndefined();
+    }
+    expect(withDatasetCatalog(ALL_TOOLS.filter(tool => tool.name === 'search_properties'))).toHaveLength(1);
+  });
+});
+
 describe('orchestrateur — limites, abandon, refus', () => {
   it('s’arrête après AI_MAX_TOOL_ROUNDS tours d’outils : done max_rounds', async () => {
     const step: FakeStep = { toolCalls: [{ name: 'search_properties', input: {} }] };
@@ -426,7 +496,22 @@ describe('orchestrateur — limites, abandon, refus', () => {
     expect(harness.events.at(-1)).toEqual({ type: 'done', reason: 'max_rounds' });
   });
 
-  it('refuse plus de 8 appels d’outils par requête', async () => {
+  it.each([
+    { mode: 'standard', deep: false, limit: env.AI_MAX_TOOL_ROUNDS },
+    { mode: 'approfondi', deep: true, limit: 30 }
+  ])('accepte la synthèse finale après le dernier appel autorisé en mode $mode', async ({ deep, limit }) => {
+    const step: FakeStep = { toolCalls: [{ name: 'search_properties', input: {} }] };
+    const harness = start(scripted([...Array.from({ length: limit }, () => step), { text: 'Synthèse prête.' }]), {
+      deep
+    });
+    await expect(harness.result).resolves.toBe('end_turn');
+    expect(mockListProperties).toHaveBeenCalledTimes(limit);
+    expect(harness.requests).toHaveLength(limit + 1);
+    expect(harness.events.some(event => event.type === 'error')).toBe(false);
+    expect(harness.events.at(-1)).toEqual({ type: 'done', reason: 'end_turn' });
+  });
+
+  it('refuse un lot qui dépasse le plafond d’appels du mode standard', async () => {
     const calls = Array.from({ length: MAX_TOOL_CALLS_PER_REQUEST + 1 }, () => ({
       name: 'search_properties' as const,
       input: {}
@@ -537,6 +622,54 @@ describe('orchestrateur — limites, abandon, refus', () => {
 });
 
 describe('orchestrateur — erreurs', () => {
+  const overload = new LlmProviderError('Indisponible', { retryable: true, automaticRetry: true });
+
+  it('rejoue au plus trois fois une étape interrompue avant le premier contenu', async () => {
+    mockDelay.mockResolvedValue(undefined);
+    const random = jest.spyOn(Math, 'random').mockReturnValue(0.5);
+    try {
+      const runTurn = jest.fn().mockRejectedValue(overload);
+      const harness = start({ id: 'fake', runTurn });
+      await expect(harness.result).resolves.toBe('error');
+      expect(runTurn).toHaveBeenCalledTimes(4);
+      expect(mockDelay.mock.calls.map(([ms]) => ms)).toEqual([2_000, 4_000, 8_000]);
+      expect(harness.events.filter(event => event.type === 'error')).toHaveLength(1);
+    } finally {
+      random.mockRestore();
+      mockDelay.mockReset();
+    }
+  });
+
+  it('arrête les reprises au premier texte déjà transmis', async () => {
+    const runTurn = jest.fn(async (_request, onText: (text: string) => void) => {
+      onText('Réponse partielle');
+      throw overload;
+    });
+    const harness = start({ id: 'fake', runTurn });
+    await expect(harness.result).resolves.toBe('error');
+    expect(runTurn).toHaveBeenCalledTimes(1);
+    expect(mockDelay).not.toHaveBeenCalled();
+    expect(harness.events.filter(event => event.type === 'text_delta')).toEqual([
+      { type: 'text_delta', text: 'Réponse partielle' }
+    ]);
+  });
+
+  it('interrompt l’attente d’une reprise quand le client annule', async () => {
+    mockDelay.mockImplementation(jest.requireActual('node:timers/promises').setTimeout);
+    try {
+      const runTurn = jest.fn().mockRejectedValue(overload);
+      const harness = start({ id: 'fake', runTurn });
+      await Promise.resolve();
+      expect(mockDelay).toHaveBeenCalledWith(expect.any(Number), undefined, { signal: harness.controller.signal });
+      harness.controller.abort();
+      await expect(harness.result).resolves.toBe('aborted');
+      expect(runTurn).toHaveBeenCalledTimes(1);
+      expect(harness.events.some(event => event.type === 'error')).toBe(false);
+    } finally {
+      mockDelay.mockReset();
+    }
+  });
+
   it('erreur typée du fournisseur : code, retryable puis done error', async () => {
     const provider: LlmProvider = {
       id: 'fake',
@@ -641,6 +774,35 @@ describe('orchestrateur — contexte d’écran', () => {
   });
 
   describe('resolvePageContext', () => {
+    it('valide les filtres affichés par liste et ignore les valeurs libres et les dates invalides', async () => {
+      const context = {
+        currentPath: `/tenant/${TENANT}/rental/installments?status=PARTIAL&overdue=1&dueFrom=2026-10-01&dueTo=2026-10-99&q=NOM-PRIVE&token=SECRET`
+      };
+      const result = await resolvePageContext(context, TENANT, new Set(['RENTAL_INSTALLMENTS_VIEW']));
+      expect(result).toEqual({
+        screen: 'rental_installments',
+        filters: { status: 'PARTIAL', overdue: true, dueFrom: '2026-10-01' }
+      });
+      const prompt = formatContextBlock(result, new Date('2026-11-15'));
+      expect(prompt).toContain('"filters":{"status":"PARTIAL","overdue":true,"dueFrom":"2026-10-01"}');
+      expect(prompt).not.toMatch(/NOM-PRIVE|SECRET|2026-10-99/);
+      expect(await resolvePageContext(context, 'other-tenant', new Set(['RENTAL_INSTALLMENTS_VIEW']))).toBeNull();
+      expect(await resolvePageContext(context, TENANT, new Set(['RENTAL_LEASES_VIEW']))).toBeNull();
+    });
+
+    it('normalise les dates et montants des encaissements et rejette les intervalles inversés', async () => {
+      const currentPath = `/tenant/${TENANT}/rental/payments?method=CASH&montantMin=20.5&montantMax=100&periodeFrom=2026-10-31&periodeTo=2026-10-01&receivedFrom=2026-09-01&receivedTo=2026-09-30`;
+      expect(await resolvePageContext({ currentPath }, TENANT, new Set(['RENTAL_PAYMENTS_VIEW']))).toEqual({
+        screen: 'rental_payments',
+        filters: {
+          method: 'CASH',
+          receivedFrom: '2026-09-01',
+          receivedTo: '2026-09-30',
+          minAmount: 20.5,
+          maxAmount: 100
+        }
+      });
+    });
     const perms = new Set(ALL_PERMS);
 
     it('ignore un chemin dont l’agence n’est pas celle de la route', async () => {

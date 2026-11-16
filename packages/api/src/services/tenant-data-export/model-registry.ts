@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { escapeLike } from '../../utils/like-escape';
 
 /**
  * Export complet d'une agence (lot S7) — quels modeles partent dans l'archive,
@@ -110,6 +111,20 @@ export const EXCLUDED_MODELS: Readonly<Record<string, string>> = {
   TaxParameter: 'Référentiel fiscal de la plateforme, commun à toutes les agences.',
   // Réglage IA (fournisseur, modèle) : singleton de la plateforme, sans donnée d'agence ni secret.
   PlatformAiSettings: "Réglage global de l'assistant IA de la plateforme (fournisseur, modèle), sans donnée d'agence.",
+  AssistantConversation: 'Titre et état du fil réservés à son propriétaire.',
+  AssistantTurn: 'Questions, réponses et résultats réservés au fil privé.',
+  AssistantResponseFeedback: 'Avis et extraits privés accessibles via l’administration de l’assistant.',
+  AssistantProviderUsage: 'Journal individuel des usages réservé à l’administration de l’assistant.',
+  AssistantAttachment: 'Nom, extrait et contenu des fichiers réservés au propriétaire du fil.',
+  AssistantArtifactVersion: 'Instantané privé. Un résultat partagé doit être recalculé avec les droits du lecteur.',
+  AssistantSavedAnalysis: 'Titre et résultat privé réservés au propriétaire de l’analyse.',
+  AssistantAnalysisShare: 'Message et modalités du partage réservés à son expéditeur et à son destinataire.',
+  AssistantScheduledReport: 'Programmation et message de diffusion réservés au propriétaire du rapport.',
+  AssistantReportDelivery: 'Réservation technique d’une occurrence pour un destinataire donné.',
+  AssistantTask: 'Titre, description et lien d’analyse réservés au créateur et au collaborateur assigné.',
+  AssistantNotificationRequest: 'Empreinte technique utilisée pour dédupliquer une demande de notification.',
+  AssistantFollowUp: 'Proposition et paramètres de confirmation réservés au propriétaire du fil.',
+  AssistantRentalAlert: 'Règle de suivi personnelle qui peut référencer des biens accessibles à son propriétaire.',
   // Verrou des jobs cron entre instances de l'API : technique, plateforme, sans donnée d'agence.
   JobLock:
     "Verrou technique des jobs planifiés de la plateforme (nom du job, détenteur, échéance), sans donnée d'agence."
@@ -208,5 +223,9 @@ export function buildTenantWhere(plan: ExportModelPlan, tenantId: string): Recor
   for (let i = plan.path.length - 2; i >= 0; i -= 1) {
     where = { [plan.path[i]]: where };
   }
+  // Les notifications de l’assistant reprennent des titres et messages privés.
+  const assistantKey = { startsWith: escapeLike('ASSISTANT_') };
+  if (plan.model === 'UserNotification') return { ...where, NOT: { key: assistantKey } };
+  if (plan.model === 'NotificationDelivery') return { ...where, NOT: { notification: { key: assistantKey } } };
   return where;
 }

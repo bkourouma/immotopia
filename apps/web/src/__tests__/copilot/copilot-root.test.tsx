@@ -1,11 +1,14 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import AuthContext from '../../context/AuthContext';
 import type { AuthContextType } from '../../types/auth-types';
 import { AppShell } from '../../components/shell/AppShell';
 import CopilotRoot from '../../components/copilot/CopilotRoot';
+import { selectAssistantLanguage } from '../../i18n/assistant-language';
 import { LanguageProvider } from '../../i18n/LanguageProvider';
+import { resetCopilotStatusCache } from '../../utils/copilot-status-cache';
+import copilotService from '../../services/copilot-service';
 import type { CopilotStatus } from '../../types/copilot';
 
 vi.mock('../../services/copilot-service', () => ({
@@ -15,6 +18,7 @@ vi.mock('../../services/copilot-service', () => ({
       return statusImpl();
     },
     streamChat: vi.fn(),
+    transcribe: vi.fn(),
     executeProposal: vi.fn()
   },
   copilotService: {}
@@ -63,14 +67,58 @@ function renderRoot() {
   );
 }
 
-beforeEach(() => getStatus.mockReset());
+function LaunchDestination() {
+  const location = useLocation();
+  return <output>{location.search || JSON.stringify(location.state)}</output>;
+}
+
+beforeEach(() => {
+  resetCopilotStatusCache();
+  getStatus.mockReset();
+  vi.mocked(copilotService.streamChat).mockReset();
+});
 
 describe('CopilotRoot', () => {
+  it.each([true, false])('transmet ou retire les filtres actifs à l’ouverture de la page (%s)', async keep => {
+    getStatus.mockResolvedValue(ENABLED);
+    const path = `/tenant/${TENANT}/rental/installments`;
+    render(
+      <LanguageProvider>
+        <MemoryRouter initialEntries={[path + '?status=PARTIAL&dueFrom=2026-10-01&page=3&q=Nom']}>
+          <Routes>
+            <Route path={path} element={<CopilotRoot tenantId={TENANT} />} />
+            <Route path={`/tenant/${TENANT}/assistant`} element={<LaunchDestination />} />
+          </Routes>
+        </MemoryRouter>
+      </LanguageProvider>
+    );
+    await screen.findByRole('button', BUTTON);
+    await waitFor(() => expect(fireEvent.keyDown(window, { key: 'k', ctrlKey: true })).toBe(false));
+    const composer = await screen.findByRole('textbox', { name: 'Votre message' }, { timeout: 5000 });
+    if (!keep) fireEvent.click(screen.getByRole('button', { name: 'Retirer le contexte de l’écran' }));
+    fireEvent.change(composer, { target: { value: 'Résume les retards' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Envoyer' }));
+    const destination = await screen.findByRole('status');
+    expect(JSON.parse(destination.textContent ?? '{}')).toEqual({
+      prompt: 'Résume les retards',
+      ...(keep ? { sourcePath: path + '?status=PARTIAL&dueFrom=2026-10-01' } : {})
+    });
+  });
+
   it('affiche le bouton quand l’assistant est activé', async () => {
     getStatus.mockResolvedValue(ENABLED);
     renderRoot();
     const button = await screen.findByRole('button', BUTTON);
     expect(button).toHaveAttribute('aria-keyshortcuts', 'Control+J Meta+J');
+  });
+
+  it('ouvre le tiroir et affiche ses suggestions dans la langue de l’assistant', async () => {
+    getStatus.mockResolvedValue(ENABLED);
+    selectAssistantLanguage('es');
+    renderRoot();
+    fireEvent.click(await screen.findByRole('button', { name: 'Abrir el asistente' }));
+    expect(await screen.findByLabelText('Su mensaje', {}, { timeout: 5000 })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Muéstrame los inmuebles disponibles' })).toBeInTheDocument();
   });
 
   it('masque le bouton quand l’assistant est désactivé', async () => {
@@ -90,21 +138,25 @@ describe('CopilotRoot', () => {
   it.each([
     ['Ctrl+J', { ctrlKey: true }],
     ['Cmd+J', { metaKey: true }]
-  ])('%s ouvre le tiroir', async (_label, mod) => {
-    getStatus.mockResolvedValue(ENABLED);
-    renderRoot();
-    await screen.findByRole('button', BUTTON);
-    // Le bouton est commité dans le DOM avant l'effet passif qui pose
-    // l'écouteur `keydown` : `findByRole` peut rendre la main entre les deux
-    // (rare, mais fréquent sous charge en CI). On renvoie donc la touche
-    // jusqu'à ce que l'écouteur la prenne (`preventDefault`). Sans écouteur,
-    // l'envoi est sans effet ; une fois pris, le tiroir s'ouvre une seule fois.
-    await waitFor(() => {
-      const notPrevented = fireEvent.keyDown(window, { key: 'j', ...mod });
-      expect(notPrevented).toBe(false);
-    });
-    expect(await screen.findByLabelText('Votre message')).toBeInTheDocument();
-  });
+  ])(
+    '%s ouvre le tiroir',
+    async (_label, mod) => {
+      getStatus.mockResolvedValue(ENABLED);
+      renderRoot();
+      await screen.findByRole('button', BUTTON);
+      // Le bouton est commité dans le DOM avant l'effet passif qui pose
+      // l'écouteur `keydown` : `findByRole` peut rendre la main entre les deux
+      // (rare, mais fréquent sous charge en CI). On renvoie donc la touche
+      // jusqu'à ce que l'écouteur la prenne (`preventDefault`). Sans écouteur,
+      // l'envoi est sans effet ; une fois pris, le tiroir s'ouvre une seule fois.
+      await waitFor(() => {
+        const notPrevented = fireEvent.keyDown(window, { key: 'j', ...mod });
+        expect(notPrevented).toBe(false);
+      });
+      expect(await screen.findByLabelText('Votre message', {}, { timeout: 5000 })).toBeInTheDocument();
+    },
+    10_000
+  );
 
   it('ouvre le tiroir au clic et le ferme avec Échap', async () => {
     getStatus.mockResolvedValue(ENABLED);
@@ -112,7 +164,7 @@ describe('CopilotRoot', () => {
     fireEvent.click(await screen.findByRole('button', BUTTON));
     const input = await screen.findByLabelText('Votre message');
     fireEvent.keyDown(input, { key: 'Escape', keyCode: 27, code: 'Escape' });
-    await waitFor(() => expect(screen.queryByLabelText('Votre message')).not.toBeVisible());
+    await waitFor(() => expect(screen.queryByLabelText('Votre message')).not.toBeInTheDocument());
   });
 });
 
@@ -157,6 +209,130 @@ describe('CopilotRoot — page plein écran', () => {
     const reset = screen.getByRole('button', { name: 'Nouvelle conversation' });
     expect(full.textContent?.trim()).toBe('');
     expect(reset.textContent?.trim()).toBe('');
+  });
+
+  it.each([false, true])(
+    'joint un fichier au fil privé et rouvre le tiroir en pleine page (avec source %s)',
+    async openSource => {
+      getStatus.mockResolvedValue(ENABLED);
+      const conversationId = 'a26ca1bb-006a-4b80-8cb8-ec7050b85471';
+      const artifactId = 'aa9d029e-eb04-4d55-abf5-a43364f25aeb';
+      const path = `/tenant/${TENANT}`;
+      const stream = vi.mocked(copilotService.streamChat);
+      stream.mockImplementation(async (_tenant, payload, { onEvent }) => {
+        onEvent({ type: 'meta', conversationId, requestId: 'request-1' });
+        if (payload.conversationId) {
+          onEvent({
+            type: 'artifact',
+            artifact: {
+              id: artifactId,
+              kind: 'table',
+              title: 'Montant',
+              columns: [{ key: 'montant', label: 'Montant', type: 'number' }],
+              rows: [{ montant: 50 }],
+              provenance: {
+                source: 'Échéances locatives',
+                href: `${path}/rental/installments`,
+                period: '2026-10',
+                calculatedAt: '2026-11-15T00:00:00Z',
+                rules: []
+              }
+            }
+          });
+          onEvent({ type: 'text_delta', text: `Voici le total. [[source:${artifactId}:2]]` });
+        } else {
+          onEvent({ type: 'text_delta', text: 'Voici le montant.' });
+        }
+        onEvent({ type: 'done', reason: 'end_turn' });
+      });
+      render(
+        <LanguageProvider>
+          <MemoryRouter initialEntries={[`${path}/dashboard`]}>
+            <Routes>
+              <Route path={`${path}/dashboard`} element={<CopilotRoot tenantId={TENANT} />} />
+              <Route path={`${path}/assistant`} element={<LaunchDestination />} />
+            </Routes>
+          </MemoryRouter>
+        </LanguageProvider>
+      );
+      fireEvent.click(await screen.findByRole('button', BUTTON));
+      await screen.findByRole('button', { name: 'Joindre des fichiers' });
+      const file = new File(['Montant\n50'], 'loyers.csv', { type: 'text/csv' });
+      fireEvent.change(document.querySelector('input[type="file"]')!, { target: { files: [file] } });
+      expect(screen.getByRole('button', { name: 'Retirer loyers.csv' })).toBeVisible();
+      fireEvent.click(screen.getByRole('button', { name: 'Envoyer' }));
+      await screen.findByText('Voici le montant.');
+      expect(stream).toHaveBeenCalledWith(
+        TENANT,
+        expect.objectContaining({
+          turnId: expect.any(String),
+          messages: [{ role: 'user', content: 'Analyse les fichiers joints.' }]
+        }),
+        expect.objectContaining({ files: [file] })
+      );
+
+      const input = screen.getByRole('textbox', { name: 'Votre message' });
+      fireEvent.change(input, { target: { value: 'Quel est le total ?' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Envoyer' }));
+      expect(stream).toHaveBeenLastCalledWith(
+        TENANT,
+        expect.objectContaining({ conversationId, messages: [{ role: 'user', content: 'Quel est le total ?' }] }),
+        expect.not.objectContaining({ files: expect.anything() })
+      );
+      const openPage = await screen.findByRole('button', {
+        name: openSource ? 'Voir la source : Montant' : 'Ouvrir en pleine page'
+      });
+      await waitFor(() => expect(openPage).toBeEnabled());
+      fireEvent.click(openPage);
+      expect((await screen.findByRole('status')).textContent).toBe(
+        `?c=${conversationId}${openSource ? `&resultat=${artifactId}&version=2` : ''}`
+      );
+    }
+  );
+
+  it('insère la transcription du micro dans la saisie du tiroir', async () => {
+    getStatus.mockResolvedValue({ ...ENABLED, transcription: true });
+    const stopTrack = vi.fn();
+    const getUserMedia = vi.fn(async () => ({ getTracks: () => [{ stop: stopTrack }] }));
+    const mediaDevices = Object.getOwnPropertyDescriptor(navigator, 'mediaDevices');
+    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia } });
+    class Recorder {
+      static isTypeSupported = () => true;
+      readonly mimeType = 'audio/webm;codecs=opus';
+      state = 'inactive';
+      ondataavailable?: (event: { data: Blob }) => void;
+      onstop?: () => void;
+
+      start() {
+        this.state = 'recording';
+      }
+
+      stop() {
+        this.state = 'inactive';
+        this.ondataavailable?.({ data: new Blob(['audio'], { type: 'audio/webm' }) });
+        this.onstop?.();
+      }
+    }
+    vi.stubGlobal('MediaRecorder', Recorder);
+    const transcribe = vi.mocked(copilotService.transcribe).mockResolvedValue('les encaissements');
+    try {
+      renderRoot();
+      fireEvent.click(await screen.findByRole('button', BUTTON));
+      fireEvent.change(await screen.findByRole('textbox', { name: 'Votre message' }), { target: { value: 'Résume' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Dicter un message' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Arrêter la dictée' }));
+      await waitFor(() =>
+        expect(screen.getByRole('textbox', { name: 'Votre message' })).toHaveValue('Résume les encaissements')
+      );
+      expect(transcribe).toHaveBeenCalledWith(TENANT, expect.any(Blob), expect.any(AbortSignal), expect.any(Number));
+      expect(transcribe.mock.calls[0][1].type).toBe('audio/webm');
+      expect(stopTrack).toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+      if (mediaDevices) Object.defineProperty(navigator, 'mediaDevices', mediaDevices);
+      else Reflect.deleteProperty(navigator, 'mediaDevices');
+      transcribe.mockReset();
+    }
   });
 });
 
@@ -208,7 +384,7 @@ function renderShell(auth: AuthContextType, path: string) {
 describe('AppShell — montage de l’assistant', () => {
   beforeEach(() => getStatus.mockResolvedValue(ENABLED));
 
-  it('monte le bouton pour un collaborateur d’agence', async () => {
+  it('monte le lanceur dans l’en-tête pour un collaborateur d’agence', async () => {
     renderShell(
       makeAuth({
         tenantMembership: {
@@ -220,8 +396,11 @@ describe('AppShell — montage de l’assistant', () => {
       }),
       `/tenant/${TENANT}/rental/leases`
     );
-    expect(await screen.findByRole('button', BUTTON)).toBeInTheDocument();
-  });
+    expect(await screen.findByRole('button', { name: 'Demander à ImmoCopilot' }, { timeout: 5000 })).toHaveAttribute(
+      'aria-keyshortcuts',
+      'Control+K Meta+K'
+    );
+  }, 10_000);
 
   it.each([
     [

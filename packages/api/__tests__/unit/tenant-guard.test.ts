@@ -68,10 +68,7 @@ function load(mode: 'off' | 'warn' | 'enforce', schema: DmmfModel[] = FAKE_SCHEM
 }
 
 /** Appelle `$allOperations` directement — pas besoin d'un vrai client Prisma. */
-function call(
-  loaded: Loaded,
-  params: { model?: string; operation: string; args: unknown; query?: jest.Mock }
-) {
+function call(loaded: Loaded, params: { model?: string; operation: string; args: unknown; query?: jest.Mock }) {
   const query = params.query ?? jest.fn(async () => ({}));
   const fn = loaded.tenantGuardExtension.query.$allModels.$allOperations as (a: any) => Promise<unknown>;
   return { promise: fn({ model: params.model, operation: params.operation, args: params.args, query }), query };
@@ -80,6 +77,36 @@ function call(
 afterEach(() => {
   delete process.env.TENANT_GUARD_MODE;
   jest.restoreAllMocks();
+});
+
+describe('garde du compteur atomique des documents', () => {
+  it.each([
+    ['agence active', 't1', 't1', undefined, true],
+    ['filtre d’une autre agence', 't2', 't1', undefined, false],
+    ['création dans une autre agence', 't1', 't2', undefined, false],
+    ['déplacement dans une autre agence', 't1', 't1', 't2', false],
+    ['filtre sans agence', undefined, 't1', undefined, false]
+  ])('%s', async (_label, filterTenant, createTenant, updateTenant, allowed) => {
+    const loaded = load('enforce', [{ name: 'DocumentCounter', fields: [{ name: 'tenant_id' }] }]);
+    jest.spyOn(loaded.logger, 'error').mockImplementation(() => loaded.logger);
+    const args = {
+      where: {
+        tenant_id_doc_type_period_key: { tenant_id: filterTenant, doc_type: 'RENT_RECEIPT', period_key: '2026-11' }
+      },
+      create: { tenant_id: createTenant, doc_type: 'RENT_RECEIPT', period_key: '2026-11', last_number: 1 },
+      update: { last_number: { increment: 1 }, ...(updateTenant ? { tenant_id: updateTenant } : {}) }
+    };
+    await loaded.runWithTenantContext({ tenantId: 't1' }, async () => {
+      const { promise, query } = call(loaded, { model: 'DocumentCounter', operation: 'upsert', args });
+      if (allowed) {
+        await expect(promise).resolves.toEqual({});
+        expect(query).toHaveBeenCalledWith(args);
+      } else {
+        await expect(promise).rejects.toBeInstanceOf(loaded.AppError);
+        expect(query).not.toHaveBeenCalled();
+      }
+    });
+  });
 });
 
 describe('D2 — dérivation du schéma (dmmf)', () => {

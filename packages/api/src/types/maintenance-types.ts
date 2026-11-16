@@ -61,6 +61,7 @@ export const createTicketSchema = z.object({
  * Schema for updating a maintenance ticket (admin/manager)
  */
 export const updateTicketSchema = z.object({
+  contractDueDate: z.string().date().nullable().optional(),
   status: z.enum(['DECLARED', 'IN_PROGRESS', 'ASSIGNED', 'RESOLVED', 'CANCELED']).optional(),
   assignedVendorId: z.string().uuid("L'ID du prestataire doit être un UUID valide").optional(),
   assignedToUserId: z.string().uuid("L'ID de l'utilisateur doit être un UUID valide").optional(),

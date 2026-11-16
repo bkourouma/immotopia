@@ -1,7 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { AxiosHeaders } from 'axios';
+import { readAssistantLanguage, selectAssistantLanguage } from '../../i18n/assistant-language';
+import { purgePersonalLocalData } from '../../utils/personal-local-data';
 
 vi.mock('../../utils/api-client', () => ({
-  default: { get: vi.fn(), post: vi.fn() }
+  default: { get: vi.fn(), post: vi.fn(), patch: vi.fn() }
 }));
 vi.mock('../../utils/event-stream', () => ({
   postEventStream: vi.fn()
@@ -16,8 +19,52 @@ const mockedPost = vi.mocked(apiClient.post);
 const mockedStream = vi.mocked(postEventStream);
 
 beforeEach(() => vi.clearAllMocks());
+afterEach(() => selectAssistantLanguage(null));
 
 describe('getStatus', () => {
+  it('écarte la langue et les réponses de statut de la session précédente', async () => {
+    selectAssistantLanguage('hi');
+    let resume!: () => void;
+    const barrier = new Promise<void>(resolve => {
+      resume = resolve;
+    });
+    mockedGet.mockImplementationOnce(async () => {
+      await barrier;
+      return {
+        data: { enabled: true, preferredAssistantLanguage: 'hi' },
+        status: 200,
+        statusText: 'OK',
+        headers: {},
+        config: { headers: new AxiosHeaders() }
+      };
+    });
+    const response = copilotService.getStatus('t1');
+    purgePersonalLocalData();
+    expect(readAssistantLanguage()).toBeNull();
+    resume();
+    await response;
+    expect(readAssistantLanguage()).toBeNull();
+  });
+  it('charge la préférence du compte puis confirme sa modification par l’API', async () => {
+    mockedGet.mockResolvedValue({ data: { enabled: true, preferredAssistantLanguage: 'zh' } });
+    await copilotService.getStatus('t1');
+    expect(readAssistantLanguage()).toBe('zh');
+    vi.mocked(apiClient.patch).mockResolvedValue({ data: { success: true } });
+    await copilotService.savePreferredLanguage('es');
+    expect(apiClient.patch).toHaveBeenCalledWith('/auth/me/language', { assistantLanguage: 'es' });
+    expect(readAssistantLanguage()).toBe('es');
+    vi.mocked(apiClient.patch).mockRejectedValueOnce(new Error('Réseau'));
+    await expect(copilotService.savePreferredLanguage('hi')).rejects.toThrow('Réseau');
+    expect(readAssistantLanguage()).toBe('es');
+  });
+  it('transmet le choix de langue aux requêtes JSON et SSE de l’assistant', async () => {
+    selectAssistantLanguage('hi');
+    mockedGet.mockResolvedValue({ data: { enabled: true } });
+    await copilotService.getStatus('t1');
+    await copilotService.streamChat('t1', { messages: [{ role: 'user', content: 'नमस्ते' }] }, { onEvent: vi.fn() });
+    expect(mockedGet.mock.calls[0][1]?.headers?.['Accept-Language']).toBe('hi');
+    expect(mockedStream.mock.calls[0][2]?.language).toBe('hi');
+  });
   it("renvoie l'état du serveur", async () => {
     mockedGet.mockResolvedValue({
       data: {
@@ -86,6 +133,7 @@ describe('streamChat', () => {
       opts.onEvent({ event: 'text_delta', data: '{"text":"a"}' });
       opts.onEvent({ event: 'inconnu', data: '{}' });
       opts.onEvent({ event: 'text_delta', data: 'pas du json' });
+      opts.onEvent({ event: 'conversation_title', data: '{"conversationId":"c1","title":"Bilan locatif"}' });
       opts.onEvent({ event: 'done', data: '{"reason":"end_turn"}' });
     });
     const events: unknown[] = [];
@@ -95,6 +143,7 @@ describe('streamChat', () => {
     expect(mockedStream.mock.calls[0][1]).toBe(req);
     expect(events).toEqual([
       { type: 'text_delta', text: 'a' },
+      { type: 'conversation_title', conversationId: 'c1', title: 'Bilan locatif' },
       { type: 'done', reason: 'end_turn' }
     ]);
   });

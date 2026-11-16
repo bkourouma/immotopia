@@ -1,7 +1,9 @@
 import React from 'react';
 import { Card, Tag, Typography } from 'antd';
-import { t } from '../../i18n/t';
+import { useAssistantTranslation } from '../../i18n/useAssistantTranslation';
 import type { DocumentCardItem } from '../../types/copilot';
+import { formatArtifactCell } from '../../utils/copilot-artifact';
+import { knownEnumLabel } from './copilot-labels';
 import { DocumentDownloadCard } from './DocumentDownloadCard';
 
 export interface DocumentListCardProps {
@@ -13,6 +15,7 @@ export interface DocumentListCardProps {
 }
 
 export function DocumentListCard({ scope, items, tenantId, propertyId }: DocumentListCardProps): React.ReactElement {
+  const { locale, t } = useAssistantTranslation();
   const title = scope === 'lease' ? t('Documents du bail') : t('Documents du bien');
   return (
     <Card size="small" title={title} data-testid="copilot-document-list">
@@ -38,9 +41,13 @@ export function DocumentListCard({ scope, items, tenantId, propertyId }: Documen
                 <Typography.Text>
                   <bdi>{doc.label}</bdi>
                 </Typography.Text>{' '}
-                <Tag>{doc.type}</Tag>
-                {doc.status ? <Tag>{doc.status}</Tag> : null}
-                {doc.date ? <Typography.Text type="secondary">{doc.date.slice(0, 10)}</Typography.Text> : null}
+                <Tag>{knownEnumLabel(doc.type, t) ?? doc.type}</Tag>
+                {doc.status ? <Tag>{knownEnumLabel(doc.status, t) ?? doc.status}</Tag> : null}
+                {doc.date ? (
+                  <Typography.Text type="secondary">
+                    {formatArtifactCell(doc.date.slice(0, 10), 'date', locale)}
+                  </Typography.Text>
+                ) : null}
               </div>
             );
           })}

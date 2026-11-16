@@ -1077,14 +1077,14 @@ consomme pas le budget commun.
 | `POST /ai/actions/reject`  | utilisateur et agence | 30 par minute (compteur propre, jetons invalides compris) |
 
 Une IA qui chaîne des écritures reste bornée : au plus 3 plans d'écriture par requête de chat (donc
-au plus 3 cartes d'accord à lire), 4 tours d'outils et 8 appels d'outils par requête, 20 requêtes de
+au plus 3 cartes d'accord à lire), 12 appels d'outils en mode standard ou 30 en mode approfondi, 20 requêtes de
 chat par minute, et chaque plan ne s'exécute que par une confirmation humaine, limitée à 10 par
 minute. L'appel loopback de la confirmation traverse en plus les limiteurs de la route appelée
 (IP de l'utilisateur transmise par `X-Forwarded-For`).
 
 Autres plafonds : 20 messages de 4 000 caractères et 24 000 au total par
-requête ; `AI_MAX_TOOL_ROUNDS` tours d'outils (4 par défaut) et 8 appels d'outils
-au plus ; `AI_REQUEST_TIMEOUT_MS` par appel au fournisseur.
+requête. Le mode standard limite les tours à `AI_MAX_TOOL_ROUNDS` (12 par défaut),
+et le mode approfondi à 30. `AI_REQUEST_TIMEOUT_MS` fixe le délai par appel standard.
 
 **Audit** (`AuditLog`, clés de `types/audit-types.ts`) : `AI_CHAT_TURN` (sans
 texte : fournisseur, issue, nombre de tours et d'outils ; son `entityId` est le

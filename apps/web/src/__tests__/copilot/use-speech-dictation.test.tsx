@@ -40,6 +40,9 @@ describe('speechLangFor / appendDictation', () => {
     expect(speechLangFor('fr')).toBe('fr-FR');
     expect(speechLangFor('en')).toBe('en-US');
     expect(speechLangFor('ar')).toBe('ar');
+    expect(speechLangFor('es')).toBe('es-ES');
+    expect(speechLangFor('zh')).toBe('zh-CN');
+    expect(speechLangFor('hi')).toBe('hi-IN');
   });
 
   it('insère le texte avec une espace seulement si nécessaire', () => {

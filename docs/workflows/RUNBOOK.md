@@ -451,8 +451,8 @@ documentées dans `packages/api/env.example`) :
 | `AI_MODEL`                  | `claude-opus-5-5`              | Modèle par défaut : `claude-opus-5-5` pour `anthropic` ; identifiant OpenRouter `fournisseur/modele` (ex. `anthropic/claude-sonnet-4.5`) exigé pour `openrouter`.                     |
 | `AI_EFFORT`                 | `low`                          | Effort de raisonnement (`anthropic` seulement) : `low`, `medium` ou `high`.                                                                                                           |
 | `AI_MAX_OUTPUT_TOKENS`      | `16000`                        | Plafond de tokens de sortie par tour (1024 à 64000).                                                                                                                                  |
-| `AI_MAX_TOOL_ROUNDS`        | `4`                            | Tours d'outils maximum par requête de chat (1 à 8).                                                                                                                                   |
-| `AI_REQUEST_TIMEOUT_MS`     | `60000`                        | Délai maximal d'un appel au fournisseur.                                                                                                                                              |
+| `AI_MAX_TOOL_ROUNDS`        | `12`                           | Tours d'outils maximum en mode standard (1 à 12). Le mode approfondi utilise 30.                                                                                                      |
+| `AI_REQUEST_TIMEOUT_MS`     | `60000`                        | Délai par appel standard. Le mode approfondi le double jusqu'à 120 s sans réduire un délai configuré supérieur. Le mode rapide le plafonne à 45 s.                                    |
 | `AI_PROPOSAL_TTL_SECONDS`   | `300`                          | Validité d'une proposition à confirmer (60 à 900). Le jeton dérive de `JWT_SECRET`.                                                                                                   |
 | `AI_WRITE_PLAN_TTL_SECONDS` | `900`                          | Validité d'un plan d'écriture à approuver (300 à 3600), le temps de lire les changements et de saisir `CONFIRMER`. Même clé de signature.                                             |
 | `AI_REFUSAL_FALLBACK`       | `on`                           | Repli serveur en cas de refus (`anthropic` seulement) ; `off` le coupe.                                                                                                               |
@@ -466,6 +466,43 @@ Le serveur ne démarre pas dans trois cas : `anthropic` sans `ANTHROPIC_API_KEY`
 avertissement est écrit au démarrage. Les plafonds par agence s'ajoutent aux
 limites par utilisateur (20 par minute, 300 par jour). Faire tourner
 `JWT_SECRET` invalide les propositions en cours (5 minutes au plus).
+
+**Qualifier les fournisseurs et modèles.** Sur une instance de recette dotée
+d’une clé active, enregistrer le fournisseur et les modèles, puis lancer
+« Tester la connexion » dans les trois modes. Le test des modes standard et
+approfondi envoie une valeur aléatoire et vérifie qu’elle revient dans l’appel
+d’un outil fictif. Le mode rapide attend une réponse texte. La réponse
+`toolsVerified: true` confirme l’appel d’outil. Le test ne lit aucune donnée
+d’agence. La réponse `simulated: true` identifie le fournisseur local de recette.
+
+Avec OpenRouter, répéter le test avec un modèle de chacune des familles
+`anthropic/`, `openai/`, `google/` et `deepseek/` qui figure dans le
+catalogue d’ImmoTopia. La liste vérifie les paramètres annoncés et le test
+utilise le modèle enregistré. Compléter par une question de chat sur des
+données de recette et vérifier dans le flux que l’outil métier demandé a
+été appelé et que le résultat est affiché. Consigner le fournisseur, le
+modèle renvoyé, le mode, l’issue et la durée. Le catalogue public et les
+réponses SSE simulées constituent des contrôles distincts.
+[Documentation OpenRouter sur la sélection des fournisseurs](https://openrouter.ai/docs/guides/routing/provider-selection).
+
+**Qualifier la transcription.** Sur une instance de recette, enregistrer un moteur dans
+Administration › Assistant IA avec la clé serveur `AI_TRANSCRIPTION_OPENAI_KEY` pour OpenAI
+ou `GEMINI_API_KEY` pour Google. Dans un compte collaborateur, envoyer un enregistrement
+de recette sans données personnelles depuis la dictée dans un navigateur compatible avec
+`MediaRecorder` et sans reconnaissance intégrée, ou via `POST /api/tenants/:tenantId/ai/transcribe`
+dans la session du collaborateur. Le formulaire multipart reçoit `audio`, et accepte `language`
+et `durationSeconds`. Rejouer le même enregistrement sur les deux moteurs. Vérifier le texte,
+la langue, la durée et la ligne d’usage `transcription` dans l’administration. Consigner le moteur,
+le modèle et le résultat pour chaque essai.
+
+**Activer le secours SQL locatif.** Appliquer les migrations de l’API, puis
+exécuter `packages/api/scripts/provision-assistant-reader.sql` dans la même
+base avec un compte d’administration PostgreSQL. Attribuer un mot de passe au
+rôle `immotopia_assistant_reader` avec `\password immotopia_assistant_reader`
+dans psql ou utiliser l’authentification gérée. Injecter son URL PostgreSQL
+dans le secret `AI_ASSISTANT_SQL_URL` de l’API. Le rôle doit rester dédié,
+sans appartenance à d’autres rôles ni droits sur les tables métier. Les deux
+outils locatifs restent masqués tant que le secret est absent.
 
 **Activer en démonstration.** Poser `AI_PROVIDER=fake` dans la ligne de commande
 de `api-demo` de `.claude/launch.json` (comme `PORT` ou `FRONTEND_URL`), avec

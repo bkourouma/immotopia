@@ -1,16 +1,41 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { LanguageProvider } from '../../i18n/LanguageProvider';
+import { LanguageContext, LanguageProvider } from '../../i18n/LanguageProvider';
+import { useLanguage } from '../../i18n/useLanguage';
+import { selectAssistantLanguage } from '../../i18n/assistant-language';
 import type { CopilotArtifact } from '../../types/copilot';
 
 vi.mock('recharts', () => {
   const box = (name: string) => {
-    const Stub = (props: { children?: React.ReactNode }) => <div data-testid={`rc-${name}`}>{props.children}</div>;
+    const Stub = (props: {
+      children?: React.ReactNode;
+      reversed?: boolean;
+      orientation?: string;
+      stackId?: string;
+      layout?: string;
+      innerRadius?: string | number;
+    }) => (
+      <div
+        data-testid={`rc-${name}`}
+        data-reversed={props.reversed}
+        data-orientation={props.orientation}
+        data-stack={props.stackId}
+        data-layout={props.layout}
+        data-radius={props.innerRadius}
+      >
+        {props.children}
+      </div>
+    );
     Stub.displayName = `Stub(${name})`;
     return Stub;
   };
   return {
+    ComposedChart: box('composed-chart'),
+    ScatterChart: box('scatter-chart'),
+    Scatter: box('scatter'),
+    AreaChart: box('area-chart'),
+    Area: box('area'),
     ResponsiveContainer: box('container'),
     BarChart: box('bar-chart'),
     LineChart: box('line-chart'),
@@ -85,6 +110,13 @@ const chart: CopilotArtifact = {
   ]
 };
 
+it('rend le total du tableau croisé dans le pied du tableau', () => {
+  renderPanel([{ ...table, truncated: false, totals: { name: 'Total', amount: 1700.5 } }], table.id);
+  const footer = screen.getByText('Total').closest('tfoot');
+  expect(footer).toBeInTheDocument();
+  expect(footer).toHaveTextContent(/1.?700,50/);
+});
+
 function renderPanel(
   artifacts: CopilotArtifact[],
   selectedId?: string,
@@ -124,6 +156,47 @@ beforeEach(() => {
 });
 
 describe('ArtifactPanel — rendus', () => {
+  it('applique la langue de l’assistant aux cellules, statuts, contrôles et CSV', async () => {
+    if (table.kind !== 'table') throw new Error('tableau attendu');
+    selectAssistantLanguage('hi');
+    renderPanel([
+      {
+        ...table,
+        rows: [{ name: 'PENDING', amount: 1_234_567.5, due: '2026-03-05' }],
+        provenance: {
+          source: 'Source de test',
+          href: '/test',
+          scope: 'shared',
+          filters: [{ label: 'स्थिति', value: 'सफल' }],
+          period: '2026-03',
+          calculatedAt: '2026-03-06T00:00:00Z',
+          rules: []
+        }
+      }
+    ]);
+    expect(screen.getByText('लंबित')).toBeVisible();
+    expect(screen.getByText('12,34,567.50')).toBeVisible();
+    expect(screen.getByText('गणना कैसे हुई')).toBeVisible();
+    fireEvent.click(screen.getByText('गणना कैसे हुई'));
+    expect(screen.getByText('दायरा · प्रेषक और प्राप्तकर्ता की साझा पहुँच')).toBeVisible();
+    expect(screen.getByText('स्थिति · सफल')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: /डाउनलोड करें/ }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'CSV' }));
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    const csv = await blobText(save.mock.calls[0][0]);
+    expect(csv).toContain('PENDING,1234567.5,2026-03-05');
+    expect(csv).toContain('स्रोत विवरण,मान');
+    expect(csv).toContain('प्रेषक और प्राप्तकर्ता की साझा पहुँच');
+    expect(csv).toContain('स्थिति · सफल');
+  });
+
+  it('traduit la description et le tableau accessible du graphique en chinois', async () => {
+    selectAssistantLanguage('zh');
+    renderPanel([chart]);
+    expect(await screen.findByRole('img', { name: /图表：Revenus/ })).toBeInTheDocument();
+    expect(screen.getByText('显示图表数据')).toBeInTheDocument();
+  });
+
   it('rend un tableau formaté, trié, avec la mention tronqué', () => {
     renderPanel([table]);
     expect(screen.getByRole('heading', { name: 'Loyers mars' })).toBeInTheDocument();
@@ -162,6 +235,86 @@ describe('ArtifactPanel — rendus', () => {
     expect(screen.getByText('Fév')).toBeInTheDocument();
   });
 
+  it('déplace la fenêtre du graphique en gardant toutes les catégories dans le tableau', async () => {
+    renderPanel([
+      { ...chart, data: Array.from({ length: 32 }, (_, index) => ({ mois: `Mois ${index + 1}`, v: index })) }
+    ]);
+    const size = await screen.findByRole('slider', { name: 'Nombre de catégories visibles' });
+    const start = screen.getByRole('slider', { name: 'Première catégorie visible' });
+    expect(start).toBeDisabled();
+    fireEvent.change(size, { target: { value: '8' } });
+    fireEvent.change(start, { target: { value: '4' } });
+    expect(screen.getByText('Catégories 4 à 11 sur 32')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: /Revenus \(8 valeurs\)/ })).toBeInTheDocument();
+    expect(screen.getAllByRole('rowheader')).toHaveLength(32);
+  });
+
+  it.each([
+    ['horizontal_bar', 'bar-chart', 'data-layout', 'vertical'],
+    ['stacked_bar', 'bar', 'data-stack', 'values'],
+    ['stacked_area', 'area', 'data-stack', 'values'],
+    ['donut', 'pie', 'data-radius', '45%']
+  ] as const)(
+    'rend la forme %s et conserve le tableau accessible',
+    async (chartType, renderer, attribute, expected) => {
+      if (chart.kind !== 'chart') throw new Error('graphique attendu');
+      renderPanel([{ ...chart, chartType }]);
+      expect(await screen.findByTestId(`rc-${renderer}`)).toHaveAttribute(attribute, expected);
+      expect(screen.getByRole('table', { name: 'Revenus' })).toBeInTheDocument();
+    }
+  );
+
+  it('inverse les catégories et place l’axe des valeurs à droite en arabe', async () => {
+    function ArabicPanel() {
+      const locale = useLanguage();
+      return (
+        <LanguageContext.Provider value={{ ...locale, language: 'ar', direction: 'rtl', rtl: true }}>
+          <ArtifactPanel artifacts={[chart]} onSelect={vi.fn()} onClose={vi.fn()} />
+        </LanguageContext.Provider>
+      );
+    }
+    render(
+      <LanguageProvider>
+        <ArabicPanel />
+      </LanguageProvider>
+    );
+    expect(await screen.findByTestId('artifact-chart')).toHaveAttribute('dir', 'rtl');
+    expect(screen.getByTestId('rc-x')).toHaveAttribute('data-reversed', 'true');
+    expect(screen.getByTestId('rc-y')).toHaveAttribute('data-orientation', 'right');
+  });
+
+  it('rend le combiné avec ses deux axes et les données du nuage sans les réduire', async () => {
+    const combo: CopilotArtifact = {
+      ...chart,
+      chartType: 'combo',
+      series: [
+        { key: 'v', label: 'Montant', form: 'bar' },
+        { key: 'taux', label: 'Taux', form: 'line', axis: 'secondary' }
+      ]
+    };
+    const { unmount } = render(
+      <LanguageProvider>
+        <ArtifactPanel artifacts={[combo]} selectedId={combo.id} onSelect={vi.fn()} onClose={vi.fn()} />
+      </LanguageProvider>
+    );
+    expect(await screen.findByTestId('rc-composed-chart')).toBeInTheDocument();
+    expect(screen.getAllByTestId('rc-y')).toHaveLength(2);
+    expect(screen.getByTestId('rc-bar')).toBeInTheDocument();
+    expect(screen.getByTestId('rc-line')).toBeInTheDocument();
+    unmount();
+    const scatter: CopilotArtifact = {
+      ...chart,
+      chartType: 'scatter',
+      data: [
+        { mois: 0, v: 7 },
+        { mois: 0, v: 3 }
+      ]
+    };
+    renderPanel([scatter]);
+    expect(await screen.findByTestId('rc-scatter')).toBeInTheDocument();
+    expect(screen.getAllByRole('rowheader', { name: '0' })).toHaveLength(2);
+  });
+
   it('propose un sélecteur quand il y a plusieurs artefacts et ferme le panneau', () => {
     const { onClose } = renderPanel([table, markdown], 'm1');
     expect(screen.getByLabelText('Résultat affiché')).toBeInTheDocument();
@@ -171,7 +324,156 @@ describe('ArtifactPanel — rendus', () => {
   });
 });
 
+describe('ArtifactPanel — rapports et indicateurs', () => {
+  it('affiche la valeur de référence et une variation de même devise', () => {
+    renderPanel([
+      {
+        kind: 'indicators',
+        id: 'i1',
+        title: 'Encaissements',
+        cards: [
+          { label: 'Montant', currency: 'XOF', value: 150, comparison: { label: 'Septembre', value: 100, change: 50 } }
+        ]
+      }
+    ]);
+    expect(screen.getByText('150 XOF')).toBeInTheDocument();
+    expect(screen.getByText('100 XOF')).toBeInTheDocument();
+    expect(screen.getByText(/^\+50/)).toBeInTheDocument();
+  });
+
+  it('affiche un tableau source dans un rapport et le conserve dans le Markdown téléchargé', async () => {
+    renderPanel([
+      {
+        kind: 'document',
+        id: 'd1',
+        title: 'Bilan de mars',
+        blocks: [
+          { kind: 'text', content: '## Recettes' },
+          { kind: 'table', table }
+        ]
+      }
+    ]);
+    expect(screen.getByRole('article', { name: 'Bilan de mars' })).toBeInTheDocument();
+    expect(screen.getByText('Zoé')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Télécharger' }));
+    expect(save).toHaveBeenCalledWith(expect.any(Blob), 'Bilan-de-mars.md');
+    await expect(blobText(save.mock.calls[0][0])).resolves.toContain('Zoé');
+  });
+});
+
+describe('ArtifactPanel — recalcul', () => {
+  it('édite uniquement les sections de texte et garde le tableau lié', async () => {
+    const artifact = {
+      kind: 'document' as const,
+      id: 'd1',
+      title: 'Bilan',
+      blocks: [
+        { kind: 'text' as const, content: 'Introduction.' },
+        { kind: 'table' as const, table },
+        { kind: 'text' as const, content: 'Conclusion.' }
+      ]
+    };
+    const onReadVersion = vi.fn().mockResolvedValue({
+      artifact,
+      version: 2,
+      latest: 2,
+      versions: [{ version: 2, createdAt: null }]
+    });
+    const onEditVersion = vi.fn().mockResolvedValue(undefined);
+    const onRewriteSection = vi.fn().mockResolvedValue('Proposition concise.');
+    renderPanel([artifact], undefined, { onReadVersion, onEditVersion, onRewriteSection });
+    fireEvent.click(await screen.findByRole('button', { name: 'Modifier le texte' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Consigne de réécriture' }), {
+      target: { value: 'Raccourcis.' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Réécrire la section 1' }));
+    await waitFor(() =>
+      expect(screen.getByRole('textbox', { name: 'Section de texte 1' })).toHaveValue('Proposition concise.')
+    );
+    expect(onRewriteSection).toHaveBeenCalledWith('d1', {
+      expectedVersion: 2,
+      section: 0,
+      text: 'Introduction.',
+      instruction: 'Raccourcis.'
+    });
+    expect(onEditVersion).not.toHaveBeenCalled();
+
+    const first = await screen.findByRole('textbox', { name: 'Section de texte 1' });
+    fireEvent.change(first, { target: { value: 'Introduction corrigée.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+    await waitFor(() =>
+      expect(onEditVersion).toHaveBeenCalledWith('d1', {
+        expectedVersion: 2,
+        textSections: ['Introduction corrigée.', 'Conclusion.']
+      })
+    );
+    expect(screen.getByText('Zoé')).toBeInTheDocument();
+  });
+
+  it('crée une version nommée avec la révision affichée', async () => {
+    const onReadVersion = vi.fn().mockResolvedValue({
+      artifact: table,
+      version: 2,
+      latest: 2,
+      versions: [
+        { version: 2, createdAt: null },
+        { version: 1, createdAt: null }
+      ]
+    });
+    const onEditVersion = vi.fn().mockResolvedValue(undefined);
+    renderPanel([table], undefined, { onReadVersion, onEditVersion });
+    fireEvent.click(await screen.findByRole('button', { name: 'Renommer le résultat' }));
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Titre du résultat' }), {
+      target: { value: 'Bilan locatif' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+    await waitFor(() =>
+      expect(onEditVersion).toHaveBeenCalledWith('t1', { expectedVersion: 2, title: 'Bilan locatif' })
+    );
+  });
+  it('télécharge la version affichée et transmet la version attendue au recalcul', async () => {
+    const current = { ...table, canRefresh: true };
+    const onReadVersion = vi.fn().mockResolvedValue({
+      artifact: current,
+      version: 2,
+      latest: 2,
+      versions: [
+        { version: 2, createdAt: '2026-11-14T00:00:00.000Z' },
+        { version: 1, createdAt: null }
+      ]
+    });
+    const onRefresh = vi.fn().mockResolvedValue(undefined);
+    const onDownloadFile = vi.fn().mockResolvedValue(undefined);
+    renderPanel([current], undefined, { onReadVersion, onRefresh, onDownloadFile });
+    await screen.findByRole('combobox', { name: 'Version du résultat' });
+    fireEvent.click(screen.getByRole('button', { name: 'Télécharger' }));
+    fireEvent.click(await screen.findByText('CSV'));
+    await waitFor(() => expect(onDownloadFile).toHaveBeenCalledWith('t1', 'csv', 2));
+    fireEvent.click(screen.getByRole('button', { name: 'Recalculer' }));
+    await waitFor(() => expect(onRefresh).toHaveBeenCalledWith('t1', 2));
+  });
+  it('recalcule un résultat enregistré et demande son export au serveur', async () => {
+    const onRefresh = vi.fn().mockResolvedValue(undefined);
+    const onDownloadFile = vi.fn().mockResolvedValue(undefined);
+    renderPanel([{ ...table, canRefresh: true }], undefined, { onRefresh, onDownloadFile });
+    fireEvent.click(screen.getByRole('button', { name: 'Recalculer' }));
+    await waitFor(() => expect(onRefresh).toHaveBeenCalledWith('t1'));
+    fireEvent.click(screen.getByRole('button', { name: 'Télécharger' }));
+    fireEvent.click(await screen.findByText('CSV'));
+    await waitFor(() => expect(onDownloadFile).toHaveBeenCalledWith('t1', 'csv'));
+    expect(save).not.toHaveBeenCalled();
+  });
+});
+
 describe('ArtifactPanel — téléchargements', () => {
+  it('conserve le PNG du graphique affiché quand les exports de données attendent le serveur', async () => {
+    renderPanel([chart], undefined, { requireServerForData: true });
+    fireEvent.click(await screen.findByRole('button', { name: 'Télécharger' }));
+    expect(await screen.findByRole('menuitem', { name: 'Image (.png)' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Données (.csv)' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Excel (.xlsx)' })).not.toBeInTheDocument();
+  });
+
   it('télécharge un CSV UTF-8 avec BOM, « ; » en français et neutralise les formules', async () => {
     renderPanel([table]);
     fireEvent.click(screen.getByRole('button', { name: /Télécharger/ }));

@@ -254,6 +254,7 @@ export const managerMaintenanceService = {
       assignedVendorId?: string;
       assignedToUserId?: string;
       resolutionNotes?: string;
+      contractDueDate?: string | null;
     }
   ): Promise<TicketResponse> {
     const response = await apiClient.patch<TicketResponse>(

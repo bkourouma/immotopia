@@ -1,13 +1,40 @@
 import type { CopilotToolDefinition, CopilotToolName, LlmToolSpec } from '../contracts';
+import { syndicateBudgetTool } from './syndicate-budget';
+import { syndicateChargesTool } from './syndicate-charges';
+import { maintenanceOverviewTool, syndicateMaintenanceTool } from './maintenance-overview';
 import { callReadTool } from './call-read';
 import { listCapabilitiesTool } from './list-capabilities';
 import { listLeaseDocumentsTool } from './list-lease-documents';
 import { listPropertyDocumentsTool } from './list-property-documents';
 import { planWriteTool } from './plan-write';
+import { proposeFollowUpTool } from './propose-follow-up';
+import { prepareBudgetAlertTool } from './prepare-budget-alert';
+import { rentalAlertTools } from './prepare-rental-alerts';
 import { proposeRentalDocumentTool } from './propose-rental-document';
 import { searchLeasesTool } from './search-leases';
 import { searchPropertiesTool } from './search-properties';
+import {
+  searchSyndicatesTool,
+  searchSyndicateLotsTool,
+  searchSaleMandatesTool,
+  searchConstructionSitesTool
+} from './search-entities';
 import { showArtifactTool } from './show-artifact';
+import { rentalArrearsTool } from './rental-arrears';
+import { rentalReceiptsTool } from './rental-receipts';
+import { chartAnalysisTool } from './chart-analysis';
+import { pivotAnalysisTool } from './pivot-analysis';
+import { showIndicatorsTool } from './show-indicators';
+import { composeReportTool } from './compose-report';
+import { leasePortfolioTool, propertyPortfolioTool } from './portfolio';
+import { constructionBudgetTool, crmPipelineTool, saleMandatesTool } from './commercial-analysis';
+import { ownerBalancesTool, ownerPayoutsTool, ownerStatementsTool } from './owner-financial-analysis';
+import { patrimonyHistoryTool, patrimonyNetWorthTool } from './patrimoine-analysis';
+import { maintenanceLogTool } from './maintenance-log';
+import { reservedPropertiesTool } from './reserved-properties';
+import { saleCommitmentsTool } from './sale-commitments';
+import { rentalReceiptsSqlTool, rentalInstallmentsSqlTool } from './rental-sql';
+import { rentalDueComparisonTool, rentalMonthlyReviewTool } from './rental-monthly-review';
 
 /**
  * Registre des outils exposés au LLM. L'exécution d'un document
@@ -16,14 +43,48 @@ import { showArtifactTool } from './show-artifact';
  */
 export const ALL_TOOLS: readonly CopilotToolDefinition[] = [
   searchPropertiesTool,
+  searchSyndicatesTool,
+  searchSyndicateLotsTool,
+  searchSaleMandatesTool,
+  searchConstructionSitesTool,
   searchLeasesTool,
+  rentalArrearsTool,
+  rentalReceiptsTool,
+  rentalDueComparisonTool,
+  rentalMonthlyReviewTool,
+  maintenanceOverviewTool,
+  syndicateMaintenanceTool,
+  syndicateChargesTool,
+  syndicateBudgetTool,
+  propertyPortfolioTool,
+  leasePortfolioTool,
+  crmPipelineTool,
+  saleMandatesTool,
+  constructionBudgetTool,
+  ownerStatementsTool,
+  ownerPayoutsTool,
+  ownerBalancesTool,
+  patrimonyNetWorthTool,
+  patrimonyHistoryTool,
+  maintenanceLogTool,
+  reservedPropertiesTool,
+  saleCommitmentsTool,
+  rentalReceiptsSqlTool,
+  rentalInstallmentsSqlTool,
+  chartAnalysisTool,
+  pivotAnalysisTool,
+  showIndicatorsTool,
+  composeReportTool,
   listLeaseDocumentsTool,
   listPropertyDocumentsTool,
   proposeRentalDocumentTool,
   showArtifactTool,
   listCapabilitiesTool,
   callReadTool,
-  planWriteTool
+  planWriteTool,
+  proposeFollowUpTool,
+  prepareBudgetAlertTool,
+  ...rentalAlertTools
 ] as readonly CopilotToolDefinition[];
 
 export type ToolFeature = CopilotToolDefinition['feature'];

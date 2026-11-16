@@ -6,6 +6,7 @@ import { AuditActionKey } from '../types/audit-types';
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
 import { recordAuditEvent } from './audit-service';
+import type { ProviderRuntimeConfig } from '../lib/ai/contracts';
 
 /**
  * Réglage ImmoCopilot de la plateforme (fournisseur, modèle, effort, repli).
@@ -21,23 +22,46 @@ export const AI_PROVIDER_IDS = ['disabled', 'fake', 'anthropic', 'openrouter'] a
 export type AiProviderId = (typeof AI_PROVIDER_IDS)[number];
 export const AI_EFFORTS = ['low', 'medium', 'high'] as const;
 export type AiEffort = (typeof AI_EFFORTS)[number];
+export type AiMode = 'standard' | 'deep' | 'fast';
 
 const SETTINGS_ID = 'default';
 const CONFIG_CACHE_TTL_MS = 30_000;
 const MODELS_CACHE_TTL_MS = 10 * 60_000;
 const MODELS_FETCH_TIMEOUT_MS = 5_000;
 
+const modelOverride = z.string().trim().min(1).max(200).regex(/^\S+$/);
+const modelsByModeSchema = z.object({ deep: modelOverride.optional(), fast: modelOverride.optional() }).strict();
+export type AiModelsByMode = z.infer<typeof modelsByModeSchema>;
+const transcriptionProviders = ['openai', 'google'] as const;
+type TranscriptionProvider = (typeof transcriptionProviders)[number];
+const transcriptionSchema = z.union([
+  z.object({ provider: z.literal('disabled') }).strict(),
+  z
+    .object({
+      provider: z.enum(transcriptionProviders),
+      model: z
+        .string()
+        .trim()
+        .regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/)
+    })
+    .strict()
+]);
+type TranscriptionConfig = z.infer<typeof transcriptionSchema>;
+
 export const aiSettingsInputSchema = z
   .object({
     provider: z.enum(AI_PROVIDER_IDS),
     model: z.string().trim().min(1).max(200),
     effort: z.enum(AI_EFFORTS),
-    refusalFallback: z.boolean()
+    refusalFallback: z.boolean(),
+    modelsByMode: modelsByModeSchema.optional(),
+    transcription: transcriptionSchema.optional()
   })
   .strict();
 export type AiSettingsInput = z.infer<typeof aiSettingsInputSchema>;
 
 export interface EffectiveAiConfig extends AiSettingsInput {
+  modelsByMode: AiModelsByMode;
   source: 'database' | 'environment';
   updatedAt: Date | null;
 }
@@ -54,10 +78,13 @@ export interface AiSettingsView {
   model: string;
   effort: AiEffort;
   refusalFallback: boolean;
+  modelsByMode: AiModelsByMode;
   updatedAt: string | null;
   updatedByName: string | null;
   providers: AiProviderAvailability[];
   keys: { openrouter: boolean; anthropic: boolean };
+  transcription: TranscriptionConfig;
+  transcriptionKeys: Record<TranscriptionProvider, boolean>;
   source: 'database' | 'environment';
 }
 
@@ -75,6 +102,7 @@ function fromEnvironment(): EffectiveAiConfig {
     model: env.AI_MODEL,
     effort: env.AI_EFFORT,
     refusalFallback: env.AI_REFUSAL_FALLBACK !== 'off',
+    modelsByMode: {},
     source: 'environment',
     updatedAt: null
   };
@@ -102,13 +130,23 @@ export async function getEffectiveAiConfig(): Promise<EffectiveAiConfig> {
         effort: row.effort,
         refusalFallback: row.refusalFallback
       });
+      if (row.transcription != null) {
+        value.transcription = transcriptionSchema.catch({ provider: 'disabled' }).parse(row.transcription);
+      }
       if (parsed.success) {
-        value = { ...parsed.data, source: 'database', updatedAt: row.updatedAt };
+        value = {
+          ...parsed.data,
+          transcription: value.transcription,
+          modelsByMode: modelsByModeSchema.catch({}).parse(row.modelsByMode),
+          source: 'database',
+          updatedAt: row.updatedAt
+        };
       } else {
         logger.warn("ImmoCopilot : réglage en base invalide, valeurs d'environnement utilisées");
       }
     }
   } catch (error) {
+    value.transcription = configCache?.value.transcription;
     // Base indisponible ou migration pas encore appliquée : l'assistant garde le comportement d'environnement.
     logger.warn("ImmoCopilot : lecture du réglage impossible, valeurs d'environnement utilisées", {
       errorName: error instanceof Error ? error.name : typeof error
@@ -118,11 +156,46 @@ export async function getEffectiveAiConfig(): Promise<EffectiveAiConfig> {
   return value;
 }
 
+export function resolveAiMode(config: EffectiveAiConfig, mode: AiMode): ProviderRuntimeConfig {
+  const baseTimeout = env.AI_REQUEST_TIMEOUT_MS;
+  return {
+    model: (mode === 'standard' ? undefined : config.modelsByMode[mode]) ?? config.model,
+    effort: mode === 'deep' ? 'high' : mode === 'fast' ? 'low' : config.effort,
+    refusalFallback: config.refusalFallback,
+    timeoutMs:
+      mode === 'fast'
+        ? Math.min(baseTimeout, 45_000)
+        : mode === 'deep'
+          ? Math.max(baseTimeout, Math.min(120_000, baseTimeout * 2))
+          : baseTimeout
+  };
+}
+
 // --- Disponibilité des fournisseurs -------------------------------------------
 
 /** Présence des clés (booléens uniquement : la valeur ne sort jamais de `env`). */
 export function aiKeysPresent(): { openrouter: boolean; anthropic: boolean } {
   return { openrouter: Boolean(env.OPENROUTER_API_KEY), anthropic: Boolean(env.ANTHROPIC_API_KEY) };
+}
+
+function transcriptionKey(provider: TranscriptionProvider): string | undefined {
+  return provider === 'openai' ? env.AI_TRANSCRIPTION_OPENAI_KEY : env.GEMINI_API_KEY;
+}
+
+function resolveTranscription(config: EffectiveAiConfig): TranscriptionConfig {
+  return (
+    config.transcription ??
+    (env.AI_TRANSCRIPTION_OPENAI_KEY
+      ? { provider: 'openai', model: env.AI_TRANSCRIPTION_MODEL }
+      : { provider: 'disabled' })
+  );
+}
+
+export async function getTranscriptionEngine() {
+  const config = resolveTranscription(await getEffectiveAiConfig());
+  if (config.provider === 'disabled') return null;
+  const key = transcriptionKey(config.provider);
+  return key ? { ...config, key } : null;
 }
 
 export function listAiProviders(): AiProviderAvailability[] {
@@ -179,10 +252,13 @@ export async function getAiSettingsView(): Promise<AiSettingsView> {
     model: config.model,
     effort: config.effort,
     refusalFallback: config.refusalFallback,
+    modelsByMode: config.modelsByMode,
     updatedAt: config.updatedAt ? config.updatedAt.toISOString() : null,
     updatedByName,
     providers: listAiProviders(),
     keys: aiKeysPresent(),
+    transcription: resolveTranscription(config),
+    transcriptionKeys: { openai: Boolean(transcriptionKey('openai')), google: Boolean(transcriptionKey('google')) },
     source: config.source
   };
 }
@@ -190,6 +266,10 @@ export async function getAiSettingsView(): Promise<AiSettingsView> {
 function assertSettingsAllowed(input: AiSettingsInput): void {
   const errors: Array<{ field: string; message: string }> = [];
   const keys = aiKeysPresent();
+  const audio = input.transcription;
+  if (audio && audio.provider !== 'disabled' && !transcriptionKey(audio.provider)) {
+    errors.push({ field: 'transcription.provider', message: t('Clé API absente du serveur.') });
+  }
   if (input.provider === 'openrouter') {
     if (!keys.openrouter) {
       errors.push({ field: 'provider', message: t("La clé OpenRouter n'est pas configurée sur le serveur.") });
@@ -199,6 +279,13 @@ function assertSettingsAllowed(input: AiSettingsInput): void {
         field: 'model',
         message: t('Un identifiant OpenRouter est requis (fournisseur/modèle, ex. anthropic/claude-sonnet-4.5).')
       });
+    }
+    for (const [mode, model] of Object.entries(input.modelsByMode ?? {})) {
+      if (!model.includes('/'))
+        errors.push({
+          field: `modelsByMode.${mode}`,
+          message: t('Un identifiant OpenRouter est requis (fournisseur/modèle, ex. anthropic/claude-sonnet-4.5).')
+        });
     }
   }
   if (input.provider === 'anthropic' && !keys.anthropic) {
@@ -216,6 +303,7 @@ export async function updateAiSettings(input: AiSettingsInput, userId: string): 
   assertSettingsAllowed(data);
 
   const before = await getEffectiveAiConfig();
+  if (before.provider !== data.provider && data.modelsByMode === undefined) data.modelsByMode = {};
   // Critical action: audit trace in the same transaction as the settings write.
   await prisma.$transaction(async tx => {
     await tx.platformAiSettings.upsert({
@@ -236,6 +324,8 @@ export async function updateAiSettings(input: AiSettingsInput, userId: string): 
           model: before.model,
           effort: before.effort,
           refusalFallback: before.refusalFallback,
+          modelsByMode: before.modelsByMode,
+          transcription: resolveTranscription(before),
           source: before.source
         },
         after: data
@@ -260,7 +350,8 @@ export function resetAiSettingsCaches(): void {
 }
 
 /**
- * Catalogue public d'OpenRouter (sans clé). Ne lève jamais : en cas d'échec,
+ * Modèles du catalogue public OpenRouter qui déclarent la prise en charge des outils.
+ * Ne lève jamais : en cas d'échec,
  * liste vide et `unavailable: true` (l'interface bascule alors en saisie libre).
  */
 export async function listOpenRouterModels(
@@ -277,11 +368,21 @@ export async function listOpenRouterModels(
     });
     if (!response.ok) throw new Error(`status ${response.status}`);
     const body = (await response.json()) as { data?: unknown };
-    const rows = Array.isArray(body.data) ? body.data : [];
+    if (!Array.isArray(body.data)) throw new Error('invalid models catalog');
+    const rows = body.data;
     const models: OpenRouterModel[] = [];
     for (const row of rows) {
-      const item = row as { id?: unknown; name?: unknown; context_length?: unknown };
-      if (typeof item.id !== 'string' || !item.id) continue;
+      if (!row || typeof row !== 'object') continue;
+      const item = row as { id?: unknown; name?: unknown; context_length?: unknown; supported_parameters?: unknown };
+      const parameters = item.supported_parameters;
+      if (
+        typeof item.id !== 'string' ||
+        !item.id ||
+        !Array.isArray(parameters) ||
+        !parameters.includes('tools') ||
+        !parameters.includes('tool_choice')
+      )
+        continue;
       models.push({
         id: item.id,
         name: typeof item.name === 'string' && item.name ? item.name : item.id,

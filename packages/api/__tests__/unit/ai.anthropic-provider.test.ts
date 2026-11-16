@@ -43,10 +43,17 @@ const tools: LlmToolSpec[] = [
 const messages: LlmMessage[] = [{ role: 'user', content: [{ type: 'text', text: 'Bonjour' }] }];
 const req = { system: 'SYS', messages, tools, maxOutputTokens: 16000 };
 
-function fakeStream(options: { deltas?: string[]; message?: unknown; error?: unknown; hang?: boolean }) {
+function fakeStream(options: {
+  deltas?: string[];
+  contentStarted?: boolean;
+  message?: unknown;
+  error?: unknown;
+  hang?: boolean;
+}) {
   return {
-    on: jest.fn((event: string, cb: (delta: string) => void) => {
+    on: jest.fn((event: string, cb: (data: unknown) => void) => {
       if (event === 'text') for (const delta of options.deltas ?? []) cb(delta);
+      if (event === 'streamEvent' && options.contentStarted) cb({ type: 'content_block_start' });
     }),
     finalMessage: jest.fn(() => {
       if (options.hang) return new Promise(() => undefined);
@@ -78,7 +85,7 @@ describe('AnthropicProvider', () => {
       new AbortController().signal
     );
 
-    expect(Anthropic).toHaveBeenCalledWith({ apiKey: 'sk-test-key' });
+    expect(Anthropic).toHaveBeenCalledWith({ apiKey: 'sk-test-key', maxRetries: 0 });
     const [params, options] = mockStream.mock.calls[0];
     expect(params).toEqual({
       model: 'claude-opus-5-5',
@@ -105,9 +112,26 @@ describe('AnthropicProvider', () => {
     expect(deltas).toEqual(['Bon', 'jour']);
     expect(result).toEqual({
       stopReason: 'end_turn',
+      model: 'claude-opus-5-5',
       assistantContent: [{ type: 'text', text: 'Bonjour' }],
       toolCalls: []
     });
+  });
+
+  it('inclut les jetons de cache dans l’entrée, avec un coût inconnu', async () => {
+    mockStream.mockReturnValue(
+      fakeStream({
+        message: {
+          model: 'claude-served',
+          stop_reason: 'end_turn',
+          content: [],
+          usage: { input_tokens: 10, output_tokens: 8, cache_creation_input_tokens: 5, cache_read_input_tokens: 50 }
+        }
+      })
+    );
+    const result = await new AnthropicProvider({ getConfig }).runTurn(req, () => {}, new AbortController().signal);
+    expect(result.usage).toEqual({ inputTokens: 65, outputTokens: 8, cacheReadTokens: 50, cacheWriteTokens: 5 });
+    expect(result.model).toBe('claude-served');
   });
 
   it('coupe le repli serveur avec AI_REFUSAL_FALLBACK=off', async () => {
@@ -117,6 +141,18 @@ describe('AnthropicProvider', () => {
     const [params] = mockStream.mock.calls[0];
     expect(params).not.toHaveProperty('fallbacks');
     expect(params).not.toHaveProperty('betas');
+  });
+
+  it('omet le choix des outils pour une tâche rapide sans outils', async () => {
+    mockStream.mockReturnValue(fakeStream({ message: { stop_reason: 'end_turn', content: [] } }));
+    await new AnthropicProvider({ getConfig }).runTurn(
+      { ...req, tools: [] },
+      () => undefined,
+      new AbortController().signal
+    );
+    const [params] = mockStream.mock.calls[0];
+    expect(params).not.toHaveProperty('tools');
+    expect(params).not.toHaveProperty('tool_choice');
   });
 
   it('coupe le cache de prompt avec AI_PROMPT_CACHE=off', async () => {
@@ -217,7 +253,8 @@ describe('AnthropicProvider', () => {
         code: 'PROVIDER_UNAVAILABLE',
         copilotCode: 'PROVIDER_UNAVAILABLE',
         statusCode: 503,
-        retryable: true
+        retryable: true,
+        automaticRetry: false
       });
       await jest.advanceTimersByTimeAsync(5001);
       await assertion;
@@ -246,5 +283,15 @@ describe('AnthropicProvider', () => {
       .runTurn(req, () => undefined, new AbortController().signal)
       .catch(e => e);
     expect(error.retryable).toBe(true);
+    expect(error.automaticRetry).toBe(true);
+  });
+
+  it('écarte une reprise après le début d’un bloc de contenu', async () => {
+    mockStream.mockReturnValue(
+      fakeStream({ contentStarted: true, error: Object.assign(new Error('x'), { status: 529 }) })
+    );
+    await expect(
+      new AnthropicProvider({ getConfig }).runTurn(req, () => undefined, new AbortController().signal)
+    ).rejects.toMatchObject({ retryable: true, automaticRetry: false });
   });
 });

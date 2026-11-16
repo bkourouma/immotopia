@@ -1,11 +1,20 @@
 import { activeLocale } from '../i18n/format';
+import { t } from '../i18n/t';
 import {
+  ANALYSIS_CHART_TYPES,
   ARTIFACT_MAX_CHART_POINTS,
   ARTIFACT_MAX_COLUMNS,
   ARTIFACT_MAX_MARKDOWN_CHARS,
+  ARTIFACT_MAX_PIVOT_COLUMNS,
   ARTIFACT_MAX_ROWS,
   ARTIFACT_MAX_SERIES,
   type ArtifactCell,
+  type AnalysisChartSeries,
+  type ChartScene,
+  type ChartMark,
+  type ArtifactIndicator,
+  type ArtifactDocumentBlock,
+  type ArtifactProvenance,
   type CopilotArtifact
 } from '../types/copilot';
 
@@ -36,17 +45,173 @@ function cleanRows(raw: unknown, keys: string[], max: number): Record<string, Ar
 }
 
 const COLUMN_TYPES = ['text', 'number', 'currency', 'date'] as const;
-const CHART_TYPES = ['bar', 'line', 'pie'] as const;
+
+function sanitizeScene(raw: unknown): ChartScene | undefined {
+  if (!isRecord(raw) || !Array.isArray(raw.marks)) return;
+  const { width, height } = raw;
+  if (
+    typeof width !== 'number' ||
+    !(width >= 1 && width <= 1000) ||
+    typeof height !== 'number' ||
+    !(height >= 1 && height <= 1000)
+  )
+    return;
+  const marks: ChartMark[] = [];
+  for (const mark of raw.marks.slice(0, 900)) {
+    if (!isRecord(mark)) continue;
+    const { x, y, w, h, color } = mark;
+    if (
+      typeof x !== 'number' ||
+      typeof y !== 'number' ||
+      typeof w !== 'number' ||
+      typeof h !== 'number' ||
+      !(x >= 0 && y >= 0 && w > 0 && h > 0 && x + w <= width + 0.01 && y + h <= height + 0.01) ||
+      typeof color !== 'string' ||
+      !/^[0-9a-f]{6}$/i.test(color)
+    )
+      continue;
+    const box = { x, y, w, h, color };
+    if (mark.kind === 'rect') {
+      marks.push({ kind: 'rect', ...box, ...(typeof mark.tip === 'string' ? { tip: mark.tip.slice(0, 250) } : {}) });
+    } else if (mark.kind === 'text' && typeof mark.text === 'string') {
+      marks.push({
+        kind: 'text',
+        ...box,
+        text: mark.text.slice(0, 180),
+        align: mark.align === 'start' || mark.align === 'end' ? mark.align : 'center'
+      });
+    }
+  }
+  return marks.length ? { width, height, marks } : undefined;
+}
+
+export function artifactInternalLink(value: unknown): string | undefined {
+  return typeof value === 'string' && /^\/tenant\/[A-Za-z0-9_-]+\/[A-Za-z0-9_/-]+$/.test(value) ? value : undefined;
+}
+
+// Ces liens de provenance reproduisent les filtres de la liste métier. Les
+// valeurs libres et les paramètres propres aux autres routes restent exclus.
+const RENTAL_PROVENANCE =
+  /^\/tenant\/[A-Za-z0-9_-]+\/rental\/(?:payments\?receivedFrom=\d{4}-\d{2}-\d{2}&receivedTo=\d{4}-\d{2}-\d{2}|installments\?dueFrom=\d{4}-\d{2}-\d{2}&dueTo=\d{4}-\d{2}-\d{2}(?:&overdue=1)?)$/;
+
+const OWNER_BALANCES_PROVENANCE = /^\/tenant\/[A-Za-z0-9_-]+\/finance\/owner-accounts\?soldeDu=1$/;
+
+export const artifactScopeLabels = {
+  agency: 'Données accessibles dans l’agence',
+  shared: 'Droits communs de l’expéditeur et du destinataire',
+  attachment: 'Pièce jointe du fil'
+} as const;
+
+function sanitizeProvenance(raw: unknown): ArtifactProvenance | undefined {
+  if (!isRecord(raw)) return undefined;
+  const { source, period, calculatedAt, rules, scope } = raw;
+  const href =
+    typeof raw.href === 'string' && (RENTAL_PROVENANCE.test(raw.href) || OWNER_BALANCES_PROVENANCE.test(raw.href))
+      ? raw.href
+      : artifactInternalLink(raw.href);
+  if (
+    typeof source !== 'string' ||
+    typeof period !== 'string' ||
+    typeof calculatedAt !== 'string' ||
+    !Number.isFinite(Date.parse(calculatedAt)) ||
+    !href ||
+    !Array.isArray(rules)
+  )
+    return undefined;
+  const filters = Array.isArray(raw.filters)
+    ? raw.filters.slice(0, 24).flatMap(filter =>
+        isRecord(filter) && typeof filter.label === 'string'
+          ? [
+              {
+                label: filter.label.slice(0, 160),
+                value: typeof filter.value === 'string' ? filter.value.slice(0, 200) : undefined
+              }
+            ]
+          : []
+      )
+    : undefined;
+  return {
+    source,
+    href,
+    period,
+    calculatedAt,
+    ...(scope === 'agency' || scope === 'shared' || scope === 'attachment' ? { scope } : {}),
+    ...(filters?.length ? { filters } : {}),
+    rules: rules.filter((rule): rule is string => typeof rule === 'string').slice(0, 20)
+  };
+}
 
 /**
  * Valide et borne un artefact reçu du flux. Renvoie `null` si l'objet est mal
  * formé (ignoré par l'appelant) ; tronque ce qui dépasse les limites de l'API.
  */
-export function sanitizeArtifact(raw: unknown): CopilotArtifact | null {
+export function canRefreshArtifact(raw: unknown): boolean {
+  if (!isRecord(raw)) return false;
+  switch (raw.kind) {
+    case 'table':
+      return isRecord(raw.query);
+    case 'indicators':
+    case 'chart':
+      return isRecord(raw.replay);
+    case 'document':
+      return (
+        Array.isArray(raw.blocks) &&
+        raw.blocks.some(
+          block => isRecord(block) && block.kind === 'table' && isRecord(block.table) && isRecord(block.table.query)
+        )
+      );
+    default:
+      return false;
+  }
+}
+
+export function sanitizeArtifact(raw: unknown): (CopilotArtifact & { canRefresh?: boolean }) | null {
   if (!isRecord(raw)) return null;
   const id = str(raw.id);
   const title = typeof raw.title === 'string' ? raw.title : '';
   if (!id) return null;
+  const refresh = canRefreshArtifact(raw) ? { canRefresh: true } : {};
+
+  if (raw.kind === 'document') {
+    if (!Array.isArray(raw.blocks)) return null;
+    const blocks: ArtifactDocumentBlock[] = [];
+    for (const block of raw.blocks.slice(0, 20)) {
+      if (!isRecord(block)) continue;
+      if (block.kind === 'text' && typeof block.content === 'string') {
+        blocks.push({ kind: 'text', content: block.content.slice(0, 4000) });
+      }
+      if (block.kind === 'table' && isRecord(block.table) && block.table.kind === 'table') {
+        const table = sanitizeArtifact(block.table);
+        if (table?.kind === 'table') blocks.push({ kind: 'table', table });
+      }
+    }
+    return blocks.length ? { kind: 'document', id, title, blocks, ...refresh } : null;
+  }
+
+  if (raw.kind === 'indicators') {
+    if (!Array.isArray(raw.cards)) return null;
+    const cards: ArtifactIndicator[] = [];
+    for (const item of raw.cards.slice(0, 12)) {
+      if (!isRecord(item) || !str(item.label) || typeof item.value !== 'number' || !Number.isFinite(item.value))
+        continue;
+      const card: ArtifactIndicator = { label: String(item.label).slice(0, 400), value: item.value };
+      if (typeof item.currency === 'string' && /^[A-Z]{3}$/.test(item.currency)) card.currency = item.currency;
+      const cmp = item.comparison;
+      if (
+        isRecord(cmp) &&
+        typeof cmp.label === 'string' &&
+        typeof cmp.value === 'number' &&
+        Number.isFinite(cmp.value)
+      ) {
+        card.comparison = { label: cmp.label.slice(0, 400), value: cmp.value };
+        if (typeof cmp.change === 'number' && Number.isFinite(cmp.change)) card.comparison.change = cmp.change;
+      }
+      cards.push(card);
+    }
+    if (cards.length === 0) return null;
+    const provenance = sanitizeProvenance(raw.provenance);
+    return { kind: 'indicators', id, title, cards, ...refresh, ...(provenance ? { provenance } : {}) };
+  }
 
   if (raw.kind === 'markdown') {
     if (typeof raw.content !== 'string') return null;
@@ -56,16 +221,30 @@ export function sanitizeArtifact(raw: unknown): CopilotArtifact | null {
   if (raw.kind === 'table') {
     if (!Array.isArray(raw.columns)) return null;
     const columns: Extract<CopilotArtifact, { kind: 'table' }>['columns'] = [];
+    const maxColumns = isRecord(raw.totals) ? ARTIFACT_MAX_PIVOT_COLUMNS : ARTIFACT_MAX_COLUMNS;
     for (const c of raw.columns) {
       if (!isRecord(c)) continue;
       const key = str(c.key);
       if (!key || columns.some(x => x.key === key)) continue;
       const type = COLUMN_TYPES.find(x => x === c.type);
-      columns.push({ key, label: typeof c.label === 'string' && c.label ? c.label : key, ...(type ? { type } : {}) });
-      if (columns.length >= ARTIFACT_MAX_COLUMNS) break;
+      const linkKey =
+        typeof c.linkKey === 'string' && /^[A-Za-z][A-Za-z0-9_]{0,39}$/.test(c.linkKey) ? c.linkKey : undefined;
+      columns.push({
+        key,
+        label: typeof c.label === 'string' && c.label ? c.label : key,
+        ...(type ? { type } : {}),
+        ...(linkKey ? { linkKey } : {})
+      });
+      if (columns.length >= maxColumns) break;
     }
     if (columns.length === 0) return null;
     const total = Array.isArray(raw.rows) ? raw.rows.length : 0;
+    const provenance = sanitizeProvenance(raw.provenance);
+    const [totals] = cleanRows(
+      [raw.totals],
+      columns.map(column => column.key),
+      1
+    );
     return {
       kind: 'table',
       id,
@@ -73,26 +252,42 @@ export function sanitizeArtifact(raw: unknown): CopilotArtifact | null {
       columns,
       rows: cleanRows(
         raw.rows,
-        columns.map(c => c.key),
+        columns.flatMap(c => (c.linkKey ? [c.key, c.linkKey] : [c.key])),
         ARTIFACT_MAX_ROWS
       ),
-      truncated: raw.truncated === true || total > ARTIFACT_MAX_ROWS || undefined
+      truncated: raw.truncated === true || total > ARTIFACT_MAX_ROWS || undefined,
+      ...(totals ? { totals } : {}),
+      ...refresh,
+      ...(provenance ? { provenance } : {})
     };
   }
 
   if (raw.kind === 'chart') {
-    const chartType = CHART_TYPES.find(x => x === raw.chartType);
+    const chartType = ANALYSIS_CHART_TYPES.find(x => x === raw.chartType);
     const xKey = str(raw.xKey);
     if (!chartType || !xKey || !Array.isArray(raw.series)) return null;
-    const series: { key: string; label: string }[] = [];
+    const series: AnalysisChartSeries[] = [];
     for (const s of raw.series) {
       if (!isRecord(s)) continue;
       const key = str(s.key);
       if (!key || series.some(x => x.key === key)) continue;
-      series.push({ key, label: typeof s.label === 'string' && s.label ? s.label : key });
-      if (series.length >= ARTIFACT_MAX_SERIES) break;
+      series.push({
+        key,
+        label: typeof s.label === 'string' && s.label ? s.label : key,
+        ...(chartType === 'combo' && (s.form === 'bar' || s.form === 'line') ? { form: s.form } : {}),
+        ...(chartType === 'combo' && s.axis === 'secondary' ? { axis: 'secondary' } : {})
+      });
+      if (series.length >= (chartType === 'combo' ? 12 : ARTIFACT_MAX_SERIES)) break;
     }
     if (series.length === 0) return null;
+    const provenance = sanitizeProvenance(raw.provenance);
+    const groupKey = str(raw.groupKey);
+    const scene = sanitizeScene(raw.scene);
+    const notices = Array.isArray(raw.notices)
+      ? raw.notices
+          .flatMap(value => (typeof value === 'string' && value.trim() ? [value.slice(0, 300)] : []))
+          .slice(0, 6)
+      : [];
     return {
       kind: 'chart',
       id,
@@ -100,8 +295,17 @@ export function sanitizeArtifact(raw: unknown): CopilotArtifact | null {
       chartType,
       xKey,
       ...(str(raw.xLabel) ? { xLabel: str(raw.xLabel) } : {}),
+      ...(groupKey ? { groupKey, groupLabel: str(raw.groupLabel) ?? groupKey } : {}),
+      ...(scene ? { scene } : {}),
+      ...(notices.length ? { notices } : {}),
       series,
-      data: cleanRows(raw.data, [xKey, ...series.map(s => s.key)], ARTIFACT_MAX_CHART_POINTS)
+      data: cleanRows(
+        raw.data,
+        [xKey, ...(groupKey ? [groupKey] : []), ...series.map(s => s.key)],
+        ARTIFACT_MAX_CHART_POINTS
+      ),
+      ...refresh,
+      ...(provenance ? { provenance } : {})
     };
   }
   return null;
@@ -136,27 +340,31 @@ export const looksLikeUuid = (text: string): boolean => UUID.test(text.trim());
 // --- Affichage ---------------------------------------------------------------
 
 /** Montant : 0 décimale pour un entier, sinon toujours 2 (« 90 000 » et « 90 000,50 », jamais « 90 000,5 »). */
-export function formatArtifactAmount(value: number): string {
+export function formatArtifactAmount(value: number, locale = activeLocale()): string {
   const decimals = Number.isInteger(value) ? 0 : 2;
-  return new Intl.NumberFormat(activeLocale(), {
+  return new Intl.NumberFormat(locale, {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals
   }).format(value);
 }
 
 /** Cellule formatée pour l'écran (nombre, devise, date selon la langue active). */
-export function formatArtifactCell(value: ArtifactCell, type?: 'text' | 'number' | 'currency' | 'date'): string {
+export function formatArtifactCell(
+  value: ArtifactCell,
+  type?: 'text' | 'number' | 'currency' | 'date',
+  locale = activeLocale()
+): string {
   if (value === null || value === undefined) return '';
   if ((type === 'number' || type === 'currency') && typeof value === 'number') {
-    if (type === 'currency') return formatArtifactAmount(value);
-    return new Intl.NumberFormat(activeLocale(), { maximumFractionDigits: 6 }).format(value);
+    if (type === 'currency') return formatArtifactAmount(value, locale);
+    return new Intl.NumberFormat(locale, { maximumFractionDigits: 6 }).format(value);
   }
   if (type === 'date') {
     const text = String(value);
     const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(text);
     const date = new Date(dateOnly ? `${text}T00:00:00Z` : text);
     if (Number.isNaN(date.getTime())) return text;
-    return new Intl.DateTimeFormat(activeLocale(), {
+    return new Intl.DateTimeFormat(locale, {
       dateStyle: 'short',
       ...(dateOnly ? { timeZone: 'UTC' } : {})
     }).format(date);
@@ -165,12 +373,12 @@ export function formatArtifactCell(value: ArtifactCell, type?: 'text' | 'number'
 }
 
 /** Comparaison pour le tri : les valeurs vides toujours en dernier. */
-export function compareCells(a: ArtifactCell, b: ArtifactCell): number {
+export function compareCells(a: ArtifactCell, b: ArtifactCell, locale = activeLocale()): number {
   if (a === null && b === null) return 0;
   if (a === null) return 1;
   if (b === null) return -1;
   if (typeof a === 'number' && typeof b === 'number') return a - b;
-  return String(a).localeCompare(String(b), activeLocale(), { numeric: true });
+  return String(a).localeCompare(String(b), locale, { numeric: true });
 }
 
 // --- Export ------------------------------------------------------------------
@@ -184,10 +392,10 @@ export function neutralizeFormula(text: string): string {
   return /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
 }
 
-/** Séparateur CSV : « ; » en français et en arabe (virgule décimale), « , » sinon. */
+/** Séparateur CSV usuel pour la locale, assorti au format des décimales. */
 export function csvSeparator(locale: string = activeLocale()): ';' | ',' {
   const lang = locale.toLowerCase().split('-')[0];
-  return lang === 'fr' || lang === 'ar' ? ';' : ',';
+  return lang === 'fr' || lang === 'ar' || lang === 'es' ? ';' : ',';
 }
 
 function csvField(value: ArtifactCell, sep: string): string {
@@ -220,13 +428,37 @@ export function chartXLabel(artifact: Extract<CopilotArtifact, { kind: 'chart' }
 
 /** Colonnes et lignes à exporter pour un tableau ou les données d'un graphique. */
 export function exportableTable(
-  artifact: CopilotArtifact
+  artifact: CopilotArtifact,
+  translate: typeof t = t
 ): { columns: { key: string; label: string }[]; rows: Record<string, ArtifactCell>[] } | null {
-  if (artifact.kind === 'table') return { columns: artifact.columns, rows: artifact.rows };
+  if (artifact.kind === 'table') {
+    return { columns: artifact.columns, rows: artifact.totals ? [...artifact.rows, artifact.totals] : artifact.rows };
+  }
+  if (artifact.kind === 'indicators') {
+    return {
+      columns: [
+        { key: 'label', label: translate('Indicateur') },
+        { key: 'value', label: translate('Valeur') },
+        { key: 'currency', label: translate('Devise') },
+        { key: 'comparisonLabel', label: translate('Comparaison') },
+        { key: 'comparisonValue', label: translate('Valeur de référence') },
+        { key: 'change', label: translate('Variation (%)') }
+      ],
+      rows: artifact.cards.map(card => ({
+        label: card.label,
+        value: card.value,
+        currency: card.currency ?? null,
+        comparisonLabel: card.comparison?.label ?? null,
+        comparisonValue: card.comparison?.value ?? null,
+        change: card.comparison?.change ?? null
+      }))
+    };
+  }
   if (artifact.kind === 'chart') {
     return {
       columns: [
         { key: artifact.xKey, label: chartXLabel(artifact) },
+        ...(artifact.groupKey ? [{ key: artifact.groupKey, label: artifact.groupLabel ?? artifact.groupKey }] : []),
         ...artifact.series.map(s => ({ key: s.key, label: s.label }))
       ],
       rows: artifact.data
@@ -239,7 +471,7 @@ export function exportableTable(
 export function safeFilename(title: string, fallback = 'artefact'): string {
   const cleaned = title
     .normalize('NFC')
-    .replace(/[^\p{L}\p{N}._-]+/gu, '-')
+    .replace(/[^\p{L}\p{M}\p{N}._-]+/gu, '-')
     .replace(/\.{2,}/g, '.')
     .replace(/^[-.]+|[-.]+$/g, '')
     .slice(0, 80)

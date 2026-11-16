@@ -15,6 +15,7 @@ export interface EventStreamError {
 
 export interface EventStreamOptions {
   signal?: AbortSignal;
+  language?: string;
   onEvent(e: { event: string; data: string }): void;
 }
 
@@ -33,17 +34,18 @@ export interface EventStreamOptions {
  * `error` (voir `sse-parser.ts`).
  */
 export async function postEventStream(path: string, body: unknown, opts: EventStreamOptions): Promise<void> {
+  const multipart = typeof FormData !== 'undefined' && body instanceof FormData;
   const send = () =>
     fetch(`${API_URL}${path}`, {
       method: 'POST',
       credentials: 'include',
       signal: opts.signal,
       headers: {
-        'Content-Type': 'application/json',
+        ...(!multipart ? { 'Content-Type': 'application/json' } : {}),
         Accept: 'text/event-stream',
-        'Accept-Language': i18next.resolvedLanguage ?? i18next.language
+        'Accept-Language': opts.language ?? i18next.resolvedLanguage ?? i18next.language
       },
-      body: JSON.stringify(body)
+      body: multipart ? body : JSON.stringify(body)
     });
 
   let response = await send();

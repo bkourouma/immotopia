@@ -48,6 +48,25 @@ function base(tenantId: string): string {
   return `/tenants/${tenantId}/finance`;
 }
 
+export async function getSiteBudgetThreshold(tenantId: string, siteId: string, signal?: AbortSignal) {
+  const response = await apiClient.get<
+    ApiResponse<{ name: string; status: string; budgetThresholdPercent: number | null }>
+  >(`${base(tenantId)}/sites/${siteId}/budget-alert-threshold`, { signal });
+  return response.data.data;
+}
+
+export async function updateSiteBudgetThreshold(
+  tenantId: string,
+  siteId: string,
+  thresholdPercent: number | null,
+  expectedThresholdPercent: number | null
+) {
+  await apiClient.patch(`${base(tenantId)}/sites/${siteId}/budget-alert-threshold`, {
+    thresholdPercent,
+    expectedThresholdPercent
+  });
+}
+
 /** Même sérialisation qu'aux lots 1 et 2 : une valeur absente est omise, jamais vide. */
 function toQuery(filters?: Record<string, string | number | undefined>): string {
   if (!filters) return '';

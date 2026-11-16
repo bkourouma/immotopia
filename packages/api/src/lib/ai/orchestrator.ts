@@ -1,13 +1,17 @@
+import { setTimeout as delay } from 'node:timers/promises';
 import { env } from '../../config/env';
-import { currentLanguage, t } from '../../i18n';
+import { currentAssistantLanguage, t } from '../../i18n';
 import { AppError, ForbiddenError } from '../../middleware/error-middleware';
 import { logAuditEvent } from '../../services/audit-service';
 import { AuditActionKey } from '../../types/audit-types';
 import { logger } from '../../utils/logger';
+import { analysisSources, withAnalysisProvenance, withoutSourceMarkers } from './artifact-sources';
+import { withDatasetCatalog } from './tools/list-datasets';
 import type {
   ChatRequest,
   CopilotErrorCode,
   CopilotSseEvent,
+  CopilotArtifact,
   CopilotToolContext,
   CopilotToolDefinition,
   LlmMessage,
@@ -33,7 +37,7 @@ import { ALL_TOOLS, findTool, toLlmToolSpecs, type ToolFeature } from './tools/r
  * GARANTIE CENTRALE : aucun chemin du chat vers une écriture. Ce module
  * n'importe ni `executeRentalDocument`, ni `executeCapability`, ni `generateDocument`. Les seuls outils
  * joignables sont ceux du registre autorisé pour l'utilisateur (lecture, ou
- * proposition qui n'écrit rien : `propose_rental_document`, `plan_write`) ; la génération n'existe que derrière la route
+ * proposition sans effet métier : `propose_rental_document`, `plan_write`, `propose_follow_up`) ; la génération n'existe que derrière la route
  * HTTP de confirmation, avec un jeton signé.
  *
  * Tout ce qui vient du modèle est non fiable : un nom d'outil hors registre
@@ -42,11 +46,18 @@ import { ALL_TOOLS, findTool, toLlmToolSpecs, type ToolFeature } from './tools/r
  */
 
 /** Plafond d'appels d'outils par requête (plan, décision 4). */
-export const MAX_TOOL_CALLS_PER_REQUEST = 8;
+export const MAX_TOOL_CALLS_PER_REQUEST = 12;
 
 export type ChatDoneReason = Extract<CopilotSseEvent, { type: 'done' }>['reason'];
 
 export interface RunChatInput {
+  deep?: boolean;
+  focusedArtifact?: CopilotArtifact;
+  focusedVersion?: number;
+  fileExtracts?: Array<{ name: string; excerpt: string; artifactId?: string }>;
+  importedTables?: Array<Extract<CopilotArtifact, { kind: 'table' }>>;
+  analysisTables?: Array<Extract<CopilotArtifact, { kind: 'table' }>>;
+  artifactReferences?: Array<Pick<CopilotArtifact, 'id' | 'kind' | 'title'>>;
   provider: LlmProvider;
   tenantId: string;
   userId: string;
@@ -66,13 +77,14 @@ export interface RunChatInput {
   signal: AbortSignal;
   /** Authentification rejouée par la passerelle (`call_read`) ; voir `gateway/loopback-auth.ts`. Jamais journalisée. */
   loopbackHeaders?: () => Record<string, string>;
+  proposeFollowUp?: CopilotToolContext['proposeFollowUp'];
   emit: (event: CopilotSseEvent) => void;
   now?: () => Date;
 }
 
 type ToolResultBlock = Extract<LlmMessage['content'][number], { type: 'tool_result' }>;
 
-const KNOWN_TOOL_NAMES: ReadonlySet<string> = new Set(ALL_TOOLS.map(tool => tool.name));
+const KNOWN_TOOL_NAMES: ReadonlySet<string> = new Set([...ALL_TOOLS.map(tool => tool.name), 'list_datasets']);
 const MAX_ISSUES_REPORTED = 5;
 
 function errorResult(
@@ -109,7 +121,8 @@ function toLlmMessages(messages: ChatRequest['messages'], contextBlock: string):
   messages.forEach((message, index) => {
     if (out.length === 0 && message.role !== 'user') return;
     // Le bloc d'écran ouvre le DERNIER message utilisateur : c'est une donnée, séparée du texte par une ligne vide.
-    const text = index === lastIndex ? `${contextBlock}\n\n${message.content}` : message.content;
+    const content = message.role === 'assistant' ? withoutSourceMarkers(message.content) : message.content;
+    const text = index === lastIndex ? `${contextBlock}\n\n${content}` : content;
     const previous = out[out.length - 1];
     if (previous && previous.role === message.role) {
       previous.content.push({ type: 'text', text });
@@ -131,6 +144,41 @@ function toSseError(error: unknown): { code: CopilotErrorCode; message: string; 
   return { code: 'INTERNAL', message: t('Une erreur est survenue. Réessayez dans un instant.'), retryable: true };
 }
 
+const PROVIDER_RETRY_DELAYS_MS = [2_000, 4_000, 8_000];
+
+async function runProviderStep(
+  provider: LlmProvider,
+  request: Parameters<LlmProvider['runTurn']>[0],
+  emit: RunChatInput['emit'],
+  signal: AbortSignal
+): Promise<LlmTurnResult> {
+  for (let attempt = 0; ; attempt += 1) {
+    let textSent = false;
+    try {
+      return await provider.runTurn(
+        request,
+        text => {
+          if (!text || signal.aborted) return;
+          textSent = true;
+          emit({ type: 'text_delta', text });
+        },
+        signal
+      );
+    } catch (error) {
+      const backoff = PROVIDER_RETRY_DELAYS_MS[attempt];
+      if (
+        signal.aborted ||
+        textSent ||
+        backoff === undefined ||
+        !(error instanceof LlmProviderError && error.automaticRetry)
+      ) {
+        throw error;
+      }
+      await delay(Math.round(backoff * (0.75 + Math.random() * 0.5)), undefined, { signal });
+    }
+  }
+}
+
 /**
  * Exécute un tour de chat complet et l'émet en événements. Se termine toujours
  * par un événement `done` ; ne lève pas d'erreur (elles deviennent `error`).
@@ -138,14 +186,72 @@ function toSseError(error: unknown): { code: CopilotErrorCode; message: string; 
 export async function runChat(input: RunChatInput): Promise<ChatDoneReason> {
   const { provider, tenantId, userId, signal, emit } = input;
   const startedAt = Date.now();
-  const maxRounds = env.AI_MAX_TOOL_ROUNDS;
+  const maxToolCalls = input.deep ? 30 : MAX_TOOL_CALLS_PER_REQUEST;
+  const maxRounds = input.deep ? 30 : env.AI_MAX_TOOL_ROUNDS;
+  const maxOutputTokens =
+    input.deep && provider.id === 'anthropic'
+      ? Math.min(64_000, 2 * env.AI_MAX_OUTPUT_TOKENS)
+      : env.AI_MAX_OUTPUT_TOKENS;
 
-  const system = buildSystemPrompt(currentLanguage(), input.tools);
-  const screenBlock = formatContextBlock(input.pageContext, input.now?.());
+  const tools = withDatasetCatalog(input.tools);
+  const system = buildSystemPrompt(currentAssistantLanguage(), tools);
+  const analysisTables = new Map(
+    [...(input.analysisTables ?? []), ...(input.importedTables ?? [])].map(table => [
+      table.id,
+      withAnalysisProvenance(table, 'agency')
+    ])
+  );
+  const focus = input.focusedArtifact;
+  const focusedSources = focus ? analysisSources(withAnalysisProvenance(focus, 'agency')) : [];
+  for (const table of focusedSources) analysisTables.set(table.id, table);
+  const sourceRefs = [...analysisTables.values()].map(table => ({
+    id: table.id,
+    version: focusedSources.includes(table) ? input.focusedVersion : undefined,
+    title: table.title.slice(0, 160),
+    period: table.provenance?.period,
+    source: table.provenance?.source.slice(0, 160),
+    columns: table.columns.map(column => column.key),
+    availableRows: table.rows.length,
+    truncated: table.truncated ?? false
+  }));
+  const screenContext = formatContextBlock(input.pageContext, input.now?.());
+  const contextBlocks = [screenContext];
   // Bloc d'aide : donnée placée avec <screen_context> dans le dernier message utilisateur, jamais dans le prompt système.
-  const contextBlock = input.helpContext ? `${screenBlock}\n${formatHelpBlock(input.helpContext)}` : screenBlock;
-  const messages = toLlmMessages(input.messages, contextBlock);
-  const toolSpecs = toLlmToolSpecs(input.tools);
+  if (input.helpContext) contextBlocks.push(formatHelpBlock(input.helpContext));
+  if (sourceRefs.length) {
+    contextBlocks.push(
+      '<analysis_sources>' + JSON.stringify(sourceRefs).replace(/</g, '\\u003c') + '</analysis_sources>'
+    );
+  }
+  if (input.proposeFollowUp && input.artifactReferences?.length) {
+    contextBlocks.push(
+      '<recent_results>' + JSON.stringify(input.artifactReferences).replace(/</g, '\\u003c') + '</recent_results>'
+    );
+  }
+  if (focus) {
+    let omittedItems = false;
+    const serialized = JSON.stringify(focus, (key, value: unknown) => {
+      if (!['rows', 'data', 'cards', 'blocks'].includes(key) || !Array.isArray(value) || value.length <= 12)
+        return value;
+      omittedItems = true;
+      return value.slice(0, 12);
+    });
+    const snapshot = JSON.stringify({
+      id: focus.id,
+      version: input.focusedVersion,
+      kind: focus.kind,
+      title: focus.title.slice(0, 160),
+      preview: serialized.slice(0, 8_000),
+      truncated: omittedItems || serialized.length > 8_000
+    }).replace(/</g, '\\u003c');
+    contextBlocks.push('<focused_result>' + snapshot + '</focused_result>');
+  }
+  if (input.fileExtracts?.length) {
+    const excerpts = JSON.stringify(input.fileExtracts).replace(/</g, '\\u003c');
+    contextBlocks.push('<file_extracts>' + excerpts + '</file_extracts>');
+  }
+  const messages = toLlmMessages(input.messages, contextBlocks.join('\n'));
+  const toolSpecs = toLlmToolSpecs(tools);
   const ctx: CopilotToolContext = {
     tenantId,
     userId,
@@ -153,10 +259,16 @@ export async function runChat(input: RunChatInput): Promise<ChatDoneReason> {
     requestId: input.requestId,
     conversationId: input.conversationId,
     signal,
+    proposeFollowUp: input.proposeFollowUp,
     loopbackHeaders: input.loopbackHeaders,
     writePlansIssued: 0,
+    analysisTables,
     // Bail de l'écran vérifié côté serveur : seule source de confiance hors résultats d'outils.
-    seenLeaseIds: new Set(input.pageContext?.entityType === 'LEASE' ? [input.pageContext.entityId] : [])
+    seenLeaseIds: new Set(
+      input.pageContext && 'entityType' in input.pageContext && input.pageContext.entityType === 'LEASE'
+        ? [input.pageContext.entityId]
+        : []
+    )
   };
 
   let rounds = 0;
@@ -170,6 +282,7 @@ export async function runChat(input: RunChatInput): Promise<ChatDoneReason> {
   };
 
   emit({ type: 'meta', conversationId: input.conversationId, requestId: input.requestId });
+  for (const artifact of input.importedTables ?? []) emit({ type: 'artifact', artifact });
 
   try {
     for (;;) {
@@ -178,9 +291,16 @@ export async function runChat(input: RunChatInput): Promise<ChatDoneReason> {
         break;
       }
 
-      const turn: LlmTurnResult = await provider.runTurn(
-        { system, messages, tools: toolSpecs, maxOutputTokens: env.AI_MAX_OUTPUT_TOKENS },
-        text => emit({ type: 'text_delta', text }),
+      const turn = await runProviderStep(
+        provider,
+        {
+          system,
+          messages,
+          tools: toolSpecs,
+          maxOutputTokens,
+          ...(input.deep ? { deep: true } : {})
+        },
+        emit,
         signal
       );
 
@@ -204,7 +324,7 @@ export async function runChat(input: RunChatInput): Promise<ChatDoneReason> {
         break;
       }
 
-      if (rounds >= maxRounds || toolCalls + turn.toolCalls.length > MAX_TOOL_CALLS_PER_REQUEST) {
+      if (rounds >= maxRounds || toolCalls + turn.toolCalls.length > maxToolCalls) {
         outcome = 'max_rounds';
         fail('MAX_ROUNDS', t("La demande a nécessité trop d'étapes. Reformulez-la plus simplement."), false);
         break;
@@ -214,7 +334,7 @@ export async function runChat(input: RunChatInput): Promise<ChatDoneReason> {
       const results: ToolResultBlock[] = [];
       for (const call of turn.toolCalls) {
         toolCalls += 1;
-        results.push(await runToolCall(call, input, ctx));
+        results.push(await runToolCall(call, input, ctx, tools));
         if (signal.aborted) break;
       }
       if (signal.aborted) {
@@ -270,10 +390,11 @@ export async function runChat(input: RunChatInput): Promise<ChatDoneReason> {
 async function runToolCall(
   call: LlmTurnResult['toolCalls'][number],
   input: RunChatInput,
-  ctx: CopilotToolContext
+  ctx: CopilotToolContext,
+  tools: readonly CopilotToolDefinition[]
 ): Promise<ToolResultBlock> {
   const { tenantId, userId, emit } = input;
-  const tool = findTool(input.tools, call.name);
+  const tool = findTool(tools, call.name);
   const known = KNOWN_TOOL_NAMES.has(call.name);
 
   const audit = (actionKey: AuditActionKey, payload: Record<string, unknown>): void =>
@@ -315,7 +436,11 @@ async function runToolCall(
 
   try {
     const result = await tool.execute(parsed.data, ctx);
-    if (result.uiEvent) emit(result.uiEvent);
+    if (result.uiEvent?.type === 'artifact') {
+      const artifact = withAnalysisProvenance(result.uiEvent.artifact, 'agency');
+      for (const table of analysisSources(artifact)) ctx.analysisTables?.set(table.id, table);
+      emit({ ...result.uiEvent, artifact });
+    } else if (result.uiEvent) emit(result.uiEvent);
     emit({ type: 'tool_status', tool: tool.name, status: 'succeeded' });
     audit(AuditActionKey.AI_TOOL_CALLED, { status: 'ok', durationMs: Date.now() - startedAt });
     return { type: 'tool_result', toolUseId: call.id, content: JSON.stringify(result.modelResult) };

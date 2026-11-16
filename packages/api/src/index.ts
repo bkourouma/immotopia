@@ -12,6 +12,8 @@ import { recoverTenantDataExports } from './services/tenant-data-export/export-s
 import { startTenantDataExportExpiryJob } from './jobs/tenant-data-export-expiry-job';
 import { startDocumentExpiryAlertJob } from './jobs/document-expiry-alert-job';
 import { startOwnerMonthlyReportJob } from './jobs/owner-monthly-report-job';
+import { startAssistantReportJob } from './jobs/assistant-report-job';
+import { startAssistantRentalAlertJob } from './jobs/assistant-rental-alert-job';
 import { startLotReconciliationJob } from './jobs/lot-reconciliation-job';
 import { startAuditMaintenanceJob } from './jobs/audit-maintenance-job';
 import { startStockMaintenanceJob } from './jobs/stock-maintenance-job';
@@ -70,6 +72,8 @@ app.listen(PORT, () => {
     startDocumentExpiryAlertJob();
     // Lot A3 : rapport mensuel propriétaire (liens sécurisés), coupé par défaut.
     if (env.PATRIMOINE_MONTHLY_REPORT_JOB_ENABLED) startOwnerMonthlyReportJob();
+    startAssistantReportJob();
+    startAssistantRentalAlertJob();
     // Registre des lots : reconciliation quotidienne (mandats echus, derives).
     startLotReconciliationJob();
     // Journal d'audit (ADR-006, phase 5) : scellement quotidien, purge (opt-in), verification.

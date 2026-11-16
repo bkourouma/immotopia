@@ -48,6 +48,7 @@
 import { prisma } from '../../utils/database';
 import type { PrismaTransactionClient } from '../../utils/database';
 import { NotFoundError, ConflictError } from '../../middleware/error-middleware';
+import { t } from '../../i18n';
 import { toAmountOrZero } from './types';
 import { sumSiteActualCostByIds } from './site-cost';
 import { roundMoneyXof, roundPercent } from './money';
@@ -144,6 +145,7 @@ export interface RevisedBudgetTotals {
  */
 export async function getRevisedBudgetTotals(
   client: PrismaTransactionClient,
+  tenantId: string,
   budgetIds: string[]
 ): Promise<Map<string, RevisedBudgetTotals>> {
   const result = new Map<string, RevisedBudgetTotals>();
@@ -153,7 +155,7 @@ export async function getRevisedBudgetTotals(
 
   const lineSums = await client.siteBudgetLine.groupBy({
     by: ['budgetId'],
-    where: { budgetId: { in: budgetIds } },
+    where: { budgetId: { in: budgetIds }, budget: { tenantId } },
     _sum: { amountForecast: true }
   });
   const initialByBudget = new Map<string, number>(
@@ -163,7 +165,7 @@ export async function getRevisedBudgetTotals(
   // Un avenant en brouillon ne compte pour rien (`data-model.md` §4) : seuls
   // les avenants VALIDÉS entrent dans le révisé.
   const validatedAmendments = await client.budgetAmendment.findMany({
-    where: { budgetId: { in: budgetIds }, status: 'VALIDATED' },
+    where: { tenantId, budgetId: { in: budgetIds }, status: 'VALIDATED' },
     select: { id: true, budgetId: true }
   });
   const amendmentIds = validatedAmendments.map((a: Record<string, any>) => a.id as string);
@@ -174,7 +176,7 @@ export async function getRevisedBudgetTotals(
   const deltaSums = amendmentIds.length
     ? await client.budgetAmendmentLine.groupBy({
         by: ['amendmentId'],
-        where: { amendmentId: { in: amendmentIds } },
+        where: { amendmentId: { in: amendmentIds }, amendment: { tenantId } },
         _sum: { amountDelta: true }
       })
     : [];
@@ -318,14 +320,14 @@ export const raiseBudgetAlertIfNeededTx: RaiseBudgetAlertIfNeededTx = async (tx,
   // (`site_budget_alerts_one_open_per_budget`) » ne fonctionne pas ici. On
   // vérifie donc explicitement, avant d'écrire quoi que ce soit.
   const existingOpenAlert = await tx.siteBudgetAlert.findFirst({
-    where: { budgetId: budget.id, acknowledgedAt: null }
+    where: { tenantId, budgetId: budget.id, acknowledgedAt: null }
   });
   if (existingOpenAlert) {
     return null;
   }
 
   const [revisedTotals, engagementTotals] = await Promise.all([
-    getRevisedBudgetTotals(tx, [budget.id]),
+    getRevisedBudgetTotals(tx, tenantId, [budget.id]),
     getSiteEngagementTotals(tx, tenantId, [siteId])
   ]);
 
@@ -367,6 +369,43 @@ export const raiseBudgetAlertIfNeededTx: RaiseBudgetAlertIfNeededTx = async (tx,
 
   return toSiteBudgetAlertRecord(created as Record<string, any>);
 };
+
+export async function readSiteBudgetThreshold(tenantId: string, siteId: string) {
+  const site = await prisma.constructionSite.findFirst({
+    where: { tenantId, id: siteId },
+    select: { name: true, status: true, budgetThresholdPercent: true }
+  });
+  if (!site) throw new NotFoundError(t('Chantier introuvable.'));
+  return site;
+}
+
+export async function setSiteBudgetThreshold(
+  tenantId: string,
+  siteId: string,
+  thresholdPercent: number | null,
+  expected: number | null
+) {
+  return prisma.$transaction(async tx => {
+    const where = { tenantId, id: siteId };
+    const result = await tx.constructionSite.updateMany({
+      where: { ...where, status: { not: 'CLOSED' }, budgetThresholdPercent: expected },
+      data: { budgetThresholdPercent: thresholdPercent }
+    });
+    if (!result.count) {
+      const site = await tx.constructionSite.findFirst({
+        where,
+        select: { status: true, budgetThresholdPercent: true }
+      });
+      if (!site) throw new NotFoundError(t('Chantier introuvable.'));
+      if (site.status === 'CLOSED') throw new ConflictError(t('Le chantier est clôturé.'));
+      if (site.budgetThresholdPercent !== thresholdPercent)
+        throw new ConflictError(t('Le seuil a été modifié. Rechargez le formulaire.'));
+    } else if (thresholdPercent !== null && thresholdPercent !== expected) {
+      await raiseBudgetAlertIfNeededTx(tx, tenantId, siteId);
+    }
+    return { thresholdPercent };
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Acquittement

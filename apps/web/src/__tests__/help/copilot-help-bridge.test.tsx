@@ -110,8 +110,11 @@ describe('CopilotRoot — pont depuis l’aide', () => {
     await screen.findByText('Réponse');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Nouvelle conversation' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Nouvelle conversation' }));
-    fireEvent.change(input, { target: { value: 'Question B' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
+    // « Nouvelle conversation » remonte la saisie (clé `composerVersion`) : on relit le nouveau champ.
+    const freshInput = (await screen.findByLabelText('Votre message')) as HTMLTextAreaElement;
+    await waitFor(() => expect(freshInput.value).toBe(''));
+    fireEvent.change(freshInput, { target: { value: 'Question B' } });
+    fireEvent.keyDown(freshInput, { key: 'Enter' });
     await waitFor(() => expect(streamChat).toHaveBeenCalledTimes(2), { timeout: 5000 });
     const second = streamChat.mock.calls[1][1].context;
     expect(second?.helpId).toBeUndefined();

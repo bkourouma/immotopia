@@ -57,6 +57,9 @@ jest.mock('../../src/services/permission-service', () => ({
 }));
 
 const mockPrisma: Record<string, any> = {
+  platformAiSettings: { findUnique: jest.fn().mockResolvedValue(null) },
+  user: { findUnique: jest.fn().mockResolvedValue({ preferredAssistantLanguage: null }) },
+  tenant: { findUnique: jest.fn().mockResolvedValue({ timeZone: 'UTC' }) },
   rentalLease: { findFirst: jest.fn() },
   auditLog: { findFirst: jest.fn(), create: jest.fn() },
   $transaction: jest.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(mockPrisma)),
@@ -461,6 +464,7 @@ describe('chaîne complète : chat (fake) -> write_plan -> confirmation', () => 
 
   it('statut : plan_write est annoncé aux collaborateurs autorisés', async () => {
     const res = await request(app).get(`${base()}/status`).set('x-user', currentUser);
+    expect(res.status).toBe(200);
     expect(res.body.data.tools).toContain('plan_write');
   });
 });

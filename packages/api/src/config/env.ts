@@ -450,6 +450,9 @@ const envSchema = z
     // `disabled` : l'assistant est coupe et l'application marche sans cle.
     // Aucun secret par defaut : ANTHROPIC_API_KEY est exigee si `anthropic`,
     // OPENROUTER_API_KEY si `openrouter`.
+    AI_TRANSCRIPTION_OPENAI_KEY: z.string().trim().min(1).optional(),
+    AI_ASSISTANT_SQL_URL: z.string().url().optional(),
+    AI_TRANSCRIPTION_MODEL: z.string().trim().min(1).default('gpt-transcribe'),
     AI_PROVIDER: z.enum(['disabled', 'fake', 'anthropic', 'openrouter']).default('disabled'),
     ANTHROPIC_API_KEY: z.string().min(1).optional(),
     OPENROUTER_API_KEY: z.string().min(1).optional(),
@@ -459,7 +462,7 @@ const envSchema = z
     AI_MODEL: z.string().min(1).default('claude-opus-5-5'),
     AI_EFFORT: z.enum(['low', 'medium', 'high']).default('low'),
     AI_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(1024).max(64000).default(16000),
-    AI_MAX_TOOL_ROUNDS: z.coerce.number().int().min(1).max(8).default(4),
+    AI_MAX_TOOL_ROUNDS: z.coerce.number().int().min(1).max(12).default(12),
     AI_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(60000),
     AI_PROPOSAL_TTL_SECONDS: z.coerce.number().int().min(60).max(900).default(300),
     // Plans d'ecriture generiques (plan V2, etape 4) : l'utilisateur doit lire les
