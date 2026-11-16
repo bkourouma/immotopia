@@ -243,6 +243,15 @@ describe('Schema — couverture multi-tenant de chaque modele (lot E, E3)', () =
     expect(withoutTenant).toEqual([]);
   });
 
+  it('les modeles des formulaires parametrables portent un tenantId (CLOISONNES)', () => {
+    const formModels = ['TenantFormFieldSetting', 'TenantFormFieldUnlock'];
+    const withoutTenant = formModels.filter(name => {
+      const model = modelsByName.get(name);
+      return !model || !tenantFieldOf(model);
+    });
+    expect(withoutTenant).toEqual([]);
+  });
+
   describe('CHILD_MODELS — chaque chemin de relation est reel, obligatoire, et mene a un modele cloisonne', () => {
     /** `expect(x).toBeDefined()` ne porte pas de message custom : on le fabrique nous-memes. */
     function assertDefined<T>(value: T | undefined, message: string): T {

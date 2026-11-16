@@ -33,6 +33,17 @@ jest.mock('../../src/controllers/coowner-portal-finance-controller', () => passt
 jest.mock('../../src/controllers/coowner-charge-notice-controller', () => passthrough());
 jest.mock('../../src/controllers/coowner-online-payment-controller', () => passthrough());
 
+// Modes des champs : défauts du registre, sans base ; `mockModes` simule un réglage d'agence.
+const mockModes: Record<string, Record<string, string>> = {};
+jest.mock('../../src/lib/form-settings/service', () => ({
+  getEffectiveFieldModes: async (_tenantId: string, formKey: string) => {
+    const { FORM_REGISTRY } = jest.requireActual('../../src/lib/form-settings/registry');
+    const fields: Record<string, string> = {};
+    for (const field of FORM_REGISTRY[formKey].fields) fields[field.key] = field.defaultMode;
+    return { formKey, fields: { ...fields, ...(mockModes[formKey] ?? {}) } };
+  }
+}));
+
 const getAvailability = jest.fn();
 const createDeclaration = jest.fn();
 const listDeclarations = jest.fn();

@@ -189,10 +189,99 @@ describe('PROBABLE_DUPLICATE', () => {
     expect(kinds(alerts)).not.toContain('PROBABLE_DUPLICATE');
   });
 
+  it('déclarations sans référence : deux références nulles restent un doublon probable', async () => {
+    mockDb.syndicPaymentDeclaration.rows.push(other({ transactionReference: null }));
+    const alerts = await computeDeclarationAlerts(mockDb as any, declaration({ transactionReference: null }), NOW);
+    expect(only(alerts, 'PROBABLE_DUPLICATE')).toEqual([
+      { kind: 'PROBABLE_DUPLICATE', declarationId: 'decl-2', createdAt: '2026-10-12T10:00:00.000Z' }
+    ]);
+  });
+
+  it('une référence nulle face à une référence connue reste un doublon probable', async () => {
+    mockDb.syndicPaymentDeclaration.rows.push(other({ transactionReference: null }));
+    const alerts = await computeDeclarationAlerts(mockDb as any, base(), NOW);
+    expect(only(alerts, 'PROBABLE_DUPLICATE')).toHaveLength(1);
+  });
+
+  it('sans référence, pas d’alerte REFERENCE_ON_EXISTING_PAYMENT', async () => {
+    const payment = (over: Row) => ({
+      id: 'pay-1',
+      reference: 'MP261014.1234',
+      paidAt: new Date('2026-10-10T08:00:00.000Z'),
+      amount: 25000,
+      lot: { syndicateId: SYNDIC },
+      ...over
+    });
+    mockDb.chargePayment.rows.push(payment({ reference: null }), payment({ id: 'pay-2', reference: 'MP261014.1234' }));
+    const alerts = await computeDeclarationAlerts(mockDb as any, declaration({ transactionReference: null }), NOW);
+    expect(kinds(alerts)).not.toContain('REFERENCE_ON_EXISTING_PAYMENT');
+  });
+
+  it('référence absente d’un côté : la fenêtre s’élargit à la même journée', async () => {
+    mockDb.syndicPaymentDeclaration.rows.push(
+      other({ transactionReference: null, paidAt: new Date('2026-10-14T18:30:00.000Z') })
+    );
+    const alerts = await computeDeclarationAlerts(mockDb as any, base(), NOW);
+    expect(only(alerts, 'PROBABLE_DUPLICATE')).toHaveLength(1);
+  });
+
+  it('référence absente d’un côté mais autre journée : pas de doublon probable', async () => {
+    mockDb.syndicPaymentDeclaration.rows.push(
+      other({ transactionReference: null, paidAt: new Date('2026-10-15T10:05:00.000Z') })
+    );
+    const alerts = await computeDeclarationAlerts(mockDb as any, base(), NOW);
+    expect(kinds(alerts)).not.toContain('PROBABLE_DUPLICATE');
+  });
+
+  it('deux références présentes : la fenêtre reste de 10 minutes', async () => {
+    mockDb.syndicPaymentDeclaration.rows.push(other({ paidAt: new Date('2026-10-14T18:30:00.000Z') }));
+    const alerts = await computeDeclarationAlerts(mockDb as any, base(), NOW);
+    expect(kinds(alerts)).not.toContain('PROBABLE_DUPLICATE');
+  });
+
   it('ne se signale pas elle-même', async () => {
     mockDb.syndicPaymentDeclaration.rows.push(stored(base()));
     const alerts = await computeDeclarationAlerts(mockDb as any, base(), NOW);
     expect(kinds(alerts)).not.toContain('PROBABLE_DUPLICATE');
+  });
+});
+
+describe('DUPLICATE_PROOF', () => {
+  const withProof = (over: Row = {}) => ({ proofSha256: 'abc123', ...over });
+  const twin = (over: Row = {}) =>
+    stored(declaration(withProof()), {
+      id: 'decl-3',
+      transactionReference: null,
+      amount: 12345,
+      payerPhone: '+2250101010101',
+      createdAt: new Date('2026-10-12T11:00:00.000Z'),
+      ...over
+    });
+
+  it('signale une autre déclaration PENDING ou APPROVED de l’agence avec la même capture', async () => {
+    mockDb.syndicPaymentDeclaration.rows.push(twin(), twin({ id: 'decl-4', status: 'APPROVED' }));
+    const alerts = await computeDeclarationAlerts(
+      mockDb as any,
+      declaration(withProof({ transactionReference: null })),
+      NOW
+    );
+    expect(only(alerts, 'DUPLICATE_PROOF').map(a => a.declarationId)).toEqual(['decl-3', 'decl-4']);
+  });
+
+  it.each([
+    ['une autre empreinte', { proofSha256: 'zzz' }],
+    ['une déclaration annulée', { status: 'CANCELED' }],
+    ['une autre agence', { tenantId: 'tenant-b' }]
+  ])('ne signale pas %s', async (_label, over) => {
+    mockDb.syndicPaymentDeclaration.rows.push(twin(over));
+    const alerts = await computeDeclarationAlerts(mockDb as any, declaration(withProof()), NOW);
+    expect(kinds(alerts)).not.toContain('DUPLICATE_PROOF');
+  });
+
+  it('sans capture, aucune alerte', async () => {
+    mockDb.syndicPaymentDeclaration.rows.push(twin());
+    const alerts = await computeDeclarationAlerts(mockDb as any, declaration(), NOW);
+    expect(kinds(alerts)).not.toContain('DUPLICATE_PROOF');
   });
 });
 

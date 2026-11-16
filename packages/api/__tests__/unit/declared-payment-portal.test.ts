@@ -128,6 +128,7 @@ describe('createCoOwnerDeclaration', () => {
     const call = createDeclaration.mock.calls[0][0];
     expect(call.tenantId).toBe('tenant-A');
     expect(call.syndicateId).toBe(SYNDIC);
+    expect(call.formKey).toBe('syndic.paiement-declare-portail');
     expect(call.actor).toEqual({ type: 'COOWNER', scope, contactId: 'contact-2' });
     expect(call.input.syndicId).toBeUndefined();
     expect(call.proof).toBe(proof);

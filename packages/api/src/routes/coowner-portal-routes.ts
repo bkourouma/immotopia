@@ -43,6 +43,7 @@ import {
   listCoOwnerDeclarationsHandler
 } from '../controllers/coowner-declared-payment-controller';
 import { receiveDeclarationProof } from '../middleware/declared-proof-upload';
+import { formFieldModes } from '../lib/form-settings/apply';
 import { receivingAccountQrReadRateLimiter } from '../middleware/rate-limit-middleware';
 import {
   listCoOwnerPortalReceivingAccountsHandler,
@@ -125,6 +126,7 @@ router.post(
   '/paiements-declares',
   coOwnerDeclarationCreateLimiter,
   receiveDeclarationProof,
+  formFieldModes('syndic.paiement-declare-portail', { payloadField: 'payload' }),
   createCoOwnerDeclarationHandler
 );
 router.get('/paiements-declares', listCoOwnerDeclarationsHandler);

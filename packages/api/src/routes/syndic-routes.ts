@@ -4,6 +4,7 @@ import { requireTenantAccess } from '../middleware/tenant-middleware';
 import { enforcePropertyTenantIsolation } from '../middleware/tenant-isolation-middleware';
 import { requireAnyPropertyPermission, requirePropertyPermission } from '../middleware/property-rbac-middleware';
 import { uploadDocument } from '../middleware/upload-middleware';
+import { formFieldModes } from '../lib/form-settings/apply';
 import {
   assignBudgetLineFundHandler,
   assignChargeCallFundHandler
@@ -163,9 +164,19 @@ router.get(
   requireAnyPropertyPermission(['SYNDIC_VIEW', 'SYNDIC_CREATE']),
   listSyndicsHandler
 );
-router.post('/tenants/:tenantId/syndics', requireAnyPropertyPermission(['SYNDIC_CREATE']), createSyndicHandler);
+router.post(
+  '/tenants/:tenantId/syndics',
+  requireAnyPropertyPermission(['SYNDIC_CREATE']),
+  formFieldModes('syndic.copropriete'),
+  createSyndicHandler
+);
 router.get('/tenants/:tenantId/syndics/:syndicId', requireAnyPropertyPermission(['SYNDIC_VIEW']), getSyndicHandler);
-router.patch('/tenants/:tenantId/syndics/:syndicId', requirePropertyPermission('SYNDIC_EDIT'), updateSyndicHandler);
+router.patch(
+  '/tenants/:tenantId/syndics/:syndicId',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  formFieldModes('syndic.copropriete', { partial: true }),
+  updateSyndicHandler
+);
 router.delete('/tenants/:tenantId/syndics/:syndicId', requirePropertyPermission('SYNDIC_EDIT'), deleteSyndicHandler);
 
 router.get(
@@ -176,6 +187,7 @@ router.get(
 router.post(
   '/tenants/:tenantId/syndics/:syndicId/lots',
   requireAnyPropertyPermission(['SYNDIC_CREATE']),
+  formFieldModes('syndic.lot'),
   createSyndicLotHandler
 );
 router.post(
@@ -186,6 +198,7 @@ router.post(
 router.patch(
   '/tenants/:tenantId/syndics/:syndicId/lots/:lotId',
   requirePropertyPermission('SYNDIC_EDIT'),
+  formFieldModes('syndic.lot', { partial: true }),
   updateSyndicLotHandler
 );
 router.delete(
@@ -196,6 +209,7 @@ router.delete(
 router.post(
   '/tenants/:tenantId/syndics/:syndicId/lots/:lotId/tenants',
   requirePropertyPermission('SYNDIC_EDIT'),
+  formFieldModes('syndic.lot-locataire'),
   addLotTenantHandler
 );
 router.delete(
@@ -217,6 +231,7 @@ router.get(
 router.post(
   '/tenants/:tenantId/syndics/:syndicId/charges',
   requireAnyPropertyPermission(['SYNDIC_CREATE']),
+  formFieldModes('syndic.appel-de-charges'),
   requireEditWhenFundAssigned,
   createChargeCallHandler
 );
@@ -248,6 +263,7 @@ router.get(
 router.post(
   '/tenants/:tenantId/syndics/:syndicId/budgets',
   requirePropertyPermission('SYNDIC_EDIT'),
+  formFieldModes('syndic.budget'),
   createBudgetHandler
 );
 router.patch(
@@ -298,6 +314,7 @@ router.get(
 router.post(
   '/tenants/:tenantId/syndics/:syndicId/charges/:chargeId/penalite',
   requirePropertyPermission('SYNDIC_EDIT'),
+  formFieldModes('syndic.penalite'),
   createPenaltyHandler
 );
 router.patch(
@@ -308,6 +325,7 @@ router.patch(
 router.post(
   '/tenants/:tenantId/syndics/:syndicId/charges/:chargeId/echeancier',
   requirePropertyPermission('SYNDIC_EDIT'),
+  formFieldModes('syndic.echeancier'),
   createPaymentScheduleHandler
 );
 router.get(
@@ -328,6 +346,7 @@ router.get(
 router.post(
   '/tenants/:tenantId/syndics/:syndicId/lots/:lotId/compte/ajustements',
   requirePropertyPermission('SYNDIC_EDIT'),
+  formFieldModes('syndic.compte-lot-ajustement'),
   createLotOwnerAccountAdjustmentHandler
 );
 router.get(
@@ -343,6 +362,7 @@ router.get(
 router.post(
   '/tenants/:tenantId/syndics/:syndicId/profils/proprietaires',
   requirePropertyPermission('SYNDIC_EDIT'),
+  formFieldModes('syndic.profil-proprietaire'),
   createLotOwnerProfileHandler
 );
 router.patch(
@@ -390,16 +410,19 @@ router.post(
 router.post(
   '/tenants/:tenantId/syndics/:syndicId/incidents',
   requirePropertyPermission('SYNDIC_EDIT'),
+  formFieldModes('syndic.incident-creation'),
   createIncidentHandler
 );
 router.patch(
   '/tenants/:tenantId/syndics/:syndicId/incidents/:incidentId',
   requirePropertyPermission('SYNDIC_EDIT'),
+  formFieldModes('syndic.incident-modification', { partial: true }),
   updateIncidentHandler
 );
 router.post(
   '/tenants/:tenantId/syndics/:syndicId/incidents/:incidentId/imputations',
   requirePropertyPermission('SYNDIC_EDIT'),
+  formFieldModes('syndic.incident-imputation'),
   addIncidentImputationHandler
 );
 
@@ -411,6 +434,7 @@ router.get(
 router.post(
   '/tenants/:tenantId/syndics/:syndicId/assemblees',
   requirePropertyPermission('SYNDIC_EDIT'),
+  formFieldModes('syndic.assemblee-creation'),
   createMeetingHandler
 );
 router.post(
@@ -426,6 +450,7 @@ router.get(
 router.patch(
   '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId',
   requirePropertyPermission('SYNDIC_EDIT'),
+  formFieldModes('syndic.assemblee-informations', { partial: true }),
   updateMeetingHandler
 );
 router.get(
@@ -436,6 +461,7 @@ router.get(
 router.post(
   '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/resolutions',
   requirePropertyPermission('SYNDIC_EDIT'),
+  formFieldModes('syndic.assemblee-resolution'),
   addResolutionHandler
 );
 router.delete(
@@ -446,11 +472,13 @@ router.delete(
 router.post(
   '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/ordre-du-jour',
   requirePropertyPermission('SYNDIC_EDIT'),
+  formFieldModes('syndic.assemblee-ordre-du-jour'),
   addAgendaItemHandler
 );
 router.patch(
   '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/ordre-du-jour/:agendaItemId',
   requirePropertyPermission('SYNDIC_EDIT'),
+  formFieldModes('syndic.assemblee-ordre-du-jour', { partial: true }),
   updateAgendaItemHandler
 );
 router.delete(
@@ -622,11 +650,13 @@ router.get(
 router.post(
   '/tenants/:tenantId/syndics/:syndicId/prestataires',
   requirePropertyPermission('SYNDIC_EDIT'),
+  formFieldModes('syndic.prestataire'),
   createProviderHandler
 );
 router.patch(
   '/tenants/:tenantId/syndics/:syndicId/prestataires/:providerId',
   requirePropertyPermission('SYNDIC_EDIT'),
+  formFieldModes('syndic.prestataire', { partial: true }),
   updateProviderHandler
 );
 router.delete(
@@ -647,6 +677,7 @@ router.post(
 router.post(
   '/tenants/:tenantId/syndics/:syndicId/contrats',
   requirePropertyPermission('SYNDIC_EDIT'),
+  formFieldModes('syndic.contrat-maintenance'),
   createContractHandler
 );
 router.get(
@@ -673,6 +704,7 @@ router.post(
   '/tenants/:tenantId/syndics/:syndicId/documents',
   requirePropertyPermission('SYNDIC_EDIT'),
   uploadDocument.single('file'),
+  formFieldModes('syndic.document'),
   createDocumentHandler
 );
 router.patch(

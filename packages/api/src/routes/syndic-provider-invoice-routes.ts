@@ -4,6 +4,7 @@ import { authenticate } from '../middleware/auth-middleware';
 import { requireTenantAccess } from '../middleware/tenant-middleware';
 import { enforcePropertyTenantIsolation } from '../middleware/tenant-isolation-middleware';
 import { requireAnyPropertyPermission, requirePropertyPermission } from '../middleware/property-rbac-middleware';
+import { formFieldModes } from '../lib/form-settings/apply';
 import { PROVIDER_INVOICE_FILE_MAX_BYTES } from '../lib/syndics/provider-invoice-files';
 import {
   cancelProviderInvoiceHandler,
@@ -60,7 +61,14 @@ const write: RequestHandler[] = [
 ];
 
 router.get(`${BASE}/factures-prestataires`, ...read, listProviderInvoicesHandler);
-router.post(`${BASE}/factures-prestataires`, ...write, upload.single('file'), createProviderInvoiceHandler);
+// multer d'abord : les champs texte du multipart sont dans `req.body` quand le réglage s'applique.
+router.post(
+  `${BASE}/factures-prestataires`,
+  ...write,
+  upload.single('file'),
+  formFieldModes('syndic.facture-prestataire'),
+  createProviderInvoiceHandler
+);
 router.get(`${BASE}/factures-prestataires/:invoiceId`, ...read, getProviderInvoiceHandler);
 router.patch(`${BASE}/factures-prestataires/:invoiceId`, ...write, updateProviderInvoiceHandler);
 router.post(`${BASE}/factures-prestataires/:invoiceId/annulation`, ...write, cancelProviderInvoiceHandler);
@@ -69,10 +77,16 @@ router.post(
   `${BASE}/factures-prestataires/:invoiceId/fichier`,
   ...write,
   upload.single('file'),
+  formFieldModes('syndic.facture-prestataire-piece'),
   uploadProviderInvoiceFileHandler
 );
 router.delete(`${BASE}/factures-prestataires/:invoiceId/fichier`, ...write, deleteProviderInvoiceFileHandler);
-router.post(`${BASE}/factures-prestataires/:invoiceId/paiements`, ...write, payProviderInvoiceHandler);
+router.post(
+  `${BASE}/factures-prestataires/:invoiceId/paiements`,
+  ...write,
+  formFieldModes('syndic.facture-prestataire-paiement'),
+  payProviderInvoiceHandler
+);
 router.post(
   `${BASE}/factures-prestataires/:invoiceId/paiements/:paymentId/annulation`,
   ...write,

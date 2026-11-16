@@ -364,6 +364,10 @@ export enum AuditActionKey {
   /** Compromis signé électroniquement mais statut du bien incompatible : à régulariser à la main. */
   SIGNATURE_PROPERTY_STATUS_TO_REVIEW = 'SIGNATURE_PROPERTY_STATUS_TO_REVIEW',
 
+  // Formulaires parametrables (contrat §5) : reglage par l'agence, deverrouillage par la plateforme.
+  TENANT_FORM_FIELD_SETTINGS_UPDATED = 'TENANT_FORM_FIELD_SETTINGS_UPDATED',
+  PLATFORM_FORM_FIELD_UNLOCK_CHANGED = 'PLATFORM_FORM_FIELD_UNLOCK_CHANGED',
+
   // Divers
   LOT_REGISTRY_RECONCILED = 'LOT_REGISTRY_RECONCILED',
   PATRIMOINE_WORK_PROGRAM_COST_OVERRIDDEN = 'PATRIMOINE_WORK_PROGRAM_COST_OVERRIDDEN',

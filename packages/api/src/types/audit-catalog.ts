@@ -428,7 +428,11 @@ export const AUDIT_CATALOG: Record<AuditActionKey, AuditCatalogEntry> = {
   [AuditActionKey.DATA_EXPORTED]: tenant('EXPORT'),
 
   // Relance manuelle d'un envoi de notification en echec (admin d'agence ou plateforme).
-  [AuditActionKey.NOTIFICATION_RESENT]: tenant('ADMIN')
+  [AuditActionKey.NOTIFICATION_RESENT]: tenant('ADMIN'),
+
+  // Formulaires parametrables
+  [AuditActionKey.TENANT_FORM_FIELD_SETTINGS_UPDATED]: tenant('ADMIN', { critical: true }),
+  [AuditActionKey.PLATFORM_FORM_FIELD_UNLOCK_CHANGED]: internal('ADMIN', { critical: true })
 };
 
 /** Entrée du catalogue pour une clé, ou `undefined` si la clé est libre (hors enum). */

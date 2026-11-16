@@ -18,6 +18,7 @@ import {
   resumeChargeScheduleHandler,
   updateChargeScheduleHandler
 } from '../controllers/syndic-charge-schedules-controller';
+import { formFieldModes } from '../lib/form-settings/apply';
 import { getLotTypeRatesHandler, updateLotTypeRatesHandler } from '../controllers/syndic-lot-type-rates-controller';
 import { downloadChargeCallNoticeDocxHandler } from '../controllers/syndic-word-documents-controller';
 
@@ -42,9 +43,21 @@ const SYNDIC = '/tenants/:tenantId/syndics/:syndicId';
 const SCHEDULE = `${SYNDIC}/programmations/:scheduleId`;
 
 router.get(`${SYNDIC}/programmations`, ...guards, canView, listChargeSchedulesHandler);
-router.post(`${SYNDIC}/programmations`, ...guards, canEdit, createChargeScheduleHandler);
+router.post(
+  `${SYNDIC}/programmations`,
+  ...guards,
+  canEdit,
+  formFieldModes('syndic.programmation-appels'),
+  createChargeScheduleHandler
+);
 router.get(SCHEDULE, ...guards, canView, getChargeScheduleHandler);
-router.patch(SCHEDULE, ...guards, canEdit, updateChargeScheduleHandler);
+router.patch(
+  SCHEDULE,
+  ...guards,
+  canEdit,
+  formFieldModes('syndic.programmation-appels', { partial: true }),
+  updateChargeScheduleHandler
+);
 router.delete(SCHEDULE, ...guards, canEdit, deleteChargeScheduleHandler);
 router.post(`${SCHEDULE}/pause`, ...guards, canEdit, pauseChargeScheduleHandler);
 router.post(`${SCHEDULE}/reprise`, ...guards, canEdit, resumeChargeScheduleHandler);
