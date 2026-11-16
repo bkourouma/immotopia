@@ -219,7 +219,12 @@ export const SyndicRecovery: React.FC = () => {
 
   const handleCreateManualReminder = async () => {
     if (!effectiveTenantId || !syndicId) return;
-    const values = await manualForm.validateFields();
+    let values;
+    try {
+      values = await manualForm.validateFields();
+    } catch {
+      return;
+    }
     setSubmitting(true);
     try {
       const reminder = await createManualReminder(effectiveTenantId, syndicId, values.chargeCallId, {
@@ -248,7 +253,12 @@ export const SyndicRecovery: React.FC = () => {
 
   const handleCreatePenalty = async () => {
     if (!effectiveTenantId || !syndicId) return;
-    const values = await penaltyForm.validateFields();
+    let values;
+    try {
+      values = await penaltyForm.validateFields();
+    } catch {
+      return;
+    }
     setSubmitting(true);
     try {
       await createLatePaymentPenalty(effectiveTenantId, syndicId, values.chargeCallId, {
@@ -268,7 +278,12 @@ export const SyndicRecovery: React.FC = () => {
 
   const handleWaivePenalty = async () => {
     if (!effectiveTenantId || !syndicId || !selectedPenalty) return;
-    const values = await waiveForm.validateFields();
+    let values;
+    try {
+      values = await waiveForm.validateFields();
+    } catch {
+      return;
+    }
     setSubmitting(true);
     try {
       await waiveLatePaymentPenalty(effectiveTenantId, syndicId, selectedPenalty.id, {
@@ -288,7 +303,12 @@ export const SyndicRecovery: React.FC = () => {
 
   const handleCreateSchedule = async () => {
     if (!effectiveTenantId || !syndicId) return;
-    const values = await scheduleForm.validateFields();
+    let values;
+    try {
+      values = await scheduleForm.validateFields();
+    } catch {
+      return;
+    }
     setSubmitting(true);
     try {
       await createPaymentSchedule(effectiveTenantId, syndicId, values.chargeCallId, {

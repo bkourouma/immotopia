@@ -275,7 +275,12 @@ export const SyndicOwnerAccount: React.FC = () => {
 
   const handleAdjustment = async () => {
     if (!effectiveTenantId || !syndicId || !lotId) return;
-    const values = await form.validateFields();
+    let values;
+    try {
+      values = await form.validateFields();
+    } catch {
+      return;
+    }
     setSubmitting(true);
     try {
       await createLotOwnerAccountAdjustment(effectiveTenantId, syndicId, lotId, {
