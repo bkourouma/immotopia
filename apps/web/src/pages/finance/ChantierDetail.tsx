@@ -159,6 +159,7 @@ const SectionImputations: React.FC<{ allocations: SiteAllocationLine[] }> = ({ a
 
   return (
     <DataView<SiteAllocationLine>
+      helpId="finance.chantier.imputations"
       scrollX={880}
       {...local.dataViewProps}
       emptyDescription={t('Aucune imputation n’a encore été enregistrée sur ce chantier.')}
@@ -256,6 +257,7 @@ export const ChantierDetail: React.FC = () => {
   return (
     <>
       <PageHeader
+        helpId="finance.chantier.page"
         title={site.name}
         breadcrumbs={[...filAriane, { label: site.name }]}
         subtitle={[site.zone, site.propertyLabel ?? t('Sans bien (terrain loué)'), site.managerLabel]
@@ -320,7 +322,12 @@ export const ChantierDetail: React.FC = () => {
       >
         {/* Calculé côté serveur : aucun de ces indicateurs n'est un champ de
             saisie, en particulier pas le coût réel (P-4). */}
-        <StatCard label={t('Coût réel')} value={<MoneyValue value={site.actualCost} />} tone="positive" />
+        <StatCard
+          helpId="finance.chantier.indicateurs"
+          label={t('Coût réel')}
+          value={<MoneyValue value={site.actualCost} />}
+          tone="positive"
+        />
         <StatCard label={t('Avancement')} value={`${site.progressPercent} %`} />
         <StatCard label={t('Début')} value={dateCourteOuTiret(site.startDate)} />
         <StatCard
@@ -339,6 +346,7 @@ export const ChantierDetail: React.FC = () => {
             label: t('Sous-totaux par poste'),
             children: (
               <DataView<LignePoste>
+                helpId="finance.chantier.postes"
                 items={byCostCategory.slice((pagePostes - 1) * taillePagePostes, pagePostes * taillePagePostes)}
                 total={byCostCategory.length}
                 page={pagePostes}

@@ -3,6 +3,7 @@ import { Alert, Button, Input, Space, Tag, Typography } from 'antd';
 import { CheckCircleFilled, CopyOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 import { feedback } from '../../lib/feedback';
 import type { CoOwnerPortalInvitation } from '../../types/syndic-types';
 
@@ -33,7 +34,7 @@ export const CoOwnerInvitationResult: React.FC<{ invitation: CoOwnerPortalInvita
         type="success"
         showIcon
         icon={<CheckCircleFilled />}
-        message={t('Accès au portail ouvert')}
+        message={<HelpSectionTitle title={t('Accès au portail ouvert')} helpId="syndic.lots.invitation" />}
         description={t('{{name}} ({{email}}) peut consulter {{count}} lot(s) en lecture seule.', {
           name: invitation.contactName,
           email: invitation.email,

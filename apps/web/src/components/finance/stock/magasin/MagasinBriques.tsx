@@ -4,6 +4,7 @@ import { ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import { StatusTag } from '../../../primitives/StatusTag';
 import type { StatusTone } from '../../../primitives/StatusTag';
 import { t } from '../../../../i18n/t';
+import { HelpSectionTitle } from '../../../../help';
 
 const { Text, Title } = Typography;
 
@@ -56,6 +57,8 @@ export interface EtapeGesteProps {
    * aussi une `EtapeGeste`.
    */
   persistant?: React.ReactNode;
+  /** Fiche d'aide de l'étape (« ? » à côté du titre). */
+  helpId?: string;
 }
 
 export const EtapeGeste: React.FC<EtapeGesteProps> = ({
@@ -66,11 +69,12 @@ export const EtapeGeste: React.FC<EtapeGesteProps> = ({
   retourLabel,
   principale,
   envoiEnCours,
-  persistant
+  persistant,
+  helpId
 }) => (
   <section aria-label={titre} style={{ display: 'flex', flexDirection: 'column', minHeight: '60vh' }}>
     <Title level={4} style={{ marginBlock: 'var(--space-2)', fontSize: 20 }}>
-      {titre}
+      {helpId ? <HelpSectionTitle title={titre} helpId={helpId} /> : titre}
     </Title>
     {rappel ? (
       <Text type="secondary" style={{ display: 'block', marginBlockEnd: 'var(--space-3)', fontSize: 15 }}>

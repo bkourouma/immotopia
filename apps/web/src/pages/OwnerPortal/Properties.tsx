@@ -9,6 +9,7 @@ import { ListSearch, StateBlock } from '../../components/primitives';
 import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion } from '../../utils/list-search';
 import { t } from '../../i18n/t';
+import { HelpButton } from '../../help';
 
 const { Title, Text } = Typography;
 
@@ -153,20 +154,24 @@ export default function Properties() {
           <Title level={2}>{t('Mes propriétés')}</Title>
           <Text type="secondary">{t('Gérez votre portefeuille immobilier')}</Text>
         </div>
-        <Button
-          icon={<SyncOutlined />}
-          onClick={loadProperties}
-          loading={loading}
-          aria-label={t('Rafraîchir les propriétés')}
-        >
-          {t('Actualiser')}
-        </Button>
+        <Space>
+          <HelpButton helpId="portails.proprietaire.biens.liste" />
+          <Button
+            icon={<SyncOutlined />}
+            onClick={loadProperties}
+            loading={loading}
+            aria-label={t('Rafraîchir les propriétés')}
+          >
+            {t('Actualiser')}
+          </Button>
+        </Space>
       </div>
 
       {/* Portfolio Summary Cards (T036) */}
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} lg={6}>
           <StatCard
+            helpId="portails.proprietaire.biens.indicateurs"
             title={t('Total')}
             value={data.summary.total}
             icon={<BankOutlined style={{ color: '#1890ff' }} />}

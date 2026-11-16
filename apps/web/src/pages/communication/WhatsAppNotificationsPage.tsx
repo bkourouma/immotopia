@@ -12,6 +12,7 @@ import { WHATSAPP_VARIABLES_BY_KEY, getVariablePlaceholder } from '../../constan
 import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion } from '../../utils/list-search';
 import { t } from '../../i18n/t';
+import { HelpButton, HelpSectionTitle } from '../../help';
 
 const { Title, Text } = Typography;
 
@@ -230,7 +231,10 @@ export function WhatsAppNotificationsPage() {
 
         <div id="whatsapp-notif-edit-section">
           <Text strong style={{ display: 'block', marginBottom: 8 }}>
-            {t("Modifier le message d'un événement")}
+            <HelpSectionTitle
+              title={t("Modifier le message d'un événement")}
+              helpId="communication.canaux.whatsapp.evenement"
+            />
           </Text>
           <Space wrap style={{ marginBottom: 16 }}>
             {items.map(item => (
@@ -260,6 +264,7 @@ export function WhatsAppNotificationsPage() {
                 <Tag color="green" style={{ marginTop: 6 }}>
                   {t('Destinataire :')} {selectedItem.recipientLabel}
                 </Tag>
+                <HelpButton size="small" helpId="communication.canaux.whatsapp.message" />
               </Card>
 
               <Form form={form} layout="vertical">
@@ -276,7 +281,10 @@ export function WhatsAppNotificationsPage() {
 
                 <div style={{ marginBottom: 16 }}>
                   <Text type="secondary" strong style={{ display: 'block', marginBottom: 8 }}>
-                    {t('Variables pour cet événement (cliquez pour insérer)')}
+                    <HelpSectionTitle
+                      title={t('Variables pour cet événement (cliquez pour insérer)')}
+                      helpId="communication.canaux.whatsapp.variables"
+                    />
                   </Text>
                   <Space size={[4, 4]} wrap>
                     {variablesForEvent.map(name => (
@@ -299,6 +307,9 @@ export function WhatsAppNotificationsPage() {
                       label: t("Template Twilio (message initié par l'entreprise)"),
                       children: (
                         <>
+                          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                            <HelpButton size="small" helpId="communication.canaux.whatsapp.twilio" />
+                          </div>
                           <Form.Item
                             name="contentSid"
                             label={t('Content SID (Twilio)')}
@@ -336,6 +347,7 @@ export function WhatsAppNotificationsPage() {
       <Card title={t('Liste des notifications WhatsApp')}>
         <Spin spinning={loading}>
           <Table
+            helpId="communication.canaux.whatsapp.tableau"
             exportFilename={t('Liste des notifications WhatsApp')}
             {...local.tableProps}
             exportFetchAll={local.exportAll}

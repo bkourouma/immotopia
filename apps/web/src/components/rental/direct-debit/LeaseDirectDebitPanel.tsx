@@ -8,6 +8,7 @@ import { MandateSignatureSection } from '../../direct-debit/MandateSignatureSect
 import { MandateActions } from './MandateActions';
 import { DebtorOption, MandateFormModal } from './MandateFormModal';
 import { apiErrorMessage, formatDate, MandateStatusTag } from './direct-debit-shared';
+import { HelpButton } from '../../../help';
 import { t } from '../../../i18n/t';
 
 const { Text } = Typography;
@@ -145,9 +146,12 @@ export const LeaseDirectDebitPanel: React.FC<LeaseDirectDebitPanelProps> = ({ te
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       <Space style={{ width: '100%', justifyContent: 'space-between' }} wrap>
-        <Text type="secondary">
-          {t("Le locataire autorise l'agence à prélever son loyer sur son compte bancaire.")}
-        </Text>
+        <Space size={4}>
+          <Text type="secondary">
+            {t("Le locataire autorise l'agence à prélever son loyer sur son compte bancaire.")}
+          </Text>
+          <HelpButton size="small" helpId="locatif.prelevements.bail" />
+        </Space>
         {/* Le <span> reçoit le survol : un bouton désactivé n'émet pas d'événement souris. */}
         <Tooltip title={hasOpenMandate ? openMandateMessage : undefined}>
           <span style={{ display: 'inline-block' }}>
@@ -206,6 +210,7 @@ export const LeaseDirectDebitPanel: React.FC<LeaseDirectDebitPanelProps> = ({ te
                       hasSignedScan={mandate.hasSignedScan}
                       signedAt={mandate.signedAt}
                       reference={mandate.reference}
+                      helpId="locatif.prelevements.bail.signature"
                       onChanged={() => void load(true)}
                     />
                   </div>

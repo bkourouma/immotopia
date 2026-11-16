@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ASSET_USAGE_QUERY_KEY, getAssetUsage, type AssetUsage } from '../../services/personal-space-service';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { formatMoney } from '../primitives';
+import { HelpButton } from '../../help';
 import { t } from '../../i18n/t';
 
 const { Text } = Typography;
@@ -56,6 +57,9 @@ export const AssetUsageBanner: React.FC<{ tenantId: string }> = ({ tenantId }) =
   if (!usage || usage.plan === 'AGENCY' || usage.limit === null) return null;
 
   const count = t('{{used}} actifs sur {{limit}}', { used: usage.used, limit: usage.limit });
+  const aide = (
+    <HelpButton size="small" helpId="patrimoine.espace-personnel.compteur" style={{ marginInlineStart: 4 }} />
+  );
 
   if (usage.plan === 'PAID') {
     return (
@@ -66,6 +70,7 @@ export const AssetUsageBanner: React.FC<{ tenantId: string }> = ({ tenantId }) =
         style={{ display: 'block', marginBottom: 'var(--space-3)' }}
       >
         {count}
+        {aide}
       </Text>
     );
   }
@@ -77,7 +82,12 @@ export const AssetUsageBanner: React.FC<{ tenantId: string }> = ({ tenantId }) =
       type={usage.canAdd ? 'info' : 'warning'}
       showIcon
       style={{ marginBottom: 'var(--space-4)' }}
-      title={count}
+      title={
+        <>
+          {count}
+          {aide}
+        </>
+      }
       description={<UpgradeInvitation tenantId={tenantId} usage={usage} />}
     />
   );

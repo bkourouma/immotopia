@@ -124,6 +124,7 @@ export const GesteCompter: React.FC<GesteCompterProps> = ({ tenantId, contexte, 
     if (vue === 'ouverture') {
       return (
         <EtapeGeste
+          helpId="finance.magasin.compter"
           titre={t('Commencer l’inventaire')}
           onRetour={() => setVue('principal')}
           principale={{ label: t('Commencer'), onClick: () => void commencer(), loading: enCours }}
@@ -140,6 +141,7 @@ export const GesteCompter: React.FC<GesteCompterProps> = ({ tenantId, contexte, 
     }
     return (
       <EtapeGeste
+        helpId="finance.magasin.compter"
         titre={t('Compter')}
         rappel={lieu?.label}
         onRetour={onQuitter}
@@ -152,7 +154,7 @@ export const GesteCompter: React.FC<GesteCompterProps> = ({ tenantId, contexte, 
 
   if (detail.isError) {
     return (
-      <EtapeGeste titre={t('Compter')} onRetour={onQuitter}>
+      <EtapeGeste helpId="finance.magasin.compter" titre={t('Compter')} onRetour={onQuitter}>
         <Alert
           type="error"
           showIcon
@@ -169,7 +171,7 @@ export const GesteCompter: React.FC<GesteCompterProps> = ({ tenantId, contexte, 
 
   if (!comptage) {
     return (
-      <EtapeGeste titre={t('Compter')} onRetour={onQuitter}>
+      <EtapeGeste helpId="finance.magasin.compter" titre={t('Compter')} onRetour={onQuitter}>
         <Text type="secondary">{t('Chargement de l’inventaire…')}</Text>
       </EtapeGeste>
     );
@@ -230,7 +232,7 @@ export const GesteCompter: React.FC<GesteCompterProps> = ({ tenantId, contexte, 
   }
 
   return (
-    <EtapeGeste titre={t('Compter')} onRetour={onQuitter}>
+    <EtapeGeste helpId="finance.magasin.compter" titre={t('Compter')} onRetour={onQuitter}>
       <Text style={{ fontSize: 16 }}>{t('Aucun inventaire en cours sur ce lieu.')}</Text>
     </EtapeGeste>
   );
@@ -355,6 +357,7 @@ const Comptage: React.FC<ComptageProps> = ({
     const existante = lignesParArticle.get(saisie.itemId) ?? null;
     return (
       <EtapeGeste
+        helpId="finance.magasin.compter"
         titre={article ? `${article.reference} — ${article.label}` : (existante?.itemLabel ?? t('Article'))}
         rappel={lieuLabel}
         onRetour={retourPrincipal}
@@ -401,6 +404,7 @@ const Comptage: React.FC<ComptageProps> = ({
   if (vue === 'cloture') {
     return (
       <EtapeGeste
+        helpId="finance.magasin.compter"
         titre={t('Clore le comptage')}
         rappel={lieuLabel}
         onRetour={() => setVue('principal')}
@@ -448,6 +452,7 @@ const Comptage: React.FC<ComptageProps> = ({
 
   return (
     <EtapeGeste
+      helpId="finance.magasin.compter"
       titre={t('Comptage de {{lieu}}', { lieu: lieuLabel })}
       onRetour={onQuitter}
       principale={
@@ -613,6 +618,7 @@ const Justification: React.FC<JustificationProps> = ({
   if (vue === 'justifier' && aJustifier) {
     return (
       <EtapeGeste
+        helpId="finance.magasin.compter"
         titre={t('Justifier l’écart de {{article}}', { article: aJustifier.itemLabel })}
         onRetour={retourPrincipal}
         envoiEnCours={enCours}
@@ -649,7 +655,12 @@ const Justification: React.FC<JustificationProps> = ({
   const sansEcart = comptage.lines.filter(ligne => !ligne.notCounted && ligne.setAside === null && !estEnEcart(ligne));
 
   return (
-    <EtapeGeste titre={t('Écarts du comptage')} rappel={comptage.locationLabel} onRetour={onQuitter}>
+    <EtapeGeste
+      helpId="finance.magasin.compter"
+      titre={t('Écarts du comptage')}
+      rappel={comptage.locationLabel}
+      onRetour={onQuitter}
+    >
       <Text style={{ display: 'block', fontSize: 16, marginBlockEnd: 'var(--space-3)' }}>
         {t('Comptage clos le {{date}} par {{nom}}. Les écarts sont visibles : dites ce qui s’est passé pour chacun.', {
           date: comptage.closedAt ? dayjs(comptage.closedAt).format(dateFormat('short')) : '',

@@ -119,6 +119,7 @@ export const DetailMandant: React.FC<DetailMandantProps> = ({ query, isFiltered,
       )}
 
       <DataView<MandantLine>
+        helpId="finance.mandants.detail"
         aria-label={t('Grand livre auxiliaire des mandants')}
         columns={columns}
         items={data?.items ?? []}

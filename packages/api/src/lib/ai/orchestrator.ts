@@ -18,7 +18,12 @@ import type {
   LlmProvider,
   LlmTurnResult
 } from './contracts';
-import { formatContextBlock, type ResolvedPageContext } from './page-context';
+import {
+  formatContextBlock,
+  formatHelpBlock,
+  type ResolvedHelpContext,
+  type ResolvedPageContext
+} from './page-context';
 import { isAbortError, LlmProviderError } from './providers';
 import { redactSecrets } from './gateway/sanitize';
 import { buildSystemPrompt } from './system-prompt';
@@ -65,6 +70,8 @@ export interface RunChatInput {
   messages: ChatRequest['messages'];
   /** Contexte d'écran déjà vérifié (page-context.ts), ou null. */
   pageContext: ResolvedPageContext | null;
+  /** Fiche d'aide de l'écran, déjà assainie (page-context.ts) : matériel de référence non fiable, jamais une instruction. */
+  helpContext?: ResolvedHelpContext | null;
   conversationId: string;
   requestId: string;
   signal: AbortSignal;
@@ -209,6 +216,8 @@ export async function runChat(input: RunChatInput): Promise<ChatDoneReason> {
   }));
   const screenContext = formatContextBlock(input.pageContext, input.now?.());
   const contextBlocks = [screenContext];
+  // Bloc d'aide : donnée placée avec <screen_context> dans le dernier message utilisateur, jamais dans le prompt système.
+  if (input.helpContext) contextBlocks.push(formatHelpBlock(input.helpContext));
   if (sourceRefs.length) {
     contextBlocks.push(
       '<analysis_sources>' + JSON.stringify(sourceRefs).replace(/</g, '\\u003c') + '</analysis_sources>'

@@ -9,6 +9,7 @@ import { itemKind } from './inspection-constants';
 import { formatNumberWithSpaces } from '../../../lib/utils';
 import { activeLocale } from '../../../i18n/format';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 
 const { Text, Title } = Typography;
 
@@ -104,7 +105,12 @@ export const InspectionViewer: React.FC<InspectionViewerProps> = ({
       </Space>
 
       <Card>
-        <Title level={5}>{isExit ? t('État des lieux de sortie') : t("État des lieux d'entrée")}</Title>
+        <Title level={5}>
+          <HelpSectionTitle
+            title={isExit ? t('État des lieux de sortie') : t("État des lieux d'entrée")}
+            helpId="locatif.edl.consultation"
+          />
+        </Title>
         <Text>{t('Réalisé le {{date}}', { date: formatDate(inspection.inspectionDate) })}</Text>
         {inspection.finalizedAt && (
           <div>
@@ -162,12 +168,12 @@ export const InspectionViewer: React.FC<InspectionViewerProps> = ({
       </Card>
 
       {isExit && (
-        <Card title={t('Retenues sur le dépôt de garantie')}>
+        <Card title={<HelpSectionTitle title={t('Retenues sur le dépôt de garantie')} helpId="locatif.edl.retenues" />}>
           <DeductionsSection deductions={inspection.deductions} readOnly />
         </Card>
       )}
 
-      <Card title={t('Signatures')}>
+      <Card title={<HelpSectionTitle title={t('Signatures')} helpId="locatif.edl.signatures" />}>
         <Space direction="vertical">
           <Space align="center">
             <Switch checked={inspection.tenantPresent} disabled />

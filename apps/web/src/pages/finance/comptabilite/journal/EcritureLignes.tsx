@@ -2,6 +2,7 @@ import React from 'react';
 import { MoneyValue } from '../../../../components/primitives';
 import type { JournalEntry } from '../../../../services/accounting-exports-service';
 import { t } from '../../../../i18n/t';
+import { HelpButton } from '../../../../help';
 
 const cellule: React.CSSProperties = { padding: 'var(--space-1) var(--space-2)', textAlign: 'start' };
 const celluleMontant: React.CSSProperties = { ...cellule, textAlign: 'end', whiteSpace: 'nowrap' };
@@ -13,6 +14,7 @@ const celluleMontant: React.CSSProperties = { ...cellule, textAlign: 'end', whit
  */
 export const EcritureLignes: React.FC<{ entry: JournalEntry }> = ({ entry }) => (
   <div style={{ overflowX: 'auto', marginBlockStart: 'var(--space-2)' }}>
+    <HelpButton helpId="finance.journal.ecriture" size="small" />
     <table
       aria-label={t('Lignes de l’écriture {{reference}}', { reference: entry.reference })}
       style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-sm)' }}

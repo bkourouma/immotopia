@@ -143,6 +143,7 @@ export const EntityConsolidationCard: React.FC<EntityConsolidationCardProps> = (
 
       <Card>
         <Table
+          helpId="patrimoine.entite.consolidation.tableau"
           exportFilename={t('Biens de la consolidation')}
           rowKey={row => row.propertyId}
           columns={columns}

@@ -248,6 +248,7 @@ export const Releve: React.FC = () => {
   return (
     <>
       <PageHeader
+        helpId="finance.releve.page"
         title={data?.label ?? t('Relevé de compte')}
         breadcrumbs={[
           { label: t('Finance'), to: `/tenant/${tenantId}/finance/balance-clients` },
@@ -274,6 +275,7 @@ export const Releve: React.FC = () => {
       )}
 
       <DataView<ThirdPartyMovementLine>
+        helpId="finance.releve.mouvements"
         export={{ filename: data?.label ?? t('Relevé de compte'), fetchAll: toutLeReleve }}
         // Pagination serveur (`skip`/`take`) : `total` est celui du serveur
         // pour la période choisie.

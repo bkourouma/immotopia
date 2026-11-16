@@ -35,6 +35,7 @@ import { getDeal, updateDeal, CrmDealDetail, UpdateCrmDealRequest } from '../../
 import { ActivityTimeline } from './ActivityTimeline';
 import { PropertyMatching } from '../properties/PropertyMatching';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle, HelpButton } from '../../help';
 import { dealStageLabel, dealTypeLabel } from '../../utils/crm-labels';
 
 import { activeLocale } from '../../i18n/format';
@@ -229,6 +230,7 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
                 {getDealTypeLabel(deal.type)}
               </Title>
               <Tag color={getStageColor(deal.stage)}>{getStageLabel(deal.stage)}</Tag>
+              <HelpButton helpId="commercial.affaires.detail.etape" size="small" />
             </Space>
 
             <Descriptions
@@ -355,7 +357,7 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
           title={
             <Space>
               <HomeOutlined />
-              {t('Type de bien et critères')}
+              <HelpSectionTitle title={t('Type de bien et critères')} helpId="commercial.affaires.detail.criteres" />
             </Space>
           }
         >
@@ -429,6 +431,7 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
           <Space>
             <ThunderboltOutlined />
             {t('Chronologie des activités')} {deal.activities ? `(${deal.activities.length})` : ''}
+            <HelpButton helpId="commercial.affaires.detail.chronologie" size="small" />
           </Space>
         }
       >
@@ -439,7 +442,14 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
         )}
       </Card>
 
-      <Card title={t('Correspondance de propriétés')}>
+      <Card
+        title={
+          <HelpSectionTitle
+            title={t('Correspondance de propriétés')}
+            helpId="commercial.affaires.detail.correspondance"
+          />
+        }
+      >
         <PropertyMatching tenantId={tenantId} dealId={dealId} />
       </Card>
     </Space>

@@ -231,6 +231,7 @@ export default function Payments() {
         <Row gutter={[16, 16]}>
           <Col xs={24} sm={12} lg={6}>
             <StatCard
+              helpId="portails.proprietaire.paiements.indicateurs"
               title={t('Total')}
               value={data.summary.total.toString()}
               icon={<DollarOutlined style={{ color: '#1890ff' }} />}
@@ -276,6 +277,7 @@ export default function Payments() {
           />
         )}
         <Table
+          helpId="portails.proprietaire.paiements.tableau"
           aria-label={t('Historique des paiements')}
           search={search.searchProps}
           exportFilename={t('Historique des paiements')}

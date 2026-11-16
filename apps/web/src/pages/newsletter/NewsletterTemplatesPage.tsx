@@ -7,6 +7,7 @@ import { newsletterService, type NewsletterTemplate } from '../../services/newsl
 import { Table, useConfirmAction } from '../../components/primitives';
 import { useLocalListSearch } from '../../utils/list-search';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 const HELP_TEXT = 'Variables disponibles : {{contenu}}, {{prenom}}, {{nom}}, {{email}}, {{lien_desinscription}}';
 
@@ -150,6 +151,7 @@ export function NewsletterTemplatesPage() {
           <Table
             {...local.tableProps}
             aria-label={t('Templates newsletter')}
+            helpId="communication.newsletter.modeles.tableau"
             exportFilename={t('Templates newsletter')}
             exportFetchAll={local.exportAll}
             scroll={{ x: 'max-content' }}
@@ -166,7 +168,12 @@ export function NewsletterTemplatesPage() {
       </div>
 
       <Modal
-        title={editingTemplate ? t('Modifier le template') : t('Nouveau template')}
+        title={
+          <HelpSectionTitle
+            title={editingTemplate ? t('Modifier le template') : t('Nouveau template')}
+            helpId="communication.newsletter.modeles.formulaire"
+          />
+        }
         open={modalOpen}
         onOk={handleSubmit}
         onCancel={() => setModalOpen(false)}

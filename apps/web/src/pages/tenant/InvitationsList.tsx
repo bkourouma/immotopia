@@ -224,6 +224,7 @@ export const InvitationsList: React.FC = () => {
             <Table
               {...local.tableProps}
               aria-label={t('Invitations')}
+              helpId="administration.equipe.invitations.tableau"
               exportFilename={t('Invitations')}
               exportFetchAll={local.exportAll}
               columns={columns}

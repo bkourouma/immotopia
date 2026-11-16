@@ -4,6 +4,7 @@ import type { AssetClass } from '../../../services/patrimoine-assets-service';
 import type { ProjectionAssumptions } from '../../../services/patrimoine-projections-service';
 import { ASSET_CLASS_KEYS, assetClassLabel } from '../actifs/asset-classes';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 import { NumField } from './projection-fields';
 
 export interface AssumptionOverrides {
@@ -111,7 +112,7 @@ export const AssumptionsPanel: React.FC<{
   onApply: (overrides: AssumptionOverrides) => void;
   onReset: () => void;
 }> = props => (
-  <Card title={t('Hypothèses')}>
+  <Card title={<HelpSectionTitle title={t('Hypothèses')} helpId="patrimoine.projections.hypotheses" />}>
     <Editor key={JSON.stringify(props.used)} {...props} />
   </Card>
 );

@@ -17,6 +17,7 @@ import { fiscalCountryOptions, fiscalOwnerKindOptions, legalFormOptions } from '
 import { listContacts } from '../../../services/crm-service';
 import { t } from '../../../i18n/t';
 import { apiErrorMessage } from '../patrimoine-labels';
+import { HelpSectionTitle } from '../../../help';
 
 const { TextArea } = Input;
 
@@ -131,7 +132,12 @@ export const HoldingEntityFormModal: React.FC<HoldingEntityFormModalProps> = ({
   return (
     <Modal
       open={open}
-      title={entity ? t('Modifier une entité détentrice') : t('Nouvelle entité détentrice')}
+      title={
+        <HelpSectionTitle
+          title={entity ? t('Modifier une entité détentrice') : t('Nouvelle entité détentrice')}
+          helpId="patrimoine.entites.formulaire"
+        />
+      }
       onCancel={() => {
         form.resetFields();
         setErrorMessage(null);

@@ -276,7 +276,8 @@ function buildNavigation(): Record<PersonaId, PersonaNav> {
             { key: 'admin-statistics', label: t('Statistiques'), href: '/admin/statistics' },
             { key: 'admin-audit', label: t("Journaux d'audit"), href: '/admin/audit' },
             { key: 'admin-notifications', label: t('Notifications (plateforme)'), href: '/admin/notifications' },
-            { key: 'admin-ai-settings', label: t('Assistant IA'), href: '/admin/ai-settings' }
+            { key: 'admin-ai-settings', label: t('Assistant IA'), href: '/admin/ai-settings' },
+            { key: 'admin-help-feedback', label: t("Avis sur l'aide"), href: '/admin/help-feedback' }
           ]
         }
       ]
@@ -724,6 +725,11 @@ function buildNavigation(): Record<PersonaId, PersonaNav> {
               href: '/tenant/:tenantId/settings/finance'
             },
             { key: 'agence-activity', label: t("Journal d'activité"), href: '/tenant/:tenantId/activity' },
+            {
+              key: 'agence-help-feedback',
+              label: t("Avis sur l'aide"),
+              href: '/tenant/:tenantId/admin/help-feedback'
+            },
             {
               key: 'agence-notifications',
               label: t('Journal des notifications'),

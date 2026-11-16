@@ -17,6 +17,7 @@ import {
   type ReceivingNumber
 } from '../../../services/coowner-portal-service';
 import { MoneyValue, PhoneNumber } from '../../primitives';
+import { HelpSectionTitle } from '../../../help';
 import { formatChargePeriod } from '../../../utils/charge-period';
 import {
   aiFieldHint,
@@ -886,7 +887,7 @@ function DeclarationDrawer(props: DeclarationFormProps): React.ReactElement {
       placement="right"
       size="min(100vw, 640px)"
       destroyOnHidden
-      title={t("J'ai payé par mobile money")}
+      title={<HelpSectionTitle title={t("J'ai payé par mobile money")} helpId="syndic.portail.appels.declaration" />}
       footer={
         <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
           <Button style={{ minHeight: TOUCH }} onClick={onClose}>

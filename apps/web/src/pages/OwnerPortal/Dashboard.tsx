@@ -13,6 +13,7 @@ import {
 import { ownerPortalService } from '../../services/ownerPortalService';
 import { StatCard } from '../../components/OwnerPortal/StatCard';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle, helpAnchor } from '../../help';
 
 import { activeLocale, formatFcfa } from '../../i18n/format';
 const { Title, Text } = Typography;
@@ -167,9 +168,10 @@ export default function OwnerDashboard() {
           a 1200 px et non a 992 : en dessous, la barre laterale ne laisse que
           160 px par carte, ou « 2 450 000 F CFA » ne tient pas. */}
       <Row gutter={[16, 16]}>
-        <Col xs={24} sm={12} xl={6}>
+        <Col xs={24} sm={12} xl={6} {...helpAnchor('proprietaire-portefeuille')}>
           <StatCard
             compact
+            helpId="portails.proprietaire.accueil.portefeuille"
             title={t('Total propriétés')}
             value={data.portfolioSummary.total}
             icon={<BankOutlined style={{ color: '#1890ff' }} />}
@@ -203,7 +205,7 @@ export default function OwnerDashboard() {
             valueStyle={{ fontSize: 24, color: '#faad14' }}
           />
         </Col>
-        <Col xs={24} sm={12} xl={6}>
+        <Col xs={24} sm={12} xl={6} {...helpAnchor('proprietaire-occupation')}>
           <StatCard
             compact
             title={t("Taux d'occupation")}
@@ -213,9 +215,10 @@ export default function OwnerDashboard() {
             valueStyle={{ fontSize: 24, color: '#1890ff' }}
           />
         </Col>
-        <Col xs={24} sm={12} xl={6}>
+        <Col xs={24} sm={12} xl={6} {...helpAnchor('proprietaire-revenus-mois')}>
           <StatCard
             compact
+            helpId="portails.proprietaire.accueil.revenus"
             title={t('Revenus ce mois')}
             value={formatCurrency(data.revenueMetrics.currentMonth)}
             icon={<DollarOutlined style={{ color: '#52c41a' }} />}
@@ -246,10 +249,16 @@ export default function OwnerDashboard() {
         {/* Upcoming Payments Section (T031) */}
         <Col xs={24} lg={12}>
           <Card
+            {...helpAnchor('proprietaire-prochains-paiements')}
             title={
-              <>
-                <CalendarOutlined /> {t('Prochains paiements')}
-              </>
+              <HelpSectionTitle
+                helpId="portails.proprietaire.accueil.prochains-paiements"
+                title={
+                  <>
+                    <CalendarOutlined /> {t('Prochains paiements')}
+                  </>
+                }
+              />
             }
             extra={
               <Text type="secondary" style={{ fontSize: 12 }}>
@@ -291,10 +300,16 @@ export default function OwnerDashboard() {
         {/* Recent Activity Section (T032) */}
         <Col xs={24} lg={12}>
           <Card
+            {...helpAnchor('proprietaire-paiements-recents')}
             title={
-              <>
-                <WalletOutlined /> {t('Paiements récents')}
-              </>
+              <HelpSectionTitle
+                helpId="portails.proprietaire.accueil.paiements-recents"
+                title={
+                  <>
+                    <WalletOutlined /> {t('Paiements récents')}
+                  </>
+                }
+              />
             }
             extra={
               <Text type="secondary" style={{ fontSize: 12 }}>
@@ -337,9 +352,14 @@ export default function OwnerDashboard() {
         <Col xs={24}>
           <Card
             title={
-              <>
-                <ToolOutlined /> {t('Tickets de maintenance récents')}
-              </>
+              <HelpSectionTitle
+                helpId="portails.proprietaire.accueil.incidents"
+                title={
+                  <>
+                    <ToolOutlined /> {t('Tickets de maintenance récents')}
+                  </>
+                }
+              />
             }
             extra={
               <Text type="secondary" style={{ fontSize: 12 }}>

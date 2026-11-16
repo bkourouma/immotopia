@@ -43,8 +43,11 @@ const BUILD_DIR = join(WEB_ROOT, 'build');
  * la redirection de connexion normalisée et la purge des données locales (expiration de session, changement de compte) dépassaient le plafond de 165 o.
  * Relevé de 231 424 à 234 496 o (+3 Kio) le 2026-11-11, sur demande de l'utilisateur (mise à jour groupée des dépendances, PR Dependabot n°212) :
  * antd 6.7, Radix et TanStack Query faisaient passer l'entrée à 234 199 o, soit 2 775 o au-dessus du plafond.
+ * Relevé de 234 496 à 236 544 o (+2 Kio) le 2026-11-15, sur accord de l'utilisateur (aide interne, PR n°222) :
+ * les routes /aide et « Avis sur l'aide » et la référence au runtime d'aide dans la table de préchargement des
+ * routes portaient l'entrée à 235 720 o, après regroupement du socle d'aide en un seul chunk (-491 o).
  */
-const DEFAULT_BUDGET = 234_496;
+const DEFAULT_BUDGET = 236_544;
 
 const args = process.argv.slice(2);
 const asJson = args.includes('--json');

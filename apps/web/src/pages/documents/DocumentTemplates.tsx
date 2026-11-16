@@ -20,6 +20,7 @@ import { ConfirmAction, DataCard, DataView, StatusTag, useConfirmAction } from '
 import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion } from '../../utils/list-search';
 import { t as translate } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 const { Title, Text, Paragraph } = Typography;
 const { Option } = Select;
@@ -434,7 +435,10 @@ export function DocumentTemplates() {
             message={
               <Space direction="vertical" size="small" style={{ width: '100%' }}>
                 <Title level={5} style={{ margin: 0 }}>
-                  {translate('Comment créer vos modèles de documents ?')}
+                  <HelpSectionTitle
+                    title={translate('Comment créer vos modèles de documents ?')}
+                    helpId="communication.documents.modeles.guide"
+                  />
                 </Title>
                 <Paragraph style={{ marginBottom: 8 }}>
                   {translate(
@@ -484,6 +488,7 @@ export function DocumentTemplates() {
         {/* Liste — tableau au-dessus de 992 px, cartes en dessous. */}
         <DataView<DocumentTemplate>
           {...local.dataViewProps}
+          helpId="communication.documents.modeles.tableau"
           // La collection entière est déjà chargée : l'export couvre tous les modèles filtrés, pas la seule page.
           export={{ filename: translate('Modèles de documents'), fetchAll: local.exportAll }}
           loading={loading}
@@ -541,7 +546,9 @@ export function DocumentTemplates() {
 
         {/* Upload Modal */}
         <Modal
-          title={translate('Ajouter un template')}
+          title={
+            <HelpSectionTitle title={translate('Ajouter un template')} helpId="communication.documents.modeles.ajout" />
+          }
           open={showUploadModal}
           onCancel={() => {
             setShowUploadModal(false);
@@ -559,7 +566,12 @@ export function DocumentTemplates() {
             }}
           >
             <Form.Item
-              label={translate('Type de document')}
+              label={
+                <HelpSectionTitle
+                  title={translate('Type de document')}
+                  helpId="communication.documents.modeles.types"
+                />
+              }
               name="docType"
               rules={[{ required: true, message: translate('Veuillez sélectionner un type de document') }]}
             >

@@ -29,6 +29,7 @@ import { listOpenLotCharges } from '../../../services/syndic-lot-payment-service
 import type { LotOpenChargeCall, SyndicateLot } from '../../../types/syndic-types';
 import { formatLotLabel } from '../../../utils/syndic-lot-label';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 import { MAX_DECLARATION_AMOUNT, apiErrorCode, apiErrorMessage, formatPhone, operatorLabel } from './helpers';
 
 const { Text, Paragraph } = Typography;
@@ -253,7 +254,12 @@ export const DeclareForThirdPartyModal: React.FC<DeclareForThirdPartyModalProps>
   return (
     <Modal
       open={open}
-      title={t('Déclarer un paiement pour un copropriétaire')}
+      title={
+        <HelpSectionTitle
+          title={t('Déclarer un paiement pour un copropriétaire')}
+          helpId="syndic.paiements.declaration-tiers"
+        />
+      }
       onCancel={onClose}
       onOk={() => form.submit()}
       okText={t('Créer la déclaration')}

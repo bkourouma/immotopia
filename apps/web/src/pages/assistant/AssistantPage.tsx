@@ -21,6 +21,7 @@ import { CopilotComposer } from '../../components/copilot/CopilotComposer';
 import { CopilotThread } from '../../components/copilot/CopilotThread';
 import { getCopilotPageContext } from '../../components/copilot/copilot-page-context';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { HelpButton, HelpSectionTitle } from '../../help';
 import { useCopilotChat } from '../../hooks/useCopilotChat';
 import { useCopilotStatus } from '../../hooks/useCopilotStatus';
 import { t } from '../../i18n/t';
@@ -703,7 +704,7 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
           style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}
         >
           <Typography.Title level={4} style={{ margin: 0 }}>
-            {t('Assistant')}
+            <HelpSectionTitle title={t('Assistant')} helpId="communication.assistant.conversation" />
           </Typography.Title>
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4 }}>
             <select
@@ -775,6 +776,7 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
                 {t('Historique')}
               </Button>
             )}
+            {hasArtifacts && <HelpButton helpId="communication.assistant.resultats" size="small" />}
             {hasArtifacts && (!dockResults || !desktopOpen) && (
               <Button type="text" icon={<DatabaseOutlined aria-hidden />} ref={resultsRef} onClick={openResults}>
                 {t('Résultats ({{count}})', { count: artifactCount })}

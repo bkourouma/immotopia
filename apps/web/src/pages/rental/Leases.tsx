@@ -21,6 +21,7 @@ import {
   useConfirmAction
 } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { helpAnchor } from '../../help';
 import { localizedList } from '../../i18n/localized';
 
 import { activeLocale } from '../../i18n/format';
@@ -216,6 +217,7 @@ export const Leases: React.FC = () => {
   return (
     <>
       <PageHeader
+        helpId="locatif.baux.liste"
         title={t('Baux')}
         subtitle={
           total > 0
@@ -226,60 +228,66 @@ export const Leases: React.FC = () => {
         }
         primaryAction={{
           label: t('Nouveau bail'),
+          helpAnchor: 'baux-nouveau',
           icon: <PlusOutlined />,
           onClick: () => navigate(`/tenant/${tenantId}/rental/leases/new`)
         }}
       />
 
-      <DataView<RentalLease>
-        // Export de TOUS les baux, avec les mêmes filtres que la liste affichée.
-        export={{
-          filename: t('Baux'),
-          fetchAll: () =>
-            collectAllPages<RentalLease>(async (page, limit) => {
-              const reponse = await listLeases(tenantId, { ...search.filterParams, page, limit } as LeaseFilters);
-              return { items: reponse.data ?? [], total: reponse.pagination?.total ?? 0 };
-            })
-        }}
-        // Six colonnes depuis que le locataire a la sienne : elles ne tiennent
-        // plus dans les ~690 px utiles au plancher du desktop.
-        scrollX={1080}
-        items={baux}
-        total={total}
-        search={search.searchProps}
-        {...search.dataViewProps}
-        loading={isPending}
-        isReloading={isFetching && !isPending}
-        error={erreur ? t('Impossible de charger les baux.') : null}
-        errorCause={erreur}
-        onRetry={() => refetch()}
-        emptyDescription={t("Aucun bail n'est encore enregistré pour cette agence.")}
-        emptyAction={{
-          label: t('Créer un bail'),
-          onClick: () => navigate(`/tenant/${tenantId}/rental/leases/new`)
-        }}
-        columns={colonnes}
-        rowKey={bail => bail.id}
-        aria-label={t("Baux de l'agence")}
-        renderCard={bail => {
-          const { montant, devise } = montantDeReference(bail);
-          return (
-            <DataCard
-              title={bail.lease_number}
-              aria-label={t('Bail {{lease_number}}, {{value}}', {
-                lease_number: bail.lease_number,
-                value: nomDuBien(bail.property)
-              })}
-              subtitle={`${nomDuBien(bail.property)} · ${nomDeLaPersonne(bail.primaryRenter?.user)}`}
-              status={<StatusTag status={bail.status} />}
-              highlight={<MoneyValue value={montant} currency={devise} />}
-              fields={[{ label: t('Période'), value: `${dateCourte(bail.start_date)} → ${dateCourte(bail.end_date)}` }]}
-              onOpen={() => navigate(cheminDetail(bail.id))}
-              secondaryActions={actionsSecondaires(bail)}
-            />
-          );
-        }}
-      />
+      <div {...helpAnchor('baux-tableau')}>
+        <DataView<RentalLease>
+          helpId="locatif.baux.liste.tableau"
+          // Export de TOUS les baux, avec les mêmes filtres que la liste affichée.
+          export={{
+            filename: t('Baux'),
+            fetchAll: () =>
+              collectAllPages<RentalLease>(async (page, limit) => {
+                const reponse = await listLeases(tenantId, { ...search.filterParams, page, limit } as LeaseFilters);
+                return { items: reponse.data ?? [], total: reponse.pagination?.total ?? 0 };
+              })
+          }}
+          // Six colonnes depuis que le locataire a la sienne : elles ne tiennent
+          // plus dans les ~690 px utiles au plancher du desktop.
+          scrollX={1080}
+          items={baux}
+          total={total}
+          search={search.searchProps}
+          {...search.dataViewProps}
+          loading={isPending}
+          isReloading={isFetching && !isPending}
+          error={erreur ? t('Impossible de charger les baux.') : null}
+          errorCause={erreur}
+          onRetry={() => refetch()}
+          emptyDescription={t("Aucun bail n'est encore enregistré pour cette agence.")}
+          emptyAction={{
+            label: t('Créer un bail'),
+            onClick: () => navigate(`/tenant/${tenantId}/rental/leases/new`)
+          }}
+          columns={colonnes}
+          rowKey={bail => bail.id}
+          aria-label={t("Baux de l'agence")}
+          renderCard={bail => {
+            const { montant, devise } = montantDeReference(bail);
+            return (
+              <DataCard
+                title={bail.lease_number}
+                aria-label={t('Bail {{lease_number}}, {{value}}', {
+                  lease_number: bail.lease_number,
+                  value: nomDuBien(bail.property)
+                })}
+                subtitle={`${nomDuBien(bail.property)} · ${nomDeLaPersonne(bail.primaryRenter?.user)}`}
+                status={<StatusTag status={bail.status} />}
+                highlight={<MoneyValue value={montant} currency={devise} />}
+                fields={[
+                  { label: t('Période'), value: `${dateCourte(bail.start_date)} → ${dateCourte(bail.end_date)}` }
+                ]}
+                onOpen={() => navigate(cheminDetail(bail.id))}
+                secondaryActions={actionsSecondaires(bail)}
+              />
+            );
+          }}
+        />
+      </div>
     </>
   );
 };

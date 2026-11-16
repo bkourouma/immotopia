@@ -146,6 +146,7 @@ export const EtapeRapport: React.FC<EtapeRapportProps> = props => {
       {aExpliquer.length > 0 ? (
         <Table
           {...local.tableProps}
+          helpId="patrimoine.importation.rapport-tableau"
           aria-label={t('Lignes à expliquer')}
           exportFilename={t('Rapport')}
           exportFetchAll={local.exportAll}

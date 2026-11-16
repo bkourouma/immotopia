@@ -3,6 +3,7 @@ import { LineChart, Line, ResponsiveContainer } from 'recharts';
 import { Card, Statistic, Typography } from 'antd';
 import { RiseOutlined, FallOutlined, MinusOutlined } from '@ant-design/icons';
 import { KpiValue } from '../../../../types/crmDashboard';
+import { HelpSectionTitle } from '../../../../help';
 
 import { activeLocale } from '../../../../i18n/format';
 const { Text } = Typography;
@@ -14,9 +15,18 @@ interface KpiCardProps {
   value: KpiValue;
   onClick?: () => void;
   delay?: number;
+  helpId?: string;
 }
 
-export const KpiCard: React.FC<KpiCardProps> = ({ title, icon, iconColor = '#1890ff', value, onClick, delay = 0 }) => {
+export const KpiCard: React.FC<KpiCardProps> = ({
+  title,
+  icon,
+  iconColor = '#1890ff',
+  value,
+  onClick,
+  delay = 0,
+  helpId
+}) => {
   const hasDelta = value.delta !== undefined && value.delta !== null;
   const isPositive = hasDelta && value.delta! > 0;
   const isNegative = hasDelta && value.delta! < 0;
@@ -45,7 +55,12 @@ export const KpiCard: React.FC<KpiCardProps> = ({ title, icon, iconColor = '#189
 
   return (
     <Card hoverable={!!onClick} onClick={onClick} style={{ cursor: onClick ? 'pointer' : 'default' }}>
-      <Statistic title={title} value={formatValue(value.value)} prefix={icon} valueStyle={{ color: iconColor }} />
+      <Statistic
+        title={helpId ? <HelpSectionTitle title={title} helpId={helpId} /> : title}
+        value={formatValue(value.value)}
+        prefix={icon}
+        valueStyle={{ color: iconColor }}
+      />
 
       {hasDelta && (
         <div style={{ marginTop: 8 }}>

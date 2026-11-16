@@ -14,6 +14,7 @@ import type { LotType } from '../../types/syndic-types';
 import { getLotTypeLabel } from '../../utils/syndic-lot-label';
 import { dateFormat } from '../../i18n/format';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 /**
  * Barème par type de lot d'une copropriété (menu lot 2) : montant PAR LOT et
@@ -133,7 +134,7 @@ export const LotTypeRatesCard: React.FC<LotTypeRatesCardProps> = ({ tenantId, sy
 
   return (
     <Card
-      title={t('Barème par type de lot')}
+      title={<HelpSectionTitle title={t('Barème par type de lot')} helpId="syndic.lots.bareme" />}
       extra={
         canEdit && view ? (
           <Button icon={<EditOutlined />} onClick={openEdit}>

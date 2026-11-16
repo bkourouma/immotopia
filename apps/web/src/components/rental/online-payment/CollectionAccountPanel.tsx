@@ -14,6 +14,7 @@ import type {
   RentalCollectionProviderUnavailableReason
 } from '../../../types/rental-online-payment';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 import { apiErrorMessage, formatDateTime, formatDay } from './helpers';
 import { RentalPayoutModal } from './PayoutModal';
 
@@ -127,7 +128,10 @@ export const CollectionAccountPanel: React.FC<CollectionAccountPanelProps> = ({
   ) : null;
 
   return (
-    <Card title={t('Compte de collecte')} extra={reverseButton}>
+    <Card
+      title={<HelpSectionTitle title={t('Compte de collecte')} helpId="locatif.enligne.collecte" />}
+      extra={reverseButton}
+    >
       {error ? (
         <Alert
           type="error"
@@ -172,6 +176,7 @@ export const CollectionAccountPanel: React.FC<CollectionAccountPanelProps> = ({
         size="middle"
         loading={loading}
         columns={columns}
+        helpId="locatif.enligne.collecte.reversements"
         aria-label={t('Reversements vers la trésorerie')}
         exportFilename={t('Reversements vers la trésorerie')}
         scroll={{ x: 'max-content' }}

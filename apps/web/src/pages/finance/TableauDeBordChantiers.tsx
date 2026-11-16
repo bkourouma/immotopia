@@ -251,11 +251,13 @@ export const TableauDeBordChantiers: React.FC = () => {
   return (
     <>
       <PageHeader
+        helpId="finance.tableau-de-bord-chantiers.page"
         title={t('Tableau de bord des chantiers')}
         subtitle={lignes.length > 0 ? `${lignes.length} chantier${lignes.length > 1 ? 's' : ''}` : undefined}
       />
 
       <DataView<SiteDashboardRow>
+        helpId="finance.tableau-de-bord-chantiers.tableau"
         export={{ filename: t('Tableau de bord des chantiers'), fetchAll: local.exportAll }}
         // Le tableau de bord ne pagine pas côté serveur (contrat gelé, §5 du
         // modèle) : un seul appel rend tous les chantiers de l'agence, la

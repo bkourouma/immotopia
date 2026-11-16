@@ -89,6 +89,7 @@ export const ExpensesSection: React.FC<Props> = ({ expenses, error, busyActionId
         <Alert type="error" showIcon message={error} />
       ) : (
         <Table<PropertyExpense>
+          helpId="patrimoine.bien.depenses"
           {...local.tableProps}
           exportFilename={t('Gérer les dépenses')}
           exportFetchAll={local.exportAll}

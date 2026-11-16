@@ -437,6 +437,7 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
   return (
     <>
       <PageHeader
+        helpId="locatif.penalites.liste"
         title={t('Pénalités')}
         subtitle={
           total > 0 ? t('{{length}} pénalité{{value}}', { length: total, value: total > 1 ? 's' : '' }) : undefined
@@ -454,6 +455,7 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
       />
 
       <DataView<RentalPenalty>
+        helpId="locatif.penalites.liste.tableau"
         items={penalites}
         total={total}
         search={search.searchProps}

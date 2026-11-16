@@ -34,6 +34,7 @@ import type {
 import { apiErrorMessage } from '../../../components/patrimoine/patrimoine-labels';
 import { queryKey, STALE_TIME } from '../../../lib/query-keys';
 import { t } from '../../../i18n/t';
+import { HelpButton, HelpSectionTitle } from '../../../help';
 import {
   accessSectionHelp,
   accessSectionLabel,
@@ -555,7 +556,12 @@ export const ExternalAccessWizard: React.FC<WizardProps> = ({
     <Modal
       open
       width={680}
-      title={editing ? t('Modifier l’accès partagé') : t('Nouvel accès partagé')}
+      title={
+        <HelpSectionTitle
+          title={editing ? t('Modifier l’accès partagé') : t('Nouvel accès partagé')}
+          helpId="patrimoine.acces-tiers.assistant"
+        />
+      }
       onCancel={onClose}
       mask={{ closable: false }}
       destroyOnHidden
@@ -586,6 +592,12 @@ export const ExternalAccessWizard: React.FC<WizardProps> = ({
         </Space>
       }
     >
+      <div style={{ textAlign: 'end' }}>
+        {step === 0 ? <HelpButton helpId="patrimoine.acces-tiers.beneficiaire" /> : null}
+        {step === 1 ? <HelpButton helpId="patrimoine.acces-tiers.perimetre" /> : null}
+        {step === 2 ? <HelpButton helpId="patrimoine.acces-tiers.rubriques" /> : null}
+        {step === 3 ? <HelpButton helpId="patrimoine.acces-tiers.duree" /> : null}
+      </div>
       <Steps size="small" current={step} items={stepTitles.map(title => ({ title }))} style={{ marginBlockEnd: 24 }} />
       {step === 0 ? (
         <RecipientStep state={state} patch={patch} options={options} editing={editing} emailChanged={emailChanged} />

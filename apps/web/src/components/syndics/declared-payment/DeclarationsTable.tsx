@@ -266,6 +266,7 @@ export const DeclarationsTable: React.FC<DeclarationsTableProps> = ({
 
       <Table<SyndicDeclarationRow>
         aria-label={t('Paiements déclarés')}
+        helpId="syndic.paiements.declares"
         search={search.searchProps}
         exportFilename={t('Paiements déclarés')}
         exportFetchAll={() =>

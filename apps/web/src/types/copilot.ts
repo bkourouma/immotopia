@@ -141,6 +141,10 @@ export interface ChatRequest {
     currentPath?: string;
     activeEntityType?: 'PROPERTY' | 'LEASE';
     activeEntityId?: string;
+    /** Fiche d'aide ouverte avant la question (lot aide interne). */
+    helpId?: string;
+    /** Texte brut de la fiche d'aide, tronqué à 4000 caractères ; miroir de packages/api/src/lib/ai/contracts.ts. */
+    helpExcerpt?: string;
   };
 }
 
@@ -480,6 +484,10 @@ export interface CopilotPageContext {
   currentPath?: string;
   activeEntityType?: 'PROPERTY' | 'LEASE';
   activeEntityId?: string;
+  /** Fiche d'aide ouverte avant la question (lot aide interne). */
+  helpId?: string;
+  /** Texte brut de la fiche d'aide, tronqué à 4000 caractères ; miroir de packages/api/src/lib/ai/contracts.ts. */
+  helpExcerpt?: string;
 }
 
 export type CopilotProposalState = 'pending' | 'confirming' | 'confirmed' | 'cancelled' | 'expired' | 'failed';

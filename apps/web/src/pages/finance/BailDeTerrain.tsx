@@ -40,6 +40,7 @@ import {
 import type { StatusTone } from '../../components/primitives';
 import { t } from '../../i18n/t';
 import { localizedList } from '../../i18n/localized';
+import { HelpSectionTitle } from '../../help';
 
 import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
@@ -222,6 +223,7 @@ const SectionPaiements: React.FC<
 
   return (
     <DataView<LandLeasePayment>
+      helpId="finance.bail-terrain.paiements"
       scrollX={900}
       {...local.dataViewProps}
       loading={loading}
@@ -287,6 +289,7 @@ const SectionConstatations: React.FC<SectionListeProps<LandLeaseAccrual>> = ({
 
   return (
     <DataView<LandLeaseAccrual>
+      helpId="finance.bail-terrain.constatations"
       scrollX={800}
       {...local.dataViewProps}
       loading={loading}
@@ -663,6 +666,7 @@ export const BailDeTerrain: React.FC = () => {
   return (
     <>
       <PageHeader
+        helpId="finance.bail-terrain.page"
         title={bail.landLabel}
         subtitle={bail.landlordName}
         breadcrumbs={filAriane}
@@ -679,7 +683,11 @@ export const BailDeTerrain: React.FC = () => {
       >
         {/* Les trois chiffres qui rendent le mécanisme lisible : voir
             l'en-tête de ce fichier. Aucun n'affiche `accountBalance` brut. */}
-        <StatCard label={t('Payé à ce jour')} value={<MoneyValue value={paye} />} />
+        <StatCard
+          helpId="finance.bail-terrain.indicateurs"
+          label={t('Payé à ce jour')}
+          value={<MoneyValue value={paye} />}
+        />
         <StatCard label={t('Consommé à ce jour')} value={<MoneyValue value={consomme} />} />
         <StatCard
           label={t('Reste à consommer')}
@@ -714,6 +722,7 @@ export const BailDeTerrain: React.FC = () => {
             children: (
               <>
                 <DataView<LandLeaseSiteRef>
+                  helpId="finance.bail-terrain.chantiers"
                   items={bail.sites.slice((pageSites - 1) * taillePageSites, pageSites * taillePageSites)}
                   total={bail.sites.length}
                   page={pageSites}
@@ -800,7 +809,10 @@ export const BailDeTerrain: React.FC = () => {
 
                 <Card style={{ marginTop: 'var(--space-4)' }}>
                   <Title level={5} style={{ marginTop: 0 }}>
-                    {t('Nouveau paiement annuel')}
+                    <HelpSectionTitle
+                      title={t('Nouveau paiement annuel')}
+                      helpId="finance.bail-terrain.nouveau-paiement"
+                    />
                   </Title>
                   <Space wrap size="middle" align="end">
                     <div>
@@ -878,7 +890,10 @@ export const BailDeTerrain: React.FC = () => {
 
                 <Card style={{ marginTop: 'var(--space-4)' }}>
                   <Title level={5} style={{ marginTop: 0 }}>
-                    {t('Constater un mois à la main')}
+                    <HelpSectionTitle
+                      title={t('Constater un mois à la main')}
+                      helpId="finance.bail-terrain.constater"
+                    />
                   </Title>
                   <Text type="secondary">
                     {t(

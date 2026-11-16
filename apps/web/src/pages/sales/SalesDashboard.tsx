@@ -147,6 +147,7 @@ export const SalesDashboard: React.FC = () => {
           }}
         >
           <StatCard
+            helpId="commercial.ventes.tableau-de-bord.indicateurs"
             label={t('Mandats actifs')}
             value={pipelineLoading ? '—' : (pipeline?.activeMandates ?? 0)}
             hint={pipeline ? <MoneyValue value={pipeline.activeMandatesValue} /> : undefined}
@@ -182,6 +183,7 @@ export const SalesDashboard: React.FC = () => {
       )}
 
       <DataView<SaleMandateDto>
+        helpId="commercial.ventes.tableau-de-bord.mandats"
         items={rows}
         total={total}
         {...recherche.dataViewProps}

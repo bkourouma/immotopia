@@ -74,11 +74,18 @@ const ONLY = options.only;
 // techniques que traduire n'aurait aucun sens.
 const SKIP_DIRS = new Set(['node_modules', 'i18n', '__tests__', 'assets', 'dev']);
 
+// Chemins (relatifs a src, avec des `/`) exclus en bloc. `help/content` est le
+// contenu de l'aide interne : deja ecrit et traduit par fichier de langue
+// (fr.ts/en.ts/ar.ts), il ne doit ni etre enveloppe dans `t()` ni alimenter les
+// catalogues.
+const SKIP_PATHS = new Set(['help/content']);
+
 function collectFiles(dir, out = []) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
       if (SKIP_DIRS.has(entry.name)) continue;
+      if (SKIP_PATHS.has(path.relative(SRC, full).split(path.sep).join('/'))) continue;
       collectFiles(full, out);
     } else if (/\.tsx?$/.test(entry.name) && !/\.d\.ts$/.test(entry.name) && !/\.(test|spec)\.tsx?$/.test(entry.name)) {
       out.push(full);

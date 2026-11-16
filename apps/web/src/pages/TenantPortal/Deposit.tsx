@@ -26,6 +26,7 @@ import { Table } from '../../components/primitives';
 import { useDepositSearch } from './search/depositSearch';
 import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 import { deviseAffichee, formatMontantLocatif } from '../../lib/rental-labels';
 const { Title, Text } = Typography;
@@ -217,7 +218,7 @@ export default function TenantDeposit() {
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
-              title={t('Montant cible')}
+              title={<HelpSectionTitle title={t('Montant cible')} helpId="portails.locataire.caution.indicateurs" />}
               value={deposit.targetAmount}
               prefix={<DollarOutlined />}
               formatter={value => formatCurrency(Number(value))}
@@ -263,7 +264,8 @@ export default function TenantDeposit() {
       <Card
         title={
           <>
-            <WalletOutlined /> {t('Détails du dépôt')}
+            <WalletOutlined />{' '}
+            <HelpSectionTitle title={t('Détails du dépôt')} helpId="portails.locataire.caution.details" />
           </>
         }
       >
@@ -304,6 +306,7 @@ export default function TenantDeposit() {
       >
         {movements && movements.length > 0 ? (
           <Table
+            helpId="portails.locataire.caution.mouvements"
             {...local.tableProps}
             exportFilename={t('Historique des mouvements')}
             scroll={{ x: 'max-content' }}

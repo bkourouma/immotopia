@@ -205,6 +205,7 @@ export const ProviderList: React.FC<ProviderListProps> = ({ providers, loading =
   return (
     <Table<ProviderWithContracts>
       {...local.tableProps}
+      helpId="syndic.prestataires.tableau"
       aria-label={t('Prestataires')}
       exportFilename={t('Prestataires')}
       exportFetchAll={local.exportAll}

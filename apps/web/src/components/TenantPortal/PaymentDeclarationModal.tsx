@@ -24,6 +24,7 @@ import { readPaymentProof } from '../../services/tenant-portal-declared-payment-
 import { montantSaisiProps } from '../../utils/montant-saisi';
 import { formatMontantLocatif } from '../../lib/rental-labels';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 import type {
   ProofReadResultDto,
   RentalDeclarationPaymentMethod,
@@ -351,11 +352,14 @@ export default function PaymentDeclarationModal({
       title={
         <Space>
           <DollarOutlined />
-          <span>
-            {installmentLabel
-              ? t('Déclarer un paiement — échéance {{installmentLabel}}', { installmentLabel: installmentLabel })
-              : t('Déclarer un paiement')}
-          </span>
+          <HelpSectionTitle
+            title={
+              installmentLabel
+                ? t('Déclarer un paiement — échéance {{installmentLabel}}', { installmentLabel: installmentLabel })
+                : t('Déclarer un paiement')
+            }
+            helpId="portails.locataire.paiements.declaration"
+          />
         </Space>
       }
       open={open}

@@ -78,6 +78,8 @@ export interface SaisieArticlesProps {
   lignesFacture?: StockInvoiceLineView[] | null;
   /** Sortie : postes du chantier. */
   postes?: StockFieldContext['costCategories'];
+  /** Fiche d'aide du geste, reprise sur chaque écran de la saisie. */
+  helpId?: string;
   /** Sortie : stock du lieu. */
   disponibilite?: DisponibiliteLieu | null;
   /** Refus du serveur affiché en tête (`409 STOCK_INSUFFICIENT`). */
@@ -163,7 +165,8 @@ export const SaisieArticles: React.FC<SaisieArticlesProps> = ({
   postes,
   disponibilite,
   messageEnTete,
-  articlesEnEvidence
+  articlesEnEvidence,
+  helpId
 }) => {
   const [vue, setVue] = useState<'liste' | 'articles' | 'quantite'>('liste');
   const [edition, setEdition] = useState<Edition | null>(null);
@@ -237,6 +240,7 @@ export const SaisieArticles: React.FC<SaisieArticlesProps> = ({
 
     return (
       <EtapeGeste
+        helpId={helpId}
         titre={article ? `${article.reference} — ${article.label}` : t('Quantité')}
         rappel={rappel}
         onRetour={() => {
@@ -325,7 +329,7 @@ export const SaisieArticles: React.FC<SaisieArticlesProps> = ({
 
   if (vue === 'articles') {
     return (
-      <EtapeGeste titre={t('Choisir un article')} rappel={rappel} onRetour={() => setVue('liste')}>
+      <EtapeGeste helpId={helpId} titre={t('Choisir un article')} rappel={rappel} onRetour={() => setVue('liste')}>
         <ListeChoix
           aria-label={t('Articles')}
           lignes={lignesArticles}
@@ -344,6 +348,7 @@ export const SaisieArticles: React.FC<SaisieArticlesProps> = ({
 
   return (
     <EtapeGeste
+      helpId={helpId}
       titre={titre}
       rappel={rappel}
       onRetour={onRetour}

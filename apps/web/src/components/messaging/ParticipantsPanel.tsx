@@ -4,6 +4,7 @@ import { t } from '../../i18n/t';
 import { leaveConversation, type ConversationSummary, type MessagingScope } from '../../services/messaging-service';
 import { NewConversationModal } from './NewConversationModal';
 import { ParticipantKindTag } from './ParticipantKindTag';
+import { HelpButton } from '../../help';
 
 interface ParticipantsPanelProps {
   conversation: ConversationSummary;
@@ -29,6 +30,9 @@ export function ParticipantsPanel({ conversation, scope, currentUserId, onChange
 
   return (
     <div style={{ padding: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <HelpButton helpId="communication.messagerie.messages.participants" size="small" />
+      </div>
       <ul style={{ listStyle: 'none', margin: 0, padding: 0 }} aria-label={t('Participants')}>
         {conversation.participants.map(p => (
           <li key={p.userId} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>

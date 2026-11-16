@@ -63,7 +63,7 @@ import { ProposalError, peekProposalAction, redeemProposal, verifyAnyProposal } 
 import { logAuditEvent } from '../services/audit-service';
 import { AuditActionKey } from '../types/audit-types';
 import { runChat } from '../lib/ai/orchestrator';
-import { resolvePageContext } from '../lib/ai/page-context';
+import { resolveHelpContext, resolvePageContext } from '../lib/ai/page-context';
 import { getLlmProvider } from '../lib/ai/providers';
 import { getTranscriptionEngine } from '../services/ai-settings-service';
 import { measuredProvider } from '../lib/ai/provider-usage';
@@ -884,6 +884,8 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
     throw new ForbiddenError("Aucun outil de l'assistant n'est disponible avec vos droits.");
   }
   const pageContext = body.regenerateTurnId ? null : await resolvePageContext(body.context, tenantId, permissions);
+  // Comme le contexte d'écran, la fiche d'aide affichée ne vaut que pour une nouvelle question.
+  const helpContext = body.regenerateTurnId ? null : resolveHelpContext(body.context);
 
   const extracts = [];
   for (const file of files) extracts.push(await extractAssistantFile(file, tenantId));
@@ -959,6 +961,7 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
       unavailableFeatures,
       messages: regenerated?.messages ?? saved?.messages ?? body.messages,
       pageContext,
+      helpContext,
       conversationId: saved?.conversationId ?? body.conversationId ?? randomUUID(),
       requestId: randomUUID(),
       signal,

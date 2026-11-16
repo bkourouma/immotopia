@@ -41,6 +41,7 @@ import { providerInvoiceStatusColors, providerInvoiceStatusLabels, providerPayme
 import { saveBlob } from '../../utils/save-blob';
 import { dateFormat } from '../../i18n/format';
 import { t } from '../../i18n/t';
+import { HelpButton } from '../../help';
 import { displayCurrency } from '../../utils/syndic-currency';
 
 const { Text, Title } = Typography;
@@ -334,6 +335,7 @@ export const ProviderInvoiceDrawer: React.FC<ProviderInvoiceDrawerProps> = ({
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
           <Space align="center">
             <Tag color={providerInvoiceStatusColors[invoice.status]}>{providerInvoiceStatusLabels[invoice.status]}</Tag>
+            <HelpButton helpId="syndic.prestataires.facture-detail" />
             {invoice.status !== 'CANCELLED' && (
               <Button danger size="small" onClick={() => setCancelInvoiceOpen(true)}>
                 {t('Annuler la facture')}
@@ -433,6 +435,7 @@ export const ProviderInvoiceDrawer: React.FC<ProviderInvoiceDrawerProps> = ({
               )}
             </div>
             <Table
+              helpId="syndic.prestataires.facture-paiements"
               exportFilename={t('Paiements')}
               style={{ marginTop: 12 }}
               rowKey="id"

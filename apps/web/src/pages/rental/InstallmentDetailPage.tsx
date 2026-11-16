@@ -7,6 +7,7 @@ import { InstallmentPaymentLinksPanel } from '../../components/rental/Installmen
 import { InstallmentReminderButton } from '../../components/rental/reminders/InstallmentReminderButton';
 import { InstallmentRemindersHistoryPanel } from '../../components/rental/reminders/InstallmentRemindersHistoryPanel';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 import { formatMoney } from '../../components/primitives/MoneyValue';
 import { deviseAffichee, libellePeriodeEcheance } from '../../lib/rental-labels';
 import { useMyMenuAccess } from '../../hooks/useMenuAccess';
@@ -141,7 +142,7 @@ export const InstallmentDetailPage: React.FC = () => {
               title={
                 <Space>
                   <DollarOutlined />
-                  {t('Informations financières')}
+                  <HelpSectionTitle title={t('Informations financières')} helpId="locatif.echeances.fiche.finances" />
                 </Space>
               }
             >
@@ -178,7 +179,7 @@ export const InstallmentDetailPage: React.FC = () => {
               title={
                 <Space>
                   <CalendarOutlined />
-                  {t('Informations')}
+                  <HelpSectionTitle title={t('Informations')} helpId="locatif.echeances.fiche.informations" />
                 </Space>
               }
             >

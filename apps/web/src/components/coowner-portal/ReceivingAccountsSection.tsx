@@ -53,6 +53,7 @@ export function CoOwnerReceivingAccountsSection({
         return (
           <PaymentAccountsCard
             key={group.syndicateId}
+            helpId="syndic.portail.appels.payer-agence"
             accounts={group.accounts}
             subjectName={several ? (group.name ?? t('Copropriété (nom non disponible)')) : undefined}
             suggestedReason={call ? chargeCallReason(call) : null}

@@ -22,6 +22,7 @@ import { COMMISSION_PAYER_LABELS, MANDATE_TYPE_LABELS } from './helpers';
 import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { t } from '../../i18n/t';
 import { SaleStatusTag } from './SaleStatusTag';
+import { HelpSectionTitle, helpAnchor } from '../../help';
 import { mandateCriteria } from './mandate-search';
 
 interface MandateFormValues {
@@ -183,57 +184,63 @@ export const SaleMandates: React.FC = () => {
       <PageHeader
         title={t('Mandats de vente')}
         breadcrumbs={[{ label: t('Ventes'), to: `/tenant/${tenantId}/sales` }, { label: t('Mandats de vente') }]}
-        primaryAction={{ label: t('Nouveau mandat'), onClick: ouvrirModale }}
+        primaryAction={{ label: t('Nouveau mandat'), onClick: ouvrirModale, helpAnchor: 'mandats-nouveau' }}
       />
 
-      <DataView<SaleMandateDto>
-        items={rows}
-        total={total}
-        {...recherche.dataViewProps}
-        search={recherche.searchProps}
-        export={{
-          filename: t('Mandats de vente'),
-          fetchAll: () =>
-            collectAllPages(async (page, limit) => {
-              const result = await listSaleMandates(tenantId, {
-                ...recherche.filterParams,
-                page,
-                limit
-              } as ListSaleMandatesFilters & { page: number; limit: number });
-              return result;
-            })
-        }}
-        loading={isPending}
-        isReloading={isFetching && !isPending}
-        error={erreurRequete ? t('Impossible de charger les mandats de vente.') : null}
-        errorCause={erreurRequete}
-        onRetry={() => refetch()}
-        emptyDescription={t('Aucun mandat de vente enregistré.')}
-        emptyAction={{ label: t('Nouveau mandat'), onClick: ouvrirModale }}
-        columns={colonnes}
-        rowKey={m => m.id}
-        aria-label={t('Mandats de vente')}
-        renderCard={m => (
-          <DataCard
-            title={m.propertyLabel}
-            subtitle={`${m.number} · ${m.sellerName}`}
-            highlight={<MoneyValue value={m.askingPrice} />}
-            fields={[
-              { label: t('Type'), value: MANDATE_TYPE_LABELS[m.mandateType] },
-              {
-                label: t('Statut'),
-                value: (
-                  <SaleStatusTag kind="mandate" status={m.isExpired && m.status === 'ACTIVE' ? 'EXPIRED' : m.status} />
-                )
-              }
-            ]}
-            onOpen={() => navigate(`/tenant/${tenantId}/sales/mandates/${m.id}`)}
-          />
-        )}
-      />
+      <div {...helpAnchor('mandats-tableau')}>
+        <DataView<SaleMandateDto>
+          helpId="commercial.ventes.mandats.tableau"
+          items={rows}
+          total={total}
+          {...recherche.dataViewProps}
+          search={recherche.searchProps}
+          export={{
+            filename: t('Mandats de vente'),
+            fetchAll: () =>
+              collectAllPages(async (page, limit) => {
+                const result = await listSaleMandates(tenantId, {
+                  ...recherche.filterParams,
+                  page,
+                  limit
+                } as ListSaleMandatesFilters & { page: number; limit: number });
+                return result;
+              })
+          }}
+          loading={isPending}
+          isReloading={isFetching && !isPending}
+          error={erreurRequete ? t('Impossible de charger les mandats de vente.') : null}
+          errorCause={erreurRequete}
+          onRetry={() => refetch()}
+          emptyDescription={t('Aucun mandat de vente enregistré.')}
+          emptyAction={{ label: t('Nouveau mandat'), onClick: ouvrirModale }}
+          columns={colonnes}
+          rowKey={m => m.id}
+          aria-label={t('Mandats de vente')}
+          renderCard={m => (
+            <DataCard
+              title={m.propertyLabel}
+              subtitle={`${m.number} · ${m.sellerName}`}
+              highlight={<MoneyValue value={m.askingPrice} />}
+              fields={[
+                { label: t('Type'), value: MANDATE_TYPE_LABELS[m.mandateType] },
+                {
+                  label: t('Statut'),
+                  value: (
+                    <SaleStatusTag
+                      kind="mandate"
+                      status={m.isExpired && m.status === 'ACTIVE' ? 'EXPIRED' : m.status}
+                    />
+                  )
+                }
+              ]}
+              onOpen={() => navigate(`/tenant/${tenantId}/sales/mandates/${m.id}`)}
+            />
+          )}
+        />
+      </div>
 
       <Modal
-        title={t('Nouveau mandat de vente')}
+        title={<HelpSectionTitle title={t('Nouveau mandat de vente')} helpId="commercial.ventes.mandats.nouveau" />}
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
         onOk={() => form.submit()}

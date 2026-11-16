@@ -64,6 +64,7 @@ export const ValuationsSection: React.FC<Props> = ({ valuations, error, busyActi
         <Alert type="error" showIcon message={error} />
       ) : (
         <Table<AssetValuation>
+          helpId="patrimoine.bien.valorisations"
           {...local.tableProps}
           exportFilename={t('Gérer les valorisations')}
           exportFetchAll={local.exportAll}

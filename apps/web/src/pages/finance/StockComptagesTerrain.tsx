@@ -194,6 +194,7 @@ export function StockComptagesTerrain(): React.ReactElement {
 
   const header = (
     <PageHeader
+      helpId="finance.comptages-terrain.page"
       title={t('Comptages terrain')}
       subtitle={t('Stock théorique et dernier comptage physique, par lieu et par article')}
     />
@@ -365,6 +366,7 @@ export function StockComptagesTerrain(): React.ReactElement {
         <SkeletonTable rows={6} columns={columns.length} aria-label={t('Comptages terrain en cours de chargement')} />
       ) : (
         <DataView<FieldCountRow>
+          helpId="finance.comptages-terrain.tableau"
           aria-label={t('Comptages terrain')}
           // Liste par curseur : l'export reparcourt toutes les pages, avec les
           // mêmes filtres que la liste affichée.

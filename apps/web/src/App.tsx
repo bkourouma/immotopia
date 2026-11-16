@@ -714,6 +714,12 @@ const PlatformNotificationJournalPage = lazy(
   () => import(/* webpackChunkName: "notifications" */ './pages/notifications/PlatformNotificationJournalPage')
 );
 const MessagesRoute = lazy(() => import(/* webpackChunkName: "messages" */ './pages/messages/MessagesRoute'));
+// Centre d'aide interne (route unique /aide, ouverte aux portails).
+const HelpCenterPage = lazy(() =>
+  import(/* webpackChunkName: "pages-help" */ './pages/help/HelpCenterPage').then(m => ({
+    default: m.HelpCenterPage
+  }))
+);
 // Transactions page
 // Reports page
 // Tenant Portal pages
@@ -769,6 +775,7 @@ const CoOwnerSyndicateSheet = lazy(
 const CoOwnerPortalNotFound = lazy(
   () => import(/* webpackChunkName: "coowner-portal" */ './pages/CoOwnerPortal/PortalNotFound')
 );
+const HelpFeedbackPage = lazy(() => import(/* webpackChunkName: "admin" */ './pages/admin/HelpFeedbackPage'));
 
 /**
  * Affiche pendant le telechargement d'un chunk de route.
@@ -949,6 +956,7 @@ function App() {
                           <Route path="/notifications" element={<NotificationsPage />} />
                           <Route path="/messages" element={<MessagesRoute />} />
                           <Route path="/messages/:conversationId" element={<MessagesRoute />} />
+                          <Route path="/aide" element={<HelpCenterPage />} />
                           <Route path="/properties" element={<Properties />} />
                           {/* Fusions du §4.3. Les ecrans disparaissent, les URL en
                         circulation sont redirigees et non cassees.
@@ -1105,6 +1113,14 @@ function App() {
                           <Route path="/tenant/:tenantId/invitations" element={<InvitationsList />} />
                           <Route path="/tenant/:tenantId/settings" element={<TenantSettings />} />
                           <Route path="/tenant/:tenantId/activity" element={<TenantActivityLog />} />
+                          <Route
+                            path="/tenant/:tenantId/admin/help-feedback"
+                            element={
+                              <ProtectedRoute requiredPermissions="TENANT_AUDIT_VIEW">
+                                <HelpFeedbackPage scope="agency" />
+                              </ProtectedRoute>
+                            }
+                          />
                           <Route path="/tenant/:tenantId/settings/finance" element={<AgencyFinanceSettings />} />
                           <Route
                             path="/tenant/:tenantId/settings/abonnement"
@@ -1415,6 +1431,7 @@ function App() {
                           <Route path="/admin/audit" element={<AuditLogs />} />
                           <Route path="/admin/notifications" element={<PlatformNotificationJournalPage />} />
                           <Route path="/admin/ai-settings" element={<AiSettingsPage />} />
+                          <Route path="/admin/help-feedback" element={<HelpFeedbackPage scope="platform" />} />
                           <Route path="/admin/roles-permissions" element={<RolesPermissions />} />
                         </Route>
                         {/* Property Routes */}

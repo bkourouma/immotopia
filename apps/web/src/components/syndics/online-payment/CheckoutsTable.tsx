@@ -292,6 +292,7 @@ export const CheckoutsTable: React.FC<CheckoutsTableProps> = ({
 
       <Table<SyndicOnlineCheckoutRow>
         aria-label={t('Paiements en ligne')}
+        helpId="syndic.paiements.en-ligne"
         search={search.searchProps}
         exportFilename={t('Paiements en ligne')}
         exportFetchAll={() =>

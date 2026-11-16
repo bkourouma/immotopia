@@ -70,6 +70,7 @@ import {
 } from '../../services/property-service';
 import { TreasuryAccountSelector } from '../finance/TreasuryAccountSelector';
 import { t } from '../../i18n/t';
+import { HelpButton } from '../../help';
 import { formatMoney } from '../primitives';
 import {
   DEVISE_PATRIMOINE,
@@ -742,6 +743,9 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
         <BlocChargement />
       ) : (
         <Row gutter={[16, 16]}>
+          <Col xs={24} style={{ textAlign: 'end' }}>
+            <HelpButton helpId="patrimoine.bien.synthese" />
+          </Col>
           <Col xs={24}>
             {sectionErrors.yieldData ? (
               <Alert type="error" showIcon message={sectionErrors.yieldData} />
@@ -867,6 +871,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       <div style={{ textAlign: 'end' }}>
+        <HelpButton helpId="patrimoine.bien.onglet" />
         <PatrimoineExportButton tenantId={tenantId} propertyId={propertyId} />
       </div>
       <Tabs destroyOnHidden activeKey={rubrique} onChange={changerRubrique} items={rubriques} />

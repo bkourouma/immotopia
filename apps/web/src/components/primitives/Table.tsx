@@ -8,6 +8,7 @@ import { t } from '../../i18n/t';
 import type { ListSearchBinding } from '../../utils/list-search/types';
 import { ListSearch } from './ListSearch';
 import { StateBlock } from './StateBlock';
+import { useTableHelp, withColumnHelp } from '../../help/column-help';
 
 /**
  * `Table` — le `Table` d'Ant Design, avec le bouton « Exporter » en plus.
@@ -55,10 +56,27 @@ export interface ExportableTableProps<T extends AnyObject = AnyObject> extends T
    * son `locale.emptyText`.
    */
   search?: ListSearchBinding;
+  /** Fiche d'aide du tableau : « ? » en tête de bloc et infobulles de colonnes (`howToRead.columns`). */
+  helpId?: string;
 }
 
 function TableImpl<T extends AnyObject = AnyObject>(props: ExportableTableProps<T>): React.ReactElement {
-  const { exportable = true, exportFilename, exportTitle, exportFetchAll, exportPdf, search, ...tableProps } = props;
+  const {
+    exportable = true,
+    exportFilename,
+    exportTitle,
+    exportFetchAll,
+    exportPdf,
+    search,
+    helpId,
+    ...tableProps
+  } = props;
+  const { node: helpNode, entry: helpEntry } = useTableHelp(helpId);
+  // L'export lit les titres : il garde les colonnes d'origine ; seul AntD reçoit les colonnes décorées.
+  const displayColumns = React.useMemo(
+    () => (helpNode ? withColumnHelp(tableProps.columns, helpEntry?.howToRead?.columns) : tableProps.columns),
+    [helpNode, helpEntry, tableProps.columns]
+  );
   const rows = (tableProps.dataSource ?? []) as readonly T[];
   const childrenColumnName = tableProps.expandable?.childrenColumnName ?? 'children';
   const hasColumns = React.useMemo(() => resolveExportColumns(tableProps.columns).length > 0, [tableProps.columns]);
@@ -101,12 +119,20 @@ function TableImpl<T extends AnyObject = AnyObject>(props: ExportableTableProps<
   if (!search) {
     return (
       <>
-        {exportMenu && (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 'var(--space-2)' }}>
+        {(exportMenu || helpNode) && (
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              marginBottom: 'var(--space-2)',
+              ...(helpNode ? { alignItems: 'center', gap: 'var(--space-2)' } : null)
+            }}
+          >
+            {helpNode}
             {exportMenu}
           </div>
         )}
-        <AntTable<T> {...tableProps} />
+        <AntTable<T> {...tableProps} columns={displayColumns} />
       </>
     );
   }
@@ -143,8 +169,21 @@ function TableImpl<T extends AnyObject = AnyObject>(props: ExportableTableProps<
 
   return (
     <>
-      <ListSearch {...search} resultCount={resultCount} extra={exportMenu} />
-      <AntTable<T> {...tableProps} locale={locale} />
+      <ListSearch
+        {...search}
+        resultCount={resultCount}
+        extra={
+          helpNode ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+              {helpNode}
+              {exportMenu}
+            </span>
+          ) : (
+            exportMenu
+          )
+        }
+      />
+      <AntTable<T> {...tableProps} columns={displayColumns} locale={locale} />
     </>
   );
 }

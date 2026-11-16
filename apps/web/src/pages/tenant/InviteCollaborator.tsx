@@ -10,6 +10,7 @@ import {
 import apiClient from '../../utils/api-client';
 import { getRoleLabelFr } from '../../constants/permissions-labels';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle, helpAnchor } from '../../help';
 import { writeErrorMessage } from '../../utils/error-handler';
 
 const { Title, Text } = Typography;
@@ -183,11 +184,11 @@ export const InviteCollaborator: React.FC = () => {
                 { type: 'email', message: t('Email invalide') }
               ]}
             >
-              <Input type="email" placeholder="email@example.com" size="large" />
+              <Input type="email" placeholder="email@example.com" size="large" {...helpAnchor('inviter-email')} />
             </Form.Item>
 
             <Form.Item
-              label={t('Rôles')}
+              label={<HelpSectionTitle title={t('Rôles')} helpId="administration.equipe.inviter.roles" />}
               required
               validateStatus={
                 hasTriedSubmit && !rolesLoading && roles.length > 0 && selectedRoles.length === 0 ? 'error' : ''
@@ -211,7 +212,7 @@ export const InviteCollaborator: React.FC = () => {
                   <Button onClick={loadRoles}>{t('Recharger')}</Button>
                 </Space>
               ) : (
-                <Space orientation="vertical" style={{ width: '100%' }} size="middle">
+                <Space orientation="vertical" style={{ width: '100%' }} size="middle" {...helpAnchor('inviter-roles')}>
                   {roles.map(role => {
                     const { name: labelFr, description: descFr } = getRoleLabelFr(
                       role.key,
@@ -258,6 +259,7 @@ export const InviteCollaborator: React.FC = () => {
                 <Button
                   type="primary"
                   htmlType="submit"
+                  {...helpAnchor('inviter-envoyer')}
                   icon={<SendOutlined />}
                   loading={loading}
                   disabled={selectedRoles.length === 0 || rolesLoading || roles.length === 0}

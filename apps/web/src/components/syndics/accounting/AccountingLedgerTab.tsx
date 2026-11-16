@@ -163,6 +163,7 @@ export const AccountingLedgerTab: React.FC<AccountingTabProps> = ({
             </Row>
           ) : null}
           <Table<SyndicLedgerLine>
+            helpId="syndic.comptabilite.grand-livre"
             search={search.searchProps}
             exportFilename={t('Grand livre')}
             exportFetchAll={() =>

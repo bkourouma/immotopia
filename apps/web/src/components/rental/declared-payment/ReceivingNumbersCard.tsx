@@ -30,6 +30,7 @@ import type {
 } from '../../../types/rental-declared-payment';
 import { useMyMenuAccess } from '../../../hooks/useMenuAccess';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 import {
   LABEL_MAX_LENGTH,
   apiErrorCode,
@@ -259,7 +260,12 @@ export const ReceivingNumbersCard: React.FC<RentalReceivingNumbersCardProps> = (
     });
   }
 
-  const title = t('Paiement par transfert mobile money');
+  const title = (
+    <HelpSectionTitle
+      title={t('Paiement par transfert mobile money')}
+      helpId="locatif.paiements.declarations.numeros"
+    />
+  );
 
   if (loadError && items.length === 0) {
     return (

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Alert, Button, Card, Space, Typography } from 'antd';
 import { CheckOutlined, CopyOutlined } from '@ant-design/icons';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 import { feedback } from '../../lib/feedback';
 import type { ReceivingAccountPublic } from '../../services/receiving-account-service';
 import { ReceivingAccountQr } from './ReceivingAccountQr';
@@ -18,6 +19,8 @@ export interface PaymentAccountsCardProps {
   onDeclare?: () => void;
   /** Nom de l'agence ou de la copropriété, ajouté au titre. */
   subjectName?: string;
+  /** Fiche d'aide : le « ? » n'apparaît que si elle est fournie (portail copropriétaire). */
+  helpId?: string;
 }
 
 function CopyButton({ text, label, ariaLabel }: { text: string; label: string; ariaLabel: string }) {
@@ -117,7 +120,8 @@ export function PaymentAccountsCard({
   accounts,
   suggestedReason,
   onDeclare,
-  subjectName
+  subjectName,
+  helpId
 }: PaymentAccountsCardProps): React.ReactElement | null {
   if (accounts.length === 0) return null;
 
@@ -125,7 +129,10 @@ export function PaymentAccountsCard({
   const reason = suggestedReason?.trim() ? suggestedReason.trim() : null;
 
   return (
-    <Card title={title} extra={<Text type="secondary">{t('Coordonnées de paiement')}</Text>}>
+    <Card
+      title={helpId ? <HelpSectionTitle title={title} helpId={helpId} /> : title}
+      extra={<Text type="secondary">{t('Coordonnées de paiement')}</Text>}
+    >
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         {accounts.map(account => (
           <AccountBlock key={account.id} account={account} />

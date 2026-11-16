@@ -5,6 +5,7 @@ import type { MeetingRecordingStatus, MeetingRecordingView } from '../../../type
 import { formatDateTime } from '../live/live-labels';
 import { formatNumber } from '../../../i18n/format';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 
 const { Text } = Typography;
 
@@ -195,7 +196,10 @@ export const MeetingRecordingsCard: React.FC<MeetingRecordingsCardProps> = ({
   ];
 
   return (
-    <Card size="small" title={t('Enregistrements')}>
+    <Card
+      size="small"
+      title={<HelpSectionTitle title={t('Enregistrements')} helpId="syndic.assemblees.detail.direct-enregistrements" />}
+    >
       {activeRecording && !frozen ? (
         <Space wrap align="center" style={{ marginBlockEnd: 12 }}>
           <Tag color="red" icon={<span aria-hidden="true">● </span>}>

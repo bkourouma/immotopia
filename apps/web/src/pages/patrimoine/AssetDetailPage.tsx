@@ -19,6 +19,7 @@ import {
 import { formatAmount, formatDay } from '../../components/patrimoine/actifs/asset-format';
 import { ReliabilityBadge, StaleTag } from '../../components/patrimoine/actifs/ReliabilityBadge';
 import { t } from '../../i18n/t';
+import { HelpButton } from '../../help';
 
 /** Rappel pour un bien immobilier dont le statut juridique plafonne ou empêche de fiabiliser la valeur. */
 function legalStatusHint(asset: AssetDto): string | null {
@@ -134,7 +135,9 @@ export const AssetDetailPage: React.FC = () => {
       />
 
       <div style={{ marginBottom: 'var(--space-4)' }}>
-        <div style={{ color: 'var(--text-secondary)' }}>{t('Valeur courante')}</div>
+        <div style={{ color: 'var(--text-secondary)' }}>
+          {t('Valeur courante')} <HelpButton size="small" helpId="patrimoine.actif.valeur-courante" />
+        </div>
         <strong style={{ fontSize: 'var(--font-size-h3)' }}>
           {current ? formatAmount(current.amount, current.currency) : t('Sans valeur')}
         </strong>

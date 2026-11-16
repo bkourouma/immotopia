@@ -11,6 +11,7 @@ import {
   getSyndicDeclarationProof
 } from '../../../services/syndic-declared-payment-service';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle, helpAnchor } from '../../../help';
 import {
   DECLARATION_NOT_PENDING_CODE,
   STATUS_COLOR,
@@ -397,7 +398,7 @@ export const DeclarationDrawer: React.FC<DeclarationDrawerProps> = ({
     return (
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         {pending && row.alerts.length > 0 ? (
-          <Space direction="vertical" size={8} style={{ width: '100%' }}>
+          <Space direction="vertical" size={8} style={{ width: '100%' }} {...helpAnchor('decl-alertes')}>
             {row.alerts.map((alert, index) => {
               const view = alertView(alert, row);
               return <Alert key={`${alert.kind}-${index}`} type={view.severity} showIcon message={view.text} />;
@@ -405,7 +406,7 @@ export const DeclarationDrawer: React.FC<DeclarationDrawerProps> = ({
           </Space>
         ) : null}
         {renderAiBox(row)}
-        <section aria-label={t('Paiement déclaré')}>
+        <section aria-label={t('Paiement déclaré')} {...helpAnchor('decl-details')}>
           <Typography.Title level={5}>{t('Paiement déclaré')}</Typography.Title>
           {renderDetails(row)}
         </section>
@@ -413,7 +414,7 @@ export const DeclarationDrawer: React.FC<DeclarationDrawerProps> = ({
           <Typography.Title level={5}>{t('Lots et appels visés')}</Typography.Title>
           {renderLines(row)}
         </section>
-        <section aria-label={t('Capture')}>
+        <section aria-label={t('Capture')} {...helpAnchor('decl-capture')}>
           <Typography.Title level={5}>{t('Capture')}</Typography.Title>
           {renderProof(row)}
         </section>
@@ -427,10 +428,20 @@ export const DeclarationDrawer: React.FC<DeclarationDrawerProps> = ({
     if (!canEdit) return null;
     return (
       <Space wrap>
-        <Button type="primary" icon={<CheckOutlined aria-hidden />} onClick={() => onApprove(row)}>
+        <Button
+          type="primary"
+          icon={<CheckOutlined aria-hidden />}
+          onClick={() => onApprove(row)}
+          {...helpAnchor('decl-valider')}
+        >
           {t('Valider')}
         </Button>
-        <Button danger icon={<CloseOutlined aria-hidden />} onClick={() => onReject(row)}>
+        <Button
+          danger
+          icon={<CloseOutlined aria-hidden />}
+          onClick={() => onReject(row)}
+          {...helpAnchor('decl-rejeter')}
+        >
           {t('Rejeter')}
         </Button>
       </Space>
@@ -446,13 +457,13 @@ export const DeclarationDrawer: React.FC<DeclarationDrawerProps> = ({
       title={
         row ? (
           <Space size={4} wrap>
-            <span>{t('Paiement déclaré')}</span>
+            <HelpSectionTitle title={t('Paiement déclaré')} helpId="syndic.paiements.declaration" />
             <Tag color={STATUS_COLOR[row.status]}>{statusLabel(row.status)}</Tag>
             {pending && row.overdue ? <Tag color="red">{t('En retard')}</Tag> : null}
             {pending && hasDuplicateSuspicion(row) ? <Tag color="orange">{t('Doublon suspecté')}</Tag> : null}
           </Space>
         ) : (
-          t('Paiement déclaré')
+          <HelpSectionTitle title={t('Paiement déclaré')} helpId="syndic.paiements.declaration" />
         )
       }
       footer={footer}

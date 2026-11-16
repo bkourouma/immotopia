@@ -120,6 +120,7 @@ export const ContractList: React.FC<ContractListProps> = ({ contracts, loading =
   return (
     <Table
       {...local.tableProps}
+      helpId="syndic.prestataires.contrats"
       aria-label={t('Contrats de maintenance')}
       exportFilename={t('Contrats de maintenance')}
       exportFetchAll={local.exportAll}

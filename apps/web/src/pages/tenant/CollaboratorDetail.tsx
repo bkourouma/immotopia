@@ -13,6 +13,7 @@ import apiClient from '../../utils/api-client';
 import { getRoleLabelFr } from '../../constants/permissions-labels';
 import { useConfirmAction } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 import { localizedRecord } from '../../i18n/localized';
 
 import { activeLocale } from '../../i18n/format';
@@ -168,7 +169,14 @@ export const CollaboratorDetail: React.FC = () => {
         </Space>
 
         {/* User Info & Roles */}
-        <Card title={t('Informations du collaborateur')}>
+        <Card
+          title={
+            <HelpSectionTitle
+              title={t('Informations du collaborateur')}
+              helpId="administration.equipe.collaborateur-detail.informations"
+            />
+          }
+        >
           <Descriptions column={{ xs: 1, sm: 2 }} bordered size="small">
             <Descriptions.Item label={t('Email')}>{member.user.email}</Descriptions.Item>
             <Descriptions.Item label={t('Nom complet')}>{member.user.fullName || '—'}</Descriptions.Item>
@@ -180,7 +188,7 @@ export const CollaboratorDetail: React.FC = () => {
 
           <div style={{ marginTop: 24 }}>
             <Typography.Text strong style={{ display: 'block', marginBottom: 12 }}>
-              {t('Rôles')}
+              <HelpSectionTitle title={t('Rôles')} helpId="administration.equipe.collaborateur-detail.roles" />
             </Typography.Text>
             {availableRoles.length === 0 ? (
               <Typography.Text type="secondary">{t('Chargement des rôles...')}</Typography.Text>
@@ -229,7 +237,7 @@ export const CollaboratorDetail: React.FC = () => {
           {/* Actions */}
           <div style={{ marginTop: 32, paddingTop: 24, borderTop: '1px solid #f0f0f0' }}>
             <Typography.Text strong style={{ display: 'block', marginBottom: 12 }}>
-              {t('Actions')}
+              <HelpSectionTitle title={t('Actions')} helpId="administration.equipe.collaborateur-detail.actions" />
             </Typography.Text>
             <Space wrap>
               <Button icon={<KeyOutlined />} onClick={handleResetPassword}>

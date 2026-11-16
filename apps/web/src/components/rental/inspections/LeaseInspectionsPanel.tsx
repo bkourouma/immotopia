@@ -168,6 +168,7 @@ export const LeaseInspectionsPanel: React.FC<LeaseInspectionsPanelProps> = ({
         <Col xs={24} md={12}>
           <InspectionOverviewCard
             title={t("État des lieux d'entrée")}
+            helpId="locatif.edl.panneau"
             inspection={entry}
             onStart={() => setStartType('ENTRY')}
             onContinue={() => entry && setView({ mode: 'edit', inspection: entry })}

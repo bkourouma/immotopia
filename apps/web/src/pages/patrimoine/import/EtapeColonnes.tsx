@@ -71,6 +71,7 @@ export const EtapeColonnes: React.FC<EtapeColonnesProps> = props => {
       ) : null}
 
       <Table
+        helpId="patrimoine.importation.correspondance"
         // Tableau de correspondance éditable (une liste déroulante par ligne) : rien à exporter.
         exportable={false}
         size="small"

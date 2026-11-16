@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Card, Row, Col, Select, Space, Tooltip, Typography } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { formatMoney, MoneyValue, SkeletonList, StateBlock } from '../../components/primitives';
+import { HelpSectionTitle } from '../../help';
 import { t } from '../../i18n/t';
 import { localizedRecord } from '../../i18n/localized';
 import {
@@ -183,10 +184,15 @@ export default function CoOwnerMonthlyTracking() {
           </Row>
 
           <Card
-            title={t('Lot {{lotNumber}} — {{syndicate}}', {
-              lotNumber: tracking.data.lot.lotNumber,
-              syndicate: tracking.data.syndicate.name ?? '—'
-            })}
+            title={
+              <HelpSectionTitle
+                title={t('Lot {{lotNumber}} — {{syndicate}}', {
+                  lotNumber: tracking.data.lot.lotNumber,
+                  syndicate: tracking.data.syndicate.name ?? '—'
+                })}
+                helpId="syndic.portail.suivi.grille"
+              />
+            }
           >
             <div style={{ overflowX: 'auto' }}>
               <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 640 }}>

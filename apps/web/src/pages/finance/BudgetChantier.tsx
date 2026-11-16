@@ -32,6 +32,7 @@ import {
 import type { StatusTone } from '../../components/primitives';
 import { t } from '../../i18n/t';
 import { localizedList } from '../../i18n/localized';
+import { HelpButton, HelpSectionTitle } from '../../help';
 import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion } from '../../utils/list-search';
 import { montantCalcule, montantVerrouille } from '../../utils/ligne-quantite-prix';
@@ -189,6 +190,7 @@ const SectionLignes: React.FC<{ lignes: LigneBudget[]; colonnes: ColumnsType<Lig
 
   return (
     <DataView<LigneBudget>
+      helpId="finance.budget-chantier.lignes"
       {...local.dataViewProps}
       emptyDescription={t('Ce budget ne porte encore aucune ligne.')}
       columns={colonnes}
@@ -256,6 +258,7 @@ const SectionAvenants: React.FC<SectionAvenantsProps> = ({
 
   return (
     <DataView<BudgetAmendment>
+      helpId="finance.budget-chantier.avenants"
       {...local.dataViewProps}
       loading={loading}
       error={error ? t('Impossible de charger les avenants de ce budget.') : null}
@@ -618,6 +621,7 @@ export const BudgetChantier: React.FC = () => {
   return (
     <>
       <PageHeader
+        helpId="finance.budget-chantier.page"
         title={budget ? budget.label : t('Budget du chantier')}
         subtitle={chantier?.name}
         breadcrumbs={filAriane}
@@ -638,7 +642,10 @@ export const BudgetChantier: React.FC = () => {
       {!budget ? (
         <Card>
           <Title level={4} style={{ marginTop: 0 }}>
-            {t("Aucun budget n'est encore posé pour ce chantier")}
+            <HelpSectionTitle
+              title={t("Aucun budget n'est encore posé pour ce chantier")}
+              helpId="finance.budget-chantier.creation"
+            />
           </Title>
           <Text type="secondary">
             {t(
@@ -741,11 +748,19 @@ export const BudgetChantier: React.FC = () => {
                 bord des chantiers pour lire le chiffre qu'on venait de changer
                 (demandé le 20 septembre 2026). */}
             <StatCard label={t('Budget initial')} value={<MoneyValue value={budget.totalForecast} />} />
-            <StatCard label={t('Budget révisé')} value={<MoneyValue value={budget.revisedTotal} />} />
+            <StatCard
+              helpId="finance.budget-chantier.budget-revise"
+              label={t('Budget révisé')}
+              value={<MoneyValue value={budget.revisedTotal} />}
+            />
             {engagement && (
               <>
                 <StatCard label={t('Réalisé')} value={<MoneyValue value={engagement.actualCost} />} />
-                <StatCard label={t('Engagé')} value={<MoneyValue value={engagement.engagedAmount} />} />
+                <StatCard
+                  helpId="finance.budget-chantier.engage-realise"
+                  label={t('Engagé')}
+                  value={<MoneyValue value={engagement.engagedAmount} />}
+                />
               </>
             )}
           </div>
@@ -772,6 +787,7 @@ export const BudgetChantier: React.FC = () => {
                   {t('Valider le budget')}
                 </Button>
               </ConfirmAction>
+              <HelpButton helpId="finance.budget-chantier.validation" size="small" />
             </div>
           )}
 
@@ -801,7 +817,7 @@ export const BudgetChantier: React.FC = () => {
 
                     <Card style={{ marginTop: 'var(--space-6)' }}>
                       <Title level={4} style={{ marginTop: 0 }}>
-                        {t('Nouvel avenant')}
+                        <HelpSectionTitle title={t('Nouvel avenant')} helpId="finance.budget-chantier.nouvel-avenant" />
                       </Title>
 
                       <Space wrap size="middle" align="end" style={{ marginBottom: 'var(--space-4)', width: '100%' }}>

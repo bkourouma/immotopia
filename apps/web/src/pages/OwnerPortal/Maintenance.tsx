@@ -21,6 +21,7 @@ import {
 } from '../../components/maintenance/AttachmentList';
 import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 import { formatFcfa } from '../../i18n/format';
 const { Title, Text } = Typography;
@@ -245,6 +246,7 @@ export default function Maintenance() {
         <Row gutter={[16, 16]}>
           <Col xs={24} sm={12} lg={6}>
             <StatCard
+              helpId="portails.proprietaire.incidents.indicateurs"
               title={t('Total')}
               value={data.summary.total.toString()}
               icon={<ToolOutlined style={{ color: '#1890ff' }} />}
@@ -282,6 +284,7 @@ export default function Maintenance() {
       <Card title={t('Liste des tickets')}>
         <InlineError message={error || loadError} />
         <Table
+          helpId="portails.proprietaire.incidents.tableau"
           aria-label={t('Liste des tickets')}
           search={search.searchProps}
           exportFilename={t('Liste des tickets')}
@@ -301,7 +304,7 @@ export default function Maintenance() {
         title={
           <Space>
             <ToolOutlined />
-            <span>{t('Détails du ticket')}</span>
+            <HelpSectionTitle title={t('Détails du ticket')} helpId="portails.proprietaire.incidents.detail" />
           </Space>
         }
         open={detailsModalVisible}

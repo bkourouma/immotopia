@@ -4,6 +4,7 @@ import { FilePdfOutlined, FileExcelOutlined, FileTextOutlined, DownloadOutlined 
 import { ownerPortalService } from '../../services/ownerPortalService';
 import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -154,7 +155,7 @@ export default function Reports() {
         title={
           <Space>
             <FilePdfOutlined />
-            <span>{t('Rapport de revenus')}</span>
+            <HelpSectionTitle title={t('Rapport de revenus')} helpId="portails.proprietaire.rapports.revenus" />
           </Space>
         }
       >
@@ -223,7 +224,7 @@ export default function Reports() {
         title={
           <Space>
             <FilePdfOutlined />
-            <span>{t("Rapport d'occupation")}</span>
+            <HelpSectionTitle title={t("Rapport d'occupation")} helpId="portails.proprietaire.rapports.occupation" />
           </Space>
         }
       >
@@ -282,7 +283,7 @@ export default function Reports() {
         title={
           <Space>
             <FileExcelOutlined />
-            <span>{t('Export de données')}</span>
+            <HelpSectionTitle title={t('Export de données')} helpId="portails.proprietaire.rapports.export" />
           </Space>
         }
       >

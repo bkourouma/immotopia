@@ -233,6 +233,7 @@ export const Vendors: React.FC = () => {
 
         <Card>
           <Table
+            helpId="administration.maintenance-gestion.prestataires.tableau"
             aria-label={t('Gestion des prestataires')}
             search={search.searchProps}
             exportFilename={t('Gestion des prestataires')}

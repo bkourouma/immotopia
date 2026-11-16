@@ -21,6 +21,7 @@ import { activeLocale } from '../../i18n/format';
 import { describeDownloadError } from '../../utils/download-error';
 import { saveBlob } from '../../utils/save-blob';
 import { t } from '../../i18n/t';
+import { HelpButton } from '../../help';
 
 const { Text } = Typography;
 
@@ -170,7 +171,10 @@ export const SignaturesPanel: React.FC<SignaturesPanelProps> = ({
   return (
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
       <Space style={{ justifyContent: 'space-between', width: '100%' }} wrap>
-        <Text type="secondary">{t('Signature électronique du document, signataire par signataire.')}</Text>
+        <Space size="small">
+          <Text type="secondary">{t('Signature électronique du document, signataire par signataire.')}</Text>
+          {kind === 'LEASE_CONTRACT' && <HelpButton size="small" helpId="locatif.signatures.bail" />}
+        </Space>
         {canEdit && (
           <Button
             type="primary"
@@ -296,6 +300,7 @@ export const SignaturesPanel: React.FC<SignaturesPanelProps> = ({
         targetId={targetId}
         defaultSigners={defaultSigners}
         allowedChannels={allowedChannels}
+        {...(kind === 'LEASE_CONTRACT' ? { helpId: 'locatif.signatures.envoi' } : {})}
         onClose={() => setSendOpen(false)}
         onCreated={handleCreated}
       />

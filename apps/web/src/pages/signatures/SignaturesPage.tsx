@@ -301,6 +301,7 @@ const SignaturesPage: React.FC = () => {
 
       <Table<SignatureAdminRequestDto>
         rowKey="id"
+        helpId="locatif.signatures.liste.tableau"
         size="middle"
         loading={loading}
         columns={columns}

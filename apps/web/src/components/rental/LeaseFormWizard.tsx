@@ -18,6 +18,7 @@ import { useOwnAssetsOnly } from '../../hooks/useMenuAccess';
 import { t } from '../../i18n/t';
 import { formatsSaisieDate } from './lease-date-formats';
 import { findLeaseOwnerContactId } from './lease-owner-match';
+import { HelpButton, helpAnchor } from '../../help';
 
 import { activeLocale } from '../../i18n/format';
 const { TextArea } = Input;
@@ -45,6 +46,15 @@ const ETAPE_DU_CHAMP: Record<string, number> = {
   penaltyCapAmount: 3,
   notes: 4
 };
+
+/** Fiche d'aide de chaque étape logique (0 à 4) ; l'étape « Notes » n'a pas de fiche. */
+const AIDE_PAR_ETAPE: (string | null)[] = [
+  'locatif.baux.nouveau.general',
+  'locatif.baux.nouveau.parties',
+  'locatif.baux.nouveau.finances',
+  'locatif.baux.nouveau.penalites',
+  null
+];
 
 interface LeaseFormWizardProps {
   lease?: RentalLease;
@@ -437,7 +447,7 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
   const step1Component = (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       <Row gutter={16}>
-        <Col xs={24}>
+        <Col xs={24} {...helpAnchor('bail-bien')}>
           <Form.Item
             label={t('Propriété')}
             required
@@ -466,7 +476,7 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
         </Col>
       </Row>
 
-      <Row gutter={16}>
+      <Row gutter={16} {...helpAnchor('bail-dates')}>
         <Col xs={24} md={12}>
           <Form.Item
             label={t('Date de début')}
@@ -869,7 +879,7 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
           70 px et « Informations financières » se cassait au milieu d'un mot.
           `<StepRail>` est le remplacant prevu au-dela de quatre etapes — il
           rend une barre de progression sous ce palier. */}
-      <div style={{ marginBottom: 32 }}>
+      <div style={{ marginBottom: 32 }} {...helpAnchor('bail-etapes')}>
         <StepRail
           items={stepItems.map(step => ({ title: step.title, shortTitle: step.shortTitle }))}
           current={currentStep}
@@ -879,7 +889,25 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
         />
       </div>
 
-      <div style={{ minHeight: 400, marginBottom: 24 }}>{stepComponents[currentLogicalStep]}</div>
+      <div style={{ minHeight: 400, marginBottom: 24 }}>
+        {AIDE_PAR_ETAPE[currentLogicalStep] && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+            {AIDE_PAR_ETAPE[currentLogicalStep] === 'locatif.baux.nouveau.general' && (
+              <HelpButton size="small" helpId="locatif.baux.nouveau.general" />
+            )}
+            {AIDE_PAR_ETAPE[currentLogicalStep] === 'locatif.baux.nouveau.parties' && (
+              <HelpButton size="small" helpId="locatif.baux.nouveau.parties" />
+            )}
+            {AIDE_PAR_ETAPE[currentLogicalStep] === 'locatif.baux.nouveau.finances' && (
+              <HelpButton size="small" helpId="locatif.baux.nouveau.finances" />
+            )}
+            {AIDE_PAR_ETAPE[currentLogicalStep] === 'locatif.baux.nouveau.penalites' && (
+              <HelpButton size="small" helpId="locatif.baux.nouveau.penalites" />
+            )}
+          </div>
+        )}
+        {stepComponents[currentLogicalStep]}
+      </div>
 
       {/* Refus du serveur : visible à l'étape où l'on se trouve (BUG-2026-11-04-058),
           avec un renvoi vers l'étape du champ fautif quand elle est connue. */}
@@ -908,7 +936,7 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
         />
       )}
 
-      <div className="it-toolbar">
+      <div className="it-toolbar" {...helpAnchor('bail-navigation')}>
         <Button disabled={isFirstStep || isSubmitting || loading} onClick={() => handleStepChange(currentStep - 1)}>
           {t('Précédent')}
         </Button>

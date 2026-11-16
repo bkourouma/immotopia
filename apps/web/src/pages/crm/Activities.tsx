@@ -16,6 +16,7 @@ import {
   ActivityFilters
 } from '../../services/crm-service';
 import { listAssignableMembers } from '../../services/membership-service';
+import { HelpSectionTitle } from '../../help';
 import { t } from '../../i18n/t';
 import { activityTypeLabel } from '../../utils/crm-labels';
 import { contactDisplayNameWithEmail } from '../../utils/contact-display';
@@ -182,7 +183,9 @@ export const Activities: React.FC = () => {
         </Row>
 
         <Modal
-          title={t('Créer une nouvelle activité')}
+          title={
+            <HelpSectionTitle title={t('Créer une nouvelle activité')} helpId="commercial.activites.liste.formulaire" />
+          }
           open={showForm && !!tenantId}
           onCancel={() => setShowForm(false)}
           footer={null}
@@ -214,7 +217,7 @@ export const Activities: React.FC = () => {
           />
         )}
 
-        <Card>
+        <Card title={<HelpSectionTitle title={t('Activités')} helpId="commercial.activites.liste.chronologie" />}>
           {loading ? (
             <div style={{ textAlign: 'center', padding: '48px 0' }}>
               <Spin size="large" />

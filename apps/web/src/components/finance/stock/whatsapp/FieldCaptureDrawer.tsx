@@ -35,6 +35,7 @@ import { SkeletonDetail } from '../../../primitives/Skeleton';
 import { handleApiError } from '../../../../utils/error-handler';
 import { formatPercent } from '../../../../i18n/format';
 import { t } from '../../../../i18n/t';
+import { HelpSectionTitle } from '../../../../help';
 import { ConversationThread } from './ConversationThread';
 import {
   apiErrorOf,
@@ -78,7 +79,7 @@ export const FieldCaptureDrawer: React.FC<FieldCaptureDrawerProps> = ({ tenantId
     <Drawer
       open={open}
       onClose={onClose}
-      title={t('Comptage par photo')}
+      title={<HelpSectionTitle title={t('Comptage par photo')} helpId="finance.whatsapp.photo-preuve" />}
       size={isMobile ? '100%' : 640}
       destroyOnHidden
     >

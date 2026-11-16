@@ -12,6 +12,7 @@ import type {
 import { formatMoney } from '../../primitives';
 import { libellePeriodeEcheance } from '../../../lib/rental-labels';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 import { activeLocale } from '../../../i18n/format';
 import {
   REMINDER_BATCH_CHUNK,
@@ -261,7 +262,7 @@ export const ReminderBatchModal: React.FC<ReminderBatchModalProps> = ({ tenantId
   return (
     <Modal
       open={open}
-      title={t('Envoyer des relances en lot')}
+      title={<HelpSectionTitle title={t('Envoyer des relances en lot')} helpId="locatif.echeances.relance-lot" />}
       onCancel={showResult ? handleClose : onClose}
       footer={footer}
       width={980}

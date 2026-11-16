@@ -7,6 +7,7 @@ import type { ColumnsType } from 'antd/es/table';
 import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
 import { DataCard, DataView, MoneyValue, SkeletonList, SkeletonStats, StateBlock } from '../../components/primitives';
+import { HelpSectionTitle } from '../../help';
 import { feedback } from '../../lib/feedback';
 import { t } from '../../i18n/t';
 import {
@@ -221,7 +222,7 @@ export default function CoOwnerLotAccount() {
         </Text>
       </div>
 
-      <Card title={t('Solde du compte')}>
+      <Card title={<HelpSectionTitle title={t('Solde du compte')} helpId="syndic.portail.compte.solde" />}>
         {solde ? (
           <Space direction="vertical" size={4}>
             <Space size="middle" wrap>
@@ -237,12 +238,13 @@ export default function CoOwnerLotAccount() {
         )}
       </Card>
 
-      <Card title={t('Relevé de compte')}>
+      <Card title={<HelpSectionTitle title={t('Relevé de compte')} helpId="syndic.portail.compte.releve" />}>
         <StatementDownload lotId={lotId} lotNumber={lot.lotNumber} />
       </Card>
 
       <Card title={t('Mouvements du compte')}>
         <DataView<CoOwnerTransaction>
+          helpId="syndic.portail.compte.mouvements"
           {...movements.dataViewProps}
           items={account.data.transactions}
           total={account.data.pagination?.total ?? account.data.transactions.length}

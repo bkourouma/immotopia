@@ -6,6 +6,7 @@ import { ConfirmAction } from '../../primitives';
 import { t } from '../../../i18n/t';
 import { assetClassFields, assetClassLabel, assetStatusLabel, type AssetFieldSpec } from './asset-classes';
 import { apiErrorMessage, formatAmount, formatDay, todayIso } from './asset-format';
+import { HelpSectionTitle } from '../../../help';
 
 function detailValue(spec: AssetFieldSpec, value: unknown): React.ReactNode {
   if (value === undefined || value === null || value === '') return '—';
@@ -107,7 +108,7 @@ export const AssetInfoTab: React.FC<{ tenantId: string; asset: AssetDto; onEdit:
 
   return (
     <Card
-      title={t('Informations')}
+      title={<HelpSectionTitle title={t('Informations')} helpId="patrimoine.actif.informations" />}
       extra={
         active && (
           <Space wrap>

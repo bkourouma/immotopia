@@ -221,6 +221,7 @@ export const OwnerStatementDetailPage: React.FC = () => {
 
       <Card title={t('Lignes du relevé')} loading={loading}>
         <Table
+          helpId="patrimoine.releve.lignes"
           exportFilename={t('Lignes du relevé')}
           scroll={{ x: 'max-content' }}
           rowKey="id"

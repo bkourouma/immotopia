@@ -3,12 +3,22 @@ import { useNavigate } from 'react-router-dom';
 import { Avatar, Button, Dropdown, Layout, Space, Typography } from 'antd';
 import type { MenuProps } from 'antd';
 import { promptInstall, useInstallState } from '../../pwa/install';
-import { DownloadOutlined, LogoutOutlined, MenuOutlined, SettingOutlined, UserOutlined } from '@ant-design/icons';
+import {
+  DownloadOutlined,
+  LogoutOutlined,
+  MenuOutlined,
+  QuestionCircleOutlined,
+  SettingOutlined,
+  UserOutlined
+} from '@ant-design/icons';
 import { useAuth } from '../../hooks/useAuth';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { Breadcrumbs } from './Breadcrumbs';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { TenantSwitcher } from '../TenantSwitcher';
+import { HelpButton } from '../../help/components/HelpButton';
+import { useHelp } from '../../help/help-context';
+import { HELP_CENTER_PATH } from '../../help/paths';
 import { t } from '../../i18n/t';
 
 const { Header: AntHeader } = Layout;
@@ -43,6 +53,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ onOpenNavigation, actions 
   const navigate = useNavigate();
   const { isDesktop } = useBreakpoint();
   const installState = useInstallState();
+  const help = useHelp();
 
   const handleLogout = async () => {
     await logout();
@@ -69,6 +80,12 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ onOpenNavigation, actions 
       label: t('Paramètres'),
       icon: <SettingOutlined />,
       onClick: () => navigate('/settings')
+    },
+    {
+      key: 'help-center',
+      label: t("Centre d'aide"),
+      icon: <QuestionCircleOutlined />,
+      onClick: () => navigate(HELP_CENTER_PATH)
     },
     ...(installState === 'prompt'
       ? [
@@ -124,6 +141,9 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ onOpenNavigation, actions 
 
       <Space size="middle" style={{ flexShrink: 0 }}>
         {actions}
+        {/* « ? » de page des écrans sans <PageHeader> : un <PageHeader> qui
+            affiche déjà le sien le revendique, la coquille ne le duplique pas. */}
+        {help.available && help.pageHelpId && !help.pageHelpClaimed && <HelpButton helpId={help.pageHelpId} />}
         <TenantSwitcher />
         <LanguageSwitcher />
         <Dropdown menu={{ items: userMenuItems }} placement="bottomRight" trigger={['click']}>

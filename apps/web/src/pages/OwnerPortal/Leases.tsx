@@ -9,6 +9,7 @@ import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion } from '../../utils/list-search';
 import { useOwnerPropertyOptions } from './useOwnerPropertyOptions';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 import { activeLocale, formatFcfa } from '../../i18n/format';
 const { Title, Text } = Typography;
@@ -160,6 +161,7 @@ export default function Leases() {
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} lg={8}>
           <StatCard
+            helpId="portails.proprietaire.baux.indicateurs"
             title={t('Baux actifs')}
             value={data.summary.active}
             icon={<FileTextOutlined style={{ color: '#52c41a' }} />}
@@ -185,7 +187,7 @@ export default function Leases() {
       </Row>
 
       {/* Lease List */}
-      <Card title={t('Liste des baux')}>
+      <Card title={<HelpSectionTitle title={t('Liste des baux')} helpId="portails.proprietaire.baux.liste" />}>
         {/* Recherche locale : la liste arrive en entier (résumé ci-dessus : tous les baux, hors recherche) */}
         <ListSearch {...local.searchProps} />
         {local.total > 0 ? (

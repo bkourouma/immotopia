@@ -309,6 +309,7 @@ export const TenantInvoicesSection: React.FC<Props> = ({ tenantId, onPaid }) => 
           <Text type="secondary">{t('Mode démonstration : aucun paiement réel.')}</Text>
         )}
         <Table<PlatformInvoice>
+          helpId="administration.agence.facturation.factures"
           search={search.searchProps}
           exportFilename={t('Factures')}
           exportFetchAll={() =>

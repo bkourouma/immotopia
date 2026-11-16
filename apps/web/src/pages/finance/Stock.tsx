@@ -90,6 +90,7 @@ import { StockAttachmentList } from '../../components/finance/stock/StockAttachm
 import { StockSlipPdfButton } from '../../components/finance/stock/StockSlipPdfButton';
 import { StockTakerSelect } from '../../components/finance/stock/StockTakerSelect';
 import { t } from '../../i18n/t';
+import { HelpButton, HelpSectionTitle, helpAnchor } from '../../help';
 import { activeLocale } from '../../i18n/format';
 
 const { Text, Paragraph, Title } = Typography;
@@ -554,7 +555,7 @@ function FenetreReception(props: {
 
   return (
     <Modal
-      title={t('Enregistrer une réception')}
+      title={<HelpSectionTitle title={t('Enregistrer une réception')} helpId="finance.stock.reception" />}
       open
       onCancel={() => {
         if (!envoiEnCours) onClose();
@@ -1114,7 +1115,7 @@ function FenetreSortie(props: {
 
   return (
     <Modal
-      title={t('Enregistrer une sortie vers un chantier')}
+      title={<HelpSectionTitle title={t('Enregistrer une sortie vers un chantier')} helpId="finance.stock.sortie" />}
       open
       onCancel={() => {
         if (!envoiEnCours) onClose();
@@ -1469,7 +1470,7 @@ function FenetreRebut(props: {
   const mouvement = resultat?.data ?? null;
   return (
     <Modal
-      title={t('Enregistrer un rebut')}
+      title={<HelpSectionTitle title={t('Enregistrer un rebut')} helpId="finance.stock.rebut" />}
       open
       onCancel={() => {
         if (!envoiEnCours) onClose();
@@ -1699,7 +1700,7 @@ function FenetreRetour(props: {
   const mouvement = resultat?.data ?? null;
   return (
     <Modal
-      title={t('Retourner une marchandise au fournisseur')}
+      title={<HelpSectionTitle title={t('Retourner une marchandise au fournisseur')} helpId="finance.stock.retour" />}
       open
       onCancel={() => {
         if (!envoiEnCours) onClose();
@@ -2071,6 +2072,7 @@ const OngletEtat = React.memo(function OngletEtat(props: {
   return (
     <>
       <DataView<StockBalanceView>
+        helpId="finance.stock.etat.tableau"
         {...local.dataViewProps}
         export={exportEtat}
         scrollX={1000}
@@ -2535,6 +2537,7 @@ function OngletJournal(props: {
       </Space>
 
       <DataView<StockMovementView>
+        helpId="finance.stock.journal.tableau"
         // Le journal se lit par curseur : l'export reparcourt toutes les pages,
         // avec les mêmes filtres que la liste affichée.
         export={{
@@ -2668,7 +2671,12 @@ function TiroirBon(props: {
       open
       onClose={onClose}
       width={isMobile ? '100%' : 640}
-      title={bon ? `${STOCK_SLIP_KIND_LABELS[bon.kind]} ${bon.number}` : t('Bon')}
+      title={
+        <HelpSectionTitle
+          title={bon ? `${STOCK_SLIP_KIND_LABELS[bon.kind]} ${bon.number}` : t('Bon')}
+          helpId="finance.stock.bon"
+        />
+      }
     >
       {lu.isPending ? (
         <SkeletonDetail />
@@ -2771,7 +2779,12 @@ function TiroirFacture(props: {
       open
       onClose={onClose}
       width={isMobile ? '100%' : 640}
-      title={vue ? t('Réceptions de la facture {{reference}}', { reference: vue.invoice.reference }) : t('Facture')}
+      title={
+        <HelpSectionTitle
+          title={vue ? t('Réceptions de la facture {{reference}}', { reference: vue.invoice.reference }) : t('Facture')}
+          helpId="finance.stock.facture"
+        />
+      }
     >
       {lu.isPending ? (
         <SkeletonDetail />
@@ -2902,7 +2915,11 @@ export const Stock: React.FC = () => {
   }
 
   const entete = (
-    <PageHeader title={t('Stock')} subtitle={t('État du stock, réceptions, sorties et journal des mouvements')} />
+    <PageHeader
+      helpId="finance.stock.page"
+      title={t('Stock')}
+      subtitle={t('État du stock, réceptions, sorties et journal des mouvements')}
+    />
   );
 
   if (contexteTerrain.error) {
@@ -3004,6 +3021,7 @@ export const Stock: React.FC = () => {
 
       {valeursVisibles ? (
         <Alert
+          {...helpAnchor('stock-imputation')}
           type="info"
           showIcon
           style={{ marginBottom: 'var(--space-4)' }}
@@ -3015,7 +3033,7 @@ export const Stock: React.FC = () => {
       ) : null}
 
       {abilities.canReceive || abilities.canIssue || abilities.canDispose ? (
-        <Space wrap size="middle" style={{ marginBottom: 'var(--space-4)' }}>
+        <Space {...helpAnchor('stock-actions')} wrap size="middle" style={{ marginBottom: 'var(--space-4)' }}>
           {abilities.canReceive ? (
             <Button icon={<PlusOutlined />} onClick={() => ouvrir('reception')}>
               {t('Enregistrer une réception')}
@@ -3030,39 +3048,53 @@ export const Stock: React.FC = () => {
         </Space>
       ) : null}
 
-      <Tabs
-        activeKey={onglet}
-        destroyOnHidden
-        onChange={cle =>
-          modifierParametres(p => {
-            if (cle === 'journal') p.set('onglet', 'journal');
-            else p.delete('onglet');
-          })
-        }
-        items={[
-          {
-            key: 'etat',
-            label: t('État du stock'),
-            children: <OngletEtat tenantId={tenantId} contexte={contexte} onRecevoir={recevoir} />
-          },
-          {
-            key: 'journal',
-            label: t('Journal des mouvements'),
-            children: (
-              <OngletJournal
-                tenantId={tenantId}
-                contexte={contexte}
-                filtreBon={filtreBon}
-                onEffacerBon={() => setFiltreBon(null)}
-                mouvementId={mouvementId}
-                onEffacerMouvement={() => modifierParametres(p => p.delete('mouvement'))}
-                onOuvrirBon={ouvrirBon}
-                onOuvrirFacture={ouvrirFacture}
-              />
-            )
+      <div {...helpAnchor('stock-onglets')}>
+        <Tabs
+          activeKey={onglet}
+          destroyOnHidden
+          onChange={cle =>
+            modifierParametres(p => {
+              if (cle === 'journal') p.set('onglet', 'journal');
+              else p.delete('onglet');
+            })
           }
-        ]}
-      />
+          items={[
+            {
+              key: 'etat',
+              label: t('État du stock'),
+              children: (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <HelpButton size="small" helpId="finance.stock.etat" />
+                  </div>
+                  <OngletEtat tenantId={tenantId} contexte={contexte} onRecevoir={recevoir} />
+                </>
+              )
+            },
+            {
+              key: 'journal',
+              label: t('Journal des mouvements'),
+              children: (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <HelpButton size="small" helpId="finance.stock.journal" />
+                  </div>
+                  <OngletJournal
+                    tenantId={tenantId}
+                    contexte={contexte}
+                    filtreBon={filtreBon}
+                    onEffacerBon={() => setFiltreBon(null)}
+                    mouvementId={mouvementId}
+                    onEffacerMouvement={() => modifierParametres(p => p.delete('mouvement'))}
+                    onOuvrirBon={ouvrirBon}
+                    onOuvrirFacture={ouvrirFacture}
+                  />
+                </>
+              )
+            }
+          ]}
+        />
+      </div>
 
       {fenetre === 'reception' ? (
         <FenetreReception

@@ -3,6 +3,7 @@ import { Modal, Checkbox, Button, Space, Alert, Typography } from 'antd';
 import { UserOutlined } from '@ant-design/icons';
 import { CrmContactRoleType } from '../../types/crm-types';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 import { localizedList } from '../../i18n/localized';
 const { Text } = Typography;
@@ -61,7 +62,7 @@ export const ManageRolesDialog: React.FC<ManageRolesDialogProps> = ({
       title={
         <Space>
           <UserOutlined style={{ color: '#1890ff' }} />
-          <span>{t('Gérer les rôles')}</span>
+          <HelpSectionTitle title={t('Gérer les rôles')} helpId="commercial.contacts.detail.gerer-roles" />
         </Space>
       }
       open={open}

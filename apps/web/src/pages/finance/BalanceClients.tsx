@@ -175,6 +175,7 @@ export const BalanceClients: React.FC = () => {
   return (
     <>
       <PageHeader
+        helpId="finance.balance-clients.page"
         title={t('Balance clients')}
         subtitle={lignes.length > 0 ? `${lignes.length} locataire${lignes.length > 1 ? 's' : ''}` : undefined}
         primaryAction={{ label: t('Exporter'), icon: <DownloadOutlined />, onClick: handleExport }}
@@ -187,6 +188,7 @@ export const BalanceClients: React.FC = () => {
       )}
 
       <DataView<ClientsBalanceLine>
+        helpId="finance.balance-clients.tableau"
         // Pagination locale de la liste reçue : l'API rend la balance
         // entière et ses totaux (ceux du serveur, jamais recalculés ici).
         {...local.dataViewProps}
@@ -220,7 +222,11 @@ export const BalanceClients: React.FC = () => {
           bord — pas un total réinventé au fil de l'écran. */}
       {data && lignes.length > 0 && (
         <div style={{ marginTop: 'var(--space-4)', maxWidth: 320 }}>
-          <StatCard label={t('Total de contrôle')} value={<MoneyValue value={data.totalBalance} signed />} />
+          <StatCard
+            helpId="finance.balance-clients.total"
+            label={t('Total de contrôle')}
+            value={<MoneyValue value={data.totalBalance} signed />}
+          />
         </div>
       )}
     </>

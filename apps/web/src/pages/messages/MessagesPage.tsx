@@ -24,6 +24,7 @@ import { MessageThread } from '../../components/messaging/MessageThread';
 import { NewConversationModal } from '../../components/messaging/NewConversationModal';
 import { ParticipantsPanel } from '../../components/messaging/ParticipantsPanel';
 import { conversationTitle } from '../../components/messaging/messaging-utils';
+import { HelpButton } from '../../help';
 
 const { Title, Text } = Typography;
 
@@ -216,10 +217,11 @@ export default function MessagesPage({ scope: scopeProp, basePath = '/messages' 
               minWidth: 0
             }}
           >
-            <div style={{ padding: 12 }}>
+            <div style={{ padding: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
               <Button type="primary" icon={<PlusOutlined />} block onClick={() => setCreating(true)}>
                 {t('Nouvelle conversation')}
               </Button>
+              <HelpButton helpId="communication.messagerie.messages.conversations" size="small" />
             </div>
             <div style={{ paddingInline: 12, paddingBlockEnd: 8 }}>
               <ListSearch {...listSearch.searchProps} resultCount={listTotal} />
@@ -271,6 +273,7 @@ export default function MessagesPage({ scope: scopeProp, basePath = '/messages' 
                   <Text strong ellipsis style={{ flex: 1 }}>
                     {current ? conversationTitle(current, userId) : ''}
                   </Text>
+                  <HelpButton helpId="communication.messagerie.messages.fil" size="small" />
                   {current ? (
                     <Button
                       type="text"

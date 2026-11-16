@@ -10,6 +10,7 @@ import {
   type MessagingScope
 } from '../../services/messaging-service';
 import { ParticipantKindTag } from './ParticipantKindTag';
+import { HelpSectionTitle } from '../../help';
 
 interface NewConversationModalProps {
   open: boolean;
@@ -100,7 +101,13 @@ export function NewConversationModal({
       open={open}
       onCancel={onClose}
       onOk={() => void submit()}
-      title={mode === 'add' ? t('Ajouter des participants') : t('Nouvelle conversation')}
+      title={
+        mode === 'add' ? (
+          t('Ajouter des participants')
+        ) : (
+          <HelpSectionTitle title={t('Nouvelle conversation')} helpId="communication.messagerie.messages.nouvelle" />
+        )
+      }
       okText={mode === 'add' ? t('Ajouter') : t('Démarrer')}
       cancelText={t('Annuler')}
       okButtonProps={{ disabled: selected.length === 0, loading: submitting }}

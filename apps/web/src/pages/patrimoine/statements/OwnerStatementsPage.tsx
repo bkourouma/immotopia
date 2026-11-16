@@ -257,6 +257,7 @@ export const OwnerStatementsPage: React.FC = () => {
           {!listError ? (
             <Table
               key={effectiveTenantId}
+              helpId="patrimoine.releves.historique"
               exportFilename={t('Historique des relevés')}
               exportFetchAll={list.exportFetchAll}
               search={list.search.searchProps}

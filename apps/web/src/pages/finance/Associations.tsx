@@ -13,6 +13,7 @@ import type { SearchCriterion } from '../../utils/list-search';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
+import { HelpSectionTitle } from '../../help';
 /**
  * Associations — liste et création. Lot 4, deuxième sous-lot (PRD E7, besoin
  * B9 ; contrat gelé `packages/api/src/lib/finance/types-lot4-partnerships.ts`).
@@ -194,6 +195,7 @@ export const Associations: React.FC = () => {
   return (
     <>
       <PageHeader
+        helpId="finance.associations.page"
         title={t('Associations')}
         subtitle={
           associations.length > 0
@@ -204,6 +206,7 @@ export const Associations: React.FC = () => {
       />
 
       <DataView<Partnership>
+        helpId="finance.associations.tableau"
         // Le contrat de `listPartnerships` ne pagine pas : recherche et découpe locales.
         scrollX={1200}
         {...local.dataViewProps}
@@ -236,7 +239,7 @@ export const Associations: React.FC = () => {
       />
 
       <Modal
-        title={t('Nouvelle association')}
+        title={<HelpSectionTitle title={t('Nouvelle association')} helpId="finance.associations.nouvelle" />}
         open={modalOuvert}
         onCancel={fermerCreation}
         confirmLoading={creationEnCours}

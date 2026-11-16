@@ -1,12 +1,14 @@
-import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { RobotOutlined } from '@ant-design/icons';
 import { Button, ConfigProvider, Modal } from 'antd';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { onCopilotOpenRequest } from '../../help/copilot-bridge';
 import { assistantComponentLocales } from '../../i18n/assistant-component-locales';
 import { useAssistantTranslation } from '../../i18n/useAssistantTranslation';
 import { useCopilotStatus } from '../../hooks/useCopilotStatus';
 import type { CopilotStatus } from '../../types/copilot';
 import { getCopilotPageContext } from './copilot-page-context';
+import type { CopilotPrefill } from './CopilotDrawer';
 
 // Le tiroir (chat, Markdown, cartes) ne se charge qu'à la première ouverture :
 // il reste hors du bundle d'entrée.
@@ -62,6 +64,8 @@ const CopilotRoot: React.FC<CopilotRootProps> = ({
   const onAssistantPage = isAssistantPagePath(pathname);
   const [open, setOpen] = useState(false);
   const [everOpened, setEverOpened] = useState(false);
+  const [prefill, setPrefill] = useState<CopilotPrefill | undefined>(undefined);
+  const nonceRef = useRef(0);
 
   const ownStatus = useCopilotStatus(tenantId, statusProp === undefined);
   const status = statusProp === undefined ? ownStatus : statusProp;
@@ -104,6 +108,25 @@ const CopilotRoot: React.FC<CopilotRootProps> = ({
       window.removeEventListener('immotopia:ask-assistant', launch);
     };
   }, [enabled, launchOpen, onAssistantPage, openDrawer]);
+
+  // Demande de l'aide interne : question pré-remplie (jamais envoyée) dans le tiroir.
+  useEffect(() => {
+    if (!enabled) return undefined;
+    return onCopilotOpenRequest(request => {
+      if (onAssistantPage) {
+        focusPageComposer();
+        return;
+      }
+      nonceRef.current += 1;
+      setPrefill({
+        draft: request.draft,
+        helpId: request.helpId,
+        helpExcerpt: request.helpExcerpt,
+        nonce: nonceRef.current
+      });
+      openDrawer();
+    });
+  }, [enabled, onAssistantPage, openDrawer]);
 
   if (!status?.enabled) return null;
 
@@ -182,6 +205,7 @@ const CopilotRoot: React.FC<CopilotRootProps> = ({
               status={status}
               open={open}
               onClose={() => setOpen(false)}
+              prefill={prefill}
             />
           </Suspense>
         )}

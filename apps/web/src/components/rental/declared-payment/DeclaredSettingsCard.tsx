@@ -14,6 +14,7 @@ import {
 } from '../../../types/rental-declared-payment';
 import { useMyMenuAccess } from '../../../hooks/useMenuAccess';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 import { apiErrorMessage } from './helpers';
 
 const { Paragraph, Text } = Typography;
@@ -69,7 +70,9 @@ export const DeclaredSettingsCard: React.FC<RentalDeclaredSettingsCardProps> = (
     void load();
   }, [load]);
 
-  const title = t('Réglages des paiements déclarés');
+  const title = (
+    <HelpSectionTitle title={t('Réglages des paiements déclarés')} helpId="locatif.paiements.declarations.reglages" />
+  );
 
   if (loading && !settings) {
     return (

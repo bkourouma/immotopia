@@ -24,6 +24,7 @@ import { isModuleNotIncludedError } from '../../utils/module-not-included';
 import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion } from '../../utils/list-search';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 const { Text } = Typography;
 
@@ -243,7 +244,13 @@ export function StockPreneurs(): React.ReactElement {
   const { tenantId = '' } = useParams<{ tenantId: string }>();
   const contexte = useStockFieldContext(tenantId);
 
-  const entete = <PageHeader title={t('Preneurs')} subtitle={t('Les personnes qui emportent la marchandise')} />;
+  const entete = (
+    <PageHeader
+      helpId="finance.preneurs.page"
+      title={t('Preneurs')}
+      subtitle={t('Les personnes qui emportent la marchandise')}
+    />
+  );
 
   if (contexte.isLoading) {
     return (
@@ -486,6 +493,7 @@ const CarnetDesPreneurs: React.FC<CarnetProps> = ({ tenantId, canManage, people 
       </Space>
 
       <DataView<StockTakerView>
+        helpId="finance.preneurs.tableau"
         aria-label={t('Carnet des preneurs')}
         {...local.dataViewProps}
         export={{ filename: t('Carnet des preneurs'), fetchAll: local.exportAll }}
@@ -510,7 +518,7 @@ const CarnetDesPreneurs: React.FC<CarnetProps> = ({ tenantId, canManage, people 
 
       <Modal
         open={creation}
-        title={t('Ajouter un preneur')}
+        title={<HelpSectionTitle title={t('Ajouter un preneur')} helpId="finance.preneurs.formulaire" />}
         footer={null}
         destroyOnHidden
         onCancel={() => setCreation(false)}
@@ -536,7 +544,7 @@ const CarnetDesPreneurs: React.FC<CarnetProps> = ({ tenantId, canManage, people 
 
       <Modal
         open={correction !== null}
-        title={t('Corriger un preneur')}
+        title={<HelpSectionTitle title={t('Corriger un preneur')} helpId="finance.preneurs.formulaire" />}
         footer={null}
         destroyOnHidden
         onCancel={() => setCorrection(null)}

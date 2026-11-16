@@ -45,6 +45,7 @@ import {
   accountingKey
 } from '../../components/syndics/accounting/accounting-shared';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
+import { HelpSectionTitle } from '../../help';
 import { t } from '../../i18n/t';
 
 const { Paragraph, Title } = Typography;
@@ -493,7 +494,9 @@ export const SyndicAccounting: React.FC = () => {
       </Modal>
 
       <Modal
-        title={t('Nouvelle écriture comptable')}
+        title={
+          <HelpSectionTitle title={t('Nouvelle écriture comptable')} helpId="syndic.comptabilite.ecriture-nouvelle" />
+        }
         open={openEntry}
         onCancel={() => setOpenEntry(false)}
         onOk={() => void handleCreateEntry()}

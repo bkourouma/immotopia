@@ -3,6 +3,7 @@ import { Alert, Card, Descriptions, Space, Spin, Typography } from 'antd';
 import { MoneyValue, Table } from '../../primitives';
 import { ChargeScheduleFrequency, ChargeSchedulePreview } from '../../../types/syndic-types';
 import { t } from '../../../i18n/t';
+import { HelpButton } from '../../../help';
 import { formatDay } from './chargeScheduleLabels';
 import { displayCurrency } from '../../../utils/syndic-currency';
 import { allocationMethodLabel } from '../charge-allocation/ChargeAllocationControls';
@@ -27,6 +28,7 @@ export const SchedulePreviewPanel: React.FC<{
   }
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
+      <HelpButton helpId="syndic.programmation.liste.apercu" />
       {preview.periods.map(period => (
         <Card key={`${period.periodStart}-${period.periodEnd}`} size="small" title={period.label}>
           <Descriptions column={1} size="small">

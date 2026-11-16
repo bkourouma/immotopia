@@ -86,6 +86,7 @@ export const OverdueTableTab: React.FC<OverdueTableTabProps> = ({ items, loading
     <Table<OverdueDashboardItem>
       {...local.tableProps}
       aria-label={t('Tableau des retards')}
+      helpId="syndic.recouvrement.retards"
       exportFilename={t('Tableau des retards')}
       exportFetchAll={local.exportAll}
       scroll={{ x: 'max-content' }}

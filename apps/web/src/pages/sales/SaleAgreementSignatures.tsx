@@ -4,6 +4,7 @@ import { SignaturesPanel } from '../../components/signature/SignaturesPanel';
 import { fetchSignatureContext } from '../../services/signature-service';
 import type { DefaultSignerDto, SignerInput } from '../../types/signature-types';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 /** Signataire proposé par l'API -> ligne préremplie de l'écran d'envoi (e-mail par défaut). */
 export function toSignerInputs(signers: DefaultSignerDto[]): SignerInput[] {
@@ -77,7 +78,11 @@ export const SaleAgreementSignatures: React.FC<SaleAgreementSignaturesProps> = (
   }, [agreementId, canSend]);
 
   return (
-    <Card title={t('Signatures')} style={{ marginBottom: 'var(--space-6)' }} data-testid="sale-agreement-signatures">
+    <Card
+      title={<HelpSectionTitle title={t('Signatures')} helpId="commercial.ventes.compromis.signatures" />}
+      style={{ marginBottom: 'var(--space-6)' }}
+      data-testid="sale-agreement-signatures"
+    >
       {error && <Alert type="error" showIcon message={error} />}
       {!signers && !error && <Spin />}
       {signers && (

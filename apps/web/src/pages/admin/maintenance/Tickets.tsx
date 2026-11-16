@@ -278,6 +278,7 @@ export const Tickets: React.FC = () => {
 
         <Card>
           <Table
+            helpId="administration.maintenance-gestion.tickets.tableau"
             aria-label={t('Gestion des tickets de maintenance')}
             search={search.searchProps}
             exportFilename={t('Gestion des tickets de maintenance')}

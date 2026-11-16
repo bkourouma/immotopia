@@ -32,7 +32,8 @@
     "prepare": "node scripts/install-git-hooks.cjs",
     "wiki:export": "node scripts/wiki-fonctionnalites.cjs export",
     "wiki:check": "node scripts/wiki-fonctionnalites.cjs check",
-    "wiki:search": "node scripts/wiki-fonctionnalites.cjs search"
+    "wiki:search": "node scripts/wiki-fonctionnalites.cjs search",
+    "help:check": "npm run help:check -w @immotopia/web"
   },
   "lint-staged": {
     "packages/api/**/*.ts": [

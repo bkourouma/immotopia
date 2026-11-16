@@ -5,6 +5,7 @@ import dayjs from 'dayjs';
 import { PropertyOwnershipType } from '../../types/property-types';
 import { PropertyMandateForm } from './PropertyMandateForm';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 import { dateFormat } from '../../i18n/format';
 
 const { Text } = Typography;
@@ -99,7 +100,7 @@ export const PropertyMandateCard: React.FC<PropertyMandateCardProps> = ({ tenant
   };
 
   return (
-    <Card title={t('Mandat de gestion')}>
+    <Card title={<HelpSectionTitle title={t('Mandat de gestion')} helpId="commercial.biens.detail.mandats" />}>
       {chargement ? (
         <Spin />
       ) : (

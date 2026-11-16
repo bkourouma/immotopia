@@ -106,6 +106,7 @@ export const ExternalAccessLogModal: React.FC<Props> = ({ tenantId, grant, onClo
       ) : (
         <>
           <Table<ExternalAccessLogEntry>
+            helpId="patrimoine.acces-tiers.journal"
             dataSource={logQuery.data?.items ?? []}
             search={search.searchProps}
             pagination={search.tablePagination(logQuery.data?.total ?? 0)}
@@ -132,6 +133,7 @@ export const ExternalAccessLogModal: React.FC<Props> = ({ tenantId, grant, onClo
               },
               {
                 title: t('Détail'),
+                key: 'detail',
                 render: (_: unknown, entry) =>
                   entry.documentName ? (
                     <Text>{entry.documentName}</Text>

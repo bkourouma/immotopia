@@ -39,6 +39,7 @@ import { StatusTag, Table } from '../../components/primitives';
 import { formatFcfa } from '../../utils/crm-utils';
 import { activeLocale } from '../../i18n/format';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -307,7 +308,7 @@ export const TenantSubscriptionSettings: React.FC = () => {
         )
       )}
 
-      <Card title={t('Formule')}>
+      <Card title={<HelpSectionTitle title={t('Formule')} helpId="administration.agence.abonnement.formule" />}>
         <Descriptions column={{ xs: 1, sm: 2 }} size="small">
           <Descriptions.Item label={t('Statut')}>
             <StatusTag status={entitlements.phase} tone={phaseInfo.tone} label={phaseInfo.label} />
@@ -334,7 +335,9 @@ export const TenantSubscriptionSettings: React.FC = () => {
         <PersonalTierCard tenantId={tenantId} onConfirmed={() => loadEntitlements(true)} />
       )}
 
-      <Card title={t('Consommation')}>
+      <Card
+        title={<HelpSectionTitle title={t('Consommation')} helpId="administration.agence.abonnement.consommation" />}
+      >
         <Space size="large" wrap style={{ width: '100%' }}>
           {visibleCapacities.map(key => {
             const capacity = entitlements.capacities[key];
@@ -365,7 +368,7 @@ export const TenantSubscriptionSettings: React.FC = () => {
         </Space>
       </Card>
 
-      <Card title={t('Modules')}>
+      <Card title={<HelpSectionTitle title={t('Modules')} helpId="administration.agence.abonnement.modules" />}>
         <Space wrap>
           {entitlements.modules.length > 0 ? (
             entitlements.modules.map(key => <StatusTag key={key} status="ACTIVE" label={moduleLabels()[key] ?? key} />)
@@ -387,7 +390,11 @@ export const TenantSubscriptionSettings: React.FC = () => {
         />
       )}
 
-      <Card title={t('Demander une extension')}>
+      <Card
+        title={
+          <HelpSectionTitle title={t('Demander une extension')} helpId="administration.agence.abonnement.extension" />
+        }
+      >
         <Paragraph type="secondary">
           {t("Besoin de plus de capacité ? Envoyez une demande à l'équipe ImmoTopia.")}
         </Paragraph>
@@ -436,6 +443,7 @@ export const TenantSubscriptionSettings: React.FC = () => {
         </Form>
         {requests.length > 0 && (
           <Table<ExtensionRequest>
+            helpId="administration.agence.abonnement.extension.demandes"
             exportFilename={t('Mes demandes')}
             style={{ marginBlockStart: 'var(--space-4)' }}
             rowKey="id"

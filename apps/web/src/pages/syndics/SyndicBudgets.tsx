@@ -36,6 +36,7 @@ import { useLocalListSearch } from '../../utils/list-search';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 const { Paragraph, Title } = Typography;
 
@@ -568,6 +569,7 @@ export const SyndicBudgets: React.FC = () => {
                 <>
                   <Table
                     {...budgetSearch.tableProps}
+                    helpId="syndic.budgets.liste.tableau"
                     aria-label={t('Budgets')}
                     exportFilename={t('Budgets')}
                     exportFetchAll={budgetSearch.exportAll}
@@ -686,6 +688,7 @@ export const SyndicBudgets: React.FC = () => {
                   </Paragraph>
                   <Table
                     {...allocationSearch.tableProps}
+                    helpId="syndic.budgets.liste.repartition"
                     aria-label={t('Répartition des lots')}
                     exportFilename={t('Répartition des lots')}
                     exportFetchAll={allocationSearch.exportAll}
@@ -727,6 +730,7 @@ export const SyndicBudgets: React.FC = () => {
                 <>
                   <Table
                     {...batchSearch.tableProps}
+                    helpId="syndic.budgets.liste.campagnes"
                     aria-label={t("Campagnes d'appels")}
                     exportFilename={t("Campagnes d'appels")}
                     exportFetchAll={batchSearch.exportAll}
@@ -768,7 +772,7 @@ export const SyndicBudgets: React.FC = () => {
       </Space>
 
       <Modal
-        title={t('Nouveau budget')}
+        title={<HelpSectionTitle title={t('Nouveau budget')} helpId="syndic.budgets.liste.nouveau" />}
         open={openBudgetModal}
         onCancel={closeBudgetModal}
         onOk={() => void handleCreateBudget()}
@@ -901,6 +905,7 @@ export const SyndicBudgets: React.FC = () => {
         ) : null}
         <UnattachedAlert unattached={linesBudget?.unattached} style={{ marginBottom: 12 }} />
         <Table
+          helpId="syndic.budgets.liste.postes"
           exportFilename={t('Postes et fonds')}
           scroll={{ x: 'max-content' }}
           rowKey="id"
@@ -985,7 +990,7 @@ export const SyndicBudgets: React.FC = () => {
       </Modal>
 
       <Modal
-        title={t('Générer appels depuis budget')}
+        title={<HelpSectionTitle title={t('Générer appels depuis budget')} helpId="syndic.budgets.liste.generation" />}
         open={openGenerateModal}
         onCancel={() => {
           setOpenGenerateModal(false);

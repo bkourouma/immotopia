@@ -2,6 +2,7 @@ import React from 'react';
 import { Button, Popconfirm, Space } from 'antd';
 import { MeetingStatus } from '../../types/syndic-types';
 import { t } from '../../i18n/t';
+import { helpAnchor } from '../../help';
 
 interface MeetingStatusActionsProps {
   status: MeetingStatus;
@@ -23,7 +24,13 @@ export const MeetingStatusActions: React.FC<MeetingStatusActionsProps> = ({
   if (status === 'PLANNED') {
     return (
       <Space wrap>
-        <Button size={size} type="primary" loading={loading} onClick={() => void onChange('IN_PROGRESS')}>
+        <Button
+          size={size}
+          type="primary"
+          loading={loading}
+          onClick={() => void onChange('IN_PROGRESS')}
+          {...helpAnchor('ag-ouvrir')}
+        >
           {t('Ouvrir la séance')}
         </Button>
         <Popconfirm

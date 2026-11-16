@@ -59,6 +59,7 @@ import { t } from '../../i18n/t';
 import { PortalEmailNotice } from './PortalEmailNotice';
 import { useAgencyFeatures } from '../../hooks/useAgencyFeatures';
 import { getContactRoleLabel } from '../../utils/crm-utils';
+import { HelpSectionTitle } from '../../help';
 
 import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
@@ -368,7 +369,7 @@ export const ContactDetail: React.FC<ContactDetailProps> = ({ tenantId, contactI
               title={
                 <Space>
                   <UserOutlined />
-                  {t('Rôles')}
+                  <HelpSectionTitle title={t('Rôles')} helpId="commercial.contacts.detail.roles" />
                 </Space>
               }
               extra={
@@ -425,7 +426,10 @@ export const ContactDetail: React.FC<ContactDetailProps> = ({ tenantId, contactI
               title={
                 <Space>
                   <TagOutlined />
-                  {t('Tags')} {contact.tags && contact.tags.length > 0 && `(${contact.tags.length})`}
+                  <HelpSectionTitle
+                    title={`${t('Tags')}${contact.tags && contact.tags.length > 0 ? ` (${contact.tags.length})` : ''}`}
+                    helpId="commercial.contacts.detail.tags"
+                  />
                 </Space>
               }
               extra={
@@ -460,7 +464,10 @@ export const ContactDetail: React.FC<ContactDetailProps> = ({ tenantId, contactI
               title={
                 <Space>
                   <ProjectOutlined />
-                  {t('Affaires')} {contact.deals && contact.deals.length > 0 && `(${contact.deals.length})`}
+                  <HelpSectionTitle
+                    title={`${t('Affaires')}${contact.deals && contact.deals.length > 0 ? ` (${contact.deals.length})` : ''}`}
+                    helpId="commercial.contacts.detail.affaires"
+                  />
                 </Space>
               }
               extra={
@@ -507,7 +514,7 @@ export const ContactDetail: React.FC<ContactDetailProps> = ({ tenantId, contactI
           title={
             <Space>
               <ThunderboltOutlined />
-              {t('Chronologie des activités')}
+              <HelpSectionTitle title={t('Chronologie des activités')} helpId="commercial.contacts.detail.activites" />
             </Space>
           }
           extra={

@@ -8,6 +8,7 @@ import {
   MandateDto
 } from '../../../services/direct-debit-service';
 import { apiErrorMessage } from './direct-debit-shared';
+import { HelpSectionTitle } from '../../../help';
 import { t } from '../../../i18n/t';
 
 const { Text } = Typography;
@@ -161,7 +162,7 @@ export const MandateFormModal: React.FC<MandateFormModalProps> = ({
   return (
     <Modal
       open={open}
-      title={t('Nouveau mandat de prélèvement')}
+      title={<HelpSectionTitle title={t('Nouveau mandat de prélèvement')} helpId="locatif.prelevements.bail.nouveau" />}
       okText={t('Créer le mandat de prélèvement')}
       cancelText={t('Annuler')}
       onOk={() => void handleOk()}

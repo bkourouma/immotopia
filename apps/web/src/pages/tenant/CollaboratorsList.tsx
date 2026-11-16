@@ -225,6 +225,7 @@ export const CollaboratorsList: React.FC = () => {
           <div style={{ overflowX: 'auto' }}>
             <Table
               aria-label={t('Collaborateurs')}
+              helpId="administration.equipe.collaborateurs.tableau"
               search={search.searchProps}
               exportFilename={t('Collaborateurs')}
               exportFetchAll={() =>

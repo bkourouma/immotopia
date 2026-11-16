@@ -216,6 +216,7 @@ export const DocumentVault: React.FC<DocumentVaultProps> = ({
 
   return (
     <Table
+      helpId="syndic.documents.tableau"
       {...local.tableProps}
       aria-label={t('Documents')}
       exportFilename={t('Documents')}

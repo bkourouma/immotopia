@@ -32,6 +32,7 @@ import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion } from '../../utils/list-search';
 import { localizedList } from '../../i18n/localized';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 import { activeLocale } from '../../i18n/format';
 const { Text } = Typography;
@@ -513,6 +514,7 @@ export const RetenuesDeGarantie: React.FC = () => {
   return (
     <>
       <PageHeader
+        helpId="finance.retenues.page"
         title={t('Retenues de garantie')}
         subtitle={retenues.length > 0 ? `${retenues.length} retenue${retenues.length > 1 ? 's' : ''}` : undefined}
         primaryAction={{ label: t('Poser une retenue'), icon: <PlusOutlined />, onClick: ouvrirPose }}
@@ -534,6 +536,7 @@ export const RetenuesDeGarantie: React.FC = () => {
         <Row gutter={[16, 16]} style={{ marginBottom: 'var(--space-5)' }}>
           <Col xs={24} md={8}>
             <StatCard
+              helpId="finance.retenues.indicateurs"
               label={t("Détenu aujourd'hui")}
               value={<MoneyValue value={resume.totalHeld} />}
               hint={t('Ce qui est mis de côté, en attente de libération.')}
@@ -580,6 +583,7 @@ export const RetenuesDeGarantie: React.FC = () => {
       )}
 
       <DataView<RetentionGuarantee>
+        helpId="finance.retenues.tableau"
         scrollX={1300}
         {...local.dataViewProps}
         loading={isPending}
@@ -610,7 +614,7 @@ export const RetenuesDeGarantie: React.FC = () => {
       />
 
       <Modal
-        title={t('Poser une retenue de garantie')}
+        title={<HelpSectionTitle title={t('Poser une retenue de garantie')} helpId="finance.retenues.pose" />}
         open={modalOuvert}
         onCancel={fermerPose}
         confirmLoading={poseEnCours}

@@ -3,6 +3,7 @@ import { Card, Dropdown, Button } from 'antd';
 import { MoreOutlined } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import { t } from '../../i18n/t';
+import { HelpButton } from '../../help/components/HelpButton';
 
 /**
  * `<DataCard>` — une ligne de liste, sur mobile (REFONTE_UI_UX.md §5.1, §6).
@@ -55,6 +56,8 @@ export interface DataCardProps {
   secondaryActions?: MenuProps['items'];
   /** Nom accessible de la carte quand `title` n'est pas du texte simple. */
   'aria-label'?: string;
+  /** Fiche d'aide : petit « ? » dans l'angle de fin de l'en-tête (sans ouvrir la carte). */
+  helpId?: string;
 }
 
 export const DataCard: React.FC<DataCardProps> = ({
@@ -67,7 +70,8 @@ export const DataCard: React.FC<DataCardProps> = ({
   onOpen,
   primaryAction,
   secondaryActions,
-  'aria-label': ariaLabel
+  'aria-label': ariaLabel,
+  helpId
 }) => {
   const interactive = Boolean(onOpen);
 
@@ -138,6 +142,16 @@ export const DataCard: React.FC<DataCardProps> = ({
           {highlight && <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{highlight}</div>}
           {status && <div style={{ marginTop: 'var(--space-1)' }}>{status}</div>}
         </div>
+        {helpId && (
+          // Ni clic ni Entrée/Espace sur le « ? » ne doivent remonter à la carte (`onOpen`).
+          <span
+            style={{ flexShrink: 0 }}
+            onClick={event => event.stopPropagation()}
+            onKeyDown={event => event.stopPropagation()}
+          >
+            <HelpButton helpId={helpId} size="small" />
+          </span>
+        )}
       </div>
 
       {fields && fields.length > 0 && (

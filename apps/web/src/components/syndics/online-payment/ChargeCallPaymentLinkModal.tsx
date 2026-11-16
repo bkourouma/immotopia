@@ -14,6 +14,7 @@ import { displayCurrency } from '../../../utils/syndic-currency';
 import { copyToClipboard } from '../../../utils/copy-to-clipboard';
 import { activeLocale } from '../../../i18n/format';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 import { apiErrorMessage, statusLabel } from './helpers';
 
 const { Paragraph, Text } = Typography;
@@ -229,7 +230,12 @@ export const ChargeCallPaymentLinkModal: React.FC<ChargeCallPaymentLinkModalProp
       // n'en connaisse le jeton. La croix et « Fermer » restent disponibles.
       mask={{ closable: !created }}
       width={760}
-      title={t('Lien de paiement · appel {{period}}', { period: charge.period })}
+      title={
+        <HelpSectionTitle
+          title={t('Lien de paiement · appel {{period}}', { period: charge.period })}
+          helpId="syndic.paiements.lien"
+        />
+      }
       footer={
         <Button type="primary" onClick={onClose}>
           {t('Fermer')}

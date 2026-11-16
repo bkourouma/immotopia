@@ -44,6 +44,7 @@ import { LiveOptionNotice } from './live/LiveOptionNotice';
 import { useLiveOption } from '../../hooks/useLiveOption';
 import { isOptionNotIncludedError } from '../../utils/option-not-included';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 const { Text } = Typography;
 
@@ -128,7 +129,7 @@ const QuorumPanel: React.FC<{ live: LiveMeetingAdminView }> = ({ live }) => {
   const present = attendance.presentLots ?? 0;
   const represented = attendance.representedOnlyLots ?? 0;
   return (
-    <Card size="small" title={t('Quorum')}>
+    <Card size="small" title={<HelpSectionTitle title={t('Quorum')} helpId="syndic.assemblees.detail.quorum" />}>
       <Row gutter={[16, 16]} align="middle">
         <Col xs={24} md={10}>
           <Statistic title={t('Quorum')} value={clampPercent(attendance.quorumPercent)} suffix="%" />
@@ -572,7 +573,10 @@ const MeetingLiveConsoleBody: React.FC<MeetingLiveConsoleBodyProps> = ({
         />
       ) : null}
 
-      <Card size="small" title={t('Visioconférence')}>
+      <Card
+        size="small"
+        title={<HelpSectionTitle title={t('Visioconférence')} helpId="syndic.assemblees.detail.direct-visio" />}
+      >
         <Space.Compact style={{ width: '100%' }}>
           <Input
             value={videoValue}
@@ -608,7 +612,10 @@ const MeetingLiveConsoleBody: React.FC<MeetingLiveConsoleBodyProps> = ({
         />
       </Card>
 
-      <Card size="small" title={t('Résolutions en direct')}>
+      <Card
+        size="small"
+        title={<HelpSectionTitle title={t('Résolutions en direct')} helpId="syndic.assemblees.detail.direct-votes" />}
+      >
         <LiveResolutionsPanel
           resolutions={live?.resolutions ?? []}
           totalLots={live?.attendance.totalLots ?? 0}

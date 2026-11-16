@@ -3,6 +3,7 @@ import { Button, Card, Space, Switch, Tag, Typography } from 'antd';
 import type { ManagerDiscussionMessageView, ManagerDiscussionView } from '../../../types/syndic-live-types';
 import { activeLocale } from '../../../i18n/format';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 import { BidiText, DiscussionComposer } from './VisioDiscussionPanel';
 
 const { Text } = Typography;
@@ -98,7 +99,7 @@ export const MeetingDiscussionCard: React.FC<MeetingDiscussionCardProps> = ({
   return (
     <Card
       size="small"
-      title={t('Discussion')}
+      title={<HelpSectionTitle title={t('Discussion')} helpId="syndic.assemblees.detail.direct-discussion" />}
       extra={
         !frozen ? (
           <Space size={8}>

@@ -186,6 +186,10 @@ jobs:
       # verifie en local). Les avertissements ne font pas echouer l'etape.
       - run: npm run lint -w @immotopia/web
 
+      # Couverture de l'aide interne : chaque helpId du code a sa fiche en fr, en et ar,
+      # identifiants uniques et bien formes (0 erreur ; les routes sans fiche restent un avertissement).
+      - run: npm run help:check -w @immotopia/web
+
       # Les tests frontend tournent dans le job `web-tests`, découpé en lots.
 
       # `build` runs tsc --noEmit then vite build.

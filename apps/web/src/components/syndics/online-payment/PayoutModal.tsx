@@ -4,6 +4,7 @@ import dayjs, { Dayjs } from 'dayjs';
 import { formatMoney } from '../../primitives';
 import { RecordGatewayPayoutResult, recordSyndicGatewayPayout } from '../../../services/syndic-online-payment-service';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 import { apiErrorMessage } from './helpers';
 
 const { Text, Paragraph } = Typography;
@@ -86,7 +87,7 @@ export const PayoutModal: React.FC<PayoutModalProps> = ({
   return (
     <Modal
       open={open}
-      title={t('Enregistrer un reversement')}
+      title={<HelpSectionTitle title={t('Enregistrer un reversement')} helpId="syndic.paiements.reversement" />}
       onCancel={onClose}
       onOk={() => void submit()}
       okText={t('Enregistrer')}

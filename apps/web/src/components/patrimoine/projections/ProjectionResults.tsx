@@ -8,6 +8,7 @@ import type {
   ProjectionScenarioKey
 } from '../../../services/patrimoine-projections-service';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 import { activeLocale } from '../../../i18n/format';
 import { formatAmount } from '../actifs/asset-format';
 import {
@@ -35,7 +36,7 @@ export const ProjectionChartCard: React.FC<{
 }> = ({ data, baseScenario, compare }) => {
   const rows = buildChartRows(data);
   return (
-    <Card title={t('Valeur nette par année')}>
+    <Card title={<HelpSectionTitle title={t('Valeur nette par année')} helpId="patrimoine.projections.courbe" />}>
       <div
         role="img"
         aria-label={t('Courbe de la valeur nette par année ; les valeurs exactes figurent dans le tableau annuel.')}
@@ -93,6 +94,7 @@ export const ProjectionChartCard: React.FC<{
 export const ProjectionTableCard: React.FC<{ points: ProjectionPoint[] }> = ({ points }) => (
   <Card title={t('Tableau annuel')}>
     <Table<ProjectionPoint>
+      helpId="patrimoine.projections.tableau"
       exportFilename={t('Tableau annuel')}
       size="small"
       rowKey="year"
@@ -163,6 +165,7 @@ export const SimulationDeltaCard: React.FC<{ data: ProjectionResponse }> = ({ da
         </Typography.Paragraph>
       )}
       <Table<DeltaRow>
+        helpId="patrimoine.projections.ecart"
         exportFilename={t('Écart avec la base')}
         size="small"
         rowKey="year"

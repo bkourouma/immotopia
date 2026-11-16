@@ -121,6 +121,7 @@ export const AccountingPlanTab: React.FC<AccountingPlanTabProps> = ({
   return (
     <Table<ChartOfAccount>
       {...local.tableProps}
+      helpId="syndic.comptabilite.plan"
       exportFilename={t('Plan comptable')}
       exportFetchAll={local.exportAll}
       scroll={{ x: 'max-content' }}

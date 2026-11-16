@@ -206,6 +206,7 @@ export default function Installments() {
         <Row gutter={[16, 16]}>
           <Col xs={24} sm={12} lg={6}>
             <StatCard
+              helpId="portails.proprietaire.echeances.indicateurs"
               title={t('Total')}
               value={data.summary.total.toString()}
               icon={<CalendarOutlined style={{ color: '#1890ff' }} />}
@@ -244,6 +245,7 @@ export default function Installments() {
         <Row gutter={[16, 16]}>
           <Col xs={24} sm={12}>
             <StatCard
+              helpId="portails.proprietaire.echeances.montants"
               title={t('Montant total')}
               value={formatCurrency(data.summary.totalAmount)}
               icon={<DollarOutlined style={{ color: '#722ed1' }} />}
@@ -273,6 +275,7 @@ export default function Installments() {
           />
         )}
         <Table
+          helpId="portails.proprietaire.echeances.tableau"
           aria-label={t('Liste des échéances')}
           search={search.searchProps}
           exportFilename={t('Liste des échéances')}

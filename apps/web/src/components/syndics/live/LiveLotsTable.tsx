@@ -275,6 +275,7 @@ const LiveLotsTableInner: React.FC<LiveLotsTableProps> = ({
         </Space>
       )}
       <Table<LiveLotRow>
+        helpId="syndic.assemblees.detail.direct-presences"
         {...local.tableProps}
         aria-label={t('Lots de la séance')}
         exportable={false}

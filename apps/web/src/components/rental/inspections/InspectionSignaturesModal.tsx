@@ -4,6 +4,7 @@ import { SignaturesPanel } from '../../signature/SignaturesPanel';
 import { fetchSignatureContext } from '../../../services/signature-service';
 import type { SignerInput } from '../../../types/signature-types';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 
 interface InspectionSignaturesModalProps {
   open: boolean;
@@ -87,7 +88,7 @@ export const InspectionSignaturesModal: React.FC<InspectionSignaturesModalProps>
   return (
     <Modal
       open={open}
-      title={t('Signatures de l’état des lieux')}
+      title={<HelpSectionTitle title={t('Signatures de l’état des lieux')} helpId="locatif.edl.signatures" />}
       onCancel={onClose}
       footer={null}
       width={820}

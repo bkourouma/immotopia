@@ -4,6 +4,7 @@ import { CrmContactRoleType } from '../../types/crm-types';
 import { UserCheck } from 'lucide-react';
 import { t } from '../../i18n/t';
 import { getContactRoleLabel } from '../../utils/crm-utils';
+import { HelpSectionTitle } from '../../help';
 
 interface ConvertContactDialogProps {
   contactName: string;
@@ -56,7 +57,12 @@ export const ConvertContactDialog: React.FC<ConvertContactDialogProps> = ({
             <div className="bg-primary-bg rounded-full p-2">
               <UserCheck className="h-5 w-5 text-primary" />
             </div>
-            <h2 className="text-xl font-semibold">{t('Convertir le prospect en client')}</h2>
+            <h2 className="text-xl font-semibold">
+              <HelpSectionTitle
+                title={t('Convertir le prospect en client')}
+                helpId="commercial.contacts.detail.convertir"
+              />
+            </h2>
           </div>
 
           <p className="text-gray-600 mb-6">

@@ -16,6 +16,7 @@ import { TaxEstimateCard } from './TaxEstimateCard';
 import { TaxDisclaimer } from './TaxDisclaimer';
 import { t } from '../../../i18n/t';
 import { apiErrorMessage } from '../patrimoine-labels';
+import { HelpSectionTitle } from '../../../help';
 
 const { Title, Text } = Typography;
 
@@ -178,10 +179,13 @@ export const PropertyHoldingTaxSection: React.FC<PropertyHoldingTaxSectionProps>
   return (
     <div style={{ marginTop: 'var(--space-6)' }}>
       <Title level={3} style={{ fontSize: 'var(--font-size-h3)' }}>
-        {t('Détenteurs et fiscalité')}
+        <HelpSectionTitle title={t('Détenteurs et fiscalité')} helpId="patrimoine.entites.fiscalite-bien" />
       </Title>
 
-      <Card title={t('Détenteurs et quotes-parts')} style={{ marginBottom: 'var(--space-4)' }}>
+      <Card
+        title={<HelpSectionTitle title={t('Détenteurs et quotes-parts')} helpId="patrimoine.entites.detenteurs-bien" />}
+        style={{ marginBottom: 'var(--space-4)' }}
+      >
         {holdingsError && (
           <div role="alert" style={{ color: 'var(--color-error-text)', marginBottom: 'var(--space-3)' }}>
             {holdingsError}
@@ -231,7 +235,10 @@ export const PropertyHoldingTaxSection: React.FC<PropertyHoldingTaxSectionProps>
         </Space>
       </Card>
 
-      <Card title={t('Profil fiscal')} style={{ marginBottom: 'var(--space-4)' }}>
+      <Card
+        title={<HelpSectionTitle title={t('Profil fiscal')} helpId="patrimoine.entites.profil-fiscal" />}
+        style={{ marginBottom: 'var(--space-4)' }}
+      >
         {profileError && (
           <div role="alert" style={{ color: 'var(--color-error-text)', marginBottom: 'var(--space-3)' }}>
             {profileError}
@@ -299,7 +306,7 @@ export const PropertyHoldingTaxSection: React.FC<PropertyHoldingTaxSectionProps>
       </Card>
 
       <Card
-        title={t('Estimation fiscale')}
+        title={<HelpSectionTitle title={t('Estimation fiscale')} helpId="patrimoine.entites.estimation-bien" />}
         extra={
           <Select
             value={year}

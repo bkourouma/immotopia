@@ -150,6 +150,7 @@ export const WorkProgramsPage: React.FC = () => {
       <PageHeader title={t('Programmes de travaux')} subtitle={sousTitre(total)} />
 
       <DataView<WorkProgramAvecBien>
+        helpId="patrimoine.travaux.tableau"
         // Export de TOUS les programmes, avec les mêmes critères que la liste affichée.
         export={{
           filename: t('Programmes de travaux'),

@@ -31,6 +31,7 @@ import type { SearchCriterion } from '../../utils/list-search';
 import { montantSaisiProps } from '../../utils/montant-saisi';
 import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { writeErrorMessage } from '../../utils/error-handler';
+import { HelpSectionTitle, helpAnchor } from '../../help';
 import { TreasuryAccountSelector } from '../../components/finance/TreasuryAccountSelector';
 
 const { Text } = Typography;
@@ -168,6 +169,7 @@ const MouvementsSection: React.FC<{
 
   return (
     <DataView<OwnerMovement>
+      helpId="finance.compte-proprietaire.mouvements"
       scrollX={960}
       {...local.dataViewProps}
       search={{ ...local.searchProps, 'aria-label': t('Rechercher dans les mouvements') }}
@@ -221,6 +223,7 @@ const ReversementsSection: React.FC<{
 
   return (
     <DataView<OwnerPayout>
+      helpId="finance.compte-proprietaire.reversements"
       scrollX={880}
       {...local.dataViewProps}
       search={{ ...local.searchProps, 'aria-label': t('Rechercher dans les reversements') }}
@@ -494,6 +497,7 @@ export const CompteProprietaire: React.FC = () => {
   return (
     <>
       <PageHeader
+        helpId="finance.compte-proprietaire.page"
         title={data.ownerName}
         breadcrumbs={[
           ...filAriane,
@@ -503,14 +507,21 @@ export const CompteProprietaire: React.FC = () => {
         subtitle={data.email ?? undefined}
         primaryAction={
           peutReverser
-            ? { label: t('Nouveau reversement'), icon: <PlusOutlined />, onClick: ouvrirNouveauReversement }
+            ? {
+                label: t('Nouveau reversement'),
+                helpAnchor: 'reversement-nouveau',
+                icon: <PlusOutlined />,
+                onClick: ouvrirNouveauReversement
+              }
             : undefined
         }
       />
 
       <div style={{ marginBottom: 'var(--space-6)' }}>
-        <Text type="secondary">{t('Solde dû')}</Text>
-        <div>
+        <Text type="secondary">
+          <HelpSectionTitle title={t('Solde dû')} helpId="finance.compte-proprietaire.solde" />
+        </Text>
+        <div {...helpAnchor('reversement-solde')}>
           <span style={{ fontSize: 'var(--font-size-h1)', fontWeight: 'var(--font-weight-h1)' as unknown as number }}>
             <MoneyValue value={data.balance} signed />
           </span>
@@ -535,6 +546,7 @@ export const CompteProprietaire: React.FC = () => {
       {/* Deux sections, une seule requête (`getOwnerAccount`) : seul l'onglet
           affiché est monté, l'autre est détruit (`destroyOnHidden`). */}
       <Tabs
+        {...helpAnchor('reversement-onglets')}
         activeKey={onglet}
         onChange={changerOnglet}
         destroyOnHidden
@@ -574,7 +586,9 @@ export const CompteProprietaire: React.FC = () => {
       />
 
       <Modal
-        title={t('Nouveau reversement')}
+        title={
+          <HelpSectionTitle title={t('Nouveau reversement')} helpId="finance.compte-proprietaire.nouveau-reversement" />
+        }
         open={modalOuverte}
         onCancel={() => setModalOuverte(false)}
         onOk={enregistrerReversement}
@@ -662,7 +676,12 @@ export const CompteProprietaire: React.FC = () => {
       </Modal>
 
       <Modal
-        title={t('Annuler ce reversement ?')}
+        title={
+          <HelpSectionTitle
+            title={t('Annuler ce reversement ?')}
+            helpId="finance.compte-proprietaire.annuler-reversement"
+          />
+        }
         open={Boolean(payoutAAnnuler)}
         onCancel={() => setPayoutAAnnuler(null)}
         onOk={annulerReversement}

@@ -10,6 +10,7 @@ import {
 import type { OwnerStatementSecureLink, SendMonthlyReportResult } from '../../types/patrimoine-types';
 import { activeLocale } from '../../i18n/format';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 const { Paragraph } = Typography;
 
@@ -155,7 +156,7 @@ export const OwnerStatementSecureLinks: React.FC<OwnerStatementSecureLinksProps>
   };
 
   return (
-    <Card title={t('Rapport mensuel et liens sécurisés')}>
+    <Card title={<HelpSectionTitle title={t('Rapport mensuel et liens sécurisés')} helpId="patrimoine.releve.liens" />}>
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         <Paragraph type="secondary" style={{ margin: 0 }}>
           {t(
@@ -187,6 +188,7 @@ export const OwnerStatementSecureLinks: React.FC<OwnerStatementSecureLinksProps>
           />
         ) : null}
         <Table
+          helpId="patrimoine.releve.liens-actifs"
           exportFilename={t('Liens actifs')}
           scroll={{ x: 'max-content' }}
           rowKey="id"

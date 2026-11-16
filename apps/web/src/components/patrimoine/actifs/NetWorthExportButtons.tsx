@@ -7,6 +7,7 @@ import {
 } from '../../../services/patrimoine-net-worth-export-service';
 import { saveBlob } from '../../../utils/save-blob';
 import { t } from '../../../i18n/t';
+import { HelpButton } from '../../../help';
 
 /**
  * Message d'un export en échec : `apiClient` demande `responseType: 'blob'`,
@@ -61,6 +62,7 @@ export const NetWorthExportButtons: React.FC<{ tenantId: string }> = ({ tenantId
       >
         {t('Exporter en Excel')}
       </Button>
+      <HelpButton size="small" helpId="patrimoine.valeur-nette.exports" />
     </Space>
   );
 };

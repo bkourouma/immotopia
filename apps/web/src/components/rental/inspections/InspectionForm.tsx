@@ -21,6 +21,7 @@ import { countItems, countUnevaluated, unevaluatedReason } from './inspection-co
 import { countMissingWithoutDeduction, proposeDeductions } from './deduction-proposals';
 import { clearLocalDraft, loadLocalDraft, saveLocalDraft } from './local-draft-storage';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 
 const { TextArea } = Input;
 const { Text, Title } = Typography;
@@ -390,7 +391,12 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
 
       <Card>
         <Space direction="vertical" size="small" style={{ width: '100%' }}>
-          <Title level={5}>{isExit ? t('État des lieux de sortie') : t("État des lieux d'entrée")}</Title>
+          <Title level={5}>
+            <HelpSectionTitle
+              title={isExit ? t('État des lieux de sortie') : t("État des lieux d'entrée")}
+              helpId="locatif.edl.saisie"
+            />
+          </Title>
           <Text>{t('Date de l’état des lieux')}</Text>
           <DatePicker
             value={inspectionDate}
@@ -402,7 +408,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
       </Card>
 
       <Card
-        title={t('Pièces')}
+        title={<HelpSectionTitle title={t('Pièces')} helpId="locatif.edl.pieces" />}
         extra={
           <Text type={evaluatedItems < totalItems ? 'warning' : 'secondary'}>
             {t('{{evalues}} éléments évalués sur {{total}}', { evalues: evaluatedItems, total: totalItems })}
@@ -473,7 +479,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
       </Card>
 
       {isExit && (
-        <Card title={t('Retenues sur le dépôt de garantie')}>
+        <Card title={<HelpSectionTitle title={t('Retenues sur le dépôt de garantie')} helpId="locatif.edl.retenues" />}>
           <DeductionsSection
             deductions={deductions}
             readOnly={false}
@@ -483,7 +489,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
         </Card>
       )}
 
-      <Card title={t('Signatures')}>
+      <Card title={<HelpSectionTitle title={t('Signatures')} helpId="locatif.edl.signatures" />}>
         <Space direction="vertical" style={{ width: '100%' }} size="middle">
           <Space align="center">
             <Switch checked={tenantPresent} onChange={setTenantPresent} />

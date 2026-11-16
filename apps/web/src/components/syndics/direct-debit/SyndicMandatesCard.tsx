@@ -163,6 +163,7 @@ export const SyndicMandatesCard: React.FC<SyndicMandatesCardProps> = ({ tenantId
           <Alert type="error" showIcon message={apiErrorMessage(error, t('Erreur lors du chargement des mandats'))} />
         )}
         <Table<MandateDto>
+          helpId="syndic.prelevements.mandats"
           aria-label={t('Mandats de prélèvement')}
           search={search.searchProps}
           exportFilename={t('Mandats de prélèvement')}

@@ -227,6 +227,7 @@ export const Properties: React.FC = () => {
   return (
     <>
       <PageHeader
+        helpId="commercial.biens.liste"
         title={t('Biens')}
         subtitle={
           total > 0
@@ -243,6 +244,7 @@ export const Properties: React.FC = () => {
       />
 
       <DataView<Property>
+        helpId="commercial.biens.liste.cartes"
         layout="grid"
         // Export de TOUS les biens, avec les mêmes filtres que la liste affichée.
         export={{

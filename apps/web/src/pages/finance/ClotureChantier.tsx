@@ -42,6 +42,7 @@ import {
   useConfirmAction
 } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle, helpAnchor } from '../../help';
 import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion } from '../../utils/list-search';
 
@@ -693,6 +694,7 @@ export const ClotureChantier: React.FC = () => {
   return (
     <>
       <PageHeader
+        helpId="finance.cloture-chantier.page"
         title={t('{{siteLabel}} — lots et clôture', { siteLabel: repartition.siteLabel })}
         breadcrumbs={filAriane}
         extra={<StatusTag status={clos ? 'CLOSED' : 'IN_PROGRESS'} label={clos ? t('Clôturé') : t('Ouvert')} />}
@@ -703,27 +705,29 @@ export const ClotureChantier: React.FC = () => {
         l'état : voir l'en-tête. Elle est en haut, avant les chiffres, parce
         qu'elle dit comment les lire.
       */}
-      {clos ? (
-        <Alert
-          type="success"
-          showIcon
-          style={{ marginBottom: 'var(--space-4)' }}
-          message={t('Chantier clôturé : les coûts de revient ci-dessous sont définitifs.')}
-          description={t(
-            "Le coût du chantier a été figé à la clôture. Le chantier n'accepte plus aucune imputation — facture, pièce de caisse, note de salaire ou situation d'avancement — et ces montants ne bougeront plus."
-          )}
-        />
-      ) : (
-        <Alert
-          type="warning"
-          showIcon
-          style={{ marginBottom: 'var(--space-4)' }}
-          message={t('Chantier ouvert : les coûts de revient ci-dessous sont une estimation.')}
-          description={t(
-            "Ils valent la part de chaque lot dans le coût réel à cet instant. Toute facture, pièce de caisse ou note de salaire validée ensuite les fera bouger. Ne fixez aucun prix de vente sur ces montants tant que le chantier n'est pas clôturé."
-          )}
-        />
-      )}
+      <div {...helpAnchor('cloture-bandeau')}>
+        {clos ? (
+          <Alert
+            type="success"
+            showIcon
+            style={{ marginBottom: 'var(--space-4)' }}
+            message={t('Chantier clôturé : les coûts de revient ci-dessous sont définitifs.')}
+            description={t(
+              "Le coût du chantier a été figé à la clôture. Le chantier n'accepte plus aucune imputation — facture, pièce de caisse, note de salaire ou situation d'avancement — et ces montants ne bougeront plus."
+            )}
+          />
+        ) : (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 'var(--space-4)' }}
+            message={t('Chantier ouvert : les coûts de revient ci-dessous sont une estimation.')}
+            description={t(
+              "Ils valent la part de chaque lot dans le coût réel à cet instant. Toute facture, pièce de caisse ou note de salaire validée ensuite les fera bouger. Ne fixez aucun prix de vente sur ces montants tant que le chantier n'est pas clôturé."
+            )}
+          />
+        )}
+      </div>
 
       <div
         style={{
@@ -735,6 +739,7 @@ export const ClotureChantier: React.FC = () => {
       >
         {/* Tous ces chiffres arrivent calculés du serveur (P-4). */}
         <StatCard
+          helpId="finance.cloture-chantier.indicateurs"
           label={t('Coût réparti sur les lots')}
           value={<MoneyValue value={repartition.totalCost} />}
           hint={clos ? t('Coût figé à la clôture') : t("Coût réel à l'instant de la lecture")}
@@ -776,109 +781,114 @@ export const ClotureChantier: React.FC = () => {
 
       <Title level={4}>{t('Lots du chantier')}</Title>
 
-      <DataView<SiteLot>
-        scrollX={980}
-        {...rechercheLots.dataViewProps}
-        emptyDescription={t('Ce chantier ne produit encore aucun lot.')}
-        columns={colonnesLots}
-        rowKey={lot => lot.id}
-        aria-label={t('Lots du chantier')}
-        export={{ filename: t('Lots du chantier'), fetchAll: rechercheLots.exportAll }}
-        renderCard={lot => (
-          <DataCard
-            title={lot.name}
-            aria-label={lot.name}
-            highlight={<MoneyValue value={lot.costPrice} />}
-            subtitle={
-              lot.propertyLabel
-                ? t('Au patrimoine : {{propertyLabel}}', { propertyLabel: lot.propertyLabel })
-                : undefined
-            }
-            {...actionsCarteDuLot(lot)}
-            fields={[
-              { label: t('Part'), value: pourcentage(lot.sharePercent) },
-              { label: t('Surface'), value: surfaceOuTiret(lot.surfaceArea) },
-              {
-                label: t('Quote-part saisie'),
-                value: lot.manualSharePercent === null ? '—' : pourcentage(lot.manualSharePercent)
+      <div {...helpAnchor('cloture-lots')}>
+        <DataView<SiteLot>
+          helpId="finance.cloture-chantier.lots"
+          scrollX={980}
+          {...rechercheLots.dataViewProps}
+          emptyDescription={t('Ce chantier ne produit encore aucun lot.')}
+          columns={colonnesLots}
+          rowKey={lot => lot.id}
+          aria-label={t('Lots du chantier')}
+          export={{ filename: t('Lots du chantier'), fetchAll: rechercheLots.exportAll }}
+          renderCard={lot => (
+            <DataCard
+              title={lot.name}
+              aria-label={lot.name}
+              highlight={<MoneyValue value={lot.costPrice} />}
+              subtitle={
+                lot.propertyLabel
+                  ? t('Au patrimoine : {{propertyLabel}}', { propertyLabel: lot.propertyLabel })
+                  : undefined
               }
-            ]}
-          />
-        )}
-      />
-
-      <Bloc titre={t('Clé de répartition')}>
-        <Paragraph type="secondary" style={{ marginBottom: 'var(--space-3)' }}>
-          {t(
-            'La clé décide de la part de chaque lot, et donc de son coût de revient. Le serveur refuse une clé que les lots ne supportent pas plutôt que de répartir à moitié.'
-          )}
-        </Paragraph>
-        <Space wrap align="end" size="middle">
-          <div style={{ minWidth: 260 }}>
-            <div>
-              <label htmlFor="cle-repartition">{t('Clé de répartition')}</label>
-            </div>
-            <Select
-              id="cle-repartition"
-              style={{ width: '100%' }}
-              placeholder={t('Choisir une clé')}
-              value={cleChoisie ?? repartition.allocationMethod ?? undefined}
-              onChange={valeur => setCleChoisie(valeur)}
-              disabled={clos || unLotABascule}
-              options={CLES.map(cle => ({ value: cle, label: ALLOCATION_METHOD_LABELS[cle] }))}
+              {...actionsCarteDuLot(lot)}
+              fields={[
+                { label: t('Part'), value: pourcentage(lot.sharePercent) },
+                { label: t('Surface'), value: surfaceOuTiret(lot.surfaceArea) },
+                {
+                  label: t('Quote-part saisie'),
+                  value: lot.manualSharePercent === null ? '—' : pourcentage(lot.manualSharePercent)
+                }
+              ]}
             />
-          </div>
-          <Button
-            type="primary"
-            loading={cleEnCours}
-            disabled={!cleChoisie || clos || unLotABascule}
-            onClick={appliquerCle}
-          >
-            {t('Appliquer la clé')}
-          </Button>
-        </Space>
-        <Paragraph type="secondary" style={{ marginTop: 'var(--space-2)', marginBottom: 0 }}>
-          {ALLOCATION_METHOD_REQUIREMENTS[cleChoisie ?? repartition.allocationMethod ?? 'EQUAL']}
-        </Paragraph>
+          )}
+        />
+      </div>
 
-        {/*
+      <div {...helpAnchor('cloture-cle')}>
+        <Bloc titre={<HelpSectionTitle title={t('Clé de répartition')} helpId="finance.cloture-chantier.cle" />}>
+          <Paragraph type="secondary" style={{ marginBottom: 'var(--space-3)' }}>
+            {t(
+              'La clé décide de la part de chaque lot, et donc de son coût de revient. Le serveur refuse une clé que les lots ne supportent pas plutôt que de répartir à moitié.'
+            )}
+          </Paragraph>
+          <Space wrap align="end" size="middle">
+            <div style={{ minWidth: 260 }}>
+              <div>
+                <label htmlFor="cle-repartition">{t('Clé de répartition')}</label>
+              </div>
+              <Select
+                id="cle-repartition"
+                style={{ width: '100%' }}
+                placeholder={t('Choisir une clé')}
+                value={cleChoisie ?? repartition.allocationMethod ?? undefined}
+                onChange={valeur => setCleChoisie(valeur)}
+                disabled={clos || unLotABascule}
+                options={CLES.map(cle => ({ value: cle, label: ALLOCATION_METHOD_LABELS[cle] }))}
+              />
+            </div>
+            <Button
+              type="primary"
+              loading={cleEnCours}
+              disabled={!cleChoisie || clos || unLotABascule}
+              onClick={appliquerCle}
+            >
+              {t('Appliquer la clé')}
+            </Button>
+          </Space>
+          <Paragraph type="secondary" style={{ marginTop: 'var(--space-2)', marginBottom: 0 }}>
+            {ALLOCATION_METHOD_REQUIREMENTS[cleChoisie ?? repartition.allocationMethod ?? 'EQUAL']}
+          </Paragraph>
+
+          {/*
           La somme des quotes-parts SAISIES — la seule valeur calculée ici, et
           uniquement parce qu'elle n'existe pas côté serveur tant que la clé
           n'est pas posée. Elle ne bloque rien : on doit pouvoir saisir un lot
           isolé pour reconfigurer.
         */}
-        {(cleChoisie ?? repartition.allocationMethod) === 'MANUAL' && (
-          <Paragraph style={{ marginTop: 'var(--space-3)', marginBottom: 0 }}>
-            <strong>
-              {t('Somme des quotes-parts saisies :')} {pourcentage(sommeQuotesParts)}
-            </strong>{' '}
-            {sommeQuotesParts === 100
-              ? t('— le total vaut cent, la clé peut être posée.')
-              : sommeQuotesParts < 100
-                ? t('— il manque {{value}} pour atteindre cent.', {
-                    value: pourcentage(arrondiDeuxDecimales(100 - sommeQuotesParts))
-                  })
-                : t('— le total dépasse cent de {{value}}.', {
-                    value: pourcentage(arrondiDeuxDecimales(sommeQuotesParts - 100))
-                  })}
-          </Paragraph>
-        )}
+          {(cleChoisie ?? repartition.allocationMethod) === 'MANUAL' && (
+            <Paragraph style={{ marginTop: 'var(--space-3)', marginBottom: 0 }}>
+              <strong>
+                {t('Somme des quotes-parts saisies :')} {pourcentage(sommeQuotesParts)}
+              </strong>{' '}
+              {sommeQuotesParts === 100
+                ? t('— le total vaut cent, la clé peut être posée.')
+                : sommeQuotesParts < 100
+                  ? t('— il manque {{value}} pour atteindre cent.', {
+                      value: pourcentage(arrondiDeuxDecimales(100 - sommeQuotesParts))
+                    })
+                  : t('— le total dépasse cent de {{value}}.', {
+                      value: pourcentage(arrondiDeuxDecimales(sommeQuotesParts - 100))
+                    })}
+            </Paragraph>
+          )}
 
-        {unLotABascule && (
-          <Alert
-            type="info"
-            showIcon
-            style={{ marginTop: 'var(--space-3)' }}
-            message={t('La répartition de ce chantier est figée.')}
-            description={t(
-              'Un lot a basculé au patrimoine : le bien créé porte déjà son coût de revient. Changer la clé, corriger ou supprimer un lot changerait la part de tous les autres, et ce bien porterait alors une valeur qui ne correspondrait plus à rien.'
-            )}
-          />
-        )}
-      </Bloc>
+          {unLotABascule && (
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginTop: 'var(--space-3)' }}
+              message={t('La répartition de ce chantier est figée.')}
+              description={t(
+                'Un lot a basculé au patrimoine : le bien créé porte déjà son coût de revient. Changer la clé, corriger ou supprimer un lot changerait la part de tous les autres, et ce bien porterait alors une valeur qui ne correspondrait plus à rien.'
+              )}
+            />
+          )}
+        </Bloc>
+      </div>
 
       {!clos && !unLotABascule && (
-        <Bloc titre={t('Ajouter un lot')}>
+        <Bloc titre={<HelpSectionTitle title={t('Ajouter un lot')} helpId="finance.cloture-chantier.ajout-lot" />}>
           <Space wrap size="middle" align="end">
             <div>
               <div>
@@ -947,162 +957,164 @@ export const ClotureChantier: React.FC = () => {
       {/* La clôture                                                     */}
       {/* ------------------------------------------------------------- */}
 
-      <Title level={4} style={{ marginTop: 'var(--space-6)' }}>
-        {t('Clôture du chantier')}
-      </Title>
+      <div {...helpAnchor('cloture-zone')}>
+        <Title level={4} style={{ marginTop: 'var(--space-6)' }}>
+          <HelpSectionTitle title={t('Clôture du chantier')} helpId="finance.cloture-chantier.cloture" />
+        </Title>
 
-      {erreurBloqueurs && (
-        <Alert
-          type="error"
-          showIcon
-          style={{ marginBottom: 'var(--space-3)' }}
-          message={t('Impossible de savoir ce qui empêche de clôturer.')}
-          description={t(
-            'La clôture reste possible, mais le serveur appliquera ses propres vérifications sans que cet écran ait pu les annoncer.'
-          )}
-        />
-      )}
+        {erreurBloqueurs && (
+          <Alert
+            type="error"
+            showIcon
+            style={{ marginBottom: 'var(--space-3)' }}
+            message={t('Impossible de savoir ce qui empêche de clôturer.')}
+            description={t(
+              'La clôture reste possible, mais le serveur appliquera ses propres vérifications sans que cet écran ait pu les annoncer.'
+            )}
+          />
+        )}
 
-      {!clos && (
-        <>
-          {nombreBloqueurs > 0 ? (
-            <Alert
-              type="warning"
-              showIcon
-              style={{ marginBottom: 'var(--space-3)' }}
-              message={
-                totalPiecesBloquantes > 0
-                  ? t(
-                      '{{nombreBloqueurs}} raison{{value}} empêche{{value2}} de clôturer ce chantier ({{totalPiecesBloquantes}} pièce{{value3}} concernée{{value4}}).',
-                      {
+        {!clos && (
+          <>
+            {nombreBloqueurs > 0 ? (
+              <Alert
+                type="warning"
+                showIcon
+                style={{ marginBottom: 'var(--space-3)' }}
+                message={
+                  totalPiecesBloquantes > 0
+                    ? t(
+                        '{{nombreBloqueurs}} raison{{value}} empêche{{value2}} de clôturer ce chantier ({{totalPiecesBloquantes}} pièce{{value3}} concernée{{value4}}).',
+                        {
+                          nombreBloqueurs: nombreBloqueurs,
+                          value: nombreBloqueurs > 1 ? 's' : '',
+                          value2: nombreBloqueurs > 1 ? 'nt' : '',
+                          totalPiecesBloquantes: totalPiecesBloquantes,
+                          value3: totalPiecesBloquantes > 1 ? 's' : '',
+                          value4: totalPiecesBloquantes > 1 ? 's' : ''
+                        }
+                      )
+                    : t('{{nombreBloqueurs}} raison{{value}} empêche{{value2}} de clôturer ce chantier.', {
                         nombreBloqueurs: nombreBloqueurs,
                         value: nombreBloqueurs > 1 ? 's' : '',
-                        value2: nombreBloqueurs > 1 ? 'nt' : '',
-                        totalPiecesBloquantes: totalPiecesBloquantes,
-                        value3: totalPiecesBloquantes > 1 ? 's' : '',
-                        value4: totalPiecesBloquantes > 1 ? 's' : ''
-                      }
-                    )
-                  : t('{{nombreBloqueurs}} raison{{value}} empêche{{value2}} de clôturer ce chantier.', {
-                      nombreBloqueurs: nombreBloqueurs,
-                      value: nombreBloqueurs > 1 ? 's' : '',
-                      value2: nombreBloqueurs > 1 ? 'nt' : ''
-                    })
-              }
-              description={
-                <>
-                  {parcoursDeStock ? (
-                    <Paragraph style={{ marginBottom: 'var(--space-2)' }}>
-                      {t(
-                        'Faites d’abord l’inventaire de clôture du lieu de stockage, puis transférez ce qui reste vers un magasin.'
-                      )}
-                    </Paragraph>
-                  ) : null}
-                  <ul style={{ margin: 0, paddingInlineStart: 'var(--space-5)' }}>
-                    {/* Le message du serveur est affiché TEL QUEL : il est écrit
+                        value2: nombreBloqueurs > 1 ? 'nt' : ''
+                      })
+                }
+                description={
+                  <>
+                    {parcoursDeStock ? (
+                      <Paragraph style={{ marginBottom: 'var(--space-2)' }}>
+                        {t(
+                          'Faites d’abord l’inventaire de clôture du lieu de stockage, puis transférez ce qui reste vers un magasin.'
+                        )}
+                      </Paragraph>
+                    ) : null}
+                    <ul style={{ margin: 0, paddingInlineStart: 'var(--space-5)' }}>
+                      {/* Le message du serveur est affiché TEL QUEL : il est écrit
                         pour être lu, et le réécrire ici le ferait diverger. Un
                         bloqueur de stock reçoit en plus un lien d'action, et
                         le reste du lieu son nombre d'articles (ou rien, en
                         comptage à l'aveugle). */}
-                    {listeBloqueurs.map(bloqueur => {
-                      const action = actionDeBloqueur(tenantId, bloqueur);
-                      const detail = detailDuReste(bloqueur);
-                      return (
-                        <li key={`${bloqueur.documentType ?? 'piece'}-${bloqueur.message}`}>
-                          {bloqueur.message}
-                          {detail ? (
-                            <>
-                              {' '}
-                              <Text type="secondary">{detail}</Text>
-                            </>
-                          ) : null}
-                          {action ? (
-                            <>
-                              {' '}
-                              <Link to={action.to}>{action.label}</Link>
-                            </>
-                          ) : null}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </>
-              }
-            />
-          ) : (
-            <Alert
-              type="success"
-              showIcon
-              style={{ marginBottom: 'var(--space-3)' }}
-              message={t("Rien n'empêche de clôturer ce chantier.")}
-              description={t(
-                'Aucune pièce en brouillon ni aucun stock ne le vise. Ce sont exactement les vérifications que le serveur appliquera.'
-              )}
-            />
-          )}
-
-          {nombreBloqueurs > 0 ? (
-            <Button type="primary" disabled>
-              {t('Clôturer le chantier')}
-            </Button>
-          ) : (
-            <ConfirmAction
-              title={t('Clôturer le chantier « {{siteLabel}} » ?', { siteLabel: repartition.siteLabel })}
-              description={t(
-                "Le coût du chantier sera figé à sa valeur actuelle, et il n'acceptera plus aucune imputation. C'est ce qui rend les coûts de revient des lots définitifs. Le chantier peut être rouvert tant qu'aucun lot n'a basculé au patrimoine."
-              )}
-              okText={t('Confirmer la clôture')}
-              onConfirm={cloturer}
-            >
-              <Button type="primary">{t('Clôturer le chantier')}</Button>
-            </ConfirmAction>
-          )}
-        </>
-      )}
-
-      {clos && (
-        <>
-          {dernierGesteCloture && (
-            <Paragraph>
-              {t('Clôturé le')} {dayjs(dernierGesteCloture.closedAt).format('DD/MM/YYYY')} {t('par')}{' '}
-              {dernierGesteCloture.closedByLabel}
-              {t(', coût figé à')} <MoneyValue value={dernierGesteCloture.finalCost} />.
-            </Paragraph>
-          )}
-
-          {unLotABascule ? (
-            <>
+                      {listeBloqueurs.map(bloqueur => {
+                        const action = actionDeBloqueur(tenantId, bloqueur);
+                        const detail = detailDuReste(bloqueur);
+                        return (
+                          <li key={`${bloqueur.documentType ?? 'piece'}-${bloqueur.message}`}>
+                            {bloqueur.message}
+                            {detail ? (
+                              <>
+                                {' '}
+                                <Text type="secondary">{detail}</Text>
+                              </>
+                            ) : null}
+                            {action ? (
+                              <>
+                                {' '}
+                                <Link to={action.to}>{action.label}</Link>
+                              </>
+                            ) : null}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </>
+                }
+              />
+            ) : (
               <Alert
-                type="info"
+                type="success"
                 showIcon
                 style={{ marginBottom: 'var(--space-3)' }}
-                message={t('Ce chantier ne peut plus être rouvert : un lot a basculé au patrimoine.')}
+                message={t("Rien n'empêche de clôturer ce chantier.")}
                 description={t(
-                  "Un bien existe désormais, et sa valeur d'acquisition vient du coût de revient figé de ce lot. Rouvrir le chantier ferait de nouveau bouger ce coût, et le bien porterait une valeur que plus rien ne justifierait. Défaire la bascule voudrait dire supprimer un bien qui vit peut-être déjà sa vie — loué, publié, rattaché à un bail."
+                  'Aucune pièce en brouillon ni aucun stock ne le vise. Ce sont exactement les vérifications que le serveur appliquera.'
                 )}
               />
-              <Button disabled>{t('Rouvrir le chantier')}</Button>
-            </>
-          ) : (
-            <ConfirmAction
-              title={t('Rouvrir le chantier « {{siteLabel}} » ?', { siteLabel: repartition.siteLabel })}
-              description={t(
-                'Le coût figé sera effacé et redeviendra dérivé des imputations, qui seront de nouveau acceptées. Les coûts de revient des lots redeviendront des estimations.'
-              )}
-              okText={t('Confirmer la réouverture')}
-              onConfirm={rouvrir}
-            >
-              <Button>{t('Rouvrir le chantier')}</Button>
-            </ConfirmAction>
-          )}
-
-          <Paragraph type="secondary" style={{ marginTop: 'var(--space-3)' }}>
-            {t(
-              "Chaque lot peut maintenant basculer au patrimoine, depuis sa ligne dans le tableau ci-dessus. La bascule crée un bien réel : elle est irréversible et ne se fait qu'une fois par lot."
             )}
-          </Paragraph>
-        </>
-      )}
+
+            {nombreBloqueurs > 0 ? (
+              <Button type="primary" disabled>
+                {t('Clôturer le chantier')}
+              </Button>
+            ) : (
+              <ConfirmAction
+                title={t('Clôturer le chantier « {{siteLabel}} » ?', { siteLabel: repartition.siteLabel })}
+                description={t(
+                  "Le coût du chantier sera figé à sa valeur actuelle, et il n'acceptera plus aucune imputation. C'est ce qui rend les coûts de revient des lots définitifs. Le chantier peut être rouvert tant qu'aucun lot n'a basculé au patrimoine."
+                )}
+                okText={t('Confirmer la clôture')}
+                onConfirm={cloturer}
+              >
+                <Button type="primary">{t('Clôturer le chantier')}</Button>
+              </ConfirmAction>
+            )}
+          </>
+        )}
+
+        {clos && (
+          <>
+            {dernierGesteCloture && (
+              <Paragraph>
+                {t('Clôturé le')} {dayjs(dernierGesteCloture.closedAt).format('DD/MM/YYYY')} {t('par')}{' '}
+                {dernierGesteCloture.closedByLabel}
+                {t(', coût figé à')} <MoneyValue value={dernierGesteCloture.finalCost} />.
+              </Paragraph>
+            )}
+
+            {unLotABascule ? (
+              <>
+                <Alert
+                  type="info"
+                  showIcon
+                  style={{ marginBottom: 'var(--space-3)' }}
+                  message={t('Ce chantier ne peut plus être rouvert : un lot a basculé au patrimoine.')}
+                  description={t(
+                    "Un bien existe désormais, et sa valeur d'acquisition vient du coût de revient figé de ce lot. Rouvrir le chantier ferait de nouveau bouger ce coût, et le bien porterait une valeur que plus rien ne justifierait. Défaire la bascule voudrait dire supprimer un bien qui vit peut-être déjà sa vie — loué, publié, rattaché à un bail."
+                  )}
+                />
+                <Button disabled>{t('Rouvrir le chantier')}</Button>
+              </>
+            ) : (
+              <ConfirmAction
+                title={t('Rouvrir le chantier « {{siteLabel}} » ?', { siteLabel: repartition.siteLabel })}
+                description={t(
+                  'Le coût figé sera effacé et redeviendra dérivé des imputations, qui seront de nouveau acceptées. Les coûts de revient des lots redeviendront des estimations.'
+                )}
+                okText={t('Confirmer la réouverture')}
+                onConfirm={rouvrir}
+              >
+                <Button>{t('Rouvrir le chantier')}</Button>
+              </ConfirmAction>
+            )}
+
+            <Paragraph type="secondary" style={{ marginTop: 'var(--space-3)' }}>
+              {t(
+                "Chaque lot peut maintenant basculer au patrimoine, depuis sa ligne dans le tableau ci-dessus. La bascule crée un bien réel : elle est irréversible et ne se fait qu'une fois par lot."
+              )}
+            </Paragraph>
+          </>
+        )}
+      </div>
 
       {/* ------------------------------------------------------------- */}
       {/* Correction d'un lot                                            */}
@@ -1167,9 +1179,14 @@ export const ClotureChantier: React.FC = () => {
 
       <Modal
         title={
-          lotABasculer
-            ? t('Basculer « {{name}} » au patrimoine', { name: lotABasculer.name })
-            : t('Basculer au patrimoine')
+          <HelpSectionTitle
+            title={
+              lotABasculer
+                ? t('Basculer « {{name}} » au patrimoine', { name: lotABasculer.name })
+                : t('Basculer au patrimoine')
+            }
+            helpId="finance.cloture-chantier.bascule"
+          />
         }
         open={Boolean(lotABasculer)}
         onCancel={() => setLotABasculer(null)}
@@ -1329,7 +1346,7 @@ export const ClotureChantier: React.FC = () => {
 };
 
 /** Encadré de saisie, extrait par lisibilité — aucune logique propre. */
-function Bloc(props: { titre: string; children: React.ReactNode }) {
+function Bloc(props: { titre: React.ReactNode; children: React.ReactNode }) {
   return (
     <div
       style={{

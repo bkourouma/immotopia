@@ -3,6 +3,7 @@ import { Alert, Form, Input, InputNumber, Modal, DatePicker } from 'antd';
 import dayjs, { Dayjs } from 'dayjs';
 import { ReviseLeaseRequest } from '../../../services/lease-lifecycle-service';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 
 /** Plus grand montant que la base sait porter (Decimal 12,2), aligné sur l'API. */
 const MONTANT_MAX = 9_999_999_999.99;
@@ -82,7 +83,7 @@ export const RevisionModal: React.FC<RevisionModalProps> = ({
 
   return (
     <Modal
-      title={t('Réviser le loyer')}
+      title={<HelpSectionTitle title={t('Réviser le loyer')} helpId="locatif.baux.fiche.vie.revision" />}
       open={open}
       onCancel={onCancel}
       onOk={() => form.submit()}

@@ -16,6 +16,7 @@ import type { VisioMuteSource } from '../../../services/syndic-service';
 import { formatDateTime } from '../live/live-labels';
 import type { VisioDiscussionAdapter } from './use-visio-discussion';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 
 const { Text } = Typography;
 
@@ -426,7 +427,7 @@ export const MeetingVisioCard: React.FC<MeetingVisioCardProps> = ({
   return (
     <Card
       size="small"
-      title={t('Visio intégrée')}
+      title={<HelpSectionTitle title={t('Visio intégrée')} helpId="syndic.assemblees.detail.direct-visio" />}
       extra={
         !frozen ? (
           <Button type={roomOpen ? 'default' : 'primary'} onClick={onToggleRoom}>

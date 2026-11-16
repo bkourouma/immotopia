@@ -5,6 +5,7 @@ import type { InsuranceClaimDetailDto, InsuranceClaimStatus } from '../../types/
 import { apiErrorMessage } from '../patrimoine/patrimoine-labels';
 import { feedback } from '../../lib/feedback';
 import { t } from '../../i18n/t';
+import { HelpButton } from '../../help';
 import { claimStatusLabel, currencyLabel } from './insurance-labels';
 
 interface Props {
@@ -79,6 +80,7 @@ export const ClaimTransitionActions: React.FC<Props> = ({ tenantId, claim, onCha
             {t('Passer à « {{statut}} »', { statut: claimStatusLabel(status) })}
           </Button>
         ))}
+        <HelpButton helpId="patrimoine.sinistres.transitions" />
       </Space>
       <Modal
         open={target !== null}

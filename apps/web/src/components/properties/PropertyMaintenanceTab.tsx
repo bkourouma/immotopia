@@ -9,6 +9,7 @@ import { propertyMaintenanceService } from '../../services/maintenance-service';
 import { Ticket, MaintenanceTicketStatus } from '../../types/maintenance-types';
 import { safeFormatDate } from '../../utils/date-utils';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 import { localizedRecord } from '../../i18n/localized';
 
 const { Title } = Typography;
@@ -183,7 +184,7 @@ export const PropertyMaintenanceTab: React.FC<PropertyMaintenanceTabProps> = ({ 
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         <div className="it-toolbar">
           <Title level={5} className="it-toolbar__title" style={{ margin: 0 }}>
-            {t('Historique de maintenance')}
+            <HelpSectionTitle title={t('Historique de maintenance')} helpId="commercial.biens.detail.maintenance" />
           </Title>
         </div>
 
@@ -194,6 +195,7 @@ export const PropertyMaintenanceTab: React.FC<PropertyMaintenanceTabProps> = ({ 
           />
         ) : (
           <Table
+            helpId="commercial.biens.detail.maintenance.tableau"
             exportFilename={t('Historique de maintenance')}
             {...local.tableProps}
             exportFetchAll={local.exportAll}

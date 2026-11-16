@@ -17,6 +17,55 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 
 Modèle de section : voir le bloc « Modèle de section » plus bas.
 
+## orch/2026-11-14-aide-interne — 2026-11-14
+
+**État** — PR 222. Branche d'intégration `orch/2026-11-14-aide-interne` depuis `origin/main` `af33a6da`, poussée ; PR vers `main` (fusion par l'utilisateur). Rien déployé ; migration `20261114100000_help_feedback` (additive : une table) appliquée sur aucune base. Orchestration chef-orchestre : lots A, 0/0b, C1 à C7, Z1 à Z3 ; suivi local dans `.orchestration/2026-11-14-aide-interne/suivi.md`.
+
+**Fait** — Aide interne contextuelle : un « ? » sur chaque page, tableau, carte, section et onglet. Il ouvre un panneau qui présente l'objectif, la lecture (colonnes, statuts), la procédure, les conséquences, une FAQ, les droits et des liens « voir aussi ». S'y ajoutent :
+
+- le centre d'aide `/aide` et la touche F1 ;
+- des visites guidées proposées une fois par écran clé ;
+- « Demander à ImmoCopilot », qui envoie la fiche courante à l'assistant ;
+- un avis « utile ? » avec question libre. Il remonte au super-admin (`/admin/help-feedback`) et à l'admin d'agence (`/tenant/:tenantId/admin/help-feedback`, `TENANT_AUDIT_VIEW`).
+
+Le contenu est en fr, en et ar, hors catalogues i18n (ADR-009) : 1018 fiches par langue dans `apps/web/src/help/content/<module>/`, chargées à la demande. Le guide de rédaction est dans `docs/aide/GUIDE_REDACTION.md`, le glossaire arabe dans `docs/aide/GLOSSAIRE_AR.md`. `npm run help:check -w apps/web` (en CI) vérifie la parité des langues, les helpId et la couverture des routes (192/192).
+
+**Vérifié** — Vérification finale sur l'intégration :
+
+- typecheck web et API : 0 erreur, après `prisma generate` dans le worktree ;
+- lint : 0 erreur ; architecture : 0 violation ;
+- help:check --strict, i18n:check et wiki:check : verts ;
+- jest : 844 suites, sans échec une fois le client Prisma régénéré ;
+- vitest, dossier par dossier : aucun échec réel. Les timeouts sont repassés seuls.
+
+**Recette navigateur (2026-11-15, démo figée `68e29d51`)** — Scénarios dans `docs/recette/aide-interne/README.md` (AI-01 à AI-18). Bilan : 15 cas passés, AI-08 passé dans la variante « assistant indisponible » (Copilot inactif dans la démo), 3 cas bloqués faute de compte.
+
+- AI-13 : aucun membre de l'agence A sans droit d'audit. Le contrôle de substitution, fait depuis une autre agence, passe.
+- AI-14 : mot de passe du super-admin inconnu.
+- AI-18 : aucun compte de portail locataire, et aucune action « Inviter au portail » pour un locataire côté agence (elle n'existe que pour les copropriétaires).
+
+Six anomalies sont passées dans le bus (BUG-2026-11-15-001 à 006) : corrigées, retestées, passées. La principale : la visite automatique n'était pas proposée au chargement direct d'une URL ; elle est maintenant réessayée.
+
+La démo tourne sur `68e29d51`. Elle contient 4 avis d'aide de recette dans l'agence A.
+
+**Reste**
+
+- Fusion de `origin/main` (`77facca6`, PR 221 assistant) en cours le 2026-11-16 : les 20 conflits sont résolus dans l'arbre (rien d'indexé ni commité). Après le `npm ci` relancé : typecheck web et API, lint (0 erreur), architecture, jest IA, aide et inventaire (45 suites) et vitest help/copilot/shell sont verts ; le build passe ; le chunk d'entrée mesure 235 679 o gzip (marge 865 o). Le test `copilot-help-bridge` relit la saisie après « Nouvelle conversation », que main remonte désormais. `i18n:check` web échoue à l'identique sur `origin/main` seul (20 clés de main absentes des catalogues).
+- Budget du chunk d'entrée relevé à 236 544 o (+2 Kio, accord de l'utilisateur le 2026-11-15, marge 824 o). Fusion automatique (squash) activée sur la PR 222 le 2026-11-15, à la demande de l'utilisateur : elle fusionne dès que la CI est verte. Après fusion, supprimer la section de cette branche et le worktree `.claude/worktrees/aide-integration`.
+- Relecture de l'arabe par un arabophone.
+- Test d'isolation `HelpFeedback` en base réelle.
+- AI-13, AI-14 et AI-18 à rejouer avec des comptes adaptés.
+- Écarts de code et de catalogue relevés pendant la rédaction (liste dans la PR).
+- Avertissement antd « Drawer `width` » venant de `NotificationBell.tsx` (préexistant).
+
+**Pièges** :
+
+- Tout nouvel écran ou bloc doit recevoir sa fiche, sinon help:check signale la route non couverte.
+- Ne jamais poser un « ? » dans un libellé d'onglet ou dans un en-tête de Collapse cliquable : le mettre en tête du contenu.
+- Un seul « ? » par rangée de StatCard.
+- Une visite autoStart ne cible que des ancres visibles à l'ouverture.
+- Les worktrees `.claude/worktrees/aide-*` ont leur propre `npm ci` (pas de jonction). Un client Prisma périmé y donne `helpFeedback does not exist` : lancer `npx prisma generate`.
+
 ## feat/assistant-immotopia — 2026-11-15
 
 **Base** — `origin/main` à `af33a6da`. Plan de parité dans [PLAN_PARITE_IMMOCOPILOT_MEDIC_ASSIST.md](../architecture/PLAN_PARITE_IMMOCOPILOT_MEDIC_ASSIST.md).

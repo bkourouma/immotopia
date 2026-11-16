@@ -25,6 +25,7 @@ import {
 import { isModuleNotIncludedError } from '../../utils/module-not-included';
 import { handleApiError } from '../../utils/error-handler';
 import { t } from '../../i18n/t';
+import { HelpButton, helpAnchor } from '../../help';
 
 type Onglet = 'inscriptions' | 'simulateur' | 'mesures';
 
@@ -57,6 +58,7 @@ export function StockWhatsapp(): React.ReactElement {
 
   const header = (
     <PageHeader
+      helpId="finance.whatsapp.page"
       title={t('Inventaire par WhatsApp')}
       subtitle={t('Chefs de chantier, quota du mois et état de la passerelle')}
     />
@@ -107,15 +109,20 @@ export function StockWhatsapp(): React.ReactElement {
       key: 'inscriptions',
       label: t('Chefs de chantier'),
       children: (
-        <WhatsappRegistrationsTab
-          tenantId={tenantId}
-          registrations={registrations.data ?? []}
-          loading={registrations.isPending}
-          error={registrations.error ? handleApiError(registrations.error) : null}
-          errorCause={registrations.error}
-          onRetry={() => void registrations.refetch()}
-          botNumber={overview.data?.botNumber ?? null}
-        />
+        <>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <HelpButton size="small" helpId="finance.whatsapp.chefs" />
+          </div>
+          <WhatsappRegistrationsTab
+            tenantId={tenantId}
+            registrations={registrations.data ?? []}
+            loading={registrations.isPending}
+            error={registrations.error ? handleApiError(registrations.error) : null}
+            errorCause={registrations.error}
+            onRetry={() => void registrations.refetch()}
+            botNumber={overview.data?.botNumber ?? null}
+          />
+        </>
       )
     },
     ...(simulatorAvailable
@@ -124,13 +131,29 @@ export function StockWhatsapp(): React.ReactElement {
             key: 'simulateur',
             label: t('Simulateur'),
             children: (
-              // Les inscriptions révoquées restent proposées : la recette joue le refus M06.
-              <WhatsappSimulator tenantId={tenantId} registrations={registrations.data ?? []} />
+              <>
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <HelpButton size="small" helpId="finance.whatsapp.simulateur" />
+                </div>
+                {/* Les inscriptions révoquées restent proposées : la recette joue le refus M06. */}
+                <WhatsappSimulator tenantId={tenantId} registrations={registrations.data ?? []} />
+              </>
             )
           }
         ]
       : []),
-    { key: 'mesures', label: t('Mesures'), children: <WhatsappMeasures tenantId={tenantId} /> }
+    {
+      key: 'mesures',
+      label: t('Mesures'),
+      children: (
+        <>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <HelpButton size="small" helpId="finance.whatsapp.mesures" />
+          </div>
+          <WhatsappMeasures tenantId={tenantId} />
+        </>
+      )
+    }
   ];
 
   return (
@@ -145,9 +168,13 @@ export function StockWhatsapp(): React.ReactElement {
           actions={[{ label: t('Réessayer'), onClick: () => void overview.refetch(), primary: true }]}
         />
       ) : (
-        <WhatsappOverviewCards tenantId={tenantId} overview={overview.data} canOpenSubscription />
+        <div {...helpAnchor('whatsapp-etat')}>
+          <WhatsappOverviewCards tenantId={tenantId} overview={overview.data} canOpenSubscription />
+        </div>
       )}
-      <Tabs activeKey={onglet} onChange={changerOnglet} items={items} destroyOnHidden />
+      <div {...helpAnchor('whatsapp-onglets')}>
+        <Tabs activeKey={onglet} onChange={changerOnglet} items={items} destroyOnHidden />
+      </div>
     </>
   );
 }

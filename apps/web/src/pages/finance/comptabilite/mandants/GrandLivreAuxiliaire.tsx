@@ -225,6 +225,7 @@ export const GrandLivreAuxiliaire: React.FC = () => {
             )}
           />
           <DataView<MandantOwnerRow>
+            helpId="finance.mandants.grand-livre"
             aria-label={t('Grand livre auxiliaire des mandants')}
             columns={columns}
             items={data?.items ?? []}

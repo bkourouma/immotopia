@@ -6,6 +6,7 @@ import type { CreditorDto } from '../../../services/direct-debit-service';
 import { saveSyndicCreditor, SyndicCreditorInput } from '../../../services/syndic-direct-debit-service';
 import { apiErrorMessage } from '../../rental/direct-debit/direct-debit-shared';
 import { SYNDIC_DD_KEYS } from './keys';
+import { HelpSectionTitle } from '../../../help';
 import { t } from '../../../i18n/t';
 
 interface CreditorFormValues {
@@ -130,7 +131,7 @@ export const SyndicCreditorCard: React.FC<SyndicCreditorCardProps> = ({
 
   return (
     <Card
-      title={t('Compte de prélèvement du syndicat')}
+      title={<HelpSectionTitle title={t('Compte de prélèvement du syndicat')} helpId="syndic.prelevements.compte" />}
       extra={
         canManage ? (
           <Space wrap>

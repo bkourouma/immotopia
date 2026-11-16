@@ -155,6 +155,7 @@ export const AccountingEntriesTab: React.FC<AccountingEntriesTabProps> = ({
       {error ? <Alert type="error" showIcon message={t('Impossible de charger la comptabilité')} /> : null}
 
       <Table<JournalEntry>
+        helpId="syndic.comptabilite.ecritures"
         search={search.searchProps}
         exportFilename={t('Écritures comptables')}
         exportFetchAll={() =>

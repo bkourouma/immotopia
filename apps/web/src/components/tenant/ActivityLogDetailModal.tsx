@@ -10,6 +10,7 @@ import {
 import { getAuditActorDisplay, getAuditOutcomeColor, toChangeRows } from '../../utils/tenant-audit-display';
 import { activeLocale } from '../../i18n/format';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 const { Text, Title, Paragraph } = Typography;
 
@@ -66,7 +67,7 @@ export const ActivityLogDetailModal: React.FC<ActivityLogDetailModalProps> = ({ 
 
   return (
     <Modal
-      title={t("Détail de l'activité")}
+      title={<HelpSectionTitle title={t("Détail de l'activité")} helpId="administration.agence.activite.detail" />}
       open={log !== null}
       onCancel={onClose}
       footer={[

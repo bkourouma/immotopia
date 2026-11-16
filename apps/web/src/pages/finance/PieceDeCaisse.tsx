@@ -20,6 +20,7 @@ import { PageHeader, StateBlock, MoneyValue, StatusTag, ConfirmAction } from '..
 import type { StatusTone } from '../../components/primitives';
 import { t } from '../../i18n/t';
 import { montantSaisiProps } from '../../utils/montant-saisi';
+import { HelpSectionTitle } from '../../help';
 
 import { activeLocale } from '../../i18n/format';
 const { TextArea } = Input;
@@ -312,6 +313,7 @@ export const PieceDeCaisse: React.FC = () => {
   return (
     <>
       <PageHeader
+        helpId="finance.pieces-de-caisse.page"
         title={t('Pièce de caisse')}
         breadcrumbs={[
           { label: t('Finance'), to: `/tenant/${tenantId}/finance/chantiers` },
@@ -322,7 +324,7 @@ export const PieceDeCaisse: React.FC = () => {
 
       <Card style={{ marginBottom: 'var(--space-6)' }}>
         <Title level={4} style={{ marginTop: 0 }}>
-          {t('Émettre une pièce')}
+          <HelpSectionTitle title={t('Émettre une pièce')} helpId="finance.pieces-de-caisse.formulaire" />
         </Title>
 
         <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
@@ -442,9 +444,14 @@ export const PieceDeCaisse: React.FC = () => {
           >
             <div>
               <Title level={4} style={{ margin: 0 }}>
-                {piece.number
-                  ? t('Pièce {{number}}', { number: piece.number })
-                  : t('Pièce à valider — {{beneficiary}}', { beneficiary: piece.beneficiary })}
+                <HelpSectionTitle
+                  title={
+                    piece.number
+                      ? t('Pièce {{number}}', { number: piece.number })
+                      : t('Pièce à valider — {{beneficiary}}', { beneficiary: piece.beneficiary })
+                  }
+                  helpId="finance.pieces-de-caisse.piece"
+                />
               </Title>
               <Text type="secondary">
                 {piece.siteLabel} · {piece.costCategoryLabel}
@@ -516,7 +523,9 @@ export const PieceDeCaisse: React.FC = () => {
       )}
 
       <Modal
-        title={t('Annuler cette pièce de caisse ?')}
+        title={
+          <HelpSectionTitle title={t('Annuler cette pièce de caisse ?')} helpId="finance.pieces-de-caisse.annulation" />
+        }
         open={annulationOuverte}
         onCancel={() => setAnnulationOuverte(false)}
         onOk={annuler}

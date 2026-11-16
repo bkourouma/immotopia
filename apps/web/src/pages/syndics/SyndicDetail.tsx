@@ -41,6 +41,7 @@ import type { Sort } from '../../hooks/useListParams';
 import { Syndicate, SyndicateLot, UpdateSyndicateRequest } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 import { localizedRecord } from '../../i18n/localized';
 const { Paragraph, Title } = Typography;
@@ -390,6 +391,7 @@ export const SyndicDetail: React.FC = () => {
       <Row gutter={[16, 16]}>
         <Col xs={24} md={8}>
           <StatCard
+            helpId="syndic.copropriete.fiche.indicateurs"
             label={t('Lots')}
             value={syndicate.lots?.length ?? syndicate._count?.lots ?? syndicate.totalLots}
             icon={<FolderOpenOutlined />}
@@ -415,7 +417,7 @@ export const SyndicDetail: React.FC = () => {
       </Row>
 
       <Card
-        title={t('Informations générales')}
+        title={<HelpSectionTitle title={t('Informations générales')} helpId="syndic.copropriete.fiche.informations" />}
         extra={
           <Button icon={<EditOutlined />} onClick={openEditModal}>
             {t('Modifier')}
@@ -453,7 +455,7 @@ export const SyndicDetail: React.FC = () => {
         </Descriptions>
       </Card>
 
-      <Card title={t('Logo de la copropriété')}>
+      <Card title={<HelpSectionTitle title={t('Logo de la copropriété')} helpId="syndic.copropriete.fiche.logo" />}>
         <BrandingImageField
           label={t('Logo')}
           hasImage={Boolean(syndicate.hasLogo)}
@@ -473,7 +475,7 @@ export const SyndicDetail: React.FC = () => {
       </Card>
 
       <Modal
-        title={t('Modifier la copropriété')}
+        title={<HelpSectionTitle title={t('Modifier la copropriété')} helpId="syndic.copropriete.fiche.edition" />}
         open={editOpen}
         onCancel={closeEditModal}
         onOk={() => void handleEditSubmit()}
@@ -573,6 +575,7 @@ export const SyndicDetail: React.FC = () => {
             // Une copropriété compte une poignée de bâtiments : pas de barre de recherche.
             children: (
               <DataView<BuildingRow>
+                helpId="syndic.copropriete.fiche.batiments"
                 items={buildingsTable.pageItems}
                 total={buildingsTable.total}
                 page={buildingsTable.page}

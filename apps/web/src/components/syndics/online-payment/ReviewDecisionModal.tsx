@@ -9,6 +9,7 @@ import {
 } from '../../../services/syndic-online-payment-service';
 import { displayCurrency } from '../../../utils/syndic-currency';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 import { allowedDecisions, apiErrorMessage, formatDateTime, reviewKindLabel } from './helpers';
 
 const { Text, Paragraph } = Typography;
@@ -87,7 +88,12 @@ export const ReviewDecisionModal: React.FC<ReviewDecisionModalProps> = ({
   return (
     <Modal
       open
-      title={t('Trancher le paiement {{code}}', { code: checkout.codePaiement })}
+      title={
+        <HelpSectionTitle
+          title={t('Trancher le paiement {{code}}', { code: checkout.codePaiement })}
+          helpId="syndic.paiements.decision"
+        />
+      }
       onCancel={onClose}
       onOk={() => void submit()}
       okText={t('Enregistrer la décision')}

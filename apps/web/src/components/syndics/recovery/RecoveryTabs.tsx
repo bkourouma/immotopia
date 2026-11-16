@@ -102,6 +102,7 @@ export const RemindersTab: React.FC<TabProps> = ({ tenantId, syndicId }) => {
       rowKey="id"
       exportFilename={t('Historique relances')}
       emptyText={t('Aucune relance envoyée pour cette copropriété.')}
+      helpId="syndic.recouvrement.relances"
     />
   );
 };
@@ -185,6 +186,7 @@ export const PenaltiesTab: React.FC<TabProps & { onWaive: (penalty: LatePaymentP
       rowKey="id"
       exportFilename={t('Pénalités de retard')}
       emptyText={t('Aucune pénalité de retard pour cette copropriété.')}
+      helpId="syndic.recouvrement.penalites"
     />
   );
 };
@@ -257,6 +259,7 @@ export const SchedulesTab: React.FC<TabProps> = ({ tenantId, syndicId }) => {
       rowKey="id"
       exportFilename={t('Échéanciers')}
       emptyText={t('Aucun échéancier pour cette copropriété.')}
+      helpId="syndic.recouvrement.echeanciers"
     />
   );
 };

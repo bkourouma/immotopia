@@ -47,6 +47,7 @@ import { providerInvoiceStatusColors, providerInvoiceStatusLabels } from './labe
 import { ProviderInvoiceDrawer } from './ProviderInvoiceDrawer';
 import { dateFormat } from '../../i18n/format';
 import { t } from '../../i18n/t';
+import { HelpButton, HelpSectionTitle } from '../../help';
 import { displayCurrency } from '../../utils/syndic-currency';
 
 const { Paragraph, Title, Text } = Typography;
@@ -369,7 +370,7 @@ export const ProviderInvoicesTab: React.FC<ProviderInvoicesTabProps> = ({
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       <div className="it-toolbar">
         <Title level={3} className="it-toolbar__title" style={{ margin: 0 }}>
-          {t('Factures des prestataires')}
+          <HelpSectionTitle title={t('Factures des prestataires')} helpId="syndic.prestataires.factures" />
         </Title>
         <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>
           {t('Enregistrer une facture')}
@@ -382,6 +383,7 @@ export const ProviderInvoicesTab: React.FC<ProviderInvoicesTabProps> = ({
       <Card title={t('Soldes par prestataire')}>
         <Table
           {...balanceSearch.tableProps}
+          helpId="syndic.prestataires.soldes"
           aria-label={t('Soldes par prestataire')}
           exportFilename={t('Soldes par prestataire')}
           exportFetchAll={balanceSearch.exportAll}
@@ -395,6 +397,7 @@ export const ProviderInvoicesTab: React.FC<ProviderInvoicesTabProps> = ({
 
       <Card>
         <Table
+          helpId="syndic.prestataires.factures-liste"
           search={search.searchProps}
           aria-label={t('Factures des prestataires')}
           exportFilename={t('Factures des prestataires')}
@@ -438,6 +441,7 @@ export const ProviderInvoicesTab: React.FC<ProviderInvoicesTabProps> = ({
         confirmLoading={creating}
         width={640}
       >
+        <HelpButton helpId="syndic.prestataires.facture-nouvelle" />
         <Form form={createForm} layout="vertical">
           <Form.Item
             label={t('Prestataire')}

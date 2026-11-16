@@ -53,6 +53,13 @@ export const DirectDebitRemittanceDetail: React.FC = () => {
   return (
     <RemittanceDetailView
       scope="RENTAL_LEASE"
+      helpIds={{
+        summary: 'locatif.prelevements.remise.synthese',
+        notices: 'locatif.prelevements.remise.avis',
+        lines: 'locatif.prelevements.remise.lignes',
+        returns: 'locatif.prelevements.retours.constats',
+        cancel: 'locatif.prelevements.remise.annulation'
+      }}
       api={api}
       tenantId={tenantId as string}
       remittanceId={remittanceId as string}

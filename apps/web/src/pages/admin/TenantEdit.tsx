@@ -10,6 +10,7 @@ import {
 } from '../../services/tenant-branding-service';
 import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { t } from '../../i18n/t';
+import { HelpButton } from '../../help';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -185,6 +186,9 @@ export const TenantEdit: React.FC = () => {
           <Skeleton active paragraph={{ rows: 8 }} />
         ) : (
           <Form form={form} layout="vertical" onFinish={handleSubmit} onFinishFailed={onAntFormValidationFailed(form)}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBlockEnd: 'var(--space-2)' }}>
+              <HelpButton helpId="administration.plateforme-agences.modification.formulaire" />
+            </div>
             {error && (
               <Alert
                 message={t('Erreur')}

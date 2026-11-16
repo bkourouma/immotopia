@@ -26,6 +26,7 @@ import {
 } from '../../../components/patrimoine/entities/tax-labels';
 import { t } from '../../../i18n/t';
 import { apiErrorMessage } from '../../../components/patrimoine/patrimoine-labels';
+import { HelpSectionTitle } from '../../../help';
 
 const { Text, Title } = Typography;
 
@@ -107,7 +108,10 @@ export const HoldingEntityDetailPage: React.FC = () => {
         primaryAction={{ label: t('Modifier'), onClick: () => setEditModalOpen(true) }}
       />
 
-      <Card title={t('Identité')} style={{ marginBottom: 'var(--space-4)' }}>
+      <Card
+        title={<HelpSectionTitle title={t('Identité')} helpId="patrimoine.entite.identite" />}
+        style={{ marginBottom: 'var(--space-4)' }}
+      >
         <Space orientation="vertical" size={4}>
           <Text>
             {t('Statut fiscal effectif')} : {fiscalOwnerKindLabel(entity.effectiveOwnerKind)}
@@ -132,7 +136,10 @@ export const HoldingEntityDetailPage: React.FC = () => {
         </Space>
       </Card>
 
-      <Card title={t('Hiérarchie')} style={{ marginBottom: 'var(--space-4)' }}>
+      <Card
+        title={<HelpSectionTitle title={t('Hiérarchie')} helpId="patrimoine.entite.hierarchie" />}
+        style={{ marginBottom: 'var(--space-4)' }}
+      >
         <Space orientation="vertical" size={4}>
           <Text>
             {t('Entité mère')} :{' '}
@@ -159,7 +166,10 @@ export const HoldingEntityDetailPage: React.FC = () => {
         </Space>
       </Card>
 
-      <Card title={t('Biens rattachés')} style={{ marginBottom: 'var(--space-4)' }}>
+      <Card
+        title={<HelpSectionTitle title={t('Biens rattachés')} helpId="patrimoine.entite.biens" />}
+        style={{ marginBottom: 'var(--space-4)' }}
+      >
         <EntityHoldingsTable
           tenantId={agence}
           holdings={entity.holdings}
@@ -182,7 +192,10 @@ export const HoldingEntityDetailPage: React.FC = () => {
         />
       </Card>
 
-      <Card title={t('Consolidation')} style={{ marginBottom: 'var(--space-4)' }}>
+      <Card
+        title={<HelpSectionTitle title={t('Consolidation')} helpId="patrimoine.entite.consolidation" />}
+        style={{ marginBottom: 'var(--space-4)' }}
+      >
         {consolidationQuery.isPending ? (
           <SkeletonDetail aria-label={t('Consolidation en cours de chargement')} />
         ) : consolidationQuery.error ? (
@@ -197,7 +210,7 @@ export const HoldingEntityDetailPage: React.FC = () => {
       </Card>
 
       <Card
-        title={t('Estimation fiscale')}
+        title={<HelpSectionTitle title={t('Estimation fiscale')} helpId="patrimoine.entite.fiscalite" />}
         extra={
           <Select
             value={year}

@@ -3,6 +3,7 @@ import { Button } from '../ui/button';
 import { X, Tag as TagIcon, Plus, Minus } from 'lucide-react';
 import { listTags, assignTag, removeTag, CrmTag } from '../../services/crm-service';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 interface BulkTagManagerProps {
   tenantId: string;
@@ -145,7 +146,12 @@ export const BulkTagManager: React.FC<BulkTagManagerProps> = ({
         {/* Header */}
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">{t('Gestion des tags en masse')}</h2>
+            <h2 className="text-2xl font-bold text-gray-900">
+              <HelpSectionTitle
+                title={t('Gestion des tags en masse')}
+                helpId="commercial.contacts.liste.tags-en-masse"
+              />
+            </h2>
             <p className="text-sm text-gray-600 mt-1">
               {contactCount} contact{contactCount > 1 ? 's' : ''} {t('sélectionné')}
               {contactCount > 1 ? 's' : ''}

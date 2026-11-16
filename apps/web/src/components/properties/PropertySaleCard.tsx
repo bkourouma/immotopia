@@ -6,6 +6,7 @@ import { getSaleMandate, listSaleMandates } from '../../services/sales-service';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { MoneyValue, StatusTag } from '../primitives';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 import { SaleStatusTag } from '../../pages/sales/SaleStatusTag';
 
 const { Text } = Typography;
@@ -43,7 +44,7 @@ export const PropertySaleCard: React.FC<PropertySaleCardProps> = ({ tenantId, pr
 
   if (mandatesLoading) {
     return (
-      <Card title={t('Vente')}>
+      <Card title={<HelpSectionTitle title={t('Vente')} helpId="commercial.biens.detail.vente" />}>
         <Skeleton active paragraph={{ rows: 2 }} />
       </Card>
     );
@@ -51,7 +52,7 @@ export const PropertySaleCard: React.FC<PropertySaleCardProps> = ({ tenantId, pr
 
   if (!mandate) {
     return (
-      <Card title={t('Vente')}>
+      <Card title={<HelpSectionTitle title={t('Vente')} helpId="commercial.biens.detail.vente" />}>
         <Space direction="vertical" style={{ width: '100%' }}>
           <Text type="secondary">{t('Aucun mandat de vente pour ce bien.')}</Text>
           <Link to={`/tenant/${tenantId}/sales/mandates?new=1&propertyId=${propertyId}`}>
@@ -67,7 +68,7 @@ export const PropertySaleCard: React.FC<PropertySaleCardProps> = ({ tenantId, pr
   const derniereOffre = offreRetenue ?? detail?.offers?.[0] ?? null;
 
   return (
-    <Card title={t('Vente')}>
+    <Card title={<HelpSectionTitle title={t('Vente')} helpId="commercial.biens.detail.vente" />}>
       <Descriptions column={1} size="small" bordered>
         <Descriptions.Item label={t('Mandat')}>
           <Space>

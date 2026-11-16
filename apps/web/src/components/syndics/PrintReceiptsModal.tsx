@@ -7,6 +7,7 @@ import { saveBlob } from '../../utils/save-blob';
 import { ReceiptKind, SyndicateLot } from '../../types/syndic-types';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 import { localizedList } from '../../i18n/localized';
 const { RangePicker } = DatePicker;
@@ -191,7 +192,7 @@ export const PrintReceiptsModal: React.FC<PrintReceiptsModalProps> = ({ open, te
 
   return (
     <Modal
-      title={t('Imprimer les quittances')}
+      title={<HelpSectionTitle title={t('Imprimer les quittances')} helpId="syndic.quittances.liste.impression" />}
       open={open}
       onCancel={() => {
         clearPreview();

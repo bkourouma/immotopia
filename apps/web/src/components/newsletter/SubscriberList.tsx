@@ -105,6 +105,7 @@ export function SubscriberList({
       </div>
       <Table
         aria-label={translate('Abonnés')}
+        helpId="communication.newsletter.listes.abonnes.tableau"
         search={search}
         locale={isFiltered ? undefined : { emptyText: translate('Aucun abonné pour le moment.') }}
         exportFilename={translate('Abonnés')}

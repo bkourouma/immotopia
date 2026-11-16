@@ -13,6 +13,7 @@ import { listProperties, Property } from '../../../services/property-service';
 import { useAuth } from '../../../hooks/useAuth';
 import { onAntFormValidationFailed } from '../../../lib/antFormFailure';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle, helpAnchor } from '../../../help';
 
 const { Title } = Typography;
 const { TextArea } = Input;
@@ -186,6 +187,7 @@ export const CreateTicket: React.FC = () => {
               style={{ maxWidth: 800 }}
             >
               <Form.Item
+                {...helpAnchor('maintenance-bien')}
                 name="propertyId"
                 label={t('Propriété')}
                 rules={[{ required: true, message: t('Veuillez sélectionner une propriété') }]}
@@ -205,6 +207,7 @@ export const CreateTicket: React.FC = () => {
               </Form.Item>
 
               <Form.Item
+                {...helpAnchor('maintenance-titre')}
                 name="title"
                 label={t('Titre')}
                 rules={[
@@ -217,6 +220,7 @@ export const CreateTicket: React.FC = () => {
               </Form.Item>
 
               <Form.Item
+                {...helpAnchor('maintenance-categorie')}
                 name="category"
                 label={t('Catégorie')}
                 rules={[{ required: true, message: t('Veuillez sélectionner une catégorie') }]}
@@ -243,6 +247,7 @@ export const CreateTicket: React.FC = () => {
               </Form.Item>
 
               <Form.Item
+                {...helpAnchor('maintenance-description')}
                 name="description"
                 label={t('Description')}
                 rules={[
@@ -262,13 +267,27 @@ export const CreateTicket: React.FC = () => {
                 <TextArea rows={3} placeholder={t("Ex: Salle de bain principale, sous l'évier")} />
               </Form.Item>
 
-              <Form.Item label={t('Pièces jointes (optionnel)')}>
+              <Form.Item
+                {...helpAnchor('maintenance-pieces-jointes')}
+                label={
+                  <HelpSectionTitle
+                    title={t('Pièces jointes (optionnel)')}
+                    helpId="commercial.maintenance.nouveau.pieces-jointes"
+                  />
+                }
+              >
                 <FileUploader onFilesChange={setUploadedFiles} maxFiles={10} maxSize={5} />
               </Form.Item>
 
               <Form.Item>
                 <Space>
-                  <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={loading}>
+                  <Button
+                    type="primary"
+                    htmlType="submit"
+                    icon={<SaveOutlined />}
+                    loading={loading}
+                    {...helpAnchor('maintenance-creer')}
+                  >
                     {t('Créer le ticket')}
                   </Button>
                   <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/maintenance`)}>{t('Annuler')}</Button>

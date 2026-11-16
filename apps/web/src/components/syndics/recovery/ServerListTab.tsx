@@ -22,6 +22,8 @@ interface ServerListTabProps<T extends AnyObject> {
   exportFilename: string;
   /** Texte du tableau vide SANS critère actif (sous critère, la Table propose d'effacer). */
   emptyText: string;
+  /** Identifiant de la fiche d'aide du tableau (« ? »). */
+  helpId?: string;
 }
 
 /**
@@ -36,7 +38,8 @@ export function ServerListTab<T extends AnyObject>({
   columns,
   rowKey,
   exportFilename,
-  emptyText
+  emptyText,
+  helpId
 }: ServerListTabProps<T>) {
   const query = useQuery({
     queryKey: [...queryKey, search.apiParams],
@@ -57,6 +60,7 @@ export function ServerListTab<T extends AnyObject>({
       ) : null}
       <Table<T>
         aria-label={exportFilename}
+        helpId={helpId}
         search={search.searchProps}
         exportFilename={exportFilename}
         exportFetchAll={() =>

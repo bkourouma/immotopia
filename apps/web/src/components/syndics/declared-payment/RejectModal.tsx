@@ -7,6 +7,7 @@ import {
   rejectSyndicDeclaration
 } from '../../../services/syndic-declared-payment-service';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 import {
   DECLARATION_NOT_PENDING_CODE,
   NOTE_MAX_LENGTH,
@@ -85,7 +86,7 @@ export const RejectModal: React.FC<RejectModalProps> = ({
   return (
     <Modal
       open
-      title={t('Rejeter la déclaration de paiement')}
+      title={<HelpSectionTitle title={t('Rejeter la déclaration de paiement')} helpId="syndic.paiements.rejet" />}
       onCancel={onClose}
       onOk={() => void submit()}
       okText={t('Rejeter la déclaration')}

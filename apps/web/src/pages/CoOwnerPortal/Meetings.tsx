@@ -3,6 +3,7 @@ import { Alert, Button, Card, Descriptions, List, Pagination, Space, Tag, Typogr
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { ListSearch, SkeletonList, StateBlock } from '../../components/primitives';
+import { HelpButton, HelpSectionTitle } from '../../help';
 import { t } from '../../i18n/t';
 import {
   listMyMeetingsPage,
@@ -84,9 +85,12 @@ function JoinLiveButton({ meetingId }: { meetingId: string }) {
 
   return (
     <Space direction="vertical" size={8} style={{ width: '100%' }}>
-      <Button type="primary" loading={loading} onClick={() => void join()}>
-        {t("Rejoindre l'AG en direct")}
-      </Button>
+      <Space size="small">
+        <Button type="primary" loading={loading} onClick={() => void join()}>
+          {t("Rejoindre l'AG en direct")}
+        </Button>
+        <HelpButton helpId="syndic.portail.assemblees.direct" size="small" />
+      </Space>
       {error ? <Alert type="error" showIcon message={error} /> : null}
     </Space>
   );
@@ -95,7 +99,12 @@ function JoinLiveButton({ meetingId }: { meetingId: string }) {
 function MeetingCard({ meeting }: { meeting: CoOwnerMeeting }) {
   return (
     <Card
-      title={`${meetingTypeLabel(meeting.type)} — ${dayjs(meeting.scheduledAt).format('DD/MM/YYYY HH:mm')}`}
+      title={
+        <HelpSectionTitle
+          title={`${meetingTypeLabel(meeting.type)} — ${dayjs(meeting.scheduledAt).format('DD/MM/YYYY HH:mm')}`}
+          helpId="syndic.portail.assemblees.carte"
+        />
+      }
       extra={
         <Tag color={meeting.status === 'COMPLETED' ? 'green' : meeting.status === 'CANCELLED' ? 'default' : 'blue'}>
           {meetingStatusLabel(meeting.status)}
@@ -127,7 +136,10 @@ function MeetingCard({ meeting }: { meeting: CoOwnerMeeting }) {
 
         {meeting.status === 'COMPLETED' ? (
           <div>
-            <Text strong>{t('Résultats des résolutions')}</Text>
+            <HelpSectionTitle
+              title={<Text strong>{t('Résultats des résolutions')}</Text>}
+              helpId="syndic.portail.assemblees.resultats"
+            />
             {meeting.resolutions.length === 0 ? (
               <div>
                 <Text type="secondary">{t("Aucune résolution n'a été soumise au vote.")}</Text>

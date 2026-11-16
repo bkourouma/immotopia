@@ -8,6 +8,7 @@ import {
 } from '../../services/tenant-owner-portal-settings-service';
 import { t } from '../../i18n/t';
 import { localizedList } from '../../i18n/localized';
+import { HelpSectionTitle } from '../../help';
 
 const { Text } = Typography;
 
@@ -90,7 +91,14 @@ export const OwnerPortalSettingsCard: React.FC<OwnerPortalSettingsCardProps> = (
   };
 
   return (
-    <Card title={t('Portail propriétaire')}>
+    <Card
+      title={
+        <HelpSectionTitle
+          title={t('Portail propriétaire')}
+          helpId="administration.agence.parametres.portail-proprietaire"
+        />
+      }
+    >
       {loading ? (
         <Spin />
       ) : error ? (

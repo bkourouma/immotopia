@@ -12,6 +12,7 @@ import {
 import { formatMoney } from '../../primitives';
 import { apiErrorMessage, formatDate, formatDay, returnSkipReasonLabel } from './direct-debit-shared';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 
 const { Text } = Typography;
 
@@ -27,6 +28,8 @@ interface ReturnImportModalProps {
   api?: ReturnImportApi;
   scope?: 'RENTAL_LEASE' | 'SYNDIC_LOT';
   open: boolean;
+  /** Fiche d'aide à afficher à côté du titre (absente : pas de « ? »). */
+  helpId?: string;
   onClose: () => void;
   /** Appelée après une application réussie (le fichier a été importé), avant la fermeture. */
   onApplied: (result: ReturnApplyDto) => void;
@@ -102,6 +105,7 @@ export const ReturnImportModal: React.FC<ReturnImportModalProps> = ({
   api,
   scope,
   open,
+  helpId,
   onClose,
   onApplied
 }) => {
@@ -254,7 +258,13 @@ export const ReturnImportModal: React.FC<ReturnImportModalProps> = ({
   return (
     <Modal
       open={open}
-      title={t('Importer un retour de la banque')}
+      title={
+        helpId ? (
+          <HelpSectionTitle title={t('Importer un retour de la banque')} helpId={helpId} />
+        ) : (
+          t('Importer un retour de la banque')
+        )
+      }
       width={960}
       footer={footer}
       onCancel={onClose}

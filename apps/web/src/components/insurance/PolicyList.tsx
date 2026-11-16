@@ -24,6 +24,7 @@ interface Props {
 /** Tableau des polices du bien, statut dérivé en pastille. */
 export const PolicyList: React.FC<Props> = ({ policies, canEdit, deletingId, onEdit, onDelete }) => (
   <Table<InsurancePolicyDto>
+    helpId="patrimoine.assurances.polices.tableau"
     rowKey="id"
     size="small"
     pagination={false}

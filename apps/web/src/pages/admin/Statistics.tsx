@@ -4,6 +4,7 @@ import { BankOutlined, TeamOutlined, CreditCardOutlined, BarChartOutlined } from
 import { getGlobalStatistics, GlobalStatistics } from '../../services/statistics-service';
 import { getModuleKeyLabelFr } from '../../constants/module-labels';
 import { t } from '../../i18n/t';
+import { HelpButton, HelpSectionTitle } from '../../help';
 
 const { Title, Text } = Typography;
 
@@ -119,6 +120,7 @@ export const Statistics: React.FC = () => {
             {t('Statistiques Globales')}
           </Title>
           <Text type="secondary">{t("Vue d'ensemble de la plateforme")}</Text>
+          <HelpButton size="small" helpId="administration.pilotage.statistiques.indicateurs" />
         </div>
 
         <Row gutter={[24, 24]}>
@@ -138,7 +140,14 @@ export const Statistics: React.FC = () => {
         </Row>
 
         {Object.keys(stats.moduleActivations).length > 0 && (
-          <Card title={t('Activations par module')}>
+          <Card
+            title={
+              <HelpSectionTitle
+                title={t('Activations par module')}
+                helpId="administration.pilotage.statistiques.modules"
+              />
+            }
+          >
             <Row gutter={[16, 16]}>
               {Object.entries(stats.moduleActivations).map(([moduleKey, count]) => (
                 <Col xs={24} sm={12} key={moduleKey}>

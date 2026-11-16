@@ -4,6 +4,7 @@ import { listSignatureRequests } from '../../services/signature-service';
 import type { SignatureKind, SignerChannel } from '../../types/signature-types';
 import { MandateSignatures } from '../signature/MandateSignatures';
 import { activeLocale } from '../../i18n/format';
+import { HelpSectionTitle } from '../../help';
 import { t } from '../../i18n/t';
 
 const { Text } = Typography;
@@ -28,6 +29,8 @@ export interface MandateSignatureSectionProps {
   reference?: string;
   /** Appelé quand une demande change d'état (signature, annulation) : le parent relit le mandat. */
   onChanged?: () => void;
+  /** Fiche d'aide de la carte (facultative : seul l'écran qui la fournit affiche le « ? »). */
+  helpId?: string;
 }
 
 function dateLabel(iso?: string | null): string {
@@ -50,7 +53,8 @@ export const MandateSignatureSection: React.FC<MandateSignatureSectionProps> = (
   hasSignedScan,
   signedAt,
   reference,
-  onChanged
+  onChanged,
+  helpId
 }) => {
   // Le scan est-il issu d'une signature électronique ? (une demande terminée existe pour ce mandat)
   const [electronic, setElectronic] = useState(false);
@@ -93,7 +97,17 @@ export const MandateSignatureSection: React.FC<MandateSignatureSectionProps> = (
   }
 
   return (
-    <Card size="small" title={t('Signature électronique (facultatif)')} data-testid="mandate-signature-section">
+    <Card
+      size="small"
+      title={
+        helpId ? (
+          <HelpSectionTitle title={t('Signature électronique (facultatif)')} helpId={helpId} />
+        ) : (
+          t('Signature électronique (facultatif)')
+        )
+      }
+      data-testid="mandate-signature-section"
+    >
       <Space direction="vertical" size="small" style={{ width: '100%' }}>
         <Text type="secondary">
           {t(

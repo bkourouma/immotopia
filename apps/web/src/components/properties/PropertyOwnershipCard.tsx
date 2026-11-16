@@ -22,6 +22,7 @@ import {
 import { syncOwnerClients } from '../../services/tenant-service';
 import { PropertyMandateCard } from './PropertyMandateCard';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 import { activeLocale } from '../../i18n/format';
 
 const { Text } = Typography;
@@ -208,7 +209,7 @@ export const PropertyOwnershipCard: React.FC<PropertyOwnershipCardProps> = ({ te
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-      <Card title={t('Indivision')}>
+      <Card title={<HelpSectionTitle title={t('Indivision')} helpId="commercial.biens.detail.indivision" />}>
         {chargement ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-4) 0' }}>
             <Spin />

@@ -28,6 +28,7 @@ import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion, SearchOption } from '../../utils/list-search';
 import { localizedList } from '../../i18n/localized';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 const { Paragraph, Title } = Typography;
 
@@ -266,13 +267,14 @@ export const SyndicsList: React.FC = () => {
               />
             ) : (
               <Row gutter={[16, 16]}>
-                {local.pageItems.map(item => (
+                {local.pageItems.map((item, index) => (
                   <Col key={item.id} xs={24} md={12} xl={8}>
                     <SyndicateCard
                       syndicate={item}
                       tenantId={effectiveTenantId || ''}
                       onDelete={handleDelete}
                       deleting={deletingSyndicId === item.id}
+                      helpId={index === 0 ? 'syndic.copropriete.liste.cartes' : undefined}
                     />
                   </Col>
                 ))}
@@ -294,7 +296,7 @@ export const SyndicsList: React.FC = () => {
       </Space>
 
       <Modal
-        title={t('Créer une copropriété')}
+        title={<HelpSectionTitle title={t('Créer une copropriété')} helpId="syndic.copropriete.liste.creation" />}
         open={open}
         onCancel={() => {
           setOpen(false);

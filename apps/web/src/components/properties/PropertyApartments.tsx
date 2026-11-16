@@ -11,6 +11,7 @@ import { DataCard, DataView, MoneyValue, StatusTag, statusLabel } from '../primi
 import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion } from '../../utils/list-search';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 // Accesseurs de la recherche locale : constantes de module (identité stable).
 const TEXTE_RECHERCHE = [
@@ -376,8 +377,15 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({ property
         }}
       >
         <strong style={{ fontSize: 'var(--font-size-h3)' }}>
-          {t('Appartements')}
-          {apartments.length > 0 && ` (${apartments.length})`}
+          <HelpSectionTitle
+            title={
+              <>
+                {t('Appartements')}
+                {apartments.length > 0 && ` (${apartments.length})`}
+              </>
+            }
+            helpId="commercial.biens.detail.lots"
+          />
         </strong>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalVisible(true)}>
           {t('Ajouter un appartement')}
@@ -387,6 +395,7 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({ property
       {/* Tableau au-dessus de 992 px, cartes en dessous (§5.1). Le tableau ne
           defile plus horizontalement : sous ce palier, ce sont des cartes. */}
       <DataView
+        helpId="commercial.biens.detail.lots.tableau"
         aria-label={t("Appartements de l'immeuble")}
         // La liste entière est déjà chargée : l'export couvre les appartements filtrés, pas la seule page affichée.
         export={{ filename: t('Appartements'), fetchAll: local.exportAll }}
@@ -415,7 +424,7 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({ property
       />
 
       <Modal
-        title={t('Créer des appartements')}
+        title={<HelpSectionTitle title={t('Créer des appartements')} helpId="commercial.biens.detail.lots.creation" />}
         open={modalVisible}
         onCancel={() => {
           setModalVisible(false);

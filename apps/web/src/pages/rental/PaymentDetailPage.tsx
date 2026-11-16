@@ -46,6 +46,7 @@ import {
 
 import { activeLocale } from '../../i18n/format';
 import { useMyMenuAccess } from '../../hooks/useMenuAccess';
+import { HelpButton, HelpSectionTitle } from '../../help';
 const { Title, Text } = Typography;
 
 export const PaymentDetailPage: React.FC = () => {
@@ -240,21 +241,24 @@ export const PaymentDetailPage: React.FC = () => {
               <Text type="secondary">{t('Détails du paiement')}</Text>
             </div>
           </Space>
-          <Select
-            showSearch
-            optionFilterProp="label"
-            aria-label={t('Statut')}
-            value={payment.status}
-            // Seuls les changements que l'API accepte sont proposés ; « Remboursé »
-            // est définitif, le sélecteur n'a alors plus rien à offrir.
-            disabled={!peutAffecter || statutsDisponibles.length === 0}
-            options={[payment.status, ...statutsDisponibles].map(statut => ({
-              value: statut,
-              label: libelleStatutPaiement(statut)
-            }))}
-            onChange={value => demanderChangementStatut(value as RentalPaymentStatus)}
-            style={{ width: 220 }}
-          />
+          <Space>
+            <HelpButton helpId="locatif.paiements.fiche.statut" size="small" />
+            <Select
+              showSearch
+              optionFilterProp="label"
+              aria-label={t('Statut')}
+              value={payment.status}
+              // Seuls les changements que l'API accepte sont proposés ; « Remboursé »
+              // est définitif, le sélecteur n'a alors plus rien à offrir.
+              disabled={!peutAffecter || statutsDisponibles.length === 0}
+              options={[payment.status, ...statutsDisponibles].map(statut => ({
+                value: statut,
+                label: libelleStatutPaiement(statut)
+              }))}
+              onChange={value => demanderChangementStatut(value as RentalPaymentStatus)}
+              style={{ width: 220 }}
+            />
+          </Space>
         </div>
 
         <Row gutter={16}>
@@ -263,7 +267,10 @@ export const PaymentDetailPage: React.FC = () => {
               title={
                 <Space>
                   <DollarOutlined />
-                  <span>{t('Informations financières')}</span>
+                  <HelpSectionTitle
+                    title={t('Informations financières')}
+                    helpId="locatif.paiements.fiche.informations"
+                  />
                 </Space>
               }
             >
@@ -346,7 +353,7 @@ export const PaymentDetailPage: React.FC = () => {
           title={
             <Space>
               <FileTextOutlined />
-              <span>{t('Utilisation du paiement')}</span>
+              <HelpSectionTitle title={t('Utilisation du paiement')} helpId="locatif.paiements.fiche.utilisation" />
             </Space>
           }
           extra={

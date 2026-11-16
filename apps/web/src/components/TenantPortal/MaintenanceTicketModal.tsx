@@ -4,6 +4,7 @@ import { UploadOutlined, ToolOutlined, PlusOutlined } from '@ant-design/icons';
 import { tenantPortalService } from '../../services/tenantPortalService';
 import type { UploadFile } from 'antd';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -88,7 +89,10 @@ export default function MaintenanceTicketModal({ open, onCancel, onSuccess, leas
       title={
         <Space>
           <ToolOutlined />
-          <span>{t('Nouvelle demande de maintenance')}</span>
+          <HelpSectionTitle
+            title={t('Nouvelle demande de maintenance')}
+            helpId="portails.locataire.incidents.nouvelle-demande"
+          />
         </Space>
       }
       open={open}

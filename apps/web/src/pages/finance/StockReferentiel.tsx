@@ -41,6 +41,7 @@ import { collectAllPages } from '../../utils/table-export/collect';
 import type { SearchCriterion } from '../../utils/list-search';
 import { localizedList } from '../../i18n/localized';
 import { t } from '../../i18n/t';
+import { HelpButton, HelpSectionTitle } from '../../help';
 
 import { activeLocale } from '../../i18n/format';
 const { Title, Text, Paragraph } = Typography;
@@ -834,6 +835,7 @@ export const StockReferentiel: React.FC = () => {
       ) : null}
 
       <DataView<StockItem>
+        helpId="finance.articles-lieux.articles.tableau"
         items={articles}
         total={totalArticles}
         search={rechercheArticles.searchProps}
@@ -925,6 +927,7 @@ export const StockReferentiel: React.FC = () => {
       ) : null}
 
       <DataView<StockLocationView>
+        helpId="finance.articles-lieux.lieux.tableau"
         {...localLieux.dataViewProps}
         export={{ filename: t('Lieux de stockage'), fetchAll: localLieux.exportAll }}
         scrollX={900}
@@ -1080,6 +1083,7 @@ export const StockReferentiel: React.FC = () => {
         `<PageHeader>` ne peut pas dire.
       */}
       <PageHeader
+        helpId="finance.articles-lieux.page"
         title={t('Paramétrage du stock')}
         subtitle={t('Articles, lieux de stockage et méthode de valorisation')}
       />
@@ -1089,9 +1093,42 @@ export const StockReferentiel: React.FC = () => {
         onChange={changerOnglet}
         destroyOnHidden
         items={[
-          { key: 'articles', label: t('Articles'), children: ongletArticles },
-          { key: 'lieux', label: t('Lieux de stockage'), children: ongletLieux },
-          { key: 'valorisation', label: t('Méthode de valorisation'), children: ongletMethode }
+          {
+            key: 'articles',
+            label: t('Articles'),
+            children: (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <HelpButton size="small" helpId="finance.articles-lieux.articles" />
+                </div>
+                {ongletArticles}
+              </>
+            )
+          },
+          {
+            key: 'lieux',
+            label: t('Lieux de stockage'),
+            children: (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <HelpButton size="small" helpId="finance.articles-lieux.lieux" />
+                </div>
+                {ongletLieux}
+              </>
+            )
+          },
+          {
+            key: 'valorisation',
+            label: t('Méthode de valorisation'),
+            children: (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <HelpButton size="small" helpId="finance.articles-lieux.valorisation" />
+                </div>
+                {ongletMethode}
+              </>
+            )
+          }
         ]}
       />
 
@@ -1099,7 +1136,7 @@ export const StockReferentiel: React.FC = () => {
           Enregistrer un article
       ------------------------------------------------------------------ */}
       <Modal
-        title={t('Nouvel article')}
+        title={<HelpSectionTitle title={t('Nouvel article')} helpId="finance.articles-lieux.article-formulaire" />}
         open={creationArticleOuverte}
         onCancel={() => {
           if (!creationArticleEnCours) setCreationArticleOuverte(false);
@@ -1190,9 +1227,14 @@ export const StockReferentiel: React.FC = () => {
       ------------------------------------------------------------------ */}
       <Modal
         title={
-          articleCorrige
-            ? t("Corriger l'article « {{reference}} »", { reference: articleCorrige.reference })
-            : t("Corriger l'article")
+          <HelpSectionTitle
+            title={
+              articleCorrige
+                ? t("Corriger l'article « {{reference}} »", { reference: articleCorrige.reference })
+                : t("Corriger l'article")
+            }
+            helpId="finance.articles-lieux.article-formulaire"
+          />
         }
         open={Boolean(articleCorrige)}
         onCancel={fermerCorrectionArticle}
@@ -1293,7 +1335,9 @@ export const StockReferentiel: React.FC = () => {
           Créer un lieu de stockage
       ------------------------------------------------------------------ */}
       <Modal
-        title={t('Nouveau lieu de stockage')}
+        title={
+          <HelpSectionTitle title={t('Nouveau lieu de stockage')} helpId="finance.articles-lieux.lieu-formulaire" />
+        }
         open={creationLieuOuverte}
         onCancel={() => {
           if (!creationLieuEnCours) setCreationLieuOuverte(false);
@@ -1381,7 +1425,14 @@ export const StockReferentiel: React.FC = () => {
           Corriger un lieu — son libellé, et rien d'autre
       ------------------------------------------------------------------ */}
       <Modal
-        title={lieuCorrige ? t('Corriger le lieu « {{label}} »', { label: lieuCorrige.label }) : t('Corriger le lieu')}
+        title={
+          <HelpSectionTitle
+            title={
+              lieuCorrige ? t('Corriger le lieu « {{label}} »', { label: lieuCorrige.label }) : t('Corriger le lieu')
+            }
+            helpId="finance.articles-lieux.lieu-formulaire"
+          />
+        }
         open={Boolean(lieuCorrige)}
         onCancel={() => {
           if (!correctionLieuEnCours) setLieuCorrige(null);

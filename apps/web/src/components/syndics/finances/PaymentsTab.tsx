@@ -101,6 +101,7 @@ export const PaymentsTab: React.FC<{ tenantId: string; syndicId: string }> = ({ 
       columns={columns}
       rowKey={row => row.id}
       aria-label={t('Détail des paiements reçus')}
+      helpId="syndic.tresorerie.paiements"
       export={{
         filename: t('Détail des paiements reçus'),
         fetchAll: () =>

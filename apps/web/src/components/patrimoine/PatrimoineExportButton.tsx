@@ -5,6 +5,7 @@ import { DownloadOutlined } from '@ant-design/icons';
 import { downloadPatrimoineExport, type PatrimoineExportFormat } from '../../services/patrimoine-service';
 import { saveBlob } from '../../utils/save-blob';
 import { t } from '../../i18n/t';
+import { helpAnchor } from '../../help';
 
 interface Props {
   tenantId: string;
@@ -63,7 +64,7 @@ export const PatrimoineExportButton: React.FC<Props> = ({ tenantId, propertyId }
 
   return (
     <Dropdown menu={{ items }} trigger={['click']} disabled={loadingFormat !== null}>
-      <Button icon={<DownloadOutlined />} loading={loadingFormat !== null}>
+      <Button {...helpAnchor('patrimoine-export')} icon={<DownloadOutlined />} loading={loadingFormat !== null}>
         {t('Exporter')}
       </Button>
     </Dropdown>

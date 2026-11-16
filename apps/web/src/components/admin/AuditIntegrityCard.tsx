@@ -15,6 +15,7 @@ import { getAuditVisibilityLabelFr } from '../../constants/audit-labels';
 import { dateFormat, formatNumber } from '../../i18n/format';
 import { t } from '../../i18n/t';
 import { Table } from '../primitives';
+import { HelpSectionTitle } from '../../help';
 
 const { Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -82,6 +83,7 @@ function buildColumns(tone: 'error' | 'warning'): ColumnsType<AuditIntegrityFind
 function FindingsTable({ rows, tone }: { rows: AuditIntegrityFinding[]; tone: 'error' | 'warning' }) {
   return (
     <Table<AuditIntegrityFinding>
+      helpId="administration.pilotage.audit.integrite.anomalies"
       exportFilename={
         tone === 'error' ? t('Intégrité du journal compromise') : t('Lignes arrivées après le scellement')
       }
@@ -248,7 +250,11 @@ export const AuditIntegrityCard: React.FC = () => {
   };
 
   return (
-    <Card size="small" title={t('Intégrité du journal')} extra={<SafetyCertificateOutlined />}>
+    <Card
+      size="small"
+      title={<HelpSectionTitle title={t('Intégrité du journal')} helpId="administration.pilotage.audit.integrite" />}
+      extra={<SafetyCertificateOutlined />}
+    >
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         <Text type="secondary">
           {t(

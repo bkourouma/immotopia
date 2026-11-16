@@ -5,6 +5,7 @@ import { formatMoney } from '../../primitives';
 import type { RentalOnlinePaymentRowDto, ResolveOnlinePaymentResultDto } from '../../../types/rental-online-payment';
 import { resolveRentalOnlinePayment } from '../../../services/rental-online-payment-service';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 import { allowedDecisions, apiErrorMessage, formatDateTime, periodLabel, reviewKindLabel } from './helpers';
 
 const { Text } = Typography;
@@ -124,7 +125,12 @@ export const RentalReviewDecisionModal: React.FC<RentalReviewDecisionModalProps>
   return (
     <Modal
       open
-      title={t('Trancher le paiement {{code}}', { code: checkout.codePaiement })}
+      title={
+        <HelpSectionTitle
+          title={t('Trancher le paiement {{code}}', { code: checkout.codePaiement })}
+          helpId="locatif.enligne.decision"
+        />
+      }
       onCancel={onClose}
       onOk={() => void submit()}
       okText={t('Enregistrer la décision')}

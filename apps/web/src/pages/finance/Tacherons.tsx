@@ -212,6 +212,7 @@ export const Tacherons: React.FC = () => {
   return (
     <>
       <PageHeader
+        helpId="finance.tacherons.page"
         title={translate('Tâcherons')}
         subtitle={
           tacherons.length > 0
@@ -225,6 +226,7 @@ export const Tacherons: React.FC = () => {
       />
 
       <DataView<Contractor>
+        helpId="finance.tacherons.liste"
         scrollX={1000}
         {...local.dataViewProps}
         export={{ filename: translate('Tâcherons'), fetchAll: local.exportAll }}

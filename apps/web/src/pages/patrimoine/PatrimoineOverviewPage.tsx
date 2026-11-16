@@ -12,6 +12,7 @@ import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { PageHeader, StateBlock, SkeletonStats } from '../../components/primitives';
 import PatrimoineAssetsRoutes from './PatrimoineAssetsRoutes';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle, helpAnchor } from '../../help';
 
 /**
  * Aperçu du patrimoine — le pire N+1 de l'application (REFONTE_UI_UX.md §8.4).
@@ -101,8 +102,11 @@ export const PatrimoineOverviewPage: React.FC = () => {
 
       {!enChargement && !apercu.error && (
         <div style={{ marginTop: 'var(--space-6)' }}>
-          <h2 style={{ fontSize: 'var(--font-size-h3)', marginBottom: 'var(--space-4)' }}>
-            {t('Programmes de travaux')}
+          <h2
+            {...helpAnchor('patrimoine-travaux')}
+            style={{ fontSize: 'var(--font-size-h3)', marginBottom: 'var(--space-4)' }}
+          >
+            <HelpSectionTitle title={t('Programmes de travaux')} helpId="patrimoine.accueil.travaux" />
           </h2>
           {travaux.error ? (
             <StateBlock

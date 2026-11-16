@@ -2,6 +2,7 @@ import React from 'react';
 import { Card, Switch } from 'antd';
 import type { ProjectionScenarioKey } from '../../../services/patrimoine-projections-service';
 import { t } from '../../../i18n/t';
+import { HelpButton } from '../../../help';
 import { NumField, SelectField } from './projection-fields';
 import { MAX_HORIZON, SCENARIO_KEYS, scenarioLabel } from './projection-helpers';
 
@@ -38,6 +39,7 @@ export const ProjectionControls: React.FC<{
         <Switch checked={compare} onChange={onCompare} />
         <span>{t('Comparer les trois scénarios')}</span>
       </label>
+      <HelpButton helpId="patrimoine.projections.reglages" />
     </div>
   </Card>
 );

@@ -437,6 +437,7 @@ export const SyndicReceipts: React.FC = () => {
         {error ? <Alert type="error" message={error} showIcon /> : null}
 
         <Table<ReceiptView>
+          helpId="syndic.quittances.liste.tableau"
           search={search.searchProps}
           exportFilename={t('Quittances')}
           // Tous les reçus et quittances, avec les mêmes critères que la liste affichée.

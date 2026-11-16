@@ -8,6 +8,7 @@ import { t } from '../../../i18n/t';
 import { COOWNER_PAYER_PHONE_KEY } from '../../../utils/personal-local-data';
 import { listMyLots, type CoOwnerChargeCall, type CoOwnerDeclaration } from '../../../services/coowner-portal-service';
 import { DeclarationForm } from './DeclarationForm';
+import { helpAnchor } from '../../../help';
 import { ReceivingNumbersCard } from './ReceivingNumbersCard';
 import type { DeclaredAvailabilityEntry } from './useDeclaredAvailabilities';
 
@@ -90,6 +91,7 @@ export function DeclaredPaymentSection({ calls, entries }: DeclaredPaymentSectio
                       block={isMobile}
                       style={{ minHeight: 40 }}
                       onClick={() => setOpenSyndicateId(syndicate.id)}
+                      {...helpAnchor('portail-declarer')}
                     >
                       {t("J'ai payé par mobile money")}
                     </Button>

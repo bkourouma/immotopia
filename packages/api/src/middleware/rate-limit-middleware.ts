@@ -1245,3 +1245,35 @@ export const receivingAccountQrReadRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false
 });
+
+/**
+ * Avis sur les fiches d'aide interne (`POST /api/help/feedback`) : 10 par minute et 100 par jour,
+ * par utilisateur (par adresse en dernier recours). Posés après `authenticate`, avant le contrôleur.
+ */
+const helpFeedbackLimitedHandler = (_req: Request, res: Response): void => {
+  res.status(429).json({
+    success: false,
+    code: 'RATE_LIMITED',
+    message: t("Trop d'avis envoyés en peu de temps. Veuillez réessayer plus tard.")
+  });
+};
+
+const helpFeedbackKey = (req: Request): string => `help-feedback:${req.user?.userId ?? clientIpKey(req)}`;
+
+export const helpFeedbackRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  keyGenerator: helpFeedbackKey,
+  handler: helpFeedbackLimitedHandler,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+export const helpFeedbackDailyLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  max: 100,
+  keyGenerator: helpFeedbackKey,
+  handler: helpFeedbackLimitedHandler,
+  standardHeaders: true,
+  legacyHeaders: false
+});

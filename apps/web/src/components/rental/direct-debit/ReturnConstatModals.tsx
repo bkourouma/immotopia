@@ -8,6 +8,7 @@ import { parseIsoDay, startOfDay, toIsoDay } from './business-days';
 import { formatDay } from './direct-debit-shared';
 import { t } from '../../../i18n/t';
 import { formatMoney } from '../../primitives';
+import { HelpSectionTitle } from '../../../help';
 
 /**
  * Fenêtres de constat du retour banque (spec 042, P3, §8.3, §8.4 et §8.10) :
@@ -86,6 +87,10 @@ function dateIsValid(value: Dayjs | null, bounds: DateBounds): boolean {
   return (min === null || day >= min.getTime()) && day <= max.getTime();
 }
 
+/** Titre de fenêtre, suivi du « ? » de sa fiche d'aide quand elle est fournie. */
+const TitleWithHelp: React.FC<{ title: string; helpId?: string }> = ({ title, helpId }) =>
+  helpId ? <HelpSectionTitle title={title} helpId={helpId} /> : <>{title}</>;
+
 interface BaseModalProps extends DateBounds {
   open: boolean;
   /** Périmètre de la remise (locatif par défaut) : change les textes d'explication. */
@@ -93,6 +98,8 @@ interface BaseModalProps extends DateBounds {
   loading?: boolean;
   /** Message d'erreur de l'API, affiché dans la fenêtre. */
   error?: string | null;
+  /** Fiche d'aide à afficher à côté du titre (absente : pas de « ? »). */
+  helpId?: string;
   onCancel: () => void;
 }
 
@@ -100,7 +107,7 @@ interface BaseModalProps extends DateBounds {
 
 export const SettleLineModal: React.FC<
   BaseModalProps & { line: RemittanceLineDto | null; onSubmit: (settledAt: string) => void }
-> = ({ open, scope, line, collectionDate, today, loading, error, onCancel, onSubmit }) => {
+> = ({ open, scope, line, collectionDate, today, loading, error, helpId, onCancel, onSubmit }) => {
   const [date, setDate] = useState<Dayjs | null>(null);
   const bounds = { collectionDate, today };
 
@@ -112,7 +119,12 @@ export const SettleLineModal: React.FC<
   return (
     <Modal
       open={open}
-      title={t('Constater le règlement de {{reference}}', { reference: line?.reference ?? '' })}
+      title={
+        <TitleWithHelp
+          title={t('Constater le règlement de {{reference}}', { reference: line?.reference ?? '' })}
+          helpId={helpId}
+        />
+      }
       okText={t('Constater le règlement')}
       cancelText={t('Fermer')}
       okButtonProps={{ disabled: !dateIsValid(date, bounds), loading }}
@@ -146,7 +158,7 @@ export const RejectLineModal: React.FC<
     late: boolean;
     onSubmit: (input: { rejectedAt: string; code?: string; reason?: string }) => void;
   }
-> = ({ open, scope, line, late, collectionDate, today, loading, error, onCancel, onSubmit }) => {
+> = ({ open, scope, line, late, collectionDate, today, loading, error, helpId, onCancel, onSubmit }) => {
   const [date, setDate] = useState<Dayjs | null>(null);
   const [code, setCode] = useState('');
   const [reason, setReason] = useState('');
@@ -171,9 +183,14 @@ export const RejectLineModal: React.FC<
     <Modal
       open={open}
       title={
-        late
-          ? t('Constater un rejet tardif de {{reference}}', { reference: line?.reference ?? '' })
-          : t('Constater le rejet de {{reference}}', { reference: line?.reference ?? '' })
+        <TitleWithHelp
+          title={
+            late
+              ? t('Constater un rejet tardif de {{reference}}', { reference: line?.reference ?? '' })
+              : t('Constater le rejet de {{reference}}', { reference: line?.reference ?? '' })
+          }
+          helpId={helpId}
+        />
       }
       okText={late ? t('Constater le rejet tardif') : t('Constater le rejet')}
       cancelText={t('Fermer')}
@@ -271,7 +288,7 @@ export const SettleAllModal: React.FC<
     result: SettleAllResult | null;
     onSubmit: (settledAt: string) => void;
   }
-> = ({ open, scope, pendingCount, result, collectionDate, today, loading, error, onCancel, onSubmit }) => {
+> = ({ open, scope, pendingCount, result, collectionDate, today, loading, error, helpId, onCancel, onSubmit }) => {
   const [date, setDate] = useState<Dayjs | null>(null);
   const bounds = { collectionDate, today };
 
@@ -324,7 +341,7 @@ export const SettleAllModal: React.FC<
   return (
     <Modal
       open={open}
-      title={t('Tout constater réglé')}
+      title={<TitleWithHelp title={t('Tout constater réglé')} helpId={helpId} />}
       okText={t('Tout constater réglé')}
       cancelText={t('Fermer')}
       okButtonProps={{ disabled: !dateIsValid(date, bounds) || pendingCount === 0, loading }}

@@ -87,6 +87,7 @@ import patrimoineInsuranceRoutes from './routes/patrimoine-insurance-routes';
 import patrimoineAssetsRoutes from './routes/patrimoine-assets-routes';
 import patrimoineExportsRoutes from './routes/patrimoine-exports-routes';
 import personalSpaceRoutes from './routes/personal-space-routes';
+import helpFeedbackRoutes, { helpFeedbackTenantRoutes } from './routes/help-feedback-routes';
 import patrimoineProjectionsRoutes from './routes/patrimoine-projections-routes';
 import ownerStatementsRoutes from './routes/owner-statements-routes';
 import agencySettingsRoutes from './routes/agency-settings-routes';
@@ -285,6 +286,7 @@ app.use('/api/platform/ai-settings', platformAiSettingsRoutes); // Réglage Immo
 app.use('/api/roles', roleRoutes);
 app.use('/api/signatures', signatureRoutes); // Signature electronique, cote agence (spec 044)
 app.use('/api', personalSpaceRoutes); // Espace personnel en libre-service (lot 4B, hors tenant : authentifié seulement)
+app.use('/api', helpFeedbackRoutes); // Avis sur les fiches d'aide interne (aide interne, lot A) : gardes posées avec leur chemin
 // Abonnement (vague 2) : fonctionnalite requise par chaque route d'agence,
 // d'apres lib/subscription/route-features.ts. Monte AVEC son chemin et AVANT
 // tout routeur qui sert /api/tenants/:tenantId/... ; les webhooks, l'IPN,
@@ -372,6 +374,7 @@ app.use('/api', patrimoineProjectionsRoutes); // Patrimoine — projections et s
 app.use('/api', ownerStatementsRoutes); // Owner statements routes (tenant-scoped)
 app.use('/api', agencySettingsRoutes); // Parametres financiers de l'agence (tenant-scoped)
 app.use('/api', tenantAuditRoutes); // Journal d'activite de l'agence (tenant-scoped, ADR-006)
+app.use('/api', helpFeedbackTenantRoutes); // Avis d'aide d'une agence (aide interne, lot A) : apres le garde d'abonnement
 app.use('/api', notificationRoutes); // Notifications persistantes de l'utilisateur (tenant-scoped)
 app.use('/api', notificationAdminRoutes); // Journal des notifications de l'agence (TENANT_NOTIFICATIONS_ADMIN)
 app.use('/api', platformNotificationRoutes); // Journal des notifications, toutes agences (super-admin)

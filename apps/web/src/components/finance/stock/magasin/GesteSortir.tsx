@@ -169,7 +169,12 @@ export const GesteSortir: React.FC<GesteProps> = ({ tenantId, contexte, lieuCour
 
   if (etape === 'chantier') {
     return (
-      <EtapeGeste titre={t('Pour quel chantier ?')} rappel={rappelLieu} onRetour={() => confirmerAbandon(entame)}>
+      <EtapeGeste
+        helpId="finance.magasin.sortir"
+        titre={t('Pour quel chantier ?')}
+        rappel={rappelLieu}
+        onRetour={() => confirmerAbandon(entame)}
+      >
         <ListeChoix
           aria-label={t('Chantiers ouverts')}
           lignes={chantiers.map(candidat => ({ id: candidat.id, titre: candidat.name, recherche: candidat.name }))}
@@ -189,6 +194,7 @@ export const GesteSortir: React.FC<GesteProps> = ({ tenantId, contexte, lieuCour
     const complet = demandeurComplet(demandeur, requireTaker);
     return (
       <EtapeGeste
+        helpId="finance.magasin.sortir"
         titre={t('Qui emporte la marchandise ?')}
         rappel={site?.name}
         onRetour={() => setEtape('chantier')}
@@ -301,6 +307,7 @@ export const GesteSortir: React.FC<GesteProps> = ({ tenantId, contexte, lieuCour
   if (etape === 'articles') {
     return (
       <SaisieArticles
+        helpId="finance.magasin.sortir"
         mode="sortie"
         titre={t('Quels articles ?')}
         rappel={rappelLieu}
@@ -326,6 +333,7 @@ export const GesteSortir: React.FC<GesteProps> = ({ tenantId, contexte, lieuCour
   if (etape === 'photo') {
     return (
       <EtapeGeste
+        helpId="finance.magasin.sortir"
         titre={t('Photo')}
         rappel={t('Facultatif')}
         onRetour={() => setEtape('articles')}
@@ -346,6 +354,7 @@ export const GesteSortir: React.FC<GesteProps> = ({ tenantId, contexte, lieuCour
   if (etape === 'verifier') {
     return (
       <EtapeGeste
+        helpId="finance.magasin.sortir"
         titre={t('Vérifiez')}
         onRetour={() => setEtape('photo')}
         persistant={photos}
@@ -400,6 +409,7 @@ export const GesteSortir: React.FC<GesteProps> = ({ tenantId, contexte, lieuCour
   if (etape === 'fait' && resultat) {
     return (
       <EtapeGeste
+        helpId="finance.magasin.sortir"
         titre={resultat.replayed ? t('Sortie déjà enregistrée') : t('Sortie enregistrée')}
         persistant={photos}
       >

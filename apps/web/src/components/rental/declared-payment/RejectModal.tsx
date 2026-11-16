@@ -6,6 +6,7 @@ import type {
   RentalPaymentDeclarationDto
 } from '../../../types/rental-declared-payment';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 import {
   DECLARATION_ALREADY_REVIEWED_CODE,
   NOTE_MAX_LENGTH,
@@ -79,7 +80,12 @@ export const RejectModal: React.FC<RejectModalProps> = ({ tenantId, declaration,
   return (
     <Modal
       open
-      title={t('Rejeter la déclaration de paiement')}
+      title={
+        <HelpSectionTitle
+          title={t('Rejeter la déclaration de paiement')}
+          helpId="locatif.paiements.declarations.rejeter"
+        />
+      }
       onCancel={onClose}
       onOk={() => void submit()}
       okText={t('Rejeter la déclaration')}

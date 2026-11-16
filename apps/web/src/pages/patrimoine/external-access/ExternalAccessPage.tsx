@@ -22,6 +22,7 @@ import { PatrimoineForbidden } from '../../../components/patrimoine/PatrimoineFo
 import { activeLocale } from '../../../i18n/format';
 import { localizedList } from '../../../i18n/localized';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 import { useListSearch } from '../../../hooks/useListSearch';
 import type { SearchCriterion } from '../../../utils/list-search';
 import { ExternalAccessLinkReveal, ExternalAccessSendLinkModal, type RevealedLink } from './ExternalAccessLinkModals';
@@ -216,6 +217,7 @@ export const ExternalAccessPage: React.FC = () => {
       ) : (
         <>
           <Table<ExternalAccessGrantSummary>
+            helpId="patrimoine.acces-tiers.liste"
             dataSource={grants}
             search={search.searchProps}
             pagination={search.tablePagination(total)}
@@ -238,6 +240,7 @@ export const ExternalAccessPage: React.FC = () => {
               },
               {
                 title: t('Bénéficiaire'),
+                key: 'beneficiaire',
                 exportValue: grant => `${grant.recipientName} — ${accessTypeLabel(grant.type)}`,
                 render: (_: unknown, grant) => (
                   <Space orientation="vertical" size={0}>
@@ -248,6 +251,7 @@ export const ExternalAccessPage: React.FC = () => {
               },
               {
                 title: t('Périmètre'),
+                key: 'perimetre',
                 exportValue: grant =>
                   grant.ownerName ? `${scopeLabel(grant)} — ${grant.ownerName}` : scopeLabel(grant),
                 render: (_: unknown, grant) => (
@@ -259,6 +263,7 @@ export const ExternalAccessPage: React.FC = () => {
               },
               {
                 title: t('Rubriques'),
+                key: 'rubriques',
                 exportValue: grant => grant.sections.map(accessSectionLabel).join(', '),
                 // Largeur bornée : les étiquettes passent à la ligne au lieu d'allonger le tableau.
                 width: 240,
@@ -270,9 +275,10 @@ export const ExternalAccessPage: React.FC = () => {
                   </Space>
                 )
               },
-              { title: t('Expiration'), render: (_: unknown, grant) => expiryLabel(grant) },
+              { title: t('Expiration'), key: 'expiration', render: (_: unknown, grant) => expiryLabel(grant) },
               {
                 title: t('Dernière consultation'),
+                key: 'consultation',
                 exportValue: grant =>
                   `${formatDate(grant.lastViewedAt)} — ${t('{{count}} consultation(s)', { count: grant.viewCount })}`,
                 render: (_: unknown, grant) => (
@@ -378,7 +384,16 @@ export const ExternalAccessPage: React.FC = () => {
 
       <Modal
         open={revokeFor !== null}
-        title={revokeFor ? t('Révoquer l’accès de {{name}} ?', { name: revokeFor.recipientName }) : ''}
+        title={
+          revokeFor ? (
+            <HelpSectionTitle
+              title={t('Révoquer l’accès de {{name}} ?', { name: revokeFor.recipientName })}
+              helpId="patrimoine.acces-tiers.revocation"
+            />
+          ) : (
+            ''
+          )
+        }
         onCancel={() => setRevokeFor(null)}
         onOk={confirmRevoke}
         okText={t('Révoquer')}

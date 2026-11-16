@@ -6,6 +6,7 @@ import { ListSearch } from '../primitives';
 import type { ListSearchBinding } from '../primitives';
 import { t } from '../../i18n/t';
 import { localizedRecord } from '../../i18n/localized';
+import { HelpSectionTitle } from '../../help';
 
 const { Title, Text } = Typography;
 
@@ -45,7 +46,7 @@ export function ListDashboard({
     <div>
       <div className="it-toolbar" style={{ marginBottom: 16 }}>
         <Title level={4} style={{ margin: 0 }}>
-          {t('Listes de diffusion')}
+          <HelpSectionTitle title={t('Listes de diffusion')} helpId="communication.newsletter.listes.cartes" />
         </Title>
         <Button type="primary" onClick={onCreateList} icon={<TeamOutlined />}>
           {t('Nouvelle liste')}

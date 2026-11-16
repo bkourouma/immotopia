@@ -321,6 +321,7 @@ export const ChargeCallsTable: React.FC<{
 
   return (
     <DataView<CoOwnerChargeCall>
+      helpId="syndic.portail.appels.tableau"
       {...(serverMode ? search.dataViewProps : local.dataViewProps)}
       items={displayed}
       total={total}

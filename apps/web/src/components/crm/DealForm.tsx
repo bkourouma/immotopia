@@ -5,6 +5,7 @@ import { GeographicLocation } from '../../services/geographic-service';
 import { CreateCrmDealRequest, UpdateCrmDealRequest, CrmDeal } from '../../types/crm-types';
 import { ContactRemoteSelect } from './RemoteSelect';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle, HelpButton, helpAnchor } from '../../help';
 
 const { TextArea } = Input;
 const { Title, Text } = Typography;
@@ -290,7 +291,16 @@ export const DealForm: React.FC<DealFormProps> = ({
       <Row gutter={[16, 16]}>
         {/* Colonne gauche: Informations générales */}
         <Col xs={24} lg={12}>
-          <Card title={t('Informations générales')} size="small">
+          <Card
+            title={
+              <HelpSectionTitle
+                title={t('Informations générales')}
+                helpId="commercial.affaires.nouvelle.informations"
+              />
+            }
+            size="small"
+            {...helpAnchor('affaire-informations')}
+          >
             <Space direction="vertical" size="middle" style={{ width: '100%' }}>
               <Form.Item
                 label={t("Type d'affaire")}
@@ -334,7 +344,13 @@ export const DealForm: React.FC<DealFormProps> = ({
 
         {/* Colonne droite: Budget et localisation */}
         <Col xs={24} lg={12}>
-          <Card title={t('Budget et localisation')} size="small">
+          <Card
+            title={
+              <HelpSectionTitle title={t('Budget et localisation')} helpId="commercial.affaires.nouvelle.budget" />
+            }
+            size="small"
+            {...helpAnchor('affaire-budget')}
+          >
             <Space direction="vertical" size="middle" style={{ width: '100%' }}>
               <Row gutter={16}>
                 <Col xs={24} md={12}>
@@ -397,7 +413,11 @@ export const DealForm: React.FC<DealFormProps> = ({
       <Row gutter={[16, 16]}>
         {/* Colonne gauche: Type de bien */}
         <Col xs={24} lg={12}>
-          <Card title={t('Type de bien')} size="small">
+          <Card
+            title={<HelpSectionTitle title={t('Type de bien')} helpId="commercial.affaires.nouvelle.bien" />}
+            size="small"
+            {...helpAnchor('affaire-bien')}
+          >
             <Space direction="vertical" size="middle" style={{ width: '100%' }}>
               <Form.Item label={t('Type de bien')}>
                 <Select
@@ -445,7 +465,12 @@ export const DealForm: React.FC<DealFormProps> = ({
         {/* Colonne droite: Critères spécifiques */}
         <Col xs={24} lg={12}>
           {!formData.propertyType ? (
-            <Card title={t('Critères spécifiques')} size="small">
+            <Card
+              title={
+                <HelpSectionTitle title={t('Critères spécifiques')} helpId="commercial.affaires.nouvelle.criteres" />
+              }
+              size="small"
+            >
               <Text type="secondary" italic>
                 {t('Sélectionnez un type de bien pour voir les critères disponibles')}
               </Text>
@@ -477,6 +502,7 @@ export const DealForm: React.FC<DealFormProps> = ({
                                       ? t('Penthouse')
                                       : t('Autre')}
                   </span>
+                  <HelpButton helpId="commercial.affaires.nouvelle.criteres" size="small" />
                 </Space>
               }
               size="small"
@@ -956,7 +982,15 @@ export const DealForm: React.FC<DealFormProps> = ({
       </Row>
 
       {/* Section: Description et valeur estimée */}
-      <Card title={t('Informations complémentaires')} size="small">
+      <Card
+        title={
+          <HelpSectionTitle
+            title={t('Informations complémentaires')}
+            helpId="commercial.affaires.nouvelle.complements"
+          />
+        }
+        size="small"
+      >
         <Form.Item label={t('Description / Besoins spécifiques')}>
           <TextArea
             value={formData.description}
@@ -976,7 +1010,12 @@ export const DealForm: React.FC<DealFormProps> = ({
               {t('Annuler')}
             </Button>
           )}
-          <Button type="primary" htmlType="submit" loading={isSubmitting || loading}>
+          <Button
+            type="primary"
+            htmlType="submit"
+            loading={isSubmitting || loading}
+            {...helpAnchor('affaire-enregistrer')}
+          >
             {deal ? t("Mettre à jour l'affaire") : t("Créer l'affaire")}
           </Button>
         </Space>

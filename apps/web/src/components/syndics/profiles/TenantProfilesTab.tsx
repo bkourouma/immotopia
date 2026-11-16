@@ -154,6 +154,7 @@ export const TenantProfilesTab: React.FC<TenantProfilesTabProps> = ({
   return (
     <Table<TenantRow>
       {...local.tableProps}
+      helpId="syndic.profils.locataires"
       exportFilename={t('Profils locataires')}
       exportFetchAll={local.exportAll}
       scroll={{ x: 'max-content' }}

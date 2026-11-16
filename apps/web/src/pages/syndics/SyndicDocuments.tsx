@@ -22,6 +22,7 @@ import { SyndicateDocument } from '../../types/syndic-types';
 import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 const { Paragraph, Text, Title } = Typography;
 
@@ -152,7 +153,7 @@ export const SyndicDocuments: React.FC = () => {
       </Space>
 
       <Modal
-        title={t('Ajouter un document')}
+        title={<HelpSectionTitle title={t('Ajouter un document')} helpId="syndic.documents.ajout" />}
         open={openCreate}
         onCancel={resetCreateForm}
         onOk={() => void handleCreateDocument()}

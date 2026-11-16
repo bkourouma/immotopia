@@ -15,6 +15,7 @@ import { ConfirmAction, StateBlock, Table } from '../../primitives';
 import { activeLocale } from '../../../i18n/format';
 import { t } from '../../../i18n/t';
 import { apiErrorMessage, formatDay } from './asset-format';
+import { HelpSectionTitle } from '../../../help';
 
 interface HoldingFormValues {
   entityId: string;
@@ -161,7 +162,7 @@ export const AssetHoldingsTab: React.FC<{ tenantId: string; asset: AssetDto }> =
 
   return (
     <Card
-      title={t('Détenteurs')}
+      title={<HelpSectionTitle title={t('Détenteurs')} helpId="patrimoine.actif.detenteurs" />}
       extra={
         <Button
           icon={<PlusOutlined />}
@@ -190,6 +191,7 @@ export const AssetHoldingsTab: React.FC<{ tenantId: string; asset: AssetDto }> =
             />
           )}
           <Table<HoldingDto>
+            helpId="patrimoine.actif.detenteurs.tableau"
             exportFilename={t('Détenteurs')}
             rowKey="id"
             size="small"

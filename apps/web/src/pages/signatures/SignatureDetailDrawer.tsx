@@ -11,6 +11,7 @@ import {
 } from '../../components/signature/signature-labels';
 import { activeLocale } from '../../i18n/format';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 import { eventLabel, kindLabel, targetHref } from './signature-admin-labels';
 
 const { Text } = Typography;
@@ -58,7 +59,7 @@ export const SignatureDetailDrawer: React.FC<Props> = ({ requestId, onClose }) =
       open={requestId !== null}
       onClose={onClose}
       width={560}
-      title={detail?.title ?? t('Détail de la demande')}
+      title={<HelpSectionTitle title={detail?.title ?? t('Détail de la demande')} helpId="locatif.signatures.detail" />}
       destroyOnHidden
     >
       {error && <Alert type="error" showIcon message={error} />}

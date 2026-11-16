@@ -313,6 +313,7 @@ export const TenantsList: React.FC = () => {
 
         <Table<Tenant>
           aria-label={t('Agences')}
+          helpId="administration.plateforme-agences.liste.tableau"
           search={search.searchProps}
           exportFilename={t('Agences')}
           exportFetchAll={fetchAllTenants}

@@ -5,6 +5,7 @@ import { StatCard, StatusTag } from '../../primitives';
 import { getModuleKeyLabelFr } from '../../../constants/module-labels';
 import { activeLocale } from '../../../i18n/format';
 import { t } from '../../../i18n/t';
+import { HelpButton } from '../../../help';
 
 const { Text } = Typography;
 
@@ -66,6 +67,9 @@ export const ActivityTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <HelpButton helpId="administration.plateforme-agences.detail.activite" />
+      </div>
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={8}>
           <StatCard label={t('Collaborateurs')} value={activity.memberships.total} />

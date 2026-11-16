@@ -19,6 +19,7 @@ import { isModuleNotIncludedError } from '../../utils/module-not-included';
 import { useLocalListSearch } from '../../utils/list-search';
 import { t } from '../../i18n/t';
 import { localizedRecord } from '../../i18n/localized';
+import { HelpSectionTitle } from '../../help';
 
 const { Text } = Typography;
 
@@ -251,7 +252,14 @@ export const OwnerFeeTermsCard: React.FC<OwnerFeeTermsCardProps> = ({ tenantId }
   }
 
   return (
-    <Card title={t('Conditions par propriétaire')}>
+    <Card
+      title={
+        <HelpSectionTitle
+          title={t('Conditions par propriétaire')}
+          helpId="administration.agence.finance.proprietaires"
+        />
+      }
+    >
       <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
         {t(
           "Un propriétaire sans conditions particulières suit les paramètres de l'agence. Les conditions d'un bail, si elles existent, priment sur celles-ci."
@@ -260,6 +268,7 @@ export const OwnerFeeTermsCard: React.FC<OwnerFeeTermsCardProps> = ({ tenantId }
       {error ? <Alert type="error" showIcon message={error} style={{ marginBottom: 16 }} /> : null}
       <Table
         {...local.tableProps}
+        helpId="administration.agence.finance.proprietaires.tableau"
         aria-label={t('Conditions par propriétaire')}
         exportFilename={t('Conditions par propriétaire')}
         exportFetchAll={local.exportAll}

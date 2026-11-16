@@ -4,6 +4,7 @@ import type { AssetDto, DebtDto } from '../../../services/patrimoine-assets-serv
 import type { SimulationOperation } from '../../../services/patrimoine-projections-service';
 import { apiErrorMessage } from '../actifs/asset-format';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 import { OperationFields } from './OperationForms';
 import { SelectField } from './projection-fields';
 import {
@@ -100,7 +101,7 @@ export const SimulationPanel: React.FC<{
   const assetName = (id: string) => assets.find(a => a.id === id)?.name ?? t('Actif');
   const loanName = (id: string) => debts.find(d => d.id === id)?.lender ?? t('Dette');
   return (
-    <Card title={t('Simuler')}>
+    <Card title={<HelpSectionTitle title={t('Simuler')} helpId="patrimoine.projections.simulation" />}>
       <Typography.Paragraph type="secondary">{t('Une simulation ne modifie pas vos données.')}</Typography.Paragraph>
       <AddForm
         horizon={horizon}

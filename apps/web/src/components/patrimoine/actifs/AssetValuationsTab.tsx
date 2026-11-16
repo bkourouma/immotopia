@@ -24,6 +24,7 @@ import type { SearchCriterion } from '../../../utils/list-search';
 import { apiErrorMessage, formatAmount, formatDay, serverFieldErrors, todayIso } from './asset-format';
 import { detailKeyLabel, reliabilityLabel, VALUATION_METHODS, valuationMethodName } from './asset-classes';
 import { ReliabilityBadge } from './ReliabilityBadge';
+import { HelpButton, HelpSectionTitle } from '../../../help';
 
 interface ValuationFormValues {
   valuatedAt: string;
@@ -133,7 +134,12 @@ const ValuationFormModal: React.FC<{
   return (
     <Modal
       open={open}
-      title={valuation ? t('Modifier une valeur') : t('Ajouter une valeur')}
+      title={
+        <HelpSectionTitle
+          title={valuation ? t('Modifier une valeur') : t('Ajouter une valeur')}
+          helpId="patrimoine.actif.valeur-formulaire"
+        />
+      }
       onCancel={onClose}
       onOk={handleOk}
       confirmLoading={submitting}
@@ -516,12 +522,13 @@ export const AssetValuationsTab: React.FC<{
 
   return (
     <Card
-      title={t('Historique des valeurs')}
+      title={<HelpSectionTitle title={t('Historique des valeurs')} helpId="patrimoine.actif.valeurs" />}
       extra={
         <Space wrap>
           <Button icon={<CalculatorOutlined />} loading={suggesting} onClick={handleSuggest}>
             {t('Calculer une valeur')}
           </Button>
+          <HelpButton size="small" helpId="patrimoine.actif.calcul" />
           {canWrite && (
             <Button icon={<PlusOutlined />} onClick={() => openForm(null)}>
               {t('Ajouter une valeur')}
@@ -556,6 +563,7 @@ export const AssetValuationsTab: React.FC<{
           <ValuationCurve valuations={valuationItems} />
           <Table<AssetValuationDto>
             {...local.tableProps}
+            helpId="patrimoine.actif.valeurs.tableau"
             exportFilename={t('Historique des valeurs')}
             exportFetchAll={local.exportAll}
             rowKey="id"

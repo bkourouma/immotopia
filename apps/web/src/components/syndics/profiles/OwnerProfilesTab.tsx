@@ -201,6 +201,7 @@ export const OwnerProfilesTab: React.FC<OwnerProfilesTabProps> = ({
       ) : null}
       <Table<OwnerRow>
         {...local.tableProps}
+        helpId="syndic.profils.proprietaires"
         exportFilename={t('Profils propriétaires')}
         exportFetchAll={local.exportAll}
         scroll={{ x: 'max-content' }}

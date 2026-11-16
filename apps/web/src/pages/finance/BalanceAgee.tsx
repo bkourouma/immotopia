@@ -220,12 +220,14 @@ export const BalanceAgee: React.FC = () => {
   return (
     <>
       <PageHeader
+        helpId="finance.balance-agee.page"
         title={t('Balance âgée')}
         subtitle={lignes.length > 0 ? `${lignes.length} locataire${lignes.length > 1 ? 's' : ''}` : undefined}
         primaryAction={{ label: t('Exporter'), icon: <DownloadOutlined />, onClick: handleExport }}
       />
 
       <DataView<ClientsAgingBalanceLine>
+        helpId="finance.balance-agee.tableau"
         // Pagination locale de la liste reçue : l'API rend la balance
         // entière et ses totaux (ceux du serveur, jamais recalculés ici).
         {...local.dataViewProps}
@@ -268,7 +270,11 @@ export const BalanceAgee: React.FC = () => {
 
       {data && lignes.length > 0 && (
         <div style={{ marginTop: 'var(--space-4)', maxWidth: 320 }}>
-          <StatCard label={t('Total de contrôle')} value={<MoneyValue value={data.totalBalance} signed />} />
+          <StatCard
+            helpId="finance.balance-agee.total"
+            label={t('Total de contrôle')}
+            value={<MoneyValue value={data.totalBalance} signed />}
+          />
           <MentionEcart gap={data.gap} />
         </div>
       )}

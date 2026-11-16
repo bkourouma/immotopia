@@ -16,6 +16,7 @@ import {
 } from 'antd';
 import { DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 import {
   RECEIVING_ACCOUNT_LIMIT,
   RECEIVING_ACCOUNT_QR_ACCEPTED_TYPES,
@@ -49,6 +50,8 @@ export interface ReceivingAccountsManagerCardProps {
   canEdit?: boolean;
   title?: string;
   description?: string;
+  /** Fiche d'aide : le « ? » n'apparaît que si elle est fournie (écran syndic). */
+  helpId?: string;
 }
 
 /** Message d'erreur d'une image refusée avant envoi, `null` si elle convient. */
@@ -300,7 +303,8 @@ export const ReceivingAccountsManagerCard: React.FC<ReceivingAccountsManagerCard
   scope,
   canEdit = true,
   title,
-  description
+  description,
+  helpId
 }) => {
   const { message } = App.useApp();
   const [form] = Form.useForm<FormValues>();
@@ -485,6 +489,7 @@ export const ReceivingAccountsManagerCard: React.FC<ReceivingAccountsManagerCard
     });
 
   const heading = title ?? t('Comptes de réception');
+  const cardTitle = helpId ? <HelpSectionTitle title={heading} helpId={helpId} /> : heading;
   const intro =
     description ??
     t(
@@ -499,7 +504,7 @@ export const ReceivingAccountsManagerCard: React.FC<ReceivingAccountsManagerCard
 
   if (loadError && items.length === 0) {
     return (
-      <Card title={heading}>
+      <Card title={cardTitle}>
         <Alert type="error" showIcon message={t('Erreur')} description={loadError} action={retryButton} />
       </Card>
     );
@@ -509,7 +514,7 @@ export const ReceivingAccountsManagerCard: React.FC<ReceivingAccountsManagerCard
 
   return (
     <Card
-      title={heading}
+      title={cardTitle}
       loading={loading}
       extra={
         canEdit ? (

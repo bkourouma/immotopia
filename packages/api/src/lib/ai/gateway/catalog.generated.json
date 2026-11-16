@@ -1355,6 +1355,17 @@
       "sensitive": false
     },
     {
+      "id": "GET /api/tenants/:tenantId/help-feedback",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/help-feedback",
+      "pathParams": [],
+      "module": "help-feedback",
+      "summary": "help-feedback",
+      "permissions": ["TENANT_AUDIT_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
       "id": "GET /api/tenants/:tenantId/invitations",
       "method": "GET",
       "path": "/api/tenants/:tenantId/invitations",

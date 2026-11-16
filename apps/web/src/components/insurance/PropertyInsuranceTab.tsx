@@ -6,6 +6,7 @@ import type { InsurancePolicyDto } from '../../types/insurance-types';
 import { apiErrorMessage } from '../patrimoine/patrimoine-labels';
 import { feedback } from '../../lib/feedback';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 import { ClaimDetailDrawer } from './ClaimDetailDrawer';
 import { ClaimFormModal } from './ClaimFormModal';
 import { ClaimList } from './ClaimList';
@@ -69,7 +70,7 @@ export const PropertyInsuranceTab: React.FC<Props> = ({ propertyId, tenantId, ca
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       {error && <Alert type="error" showIcon message={error} action={retry} />}
       <Card
-        title={t('Polices')}
+        title={<HelpSectionTitle title={t('Polices')} helpId="patrimoine.assurances.polices" />}
         extra={
           canEdit && (
             <Button type="primary" icon={<PlusOutlined />} onClick={() => setPolicyModal({ open: true, policy: null })}>
@@ -92,7 +93,7 @@ export const PropertyInsuranceTab: React.FC<Props> = ({ propertyId, tenantId, ca
       </Card>
 
       <Card
-        title={t('Sinistres')}
+        title={<HelpSectionTitle title={t('Sinistres')} helpId="patrimoine.assurances.sinistres" />}
         extra={
           canEdit && (
             <Button

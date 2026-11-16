@@ -10,6 +10,7 @@ import { getPropertyVisits, updateVisitStatus, completePropertyVisit } from '../
 import { writeErrorMessage } from '../../utils/error-handler';
 import { activeLocale } from '../../i18n/format';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 const { Text } = Typography;
 const { TextArea } = Input;
@@ -246,9 +247,10 @@ export const PropertyVisitsList: React.FC<PropertyVisitsListProps> = ({ property
   ];
 
   return (
-    <Card title={t('Visites du bien')}>
+    <Card title={<HelpSectionTitle title={t('Visites du bien')} helpId="commercial.biens.detail.visites" />}>
       {error && <Alert type="error" showIcon message={error} style={{ marginBottom: 16 }} />}
       <Table<PropertyVisit>
+        helpId="commercial.biens.detail.visites.tableau"
         {...local.tableProps}
         exportFetchAll={local.exportAll}
         exportFilename={t('Visites du bien')}

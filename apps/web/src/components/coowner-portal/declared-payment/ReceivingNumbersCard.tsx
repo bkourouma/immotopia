@@ -4,6 +4,7 @@ import { Button, Card, Space, Typography } from 'antd';
 import { CopyOutlined } from '@ant-design/icons';
 import { t } from '../../../i18n/t';
 import { feedback } from '../../../lib/feedback';
+import { HelpSectionTitle } from '../../../help';
 import type { ReceivingNumber } from '../../../services/coowner-portal-service';
 import { formatPhoneForDisplay, operatorLabel } from './labels';
 
@@ -52,7 +53,7 @@ export function ReceivingNumbersCard({
     : t('Numéros pour payer par mobile money');
 
   return (
-    <Card title={title}>
+    <Card title={<HelpSectionTitle title={title} helpId="syndic.portail.appels.mobile-money" />}>
       <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
         <Typography.Paragraph style={{ marginBottom: 0 }}>
           {t('Faites votre transfert depuis votre téléphone vers l’un de ces numéros, puis déclarez-le ici.')}

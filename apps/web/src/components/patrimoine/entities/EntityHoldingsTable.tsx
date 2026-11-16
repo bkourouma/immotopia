@@ -15,6 +15,7 @@ import { t } from '../../../i18n/t';
 import { useLocalListSearch } from '../../../utils/list-search';
 import type { SearchCriterion } from '../../../utils/list-search';
 import { apiErrorMessage } from '../patrimoine-labels';
+import { HelpSectionTitle } from '../../../help';
 
 /**
  * `<EntityHoldingsTable>` — biens rattachés à une entité détentrice, avec
@@ -191,6 +192,7 @@ export const EntityHoldingsTable: React.FC<EntityHoldingsTableProps> = ({
         </Button>
       </Space>
       <Table
+        helpId="patrimoine.entite.biens.tableau"
         {...local.tableProps}
         exportFilename={t('Biens rattachés')}
         exportFetchAll={local.exportAll}
@@ -203,7 +205,12 @@ export const EntityHoldingsTable: React.FC<EntityHoldingsTableProps> = ({
 
       <Modal
         open={modalOpen}
-        title={editing ? t('Modifier la quote-part') : t('Rattacher un bien')}
+        title={
+          <HelpSectionTitle
+            title={editing ? t('Modifier la quote-part') : t('Rattacher un bien')}
+            helpId="patrimoine.entite.rattachement"
+          />
+        }
         onCancel={() => {
           setModalOpen(false);
           form.resetFields();

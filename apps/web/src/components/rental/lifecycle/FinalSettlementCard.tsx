@@ -3,6 +3,7 @@ import { Alert, Card, Descriptions, Skeleton, Space, Typography } from 'antd';
 import { FinalSettlement } from '../../../services/lease-lifecycle-service';
 import { formatMontantLocatif } from '../../../lib/rental-labels';
 import { t } from '../../../i18n/t';
+import { HelpSectionTitle } from '../../../help';
 
 const { Text } = Typography;
 
@@ -33,7 +34,7 @@ export const FinalSettlementCard: React.FC<FinalSettlementCardProps> = ({ settle
   const soldePositif = solde >= 0;
 
   return (
-    <Card title={t('Solde de tout compte')}>
+    <Card title={<HelpSectionTitle title={t('Solde de tout compte')} helpId="locatif.baux.fiche.vie.solde" />}>
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         <Descriptions column={1} size="small" bordered>
           <Descriptions.Item label={t('Dépôt détenu')}>

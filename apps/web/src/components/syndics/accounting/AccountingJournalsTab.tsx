@@ -101,6 +101,7 @@ export const AccountingJournalsTab: React.FC<AccountingJournalsTabProps> = ({ jo
   return (
     <Table<AccountingJournal>
       {...local.tableProps}
+      helpId="syndic.comptabilite.journaux"
       exportFilename={t('Journaux comptables')}
       exportFetchAll={local.exportAll}
       scroll={{ x: 'max-content' }}

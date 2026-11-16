@@ -32,6 +32,7 @@ import {
   variation
 } from '../components/home/dashboard-viz';
 import { safeFormatDate } from '../utils/date-utils';
+import { helpAnchor } from '../help';
 import { t } from '../i18n/t';
 
 import { activeLocale } from '../i18n/format';
@@ -186,6 +187,7 @@ export const Dashboard: React.FC = () => {
         noeud: (
           <ChartCard
             title={t('Trésorerie sur 12 mois')}
+            helpId="communication.accueil.tableau-de-bord.tresorerie"
             subtitle={t('Ce qui est entré, face à ce qui était attendu')}
             link={{ label: t('Voir les paiements'), to: `${base}/rental/payments` }}
             empty={encaisse === 0 && attendu === 0}
@@ -219,6 +221,7 @@ export const Dashboard: React.FC = () => {
         noeud: (
           <ChartCard
             title={t('Échéances par statut')}
+            helpId="communication.accueil.tableau-de-bord.echeances"
             subtitle={t('Longueur de barre : le reste à encaisser')}
             link={{ label: t('Encaisser'), to: `${base}/rental/installments` }}
             empty={echeances.every(bucket => bucket.count === 0)}
@@ -246,6 +249,7 @@ export const Dashboard: React.FC = () => {
         noeud: (
           <ChartCard
             title={t('Moyens de paiement')}
+            helpId="communication.accueil.tableau-de-bord.moyens-paiement"
             subtitle={t('Sur les 12 derniers mois')}
             link={{ label: t('Voir les paiements'), to: `${base}/rental/payments` }}
             empty={encaisseParMoyen === 0}
@@ -277,6 +281,7 @@ export const Dashboard: React.FC = () => {
         noeud: (
           <ChartCard
             title={t('Parc par statut')}
+            helpId="communication.accueil.tableau-de-bord.parc-statut"
             subtitle={
               tableau.properties.occupancyRate !== null
                 ? t('{{value}} du parc occupé ou vendu', { value: formatPercent(tableau.properties.occupancyRate) })
@@ -314,6 +319,7 @@ export const Dashboard: React.FC = () => {
         noeud: (
           <ChartCard
             title={t('Types de biens')}
+            helpId="communication.accueil.tableau-de-bord.types-biens"
             subtitle={t('Les six premiers types du portefeuille')}
             link={{ label: t('Voir les biens'), to: `${base}/properties` }}
             empty={tableau.properties.byType.length === 0}
@@ -343,6 +349,7 @@ export const Dashboard: React.FC = () => {
         noeud: (
           <ChartCard
             title={t('Entonnoir commercial')}
+            helpId="communication.accueil.tableau-de-bord.entonnoir"
             subtitle={
               perdues && perdues.count > 0
                 ? t('Affaires par étape · {{count}} perdue{{value}}', {
@@ -379,6 +386,7 @@ export const Dashboard: React.FC = () => {
         noeud: (
           <ChartCard
             title={t('Contacts')}
+            helpId="communication.accueil.tableau-de-bord.repartition-contacts"
             subtitle={t('Prospects, clients et archives')}
             link={{ label: t('Voir les contacts'), to: `${base}/crm/contacts` }}
             legend={parts.map((part, index) => ({
@@ -408,6 +416,7 @@ export const Dashboard: React.FC = () => {
         noeud: (
           <ChartCard
             title={t('Tickets ouverts par priorité')}
+            helpId="communication.accueil.tableau-de-bord.tickets-priorite"
             subtitle={t('{{nombre}} ticket{{s}} en cours de traitement', {
               nombre: ouverts,
               s: ouverts > 1 ? 's' : ''
@@ -442,6 +451,7 @@ export const Dashboard: React.FC = () => {
         noeud: (
           <ChartCard
             title={t('Appels de charges')}
+            helpId="communication.accueil.tableau-de-bord.appels-charges"
             subtitle={
               tableau.syndic.recoveryRate !== null
                 ? t('{{value}} recouvré · {{lots}} lots', {
@@ -486,6 +496,7 @@ export const Dashboard: React.FC = () => {
         noeud: (
           <ChartCard
             title={t('Programmes de travaux')}
+            helpId="communication.accueil.tableau-de-bord.travaux"
             subtitle={t('{{value}} {{devise}} encore engagés', {
               value: compactAmount(tableau.patrimoine.plannedCost),
               devise: devise
@@ -552,6 +563,7 @@ export const Dashboard: React.FC = () => {
   const tuilesLocatives = [
     {
       cle: 'impayes',
+      helpId: 'communication.accueil.tableau-de-bord.impayes',
       label: t('Impayés'),
       value: impayes ? compactAmount(impayes.amount) : NON_AUTORISE,
       hint: impayes
@@ -564,6 +576,7 @@ export const Dashboard: React.FC = () => {
     },
     {
       cle: 'semaine',
+      helpId: 'communication.accueil.tableau-de-bord.a-encaisser',
       label: t('À encaisser sous 7 jours'),
       value: semaine ? compactAmount(semaine.amount) : NON_AUTORISE,
       hint: semaine
@@ -576,6 +589,7 @@ export const Dashboard: React.FC = () => {
     },
     {
       cle: 'encaisse',
+      helpId: 'communication.accueil.tableau-de-bord.encaisse',
       label: t('Encaissé ({{mois}})', { mois: mois }),
       value: revenus ? compactAmount(revenus.amount) : NON_AUTORISE,
       hint: revenus
@@ -598,6 +612,7 @@ export const Dashboard: React.FC = () => {
   const tuilesSocle = [
     {
       cle: 'biens',
+      helpId: 'communication.accueil.tableau-de-bord.biens',
       label: t('Biens'),
       value: valeurOuTiret(tableau?.properties?.total),
       hint: tableau?.properties
@@ -621,6 +636,7 @@ export const Dashboard: React.FC = () => {
     },
     {
       cle: 'contacts',
+      helpId: 'communication.accueil.tableau-de-bord.contacts',
       label: t('Contacts'),
       value: valeurOuTiret(tableau?.clients?.total),
       hint:
@@ -638,6 +654,7 @@ export const Dashboard: React.FC = () => {
     },
     {
       cle: 'tickets',
+      helpId: 'communication.accueil.tableau-de-bord.tickets',
       label: t('Tickets ouverts'),
       value: valeurOuTiret(tableau?.maintenance?.open),
       hint:
@@ -708,7 +725,7 @@ export const Dashboard: React.FC = () => {
             <PinnedAnalyses key={`${tenantId}:${user.id}`} tenantId={tenantId} />
           </React.Suspense>
           {/* Les tuiles : deux colonnes au pouce, six sur un écran large. */}
-          <Row gutter={[16, 16]}>
+          <Row gutter={[16, 16]} {...helpAnchor('accueil-indicateurs')}>
             {tuiles.map(tuile => (
               // Trois par ligne, et non six : à six, « À encaisser sous 7
               // jours » se repliait sur quatre lignes et « Encaissé (septembre
@@ -722,6 +739,7 @@ export const Dashboard: React.FC = () => {
                   icon={tuile.icon}
                   tone={tuile.tone}
                   highlight={tuile.highlight}
+                  helpId={tuile.helpId}
                   onClick={tuile.to ? () => navigate(tuile.to as string) : undefined}
                 />
               </Col>
@@ -736,12 +754,12 @@ export const Dashboard: React.FC = () => {
                     {tresorerie.noeud}
                   </Col>
                 )}
-                <Col xs={24} xl={tresorerie ? 8 : 24}>
+                <Col xs={24} xl={tresorerie ? 8 : 24} {...helpAnchor('accueil-a-traiter')}>
                   {fileDeTravail}
                 </Col>
               </Row>
 
-              <Row gutter={[16, 16]} style={{ marginTop: 'var(--space-4)' }}>
+              <Row gutter={[16, 16]} style={{ marginTop: 'var(--space-4)' }} {...helpAnchor('accueil-graphiques')}>
                 {autresCartes.map(carte => (
                   <Col key={carte.cle} xs={24} lg={12} xl={carte.span}>
                     {carte.noeud}
@@ -755,11 +773,14 @@ export const Dashboard: React.FC = () => {
                   qui appelle une action. Les graphiques deviennent des onglets,
                   un seul visible à la fois — les empiler ferait défiler un
                   millier de pixels avant d'atteindre le journal. */}
-              <div style={{ marginTop: 'var(--space-4)' }}>{fileDeTravail}</div>
+              <div style={{ marginTop: 'var(--space-4)' }} {...helpAnchor('accueil-a-traiter')}>
+                {fileDeTravail}
+              </div>
 
               {groupes.length > 0 && (
                 <Tabs
                   style={{ marginTop: 'var(--space-4)' }}
+                  {...helpAnchor('accueil-graphiques')}
                   items={groupes.map(groupe => ({
                     key: groupe,
                     label: groupe,
@@ -780,7 +801,7 @@ export const Dashboard: React.FC = () => {
             </>
           )}
 
-          <div style={{ marginTop: 'var(--space-4)' }}>
+          <div style={{ marginTop: 'var(--space-4)' }} {...helpAnchor('accueil-activite')}>
             <ActivityFeed
               activities={(tableau?.recentActivity ?? []).filter(
                 activite => rentalOk || activite.type !== 'PAYMENT_SUCCEEDED'

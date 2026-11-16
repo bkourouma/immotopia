@@ -17,6 +17,7 @@ import { getCalendarVisits } from '../../services/property-service';
 import { listMembers, Member } from '../../services/membership-service';
 import { Link } from 'react-router-dom';
 import { getDealTypeLabel } from '../../utils/crm-utils';
+import { HelpButton } from '../../help';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
@@ -270,20 +271,23 @@ export const PropertyVisitCalendar: React.FC<PropertyVisitCalendarProps> = props
 
   return (
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-      <Select
-        allowClear
-        showSearch
-        style={{ minWidth: 260, maxWidth: '100%' }}
-        placeholder={t('Filtrer par collaborateur')}
-        aria-label={t('Filtrer par collaborateur')}
-        value={assignedFilter}
-        onChange={value => setAssignedFilter(value || undefined)}
-        optionFilterProp="label"
-        options={members.map(member => ({
-          value: member.user.id,
-          label: member.user.fullName || member.user.email
-        }))}
-      />
+      <Space align="center" wrap>
+        <Select
+          allowClear
+          showSearch
+          style={{ minWidth: 260, maxWidth: '100%' }}
+          placeholder={t('Filtrer par collaborateur')}
+          aria-label={t('Filtrer par collaborateur')}
+          value={assignedFilter}
+          onChange={value => setAssignedFilter(value || undefined)}
+          optionFilterProp="label"
+          options={members.map(member => ({
+            value: member.user.id,
+            label: member.user.fullName || member.user.email
+          }))}
+        />
+        <HelpButton helpId="commercial.biens.visites.calendrier" size="small" />
+      </Space>
       <PropertyVisitCalendarView {...props} assignedToUserId={assignedFilter} />
     </Space>
   );

@@ -15,6 +15,7 @@ import { NotificationList } from './NotificationList';
 import { safeInternalLink } from './notification-labels';
 import { UNREAD_COUNTS_CHANGED_EVENT } from '../../utils/unread-counts-event';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 
 /** Délai entre deux lectures du compteur (suspendu quand l'onglet est masqué). */
 export const NOTIFICATION_POLL_MS = 30_000;
@@ -119,7 +120,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ scope, allHr
       <Drawer
         open={open}
         onClose={() => setOpen(false)}
-        title={t('Notifications')}
+        title={<HelpSectionTitle title={t('Notifications')} helpId="communication.messagerie.cloche" />}
         width={400}
         extra={
           <Button

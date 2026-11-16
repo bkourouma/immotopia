@@ -4,6 +4,7 @@ import { getInsuranceClaim } from '../../services/insurance-service';
 import type { InsuranceClaimDetailDto } from '../../types/insurance-types';
 import { apiErrorMessage } from '../patrimoine/patrimoine-labels';
 import { t } from '../../i18n/t';
+import { HelpSectionTitle } from '../../help';
 import { ClaimDocuments } from './ClaimDocuments';
 import { ClaimStatusTimeline } from './ClaimStatusTimeline';
 import { ClaimTransitionActions } from './ClaimTransitionActions';
@@ -59,7 +60,13 @@ export const ClaimDetailDrawer: React.FC<Props> = ({ tenantId, claimId, canEdit,
   };
 
   return (
-    <Drawer open={claimId !== null} onClose={onClose} width={640} title={t('Détail du sinistre')} destroyOnClose>
+    <Drawer
+      open={claimId !== null}
+      onClose={onClose}
+      width={640}
+      title={<HelpSectionTitle title={t('Détail du sinistre')} helpId="patrimoine.sinistres.detail" />}
+      destroyOnClose
+    >
       {loading && !claim && <Spin />}
       {error && <Alert type="error" showIcon message={error} />}
       {claim && (
@@ -114,7 +121,9 @@ export const ClaimDetailDrawer: React.FC<Props> = ({ tenantId, claimId, canEdit,
             }))}
           />
 
-          <Divider>{t('Pièces')}</Divider>
+          <Divider>
+            <HelpSectionTitle title={t('Pièces')} helpId="patrimoine.sinistres.documents" />
+          </Divider>
           <ClaimDocuments tenantId={tenantId} claim={claim} canEdit={canEdit} onChanged={changed} />
         </>
       )}
