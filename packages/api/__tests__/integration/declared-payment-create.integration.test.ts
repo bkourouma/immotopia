@@ -40,6 +40,7 @@ maybeDescribe('création concurrente de déclarations (base réelle)', () => {
     createDeclaration({
       tenantId: tenant.id,
       syndicateId,
+      formKey: 'syndic.paiement-declare-portail',
       actor: { type: 'COOWNER', scope, contactId },
       input: {
         receivingNumberId,

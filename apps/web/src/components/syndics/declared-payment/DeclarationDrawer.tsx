@@ -340,7 +340,11 @@ export const DeclarationDrawer: React.FC<DeclarationDrawerProps> = ({
         </Descriptions.Item>
         <Descriptions.Item label={t('Référence')}>
           <FieldWithWitness row={current} field="transactionReference">
-            <Text copyable={{ text: current.transactionReference }}>{current.transactionReference}</Text>
+            {current.transactionReference ? (
+              <Text copyable={{ text: current.transactionReference }}>{current.transactionReference}</Text>
+            ) : (
+              <Text type="secondary">—</Text>
+            )}
           </FieldWithWitness>
         </Descriptions.Item>
         {current.comment ? (

@@ -15,6 +15,12 @@ import { ProviderInvoicesTab } from '../../components/syndics/ProviderInvoicesTa
  * pages Prestataires/Documents n'en avaient pas besoin).
  */
 
+// Réglages des formulaires : défauts (aucun réglage d'agence), sans AuthProvider ni réseau.
+vi.mock(
+  '../../hooks/useFormFieldModes',
+  async () => (await import('../../__tests__/syndics/charges-form-modes-mock')).formModesModule
+);
+
 vi.mock('../../utils/api-client', () => ({
   __esModule: true,
   default: {

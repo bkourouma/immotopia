@@ -1397,6 +1397,83 @@ const entries: HelpEntry[] = [
     ],
     related: [{ label: "Journal d'activité", helpId: 'administration.agence.activite' }],
     keywords: ['détail', 'modifications', 'avant après', 'adresse IP', 'navigateur']
+  },
+  // ------------------------------------------------------------------ Formulaires
+  {
+    id: 'administration.agence.formulaires',
+    kind: 'page',
+    title: 'Formulaires',
+    summary:
+      'Choisissez, champ par champ, ce qui est obligatoire, facultatif ou masqué dans les formulaires de saisie de votre agence (module Syndic de copropriété).',
+    purpose:
+      "Chaque formulaire a des champs que votre agence peut rendre obligatoires, facultatifs ou masqués selon sa façon de travailler. Par exemple, la référence de transaction d'un paiement déclaré peut devenir facultative. Les écrans de saisie et le portail copropriétaire appliquent ces choix dès l'enregistrement.",
+    howToRead: {
+      statuses: [
+        {
+          value: 'REQUIRED',
+          label: 'Obligatoire',
+          description: "Le champ doit être rempli : sans lui, l'enregistrement est refusé."
+        },
+        { value: 'OPTIONAL', label: 'Facultatif', description: 'Le champ est affiché et peut rester vide.' },
+        {
+          value: 'HIDDEN',
+          label: 'Masqué',
+          description: "Le champ n'apparaît plus et sa valeur n'est pas enregistrée."
+        }
+      ],
+      notes: [
+        'Un champ grisé, marqué « Réglage soumis à ImmoTopia », est un champ sous condition : seul ImmoTopia peut autoriser son réglage pour votre agence.',
+        "Certains champs ne peuvent pas être masqués ; l'option « Masqué » n'est alors pas proposée.",
+        'Chaque champ affiche ce que le réglage change ou casse : lisez-le avant de modifier.'
+      ]
+    },
+    steps: [
+      { title: 'Trouver le formulaire', detail: 'Utilisez la recherche ou ouvrez le module puis le formulaire voulu.' },
+      { title: 'Choisir un mode par champ', detail: 'Sélectionnez Obligatoire, Facultatif ou Masqué.' },
+      {
+        title: 'Enregistrer le formulaire',
+        detail: "Chaque formulaire s'enregistre séparément avec son propre bouton."
+      },
+      {
+        title: 'Revenir au défaut si besoin',
+        detail: "Remettez un champ au mode par défaut : le comportement d'origine revient."
+      }
+    ],
+    consequences: [
+      "Le changement s'applique à tous les utilisateurs de l'agence, sur les écrans de saisie et sur le portail copropriétaire.",
+      "Un champ masqué n'est plus enregistré : la valeur saisie avant le masquage reste en base mais n'est plus alimentée.",
+      "Sans réglage enregistré, le comportement reste celui d'aujourd'hui.",
+      "Sans le droit de modifier les paramètres de l'agence, la page est en lecture seule."
+    ],
+    faq: [
+      {
+        q: 'Pourquoi ne puis-je pas modifier certains champs ?',
+        a: "Ce sont des champs sous condition : leur réglage doit d'abord être autorisé par ImmoTopia pour votre agence. Contactez le support en expliquant votre besoin."
+      },
+      {
+        q: 'Puis-je défaire un réglage ?',
+        a: "Oui, remettez le champ au mode par défaut et enregistrez : le comportement d'origine revient."
+      },
+      {
+        q: 'Si ImmoTopia re-verrouille un champ, perds-je mon réglage ?',
+        a: 'Le champ revient au mode par défaut, mais votre réglage est conservé et reprend effet si le champ est déverrouillé de nouveau.'
+      }
+    ],
+    permissions: {
+      roles: ["Administrateur de l'agence"],
+      note: "Voir demande le droit de voir les paramètres de l'agence ; enregistrer demande celui de les modifier."
+    },
+    related: [{ label: "Paramètres de l'agence", helpId: 'administration.agence.parametres' }],
+    keywords: [
+      'formulaires',
+      'champ',
+      'obligatoire',
+      'facultatif',
+      'masqué',
+      'référence de transaction',
+      'paramétrage',
+      'saisie'
+    ]
   }
 ];
 

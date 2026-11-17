@@ -1,4 +1,15 @@
 import React from 'react';
+
+// Formulaires paramétrables : sans réglage, chaque champ garde son comportement actuel (le hook réel exige un AuthProvider).
+vi.mock('../../hooks/useFormFieldModes', () => ({
+  useFormFieldModes: () => ({
+    loading: false,
+    mode: (_key: string, fallback = 'OPTIONAL') => fallback,
+    isVisible: () => true,
+    isRequired: (_key: string, fallback: boolean) => fallback
+  })
+}));
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -16,6 +27,12 @@ import { SyndicProviders } from '../../pages/syndics/SyndicProviders';
 const listProvidersContracts = vi.hoisted(() => vi.fn());
 const listProviderInvoices = vi.hoisted(() => vi.fn());
 const listProviderBalances = vi.hoisted(() => vi.fn());
+
+// Réglages des formulaires : défauts (aucun réglage d'agence), sans AuthProvider ni réseau.
+vi.mock(
+  '../../hooks/useFormFieldModes',
+  async () => (await import('../../__tests__/syndics/charges-form-modes-mock')).formModesModule
+);
 
 vi.mock('../../hooks/useBreakpoint', () => ({
   useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })

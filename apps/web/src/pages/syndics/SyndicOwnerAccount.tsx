@@ -39,6 +39,7 @@ import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { collectAllPages } from '../../utils/table-export/collect';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
+import { useFormFieldModes } from '../../hooks/useFormFieldModes';
 import { HelpSectionTitle } from '../../help';
 import { displayCurrency } from '../../utils/syndic-currency';
 
@@ -133,6 +134,7 @@ export const SyndicOwnerAccount: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  const fm = useFormFieldModes('syndic.compte-lot-ajustement');
   const [form] = Form.useForm();
 
   useEffect(() => {
@@ -273,14 +275,19 @@ export const SyndicOwnerAccount: React.FC = () => {
 
   const handleAdjustment = async () => {
     if (!effectiveTenantId || !syndicId || !lotId) return;
-    const values = await form.validateFields();
+    let values;
+    try {
+      values = await form.validateFields();
+    } catch {
+      return;
+    }
     setSubmitting(true);
     try {
       await createLotOwnerAccountAdjustment(effectiveTenantId, syndicId, lotId, {
         direction: values.direction,
         amount: values.amount,
         label: values.label,
-        reference: values.reference || undefined
+        ...(fm.isVisible('reference') ? { reference: values.reference || undefined } : {})
       });
       message.success(t('Ajustement enregistré'));
       setOpen(false);
@@ -579,9 +586,21 @@ export const SyndicOwnerAccount: React.FC = () => {
           >
             <Input />
           </Form.Item>
-          <Form.Item label={t('Référence (optionnel)')} name="reference">
-            <Input />
-          </Form.Item>
+          {fm.isVisible('reference') ? (
+            <Form.Item
+              label={fm.isRequired('reference', false) ? t('Référence') : t('Référence (optionnel)')}
+              name="reference"
+              rules={[
+                {
+                  required: fm.isRequired('reference', false),
+                  whitespace: true,
+                  message: t('La référence est obligatoire')
+                }
+              ]}
+            >
+              <Input />
+            </Form.Item>
+          ) : null}
         </Form>
       </Modal>
     </>

@@ -12,6 +12,11 @@ import path from 'path';
 import express from 'express';
 import request from 'supertest';
 
+// Formulaires paramétrables : aucun réglage d'agence (tous les champs gardent leur mode par défaut).
+jest.mock('../../src/lib/form-settings/service', () => ({
+  getEffectiveFieldModes: jest.fn(async (_tenantId: string, formKey: string) => ({ formKey, fields: {} }))
+}));
+
 jest.mock('../../src/middleware/auth-middleware', () => ({
   authenticate: (req: any, _res: any, next: any) => {
     req.user = { userId: String(req.headers['x-role'] ?? 'none'), globalRole: 'USER' };

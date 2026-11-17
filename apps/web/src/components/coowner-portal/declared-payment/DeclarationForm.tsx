@@ -18,6 +18,7 @@ import {
 } from '../../../services/coowner-portal-service';
 import { MoneyValue, PhoneNumber } from '../../primitives';
 import { HelpSectionTitle } from '../../../help';
+import { useFormFieldModes } from '../../../hooks/useFormFieldModes';
 import { formatChargePeriod } from '../../../utils/charge-period';
 import {
   aiFieldHint,
@@ -74,6 +75,23 @@ interface FormState {
 
 type Errors = Record<string, string>;
 
+/** Réglages de l'agence sur les champs du formulaire (comportement d'origine par défaut). */
+interface FieldRules {
+  referenceVisible: boolean;
+  referenceRequired: boolean;
+  callsVisible: boolean;
+  commentVisible: boolean;
+  commentRequired: boolean;
+}
+
+const DEFAULT_RULES: FieldRules = {
+  referenceVisible: true,
+  referenceRequired: true,
+  callsVisible: true,
+  commentVisible: true,
+  commentRequired: false
+};
+
 function activeNumbers(availability: CoOwnerDeclaredAvailability): ReceivingNumber[] {
   return availability.receivingNumbers.filter(n => n.isActive !== false);
 }
@@ -115,7 +133,11 @@ function sumOfShares(state: FormState): number {
   return state.checkedLots.reduce((sum, id) => sum + (shareOf(state, id) ?? 0), 0);
 }
 
-function validateForm(state: FormState, availability: CoOwnerDeclaredAvailability): Errors {
+function validateForm(
+  state: FormState,
+  availability: CoOwnerDeclaredAvailability,
+  rules: FieldRules = DEFAULT_RULES
+): Errors {
   const errors: Errors = {};
   if (!state.receivingNumberId) errors.receivingNumber = t('Choisissez le numéro de réception utilisé.');
   if (state.payerPhone.replace(/\D/g, '').length < 8) {
@@ -130,10 +152,16 @@ function validateForm(state: FormState, availability: CoOwnerDeclaredAvailabilit
   else if (!inPaidAtWindow(state.paidAt)) {
     errors.paidAt = t('La date doit être comprise dans les 90 derniers jours et ne peut pas être dans le futur.');
   }
-  if (!isValidTransactionReference(normalizeTransactionReference(state.reference))) {
+  const reference = normalizeTransactionReference(state.reference);
+  // Référence facultative : vide = acceptée ; masquée : jamais contrôlée.
+  const referenceChecked = rules.referenceVisible && (rules.referenceRequired || reference !== '');
+  if (referenceChecked && !isValidTransactionReference(reference)) {
     errors.reference = t('La référence doit comporter 4 à 40 caractères : lettres, chiffres, tiret ou point.');
   }
   validateLots(state, errors);
+  if (rules.commentVisible && rules.commentRequired && !state.comment.trim()) {
+    errors.comment = t('Saisissez un commentaire.');
+  }
   return errors;
 }
 
@@ -170,7 +198,7 @@ function applyReading(prev: FormState, reading: PaymentProofReading, ctx: Readin
       next.ai.paidAt = read.valueOf();
     }
   }
-  if (reading.transactionReference) {
+  if (reading.transactionReference && ctx.referenceVisible) {
     const read = normalizeTransactionReference(reading.transactionReference);
     if (read && (prev.reference.trim() === '' || normalizeTransactionReference(prev.reference) === prev.ai.reference)) {
       next.reference = read;
@@ -195,6 +223,8 @@ function applyReading(prev: FormState, reading: PaymentProofReading, ctx: Readin
 }
 
 interface ReadingContext {
+  /** `false` : champ référence masqué, la référence lue n'est pas proposée. */
+  referenceVisible: boolean;
   maxAmount: number;
   defaultPayerPhone?: string;
   numberIds: string[];
@@ -380,7 +410,12 @@ function AmountFields({ state, errors, patch, maxAmount }: PatchProps & { maxAmo
   );
 }
 
-function PaidAtAndReference({ state, errors, patch }: PatchProps & { refError?: string }): React.ReactElement {
+function PaidAtAndReference({
+  state,
+  errors,
+  patch,
+  rules
+}: PatchProps & { refError?: string; rules: FieldRules }): React.ReactElement {
   const normalized = normalizeTransactionReference(state.reference);
   return (
     <>
@@ -403,24 +438,26 @@ function PaidAtAndReference({ state, errors, patch }: PatchProps & { refError?: 
           onChange={paidAt => patch({ paidAt })}
         />
       </Field>
-      <Field
-        id="declaration-reference"
-        label={t('Référence de la transaction')}
-        required
-        aiField="reference"
-        aiActive={isAiValue(state, 'reference')}
-        help={normalized ? t('Référence enregistrée : {{ref}}', { ref: normalized }) : undefined}
-        error={errors.reference}
-      >
-        <Input
+      {rules.referenceVisible ? (
+        <Field
           id="declaration-reference"
-          autoComplete="off"
-          style={{ minHeight: TOUCH }}
-          value={state.reference}
-          onChange={e => patch({ reference: e.target.value })}
-          onBlur={() => patch({ reference: normalizeTransactionReference(state.reference) })}
-        />
-      </Field>
+          label={t('Référence de la transaction')}
+          required={rules.referenceRequired}
+          aiField="reference"
+          aiActive={isAiValue(state, 'reference')}
+          help={normalized ? t('Référence enregistrée : {{ref}}', { ref: normalized }) : undefined}
+          error={errors.reference}
+        >
+          <Input
+            id="declaration-reference"
+            autoComplete="off"
+            style={{ minHeight: TOUCH }}
+            value={state.reference}
+            onChange={e => patch({ reference: e.target.value })}
+            onBlur={() => patch({ reference: normalizeTransactionReference(state.reference) })}
+          />
+        </Field>
+      ) : null}
     </>
   );
 }
@@ -432,7 +469,9 @@ interface LotRowProps {
   locked: boolean;
   blocked: boolean;
   showShare: boolean;
+  showCalls: boolean;
   error?: string;
+  callsError?: string;
   onToggle: (checked: boolean) => void;
   onShare: (value: number | null) => void;
   onCalls: (ids: string[]) => void;
@@ -514,7 +553,8 @@ function LotCalls({
 }
 
 function LotRow(props: LotRowProps): React.ReactElement {
-  const { lot, state, calls, locked, blocked, showShare, error, onToggle, onShare, onCalls } = props;
+  const { lot, state, calls, locked, blocked, showShare, showCalls, error, callsError, onToggle, onShare, onCalls } =
+    props;
   const checked = state.checkedLots.includes(lot.id);
   const label = t('Lot {{numero}}', { numero: lot.lotNumber });
   return (
@@ -545,7 +585,16 @@ function LotRow(props: LotRowProps): React.ReactElement {
               />
             </Field>
           ) : null}
-          <LotCalls calls={calls} selected={state.callIds[lot.id] ?? []} onCalls={onCalls} />
+          {showCalls ? (
+            <>
+              <LotCalls calls={calls} selected={state.callIds[lot.id] ?? []} onCalls={onCalls} />
+              {callsError ? (
+                <div role="alert">
+                  <Typography.Text type="danger">{callsError}</Typography.Text>
+                </div>
+              ) : null}
+            </>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -582,9 +631,10 @@ function SharesSummary({ state }: { state: FormState }): React.ReactElement | nu
 interface LotsSectionProps extends PatchProps {
   lots: DeclarationFormProps['lots'];
   calls: CoOwnerChargeCall[];
+  showCalls: boolean;
 }
 
-function LotsSection({ lots, calls, state, errors, patch }: LotsSectionProps): React.ReactElement {
+function LotsSection({ lots, calls, state, errors, patch, showCalls }: LotsSectionProps): React.ReactElement {
   const multi = state.checkedLots.length > 1;
   const toggle = (id: string, on: boolean) =>
     patch({ checkedLots: on ? [...state.checkedLots, id] : state.checkedLots.filter(x => x !== id) });
@@ -600,7 +650,9 @@ function LotsSection({ lots, calls, state, errors, patch }: LotsSectionProps): R
           locked={lots.length === 1}
           blocked={state.checkedLots.length >= MAX_DECLARATION_LINES}
           showShare={multi}
+          showCalls={showCalls}
           error={errors[`share-${lot.id}`]}
+          callsError={errors[`calls-${lot.id}`]}
           onToggle={on => toggle(lot.id, on)}
           onShare={v => patch({ shares: { ...state.shares, [lot.id]: v } })}
           onCalls={ids => patch({ callIds: { ...state.callIds, [lot.id]: ids } })}
@@ -736,7 +788,12 @@ function ReadingNotices({ reading, failure }: { reading: PaymentProofReading | n
 // Contenu et envoi
 // ---------------------------------------------------------------------------
 
-function buildInput(props: DeclarationFormProps, state: FormState, readId: string | null): DeclarationInput {
+function buildInput(
+  props: DeclarationFormProps,
+  state: FormState,
+  readId: string | null,
+  rules: FieldRules
+): DeclarationInput {
   const comment = state.comment.trim();
   const input: DeclarationInput = {
     syndicId: props.syndicate.id,
@@ -744,16 +801,18 @@ function buildInput(props: DeclarationFormProps, state: FormState, readId: strin
     payerPhone: state.payerPhone.trim(),
     amount: state.amount as number,
     paidAt: dayjs(state.paidAt as Dayjs).format(),
-    transactionReference: normalizeTransactionReference(state.reference),
     lines: props.lots
       .filter(lot => state.checkedLots.includes(lot.id))
       .map(lot => ({
         lotId: lot.id,
         amount: shareOf(state, lot.id) as number,
-        chargeCallIds: state.callIds[lot.id] ?? []
+        ...(rules.callsVisible ? { chargeCallIds: state.callIds[lot.id] ?? [] } : {})
       }))
   };
-  if (comment) input.comment = comment;
+  // Un champ masqué n'est pas envoyé ; une référence facultative laissée vide non plus.
+  const reference = normalizeTransactionReference(state.reference);
+  if (rules.referenceVisible && reference) input.transactionReference = reference;
+  if (comment && rules.commentVisible) input.comment = comment;
   if (readId) input.proofReadId = readId;
   return input;
 }
@@ -817,19 +876,28 @@ function DeclarationDrawer(props: DeclarationFormProps): React.ReactElement {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [refError, setRefError] = useState<string | undefined>();
   const submitLock = useRef(false);
+  const fm = useFormFieldModes('syndic.paiement-declare-portail', { portal: 'coowner' });
+  const rules: FieldRules = {
+    referenceVisible: fm.isVisible('transactionReference'),
+    referenceRequired: fm.isRequired('transactionReference', true),
+    callsVisible: fm.isVisible('lines[].chargeCallIds'),
+    commentVisible: fm.isVisible('comment'),
+    commentRequired: fm.isRequired('comment', false)
+  };
 
   const patch = (change: Partial<FormState>) => {
     if (change.reference !== undefined) setRefError(undefined);
     setState(prev => ({ ...prev, ...change }));
   };
   const ctx: ReadingContext = {
+    referenceVisible: rules.referenceVisible,
     maxAmount: availability.maxAmount,
     defaultPayerPhone: props.defaultPayerPhone,
     numberIds: numbers.map(n => n.id)
   };
   const proof = useProofReading(props, r => setState(prev => applyReading(prev, r, ctx)));
 
-  const errors: Errors = attempted ? validateForm(state, availability) : {};
+  const errors: Errors = attempted ? validateForm(state, availability, rules) : {};
   if (refError) errors.reference = refError;
   const readId = proof.result?.readId ?? null;
   const proofMissing = attempted && availability.proofRequired && !proof.file;
@@ -838,13 +906,13 @@ function DeclarationDrawer(props: DeclarationFormProps): React.ReactElement {
     if (submitLock.current) return;
     setAttempted(true);
     setSubmitError(null);
-    if (Object.keys(validateForm(state, availability)).length > 0 || (availability.proofRequired && !proof.file))
+    if (Object.keys(validateForm(state, availability, rules)).length > 0 || (availability.proofRequired && !proof.file))
       return;
     submitLock.current = true;
     setSubmitting(true);
     proof.cancelPending();
     try {
-      const declaration = await createDeclaration(buildInput(props, state, readId), readId ? null : proof.file);
+      const declaration = await createDeclaration(buildInput(props, state, readId, rules), readId ? null : proof.file);
       feedback.success(t('Déclaration envoyée au syndic. Elle sera vérifiée avant d’être portée à votre compte.'));
       onSubmitted(declaration);
       onClose();
@@ -910,18 +978,32 @@ function DeclarationDrawer(props: DeclarationFormProps): React.ReactElement {
         instructions={availability.payerInstructions}
       />
       <AmountFields state={state} errors={errors} patch={patch} maxAmount={availability.maxAmount} />
-      <PaidAtAndReference state={state} errors={errors} patch={patch} />
-      <LotsSection lots={lots} calls={calls} state={state} errors={errors} patch={patch} />
-      <Field id="declaration-comment" label={t('Commentaire (facultatif)')}>
-        <Input.TextArea
+      <PaidAtAndReference state={state} errors={errors} patch={patch} rules={rules} />
+      <LotsSection
+        lots={lots}
+        calls={calls}
+        state={state}
+        errors={errors}
+        patch={patch}
+        showCalls={rules.callsVisible}
+      />
+      {rules.commentVisible ? (
+        <Field
           id="declaration-comment"
-          maxLength={500}
-          showCount
-          rows={3}
-          value={state.comment}
-          onChange={e => patch({ comment: e.target.value })}
-        />
-      </Field>
+          label={rules.commentRequired ? t('Commentaire') : t('Commentaire (facultatif)')}
+          required={rules.commentRequired}
+          error={errors.comment}
+        >
+          <Input.TextArea
+            id="declaration-comment"
+            maxLength={500}
+            showCount
+            rows={3}
+            value={state.comment}
+            onChange={e => patch({ comment: e.target.value })}
+          />
+        </Field>
+      ) : null}
       {availability.aiPrefillAvailable ? null : proofBlock}
     </Drawer>
   );

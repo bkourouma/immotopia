@@ -41,6 +41,7 @@ import { providerInvoiceStatusColors, providerInvoiceStatusLabels, providerPayme
 import { saveBlob } from '../../utils/save-blob';
 import { dateFormat } from '../../i18n/format';
 import { t } from '../../i18n/t';
+import { useFormFieldModes } from '../../hooks/useFormFieldModes';
 import { HelpButton } from '../../help';
 import { displayCurrency } from '../../utils/syndic-currency';
 
@@ -82,6 +83,10 @@ export const ProviderInvoiceDrawer: React.FC<ProviderInvoiceDrawerProps> = ({
   const [payOpen, setPayOpen] = useState(false);
   const [paySubmitting, setPaySubmitting] = useState(false);
   const [payForm] = Form.useForm();
+  const payFm = useFormFieldModes('syndic.facture-prestataire-paiement');
+  const pieceFm = useFormFieldModes('syndic.facture-prestataire-piece');
+  // Zone d'envoi de la pièce jointe masquée par l'agence : on ne propose plus d'ajouter ni de remplacer.
+  const canAttach = pieceFm.isVisible('file');
 
   const [cancelInvoiceOpen, setCancelInvoiceOpen] = useState(false);
   const [cancelInvoiceReason, setCancelInvoiceReason] = useState('');
@@ -142,8 +147,9 @@ export const ProviderInvoiceDrawer: React.FC<ProviderInvoiceDrawerProps> = ({
         amount: values.amount,
         paidAt: values.paidAt.toISOString(),
         method: values.method,
-        reference: values.reference || undefined,
-        fundId: values.fundId || undefined
+        // Un champ masqué n'est pas envoyé.
+        reference: (payFm.isVisible('reference') && values.reference) || undefined,
+        fundId: (payFm.isVisible('fundId') && values.fundId) || undefined
       });
       message.success(t('Paiement enregistré'));
       if (result.fundBalanceNegative) {
@@ -388,24 +394,26 @@ export const ProviderInvoiceDrawer: React.FC<ProviderInvoiceDrawerProps> = ({
                   <Button icon={<DownloadOutlined />} loading={downloading} onClick={() => void handleDownload()}>
                     {t('Télécharger')} {invoice.fileName ? `(${invoice.fileName})` : ''}
                   </Button>
-                  <Upload
-                    maxCount={1}
-                    accept=".pdf,.png,.jpg,.jpeg"
-                    showUploadList={false}
-                    beforeUpload={file => {
-                      void handleReplaceFile(file as unknown as File);
-                      return false;
-                    }}
-                  >
-                    <Button icon={<UploadOutlined />} loading={uploading}>
-                      {t('Remplacer')}
-                    </Button>
-                  </Upload>
+                  {canAttach && (
+                    <Upload
+                      maxCount={1}
+                      accept=".pdf,.png,.jpg,.jpeg"
+                      showUploadList={false}
+                      beforeUpload={file => {
+                        void handleReplaceFile(file as unknown as File);
+                        return false;
+                      }}
+                    >
+                      <Button icon={<UploadOutlined />} loading={uploading}>
+                        {t('Remplacer')}
+                      </Button>
+                    </Upload>
+                  )}
                   <Button danger loading={deletingFile} onClick={handleDeleteFile}>
                     {t('Supprimer')}
                   </Button>
                 </>
-              ) : (
+              ) : canAttach ? (
                 <Upload
                   maxCount={1}
                   accept=".pdf,.png,.jpg,.jpeg"
@@ -419,7 +427,7 @@ export const ProviderInvoiceDrawer: React.FC<ProviderInvoiceDrawerProps> = ({
                     {t('Ajouter une pièce jointe')}
                   </Button>
                 </Upload>
-              )}
+              ) : null}
             </Space>
           </div>
 
@@ -454,6 +462,7 @@ export const ProviderInvoiceDrawer: React.FC<ProviderInvoiceDrawerProps> = ({
         open={payOpen}
         submitting={paySubmitting}
         form={payForm}
+        modes={payFm}
         funds={funds}
         currency={invoice?.currency}
         onOk={() => void handlePay()}
@@ -497,6 +506,7 @@ interface DrawerPaymentModalProps {
   open: boolean;
   submitting: boolean;
   form: ReturnType<typeof Form.useForm>[0];
+  modes: ReturnType<typeof useFormFieldModes>;
   funds: SyndicateFund[];
   currency?: string;
   onOk: () => void;
@@ -508,7 +518,15 @@ interface DrawerPaymentModalProps {
  * dans le drawer pour que le mock de test (qui ne connaît qu'un seul `<Modal>`
  * ouvert à la fois par titre) reste lisible.
  */
-const DrawerPaymentModal: React.FC<DrawerPaymentModalProps> = ({ open, submitting, form, funds, onOk, onCancel }) => {
+const DrawerPaymentModal: React.FC<DrawerPaymentModalProps> = ({
+  open,
+  submitting,
+  form,
+  modes,
+  funds,
+  onOk,
+  onCancel
+}) => {
   return (
     <Modal
       title={t('Enregistrer un paiement')}
@@ -541,18 +559,32 @@ const DrawerPaymentModal: React.FC<DrawerPaymentModalProps> = ({ open, submittin
             options={PAYMENT_METHODS.map(method => ({ value: method, label: providerPaymentMethodLabels[method] }))}
           />
         </Form.Item>
-        <Form.Item label={t('Référence')} name="reference">
-          <Input placeholder={t('Ex: numéro de transaction')} />
-        </Form.Item>
-        <Form.Item label={t('Fonds à débiter')} name="fundId">
-          <Select
-            allowClear
-            showSearch
-            optionFilterProp="label"
-            options={funds.map(fund => ({ value: fund.id, label: fund.name }))}
-            placeholder={t('Fonds par défaut de la facture')}
-          />
-        </Form.Item>
+        {modes.isVisible('reference') && (
+          <Form.Item
+            label={t('Référence')}
+            name="reference"
+            rules={[
+              { required: modes.isRequired('reference', false), whitespace: true, message: t('Champ obligatoire') }
+            ]}
+          >
+            <Input placeholder={t('Ex: numéro de transaction')} />
+          </Form.Item>
+        )}
+        {modes.isVisible('fundId') && (
+          <Form.Item
+            label={t('Fonds à débiter')}
+            name="fundId"
+            rules={[{ required: modes.isRequired('fundId', false), message: t('Champ obligatoire') }]}
+          >
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              options={funds.map(fund => ({ value: fund.id, label: fund.name }))}
+              placeholder={t('Fonds par défaut de la facture')}
+            />
+          </Form.Item>
+        )}
       </Form>
     </Modal>
   );

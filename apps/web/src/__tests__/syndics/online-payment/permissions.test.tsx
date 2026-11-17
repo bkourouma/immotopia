@@ -18,6 +18,12 @@ const listSyndicGatewayPayouts = vi.fn();
 const getSyndicProviderBalance = vi.fn();
 const useMyMenuAccess = vi.fn();
 
+// Réglages des formulaires : défauts (aucun réglage d'agence), sans AuthProvider ni réseau.
+vi.mock(
+  '../../../hooks/useFormFieldModes',
+  async () => (await import('../../../__tests__/syndics/charges-form-modes-mock')).formModesModule
+);
+
 vi.mock('../../../services/syndic-online-payment-service', () => ({
   getSyndicGatewaySettings: (...a: unknown[]) => getSyndicGatewaySettings(...a),
   updateSyndicGatewaySettings: vi.fn(),

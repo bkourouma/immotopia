@@ -18,6 +18,12 @@ vi.setConfig({ testTimeout: 60000 });
 
 const SYNDIC = 'syn-1';
 
+// Réglages des formulaires : défauts (aucun réglage d'agence), sans AuthProvider ni réseau.
+vi.mock(
+  '../../hooks/useFormFieldModes',
+  async () => (await import('../../__tests__/syndics/charges-form-modes-mock')).formModesModule
+);
+
 vi.mock('../../hooks/useBreakpoint', () => ({
   useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
 }));

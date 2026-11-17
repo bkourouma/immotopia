@@ -1,5 +1,4 @@
 {
-  "Date d’encaissement": "تاريخ التحصيل",
   "- Échéance du": "- قسط مستحق في",
   "(Par défaut)": "(افتراضي)",
   "{{count}} bail en gestion": "{{count}} عقد إيجار قيد الإدارة",
@@ -344,6 +343,7 @@
   "Date d'échec": "تاريخ الإخفاق",
   "Date d'effet": "تاريخ السريان",
   "Date d'emménagement": "تاريخ الدخول",
+  "Date d’encaissement": "تاريخ التحصيل",
   "Date d'envoi": "تاريخ الإرسال",
   "Date d'initiation": "تاريخ المباشرة",
   "Date de création": "تاريخ الإنشاء",

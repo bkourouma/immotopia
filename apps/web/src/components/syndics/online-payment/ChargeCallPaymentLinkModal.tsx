@@ -15,6 +15,7 @@ import { copyToClipboard } from '../../../utils/copy-to-clipboard';
 import { activeLocale } from '../../../i18n/format';
 import { t } from '../../../i18n/t';
 import { HelpSectionTitle } from '../../../help';
+import { useFormFieldModes } from '../../../hooks/useFormFieldModes';
 import { apiErrorMessage, statusLabel } from './helpers';
 
 const { Paragraph, Text } = Typography;
@@ -83,6 +84,7 @@ export const ChargeCallPaymentLinkModal: React.FC<ChargeCallPaymentLinkModalProp
   onClose
 }) => {
   const { message } = App.useApp();
+  const fm = useFormFieldModes('syndic.lien-paiement-appel');
   const [delivery, setDelivery] = useState<Delivery>('SEND');
   const [ttlDays, setTtlDays] = useState<number>(DEFAULT_LINK_TTL_DAYS);
   const [submitting, setSubmitting] = useState(false);
@@ -124,7 +126,11 @@ export const ChargeCallPaymentLinkModal: React.FC<ChargeCallPaymentLinkModalProp
     setOutcome(null);
     setCreated(null);
     try {
-      const result = await createChargeCallPaymentLink(tenantId, syndicId, charge.id, { delivery, ttlDays: ttl });
+      const result = await createChargeCallPaymentLink(tenantId, syndicId, charge.id, {
+        delivery,
+        // Durée masquée : non envoyée, le serveur applique la durée par défaut.
+        ...(fm.isVisible('ttlDays') ? { ttlDays: ttl } : {})
+      });
       if ('url' in result) {
         setCreated(result);
       } else if (result.sent) {
@@ -286,19 +292,21 @@ export const ChargeCallPaymentLinkModal: React.FC<ChargeCallPaymentLinkModalProp
                   <Radio value="COPY">{t('Copier le lien')}</Radio>
                 </Space>
               </Radio.Group>
-              <div>
-                <label htmlFor="lien-appel-duree">{t('Durée de validité (jours)')}</label>
+              {fm.isVisible('ttlDays') && (
                 <div>
-                  <InputNumber
-                    id="lien-appel-duree"
-                    min={1}
-                    max={30}
-                    precision={0}
-                    value={ttlDays}
-                    onChange={value => setTtlDays(typeof value === 'number' ? value : DEFAULT_LINK_TTL_DAYS)}
-                  />
+                  <label htmlFor="lien-appel-duree">{t('Durée de validité (jours)')}</label>
+                  <div>
+                    <InputNumber
+                      id="lien-appel-duree"
+                      min={1}
+                      max={30}
+                      precision={0}
+                      value={ttlDays}
+                      onChange={value => setTtlDays(typeof value === 'number' ? value : DEFAULT_LINK_TTL_DAYS)}
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
               {outcome ? <Alert type={outcome.type} showIcon title={outcome.text} /> : null}
               <div>
                 <Button type="primary" loading={submitting} onClick={() => void submit()}>

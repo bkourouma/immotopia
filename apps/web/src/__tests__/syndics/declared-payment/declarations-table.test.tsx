@@ -19,6 +19,12 @@ const listSyndicDeclarations = vi.fn();
 const listSyndicReceivingNumbers = vi.fn();
 const listSyndicateLots = vi.fn();
 
+// Réglages des formulaires : défauts (aucun réglage d'agence), sans AuthProvider ni réseau.
+vi.mock(
+  '../../../hooks/useFormFieldModes',
+  async () => (await import('../../../__tests__/syndics/charges-form-modes-mock')).formModesModule
+);
+
 vi.mock('../../../services/syndic-declared-payment-service', () => ({
   listSyndicDeclarations: (...a: unknown[]) => listSyndicDeclarations(...a),
   listSyndicReceivingNumbers: (...a: unknown[]) => listSyndicReceivingNumbers(...a)
@@ -176,6 +182,14 @@ describe('DeclarationsTable', () => {
     expect(screen.getByText('Syndic Les Palmiers')).toBeTruthy();
     expect(screen.getByText('TX-REF-001')).toBeTruthy();
     expect(screen.getByText(/retenu : /)).toBeTruthy();
+  });
+
+  it('affiche « — » pour une déclaration sans référence, sans bouton copier', async () => {
+    listSyndicDeclarations.mockResolvedValue(response([row({ transactionReference: null })]));
+    renderTable();
+    await screen.findByText('Awa Koné', undefined, T);
+    expect(screen.queryByText('TX-REF-001')).toBeNull();
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0);
   });
 
   it('affiche les pastilles retard, doublon et IA sur une ligne en attente', async () => {

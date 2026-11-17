@@ -1,6 +1,7 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { App } from 'antd';
+import { formModes } from '../charges-form-modes-mock';
 import dayjs from 'dayjs';
 import { DeclareForThirdPartyModal } from '../../../components/syndics/declared-payment/DeclareForThirdPartyModal';
 
@@ -14,6 +15,12 @@ const listSyndicReceivingNumbers = vi.fn();
 const listSyndicateLots = vi.fn();
 const listOpenLotCharges = vi.fn();
 const getSyndicDeclaredSettings = vi.fn();
+
+// Réglages des formulaires : défauts (aucun réglage d'agence), sans AuthProvider ni réseau.
+vi.mock(
+  '../../../hooks/useFormFieldModes',
+  async () => (await import('../../../__tests__/syndics/charges-form-modes-mock')).formModesModule
+);
 
 vi.mock('../../../services/syndic-declared-payment-service', () => ({
   createSyndicDeclaration: (...args: unknown[]) => createSyndicDeclaration(...args),
@@ -143,6 +150,7 @@ function proofInput(): HTMLInputElement {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  formModes.current = {};
   listSyndicReceivingNumbers.mockResolvedValue([
     numberOf('n-1', 'ORANGE', '+2250707070707', true),
     numberOf('n-2', 'WAVE', '+2250505050505', false)
@@ -272,6 +280,32 @@ describe('DeclareForThirdPartyModal', () => {
     expect((proof as File).name).toBe('capture.png');
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith(createdRow));
   }, 60000);
+
+  async function fillWithoutReference() {
+    await pick(screen.getByLabelText('Copropriétaire'), 'Awa Koné');
+    await pick(screen.getAllByLabelText('Lot')[0], 'A12');
+    type('Part du lot (FCFA)', '10000');
+    await pick(screen.getByLabelText('Numéro de réception'), NUMBER_LABEL);
+    type('Numéro du payeur', '07 11 22 33 44');
+    setDate(dayjs().subtract(1, 'day').hour(10).minute(30));
+  }
+
+  it.each(['OPTIONAL', 'HIDDEN'] as const)(
+    'référence %s : la déclaration part sans référence',
+    async mode => {
+      formModes.current = { transactionReference: mode };
+      const { onCreated } = setup();
+      await ready();
+      if (mode === 'HIDDEN') expect(screen.queryByLabelText('Référence de transaction')).toBeNull();
+      await fillWithoutReference();
+      fireEvent.click(screen.getByRole('button', { name: 'Créer la déclaration' }));
+      await waitFor(() => expect(createSyndicDeclaration).toHaveBeenCalledTimes(1), { timeout: 10000 });
+      const body = createSyndicDeclaration.mock.calls[0][2];
+      expect(body).not.toHaveProperty('transactionReference');
+      await waitFor(() => expect(onCreated).toHaveBeenCalledWith(createdRow));
+    },
+    60000
+  );
 
   it('affiche DECLARATION_REFERENCE_USED sous la référence et garde la modale ouverte', async () => {
     createSyndicDeclaration.mockRejectedValue({

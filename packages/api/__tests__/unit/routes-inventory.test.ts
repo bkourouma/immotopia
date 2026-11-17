@@ -404,6 +404,23 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
     }
   });
 
+  it('declare les routes des formulaires parametrables avec leurs gardes', () => {
+    const expected: Array<[string, string, string | 'TENANT']> = [
+      ['GET', '/api/tenants/:tenantId/settings/forms', 'TENANT'],
+      ['PUT', '/api/tenants/:tenantId/settings/forms/:formKey', 'TENANT'],
+      ['GET', '/api/tenants/:tenantId/forms/:formKey/modes', 'TENANT'],
+      ['GET', '/api/portal/copropriete/forms/:formKey/modes', 'TENANT'],
+      ['GET', '/api/admin/tenants/:tenantId/form-unlocks', 'PLATFORM_TENANTS_VIEW'],
+      ['PUT', '/api/admin/tenants/:tenantId/form-unlocks', 'PLATFORM_TENANTS_EDIT']
+    ];
+    for (const [method, path, guard] of expected) {
+      const route = routes.find(r => r.method === method && r.path === path);
+      expect(route ? `${method} ${path}` : `ABSENTE : ${method} ${path}`).toBe(`${method} ${path}`);
+      if (guard === 'TENANT') expect(hasTenantOrPortalGuard(route!)).toBe(true);
+      else expect(hasPlatformPermission(route!)).toBe(guard);
+    }
+  });
+
   it('assistant’assistant ImmoCopilot avec les gardes d’agence et de collaborateur', () => {
     const expected: Array<[string, string]> = [
       ['GET', '/api/tenants/:tenantId/ai/status'],

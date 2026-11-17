@@ -12,6 +12,7 @@ import {
 import { apiErrorMessage } from '../../rental/direct-debit/direct-debit-shared';
 import { HelpSectionTitle } from '../../../help';
 import { t } from '../../../i18n/t';
+import { useFormFieldModes } from '../../../hooks/useFormFieldModes';
 
 interface SyndicPrepareRemittanceModalProps {
   tenantId: string;
@@ -40,6 +41,7 @@ export const SyndicPrepareRemittanceModal: React.FC<SyndicPrepareRemittanceModal
   onClose,
   onCreated
 }) => {
+  const fm = useFormFieldModes('syndic.remise-prelevements');
   const [date, setDate] = useState<Dayjs | null>(null);
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
@@ -65,7 +67,7 @@ export const SyndicPrepareRemittanceModal: React.FC<SyndicPrepareRemittanceModal
     try {
       const result = await createSyndicRemittance(tenantId, syndicId, {
         collectionDate: toIsoDay(date.toDate()),
-        ...(notes.trim() ? { notes: notes.trim() } : {})
+        ...(fm.isVisible('notes') && notes.trim() ? { notes: notes.trim() } : {})
       });
       onCreated(result);
     } catch (err) {
@@ -83,7 +85,14 @@ export const SyndicPrepareRemittanceModal: React.FC<SyndicPrepareRemittanceModal
       title={<HelpSectionTitle title={t('Préparer une remise')} helpId="syndic.prelevements.remise-preparer" />}
       okText={t('Préparer')}
       cancelText={t('Fermer')}
-      okButtonProps={{ disabled: !creditor || !creditor.isActive || !date, loading: busy }}
+      okButtonProps={{
+        disabled:
+          !creditor ||
+          !creditor.isActive ||
+          !date ||
+          (fm.isVisible('notes') && fm.isRequired('notes', false) && !notes.trim()),
+        loading: busy
+      }}
       onOk={() => void handleSubmit()}
       onCancel={onClose}
       destroyOnHidden
@@ -117,15 +126,17 @@ export const SyndicPrepareRemittanceModal: React.FC<SyndicPrepareRemittanceModal
             disabledDate={current => !creditor || !isCollectionDateAllowed(current.toDate(), reference, days)}
           />
         </Form.Item>
-        <Form.Item label={t('Notes')}>
-          <Input.TextArea
-            rows={2}
-            maxLength={MAX_NOTES_LENGTH}
-            showCount
-            value={notes}
-            onChange={event => setNotes(event.target.value)}
-          />
-        </Form.Item>
+        {fm.isVisible('notes') && (
+          <Form.Item label={t('Notes')} required={fm.isRequired('notes', false)}>
+            <Input.TextArea
+              rows={2}
+              maxLength={MAX_NOTES_LENGTH}
+              showCount
+              value={notes}
+              onChange={event => setNotes(event.target.value)}
+            />
+          </Form.Item>
+        )}
       </Form>
       {error && <Alert type="error" showIcon message={error} />}
     </Modal>

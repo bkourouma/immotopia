@@ -16,6 +16,12 @@ import type { DeclarationAlert, SyndicDeclarationRow } from '../../../services/s
 const approveSyndicDeclaration = vi.fn();
 const rejectSyndicDeclaration = vi.fn();
 
+// Réglages des formulaires : défauts (aucun réglage d'agence), sans AuthProvider ni réseau.
+vi.mock(
+  '../../../hooks/useFormFieldModes',
+  async () => (await import('../../../__tests__/syndics/charges-form-modes-mock')).formModesModule
+);
+
 vi.mock('../../../services/syndic-declared-payment-service', () => ({
   approveSyndicDeclaration: (...a: unknown[]) => approveSyndicDeclaration(...a),
   rejectSyndicDeclaration: (...a: unknown[]) => rejectSyndicDeclaration(...a)
@@ -404,6 +410,13 @@ async function chooseReason(label: string) {
   fireEvent.click(await screen.findByText(label, { selector: '.ant-select-item-option-content' }));
 }
 
+describe('ApproveModal : référence absente', () => {
+  it('affiche « — » à la place de la référence', () => {
+    renderApprove({ ...row(), transactionReference: null });
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0);
+  });
+});
+
 describe('RejectModal', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -418,6 +431,24 @@ describe('RejectModal', () => {
         'Le motif et le texte sont montrés au copropriétaire. Une déclaration rejetée ne se rouvre pas : il en déposera une nouvelle, et la référence redevient libre.'
       )
     ).toBeInTheDocument();
+  });
+
+  it('déclaration sans référence : affiche « — » et retire le motif « Référence déjà utilisée »', async () => {
+    renderReject({ ...row(), transactionReference: null });
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0);
+    fireEvent.mouseDown(screen.getByRole('combobox'));
+    expect(
+      await screen.findByText('Paiement introuvable', { selector: '.ant-select-item-option-content' })
+    ).toBeTruthy();
+    expect(screen.queryByText('Référence déjà utilisée', { selector: '.ant-select-item-option-content' })).toBeNull();
+  });
+
+  it('déclaration avec référence : le motif « Référence déjà utilisée » reste proposé', async () => {
+    renderReject();
+    fireEvent.mouseDown(screen.getByRole('combobox'));
+    expect(
+      await screen.findByText('Référence déjà utilisée', { selector: '.ant-select-item-option-content' })
+    ).toBeTruthy();
   });
 
   it('bloque tant que le motif est absent ou le texte trop court', async () => {

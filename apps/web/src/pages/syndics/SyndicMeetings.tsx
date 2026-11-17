@@ -36,6 +36,7 @@ import { collectAllPages } from '../../utils/table-export/collect';
 import type { SearchCriterion } from '../../utils/list-search';
 import { t } from '../../i18n/t';
 import { HelpSectionTitle } from '../../help';
+import { useFormFieldModes } from '../../hooks/useFormFieldModes';
 
 import { localizedList } from '../../i18n/localized';
 const { Paragraph, Title } = Typography;
@@ -79,6 +80,7 @@ export const SyndicMeetings: React.FC = () => {
   const fingerprintRef = useRef<string | null>(null);
   const submittingRef = useRef(false);
   const [form] = Form.useForm();
+  const fm = useFormFieldModes('syndic.assemblee-creation');
 
   const criteria: SearchCriterion[] = [
     {
@@ -164,7 +166,12 @@ export const SyndicMeetings: React.FC = () => {
 
   const handleCreate = async () => {
     if (!effectiveTenantId || !syndicId) return;
-    const values = await form.validateFields();
+    let values;
+    try {
+      values = await form.validateFields();
+    } catch {
+      return; // saisie invalide : les messages sont affichés dans le formulaire
+    }
     // `showTime` sur un seul DatePicker ouvrait un panneau (calendrier +
     // colonnes heures/minutes) qui débordait de la fenêtre sur mobile, avec le
     // bouton OK masqué : impossible de valider. La date et l'heure de début
@@ -174,8 +181,9 @@ export const SyndicMeetings: React.FC = () => {
       .minute(values.startTime.minute())
       .second(0)
       .millisecond(0);
-    if (values.endTime) {
-      const endAt = values.date.hour(values.endTime.hour()).minute(values.endTime.minute()).second(0).millisecond(0);
+    const endTimeValue = fm.isVisible('endTime') ? values.endTime : undefined;
+    if (endTimeValue) {
+      const endAt = values.date.hour(endTimeValue.hour()).minute(endTimeValue.minute()).second(0).millisecond(0);
       if (!endAt.isAfter(startAt)) {
         message.error(t("L'heure de fin doit suivre l'heure de début"));
         return;
@@ -189,17 +197,12 @@ export const SyndicMeetings: React.FC = () => {
         type: values.type,
         scheduledAt: startAt.toISOString(),
         startTime: startAt.toISOString(),
-        endTime: values.endTime
-          ? values.date
-              .hour(values.endTime.hour())
-              .minute(values.endTime.minute())
-              .second(0)
-              .millisecond(0)
-              .toISOString()
+        endTime: endTimeValue
+          ? values.date.hour(endTimeValue.hour()).minute(endTimeValue.minute()).second(0).millisecond(0).toISOString()
           : undefined,
-        location: values.location,
+        location: fm.isVisible('location') ? values.location : undefined,
         // Les convocations ne partent plus d'office : l'ordre du jour est d'abord saisi.
-        sendConvocation: values.sendConvocation === true
+        sendConvocation: fm.isVisible('sendConvocation') && values.sendConvocation === true
       };
       // La clé suit le contenu : une saisie modifiée après un échec est une nouvelle création.
       const fingerprint = JSON.stringify(payload);
@@ -430,19 +433,35 @@ export const SyndicMeetings: React.FC = () => {
           >
             <TimePicker style={{ width: '100%' }} format="HH:mm" minuteStep={5} needConfirm={false} />
           </Form.Item>
-          <Form.Item label={t('Heure de fin')} name="endTime">
-            <TimePicker style={{ width: '100%' }} format="HH:mm" minuteStep={5} needConfirm={false} />
-          </Form.Item>
-          <Form.Item label={t('Lieu')} name="location">
-            <Input />
-          </Form.Item>
-          <Form.Item
-            name="sendConvocation"
-            valuePropName="checked"
-            extra={t("Vous pourrez les envoyer depuis l'assemblée une fois l'ordre du jour saisi.")}
-          >
-            <Checkbox>{t('Envoyer les convocations maintenant')}</Checkbox>
-          </Form.Item>
+          {fm.isVisible('endTime') && (
+            <Form.Item
+              label={t('Heure de fin')}
+              name="endTime"
+              rules={[{ required: fm.isRequired('endTime', false), message: t("L'heure de fin est obligatoire") }]}
+            >
+              <TimePicker style={{ width: '100%' }} format="HH:mm" minuteStep={5} needConfirm={false} />
+            </Form.Item>
+          )}
+          {fm.isVisible('location') && (
+            <Form.Item
+              label={t('Lieu')}
+              name="location"
+              rules={[
+                { required: fm.isRequired('location', false), whitespace: true, message: t('Le lieu est obligatoire') }
+              ]}
+            >
+              <Input />
+            </Form.Item>
+          )}
+          {fm.isVisible('sendConvocation') && (
+            <Form.Item
+              name="sendConvocation"
+              valuePropName="checked"
+              extra={t("Vous pourrez les envoyer depuis l'assemblée une fois l'ordre du jour saisi.")}
+            >
+              <Checkbox>{t('Envoyer les convocations maintenant')}</Checkbox>
+            </Form.Item>
+          )}
         </Form>
       </Modal>
     </>

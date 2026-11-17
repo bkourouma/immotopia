@@ -9,6 +9,8 @@ import { SyndicsList } from '../../pages/syndics/SyndicsList';
 import { SyndicDetail } from '../../pages/syndics/SyndicDetail';
 import apiClient from '../../utils/api-client';
 
+vi.mock('../../hooks/useFormFieldModes', async () => (await import('./charges-form-modes-mock')).formModesModule);
+
 vi.mock('../../utils/api-client', () => ({
   __esModule: true,
   default: {

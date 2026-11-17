@@ -122,6 +122,11 @@ const mockPrisma: Row = {
 };
 jest.mock('../../src/utils/database', () => ({ prisma: mockPrisma }));
 
+const mockFormModes = jest.fn();
+jest.mock('../../src/lib/form-settings/service', () => ({
+  getEffectiveFieldModes: (...a: unknown[]) => mockFormModes(...a)
+}));
+
 const auditEvents: Row[] = [];
 jest.mock('../../src/services/audit-service', () => ({
   logAuditEvent: (entry: Row) => auditEvents.push(entry)
@@ -245,6 +250,7 @@ function run(over: Row = {}) {
   return createDeclaration({
     tenantId: TENANT,
     syndicateId: SYNDIC,
+    formKey: 'syndic.paiement-declare-portail',
     actor: coowner(),
     input: baseInput(),
     now: NOW,
@@ -300,6 +306,9 @@ beforeEach(() => {
   store.foreignLots = new Set();
   store.proofReads = [];
   store.onlineCheckouts = [];
+  mockFormModes
+    .mockReset()
+    .mockResolvedValue({ formKey: 'x', fields: { transactionReference: 'REQUIRED' }, labels: {} });
   mockPromote.mockReset();
   mockDiscard.mockReset().mockResolvedValue(true);
   auditEvents.length = 0;
@@ -313,6 +322,34 @@ beforeEach(() => {
 });
 
 afterEach(() => unlinkSpy.mockRestore());
+
+describe('createDeclaration : référence selon le réglage du formulaire', () => {
+  it('REQUIRED et référence vide : 400 FORM_FIELD_REQUIRED, rien écrit', async () => {
+    await expect(run({ input: baseInput({ transactionReference: '  ' }) })).rejects.toMatchObject({
+      statusCode: 400,
+      code: 'FORM_FIELD_REQUIRED',
+      data: { fieldKey: 'transactionReference' }
+    });
+    expect(mockFormModes).toHaveBeenCalledWith(TENANT, 'syndic.paiement-declare-portail');
+    expect(store.declarations).toHaveLength(0);
+  });
+
+  it('utilise le formulaire du gestionnaire quand il est passé', async () => {
+    await expect(
+      run({
+        formKey: 'syndic.paiement-declare-gestionnaire',
+        input: baseInput({ transactionReference: undefined })
+      })
+    ).rejects.toMatchObject({ code: 'FORM_FIELD_REQUIRED' });
+    expect(mockFormModes).toHaveBeenCalledWith(TENANT, 'syndic.paiement-declare-gestionnaire');
+  });
+
+  it('OPTIONAL et référence vide : la déclaration est acceptée sans référence', async () => {
+    mockFormModes.mockResolvedValue({ formKey: 'x', fields: { transactionReference: 'OPTIONAL' }, labels: {} });
+    await run({ input: baseInput({ transactionReference: '' }) });
+    expect(store.declarations[0].transactionReference).toBeNull();
+  });
+});
 
 describe('createDeclaration : cas nominal', () => {
   it('crée une déclaration PENDING avec lignes, instantané du numéro, valeurs normalisées et audit', async () => {
@@ -743,6 +780,48 @@ describe('createDeclaration : gestionnaire', () => {
       }),
       404
     );
+  });
+});
+
+describe('createDeclaration : sans référence (champ facultatif ou masqué)', () => {
+  beforeEach(() => {
+    mockFormModes.mockResolvedValue({ formKey: 'x', fields: { transactionReference: 'OPTIONAL' }, labels: {} });
+  });
+
+  it.each([
+    ['absente', undefined],
+    ['nulle', null],
+    ['vide', '   ']
+  ])('référence %s : déclaration créée avec une référence nulle, gestionnaire et portail', async (_label, value) => {
+    await run({ input: baseInput({ transactionReference: value }) });
+    await run({
+      actor: { type: 'MANAGER' as const, userId: 'user-1', declaredForContactId: null },
+      input: baseInput({ transactionReference: value })
+    }).catch(() => undefined);
+    expect(store.declarations[0].transactionReference).toBeNull();
+    expect(auditEvents[0].actionKey).toBe(AuditActionKey.SYNDIC_PAYMENT_DECLARATION_CREATED);
+  });
+
+  it('ne cherche aucun doublon de référence quand elle est nulle', async () => {
+    store.declarations.push({
+      tenantId: TENANT,
+      receivingPhone: '+2250101010101',
+      transactionReference: null,
+      status: 'PENDING'
+    });
+    await expect(run({ input: baseInput({ transactionReference: undefined }) })).resolves.toBeDefined();
+  });
+
+  it('une référence fournie reste normalisée et contrôlée', async () => {
+    await expectError(run({ input: baseInput({ transactionReference: 'a b' }) }), 400, 'INVALID_TRANSACTION_REFERENCE');
+    await run({ input: baseInput({ transactionReference: ' mp261017.abc ' }) });
+    expect(store.declarations[0].transactionReference).toBe('MP261017.ABC');
+  });
+
+  it('un P2002 sans référence n’est pas pris pour un doublon de référence', async () => {
+    const error = Object.assign(new Error('x'), { code: 'P2002', meta: { target: ['proof_read_id'] } });
+    mockPrisma.syndicPaymentDeclaration.create.mockRejectedValueOnce(error);
+    await expect(run({ input: baseInput({ transactionReference: undefined }) })).rejects.toBe(error);
   });
 });
 

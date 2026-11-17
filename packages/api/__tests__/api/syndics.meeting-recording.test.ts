@@ -24,6 +24,11 @@ const mockPrisma = createFakePrisma();
 const fakeCreate = mockPrisma.gMRecording.create.bind(mockPrisma.gMRecording);
 mockPrisma.gMRecording.create = ((args: any) =>
   fakeCreate({ ...args, data: { startedAt: new Date(), status: 'RECORDING', ...args.data } })) as any;
+// Formulaires paramétrables : aucun réglage d'agence (tous les champs gardent leur mode par défaut).
+jest.mock('../../src/lib/form-settings/service', () => ({
+  getEffectiveFieldModes: jest.fn(async (_tenantId: string, formKey: string) => ({ formKey, fields: {} }))
+}));
+
 jest.mock('../../src/utils/database', () => ({ prisma: mockPrisma }));
 
 jest.mock('../../src/middleware/auth-middleware', () => ({
@@ -34,7 +39,11 @@ jest.mock('../../src/middleware/auth-middleware', () => ({
 }));
 jest.mock('../../src/middleware/tenant-middleware', () => ({
   requireTenantAccess: (req: any, _res: any, next: any) => {
-    req.tenantContext = { tenantId: req.params.tenantId, isCollaborator: true, isClient: false };
+    req.tenantContext = {
+      tenantId: req.params.tenantId ?? req.originalUrl.split('/')[3],
+      isCollaborator: true,
+      isClient: false
+    };
     next();
   }
 }));

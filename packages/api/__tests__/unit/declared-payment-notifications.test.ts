@@ -130,6 +130,22 @@ describe('sendCoOwnerDeclarationMessage', () => {
     expect(args.variables.paidAt).toContain('2026');
   });
 
+  it('déclaration sans référence : aucune mention « référence » vide dans les variables', async () => {
+    declarationFindFirst.mockResolvedValue(declaration({ transactionReference: null }));
+    await sendCoOwnerDeclarationMessage('tenant-A', 'decl-1', 'RECEIVED');
+    const { variables } = sendOnPlannedChannels.mock.calls[0][1];
+    expect(variables.transactionReference).toBe('');
+    expect(variables.referenceClause).toBe('');
+    expect(variables.referenceInline).toBe('');
+  });
+
+  it('déclaration avec référence : les mentions e-mail et WhatsApp la portent', async () => {
+    await sendCoOwnerDeclarationMessage('tenant-A', 'decl-1', 'RECEIVED');
+    const { variables } = sendOnPlannedChannels.mock.calls[0][1];
+    expect(variables.referenceClause).toBe('référence MP261017.1432.A12345, ');
+    expect(variables.referenceInline).toBe(' (référence MP261017.1432.A12345)');
+  });
+
   it('dit les variables dans la langue du copropriétaire : libellés, oui/non, dates et nombres', async () => {
     declarationFindFirst.mockResolvedValue(
       declaration({ acceptedAmount: 25000, rejectReason: 'WRONG_NUMBER', paidAt: new Date('2026-10-17T14:32:00Z') })

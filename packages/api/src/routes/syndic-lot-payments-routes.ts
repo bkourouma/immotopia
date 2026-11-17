@@ -3,6 +3,7 @@ import { authenticate } from '../middleware/auth-middleware';
 import { requireTenantAccess } from '../middleware/tenant-middleware';
 import { enforcePropertyTenantIsolation } from '../middleware/tenant-isolation-middleware';
 import { requireAnyPropertyPermission, requirePropertyPermission } from '../middleware/property-rbac-middleware';
+import { formFieldModes } from '../lib/form-settings/apply';
 import {
   getLotAdvanceHandler,
   getMonthlyTrackingHandler,
@@ -30,7 +31,7 @@ const canEdit = requirePropertyPermission('SYNDIC_EDIT');
 
 const LOT = '/tenants/:tenantId/syndics/:syndicId/lots/:lotId';
 
-router.post(`${LOT}/paiements`, ...guards, canEdit, recordLotPaymentHandler);
+router.post(`${LOT}/paiements`, ...guards, canEdit, formFieldModes('syndic.paiement-lot'), recordLotPaymentHandler);
 router.post(`${LOT}/paiements/apercu`, ...guards, canEdit, previewLotPaymentHandler);
 router.get(`${LOT}/avance`, ...guards, canView, getLotAdvanceHandler);
 router.get(`${LOT}/appels-ouverts`, ...guards, canView, listLotOpenCallsHandler);

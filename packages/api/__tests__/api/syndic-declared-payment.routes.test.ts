@@ -53,6 +53,17 @@ jest.mock('../../src/services/audit-service', () => ({
   logAuditEvent: (entry: any) => auditEvents.push(entry)
 }));
 
+// Modes des champs : défauts du registre, sans base ; `mockModes` simule un réglage d'agence.
+const mockModes: Record<string, Record<string, string>> = {};
+jest.mock('../../src/lib/form-settings/service', () => ({
+  getEffectiveFieldModes: async (_tenantId: string, formKey: string) => {
+    const { FORM_REGISTRY } = jest.requireActual('../../src/lib/form-settings/registry');
+    const fields: Record<string, string> = {};
+    for (const field of FORM_REGISTRY[formKey].fields) fields[field.key] = field.defaultMode;
+    return { formKey, fields: { ...fields, ...(mockModes[formKey] ?? {}) } };
+  }
+}));
+
 const listReceivingNumbers = jest.fn();
 const createReceivingNumber = jest.fn();
 const updateReceivingNumber = jest.fn();
@@ -413,6 +424,45 @@ describe('1.11 déclaration saisie par le gestionnaire (P4)', () => {
     });
     expect(call.input.declaredForContactId).toBeUndefined();
     expect(call.proof.buffer.toString()).toBe('fichier');
+  });
+
+  it('exige la référence tant que l’agence ne l’a pas rendue facultative (400 FORM_FIELD_REQUIRED)', async () => {
+    const { transactionReference: _omitted, ...withoutReference } = payload;
+    const res = await request(app)
+      .post(`${BASE}/paiements-declares`)
+      .field('payload', JSON.stringify(withoutReference));
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('FORM_FIELD_REQUIRED');
+    expect(createDeclaration).not.toHaveBeenCalled();
+  });
+
+  it('crée une déclaration sans référence quand le champ est facultatif', async () => {
+    mockModes['syndic.paiement-declare-gestionnaire'] = { transactionReference: 'OPTIONAL' };
+    try {
+      createDeclaration.mockResolvedValue({ declarationId: D });
+      getDeclarationDetail.mockResolvedValue(row);
+      const { transactionReference: _omitted, ...withoutReference } = payload;
+      const res = await request(app)
+        .post(`${BASE}/paiements-declares`)
+        .field('payload', JSON.stringify(withoutReference));
+      expect(res.status).toBe(201);
+      expect(createDeclaration.mock.calls[0][0].input.transactionReference).toBeUndefined();
+    } finally {
+      delete mockModes['syndic.paiement-declare-gestionnaire'];
+    }
+  });
+
+  it('ignore une référence envoyée quand le champ est masqué', async () => {
+    mockModes['syndic.paiement-declare-gestionnaire'] = { transactionReference: 'HIDDEN' };
+    try {
+      createDeclaration.mockResolvedValue({ declarationId: D });
+      getDeclarationDetail.mockResolvedValue(row);
+      const res = await request(app).post(`${BASE}/paiements-declares`).field('payload', JSON.stringify(payload));
+      expect(res.status).toBe(201);
+      expect(createDeclaration.mock.calls[0][0].input).not.toHaveProperty('transactionReference');
+    } finally {
+      delete mockModes['syndic.paiement-declare-gestionnaire'];
+    }
   });
 
   it('accepte une déclaration sans capture', async () => {

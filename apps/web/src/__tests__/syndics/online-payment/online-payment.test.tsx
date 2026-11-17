@@ -14,6 +14,12 @@ import type { SyndicOnlineCheckoutRow } from '../../../services/syndic-online-pa
  * doit figurer ci-dessous, Vitest refusant tout import non déclaré.
  */
 
+// Réglages des formulaires : défauts (aucun réglage d'agence), sans AuthProvider ni réseau.
+vi.mock(
+  '../../../hooks/useFormFieldModes',
+  async () => (await import('../../../__tests__/syndics/charges-form-modes-mock')).formModesModule
+);
+
 vi.mock('../../../hooks/useBreakpoint', () => ({
   useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
 }));

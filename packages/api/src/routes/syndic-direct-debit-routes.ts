@@ -7,6 +7,7 @@ import {
   requireSyndicDirectDebitView,
   requireTenantSyndicate
 } from '../middleware/syndic-direct-debit-rbac-middleware';
+import { formFieldModes } from '../lib/form-settings/apply';
 import { MANDATE_SCAN_MAX_BYTES } from '../lib/direct-debit/mandate-files';
 import { RETURN_FILE_MAX_BYTES } from '../lib/direct-debit/return-formats/types';
 import {
@@ -88,9 +89,14 @@ router.get(`${BASE}/lots/:lotId/debiteurs`, ...view, listLotDebtorsHandler);
 
 // Mandats
 router.get(`${BASE}/mandats`, ...view, listMandatesHandler);
-router.post(`${BASE}/mandats`, ...manage, createMandateHandler);
+router.post(`${BASE}/mandats`, ...manage, formFieldModes('syndic.mandat-prelevement'), createMandateHandler);
 router.get(`${BASE}/mandats/:mandateId`, ...view, getMandateHandler);
-router.patch(`${BASE}/mandats/:mandateId`, ...manage, updateMandateHandler);
+router.patch(
+  `${BASE}/mandats/:mandateId`,
+  ...manage,
+  formFieldModes('syndic.mandat-prelevement', { partial: true }),
+  updateMandateHandler
+);
 router.post(`${BASE}/mandats/:mandateId/activer`, ...manage, activateMandateHandler);
 router.post(`${BASE}/mandats/:mandateId/suspendre`, ...manage, suspendMandateHandler);
 router.post(`${BASE}/mandats/:mandateId/reactiver`, ...manage, reactivateMandateHandler);
@@ -103,7 +109,7 @@ router.get(`${BASE}/mandats/:mandateId/scan-signe`, ...manage, downloadSignedSca
 
 // Remises
 router.get(`${BASE}/remises`, ...view, listRemittancesHandler);
-router.post(`${BASE}/remises`, ...manage, createRemittanceHandler);
+router.post(`${BASE}/remises`, ...manage, formFieldModes('syndic.remise-prelevements'), createRemittanceHandler);
 router.get(`${BASE}/remises/:remittanceId`, ...view, getRemittanceHandler);
 router.post(`${BASE}/remises/:remittanceId/actualiser`, ...manage, refreshRemittanceHandler);
 router.post(`${BASE}/remises/:remittanceId/lignes/:lineId/retirer`, ...manage, cancelRemittanceLineHandler);

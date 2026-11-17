@@ -91,6 +91,8 @@ import helpFeedbackRoutes, { helpFeedbackTenantRoutes } from './routes/help-feed
 import patrimoineProjectionsRoutes from './routes/patrimoine-projections-routes';
 import ownerStatementsRoutes from './routes/owner-statements-routes';
 import agencySettingsRoutes from './routes/agency-settings-routes';
+import formSettingsRoutes from './routes/form-settings-routes';
+import coOwnerPortalFormModesRoutes from './routes/coowner-portal-form-modes-routes';
 import tenantAuditRoutes from './routes/tenant-audit-routes';
 import notificationRoutes from './routes/notification-routes';
 import notificationAdminRoutes from './routes/notification-admin-routes';
@@ -345,6 +347,7 @@ app.use('/api/portal/tenant', tenantPortalRoutes); // Tenant portal routes
 app.use('/api/portal/owner', ownerPortalRoutes); // Owner portal routes
 app.use('/api/portal/owner', ownerAccountPortalRouter); // Compte courant du proprietaire connecte
 app.use('/api/portal/copropriete', coOwnerPortalRoutes); // Portail coproprietaire (lecture seule)
+app.use('/api/portal/copropriete', coOwnerPortalFormModesRoutes); // Modes des champs des formulaires du portail copropriétaire
 app.use('/api/portal/copropriete', coOwnerPortalInboxRouter); // Notifications + messagerie (portail)
 app.use('/api/portal/tenant', tenantPortalInboxRouter);
 app.use('/api/portal/owner', ownerPortalInboxRouter);
@@ -373,6 +376,7 @@ app.use('/api', patrimoineExportsRoutes); // Patrimoine — exports PDF/Excel de
 app.use('/api', patrimoineProjectionsRoutes); // Patrimoine — projections et scénarios (lot 3, tenant-scoped)
 app.use('/api', ownerStatementsRoutes); // Owner statements routes (tenant-scoped)
 app.use('/api', agencySettingsRoutes); // Parametres financiers de l'agence (tenant-scoped)
+app.use('/api', formSettingsRoutes); // Formulaires paramétrables : réglage et lecture des modes (tenant-scoped)
 app.use('/api', tenantAuditRoutes); // Journal d'activite de l'agence (tenant-scoped, ADR-006)
 app.use('/api', helpFeedbackTenantRoutes); // Avis d'aide d'une agence (aide interne, lot A) : apres le garde d'abonnement
 app.use('/api', notificationRoutes); // Notifications persistantes de l'utilisateur (tenant-scoped)

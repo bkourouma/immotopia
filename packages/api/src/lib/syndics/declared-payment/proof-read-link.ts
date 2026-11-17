@@ -108,7 +108,7 @@ const PAID_AT_TOLERANCE_MS = 60_000;
  */
 export function computeEditedFields(
   values: ProofReadValues,
-  submitted: { amount: number; paidAt: Date; transactionReference: string; payerPhone: string }
+  submitted: { amount: number; paidAt: Date; transactionReference: string | null; payerPhone: string }
 ): PrefillField[] {
   const edited: PrefillField[] = [];
   if (values.amount !== null && values.amount !== submitted.amount) edited.push('amount');
@@ -118,7 +118,12 @@ export function computeEditedFields(
       edited.push('paidAt');
     }
   }
-  if (values.transactionReference !== null && values.transactionReference !== submitted.transactionReference) {
+  // Référence non saisie (facultative ou masquée) : la proposition de l'IA n'est pas « retouchée », elle est écartée.
+  if (
+    values.transactionReference !== null &&
+    submitted.transactionReference !== null &&
+    values.transactionReference !== submitted.transactionReference
+  ) {
     edited.push('transactionReference');
   }
   if (values.payerPhone !== null && values.payerPhone !== submitted.payerPhone) edited.push('payerPhone');

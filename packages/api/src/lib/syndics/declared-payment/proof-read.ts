@@ -11,6 +11,7 @@ import { normalizeIvorianMsisdn } from './phone';
 import { discardTempProof, prepareProofFile, saveTempProofRead, type ProofFileInput } from './proof-files';
 import { normalizeTransactionReference } from './reference';
 import { AI_READS_MONTHLY_QUOTA, assertSyndicFeatureForDeclared, getDeclaredPaymentRules } from './settings';
+import { getEffectiveFieldModes } from '../../form-settings/service';
 import {
   MAX_DECLARATION_AMOUNT,
   PAID_AT_FUTURE_TOLERANCE_MINUTES,
@@ -258,6 +259,19 @@ async function reserveRead(params: {
   });
 }
 
+/** Le champ « Référence de transaction » du portail est-il masqué pour cette agence ? Jamais bloquant. */
+async function isReferenceHidden(tenantId: string): Promise<boolean> {
+  try {
+    const modes = await getEffectiveFieldModes(tenantId, 'syndic.paiement-declare-portail');
+    return modes.fields.transactionReference === 'HIDDEN';
+  } catch (error) {
+    logger.warn('[declared-payment] modes du formulaire illisibles, référence conservée', {
+      code: (error as { code?: unknown })?.code
+    });
+    return false;
+  }
+}
+
 /**
  * `POST /paiements-declares/lecture` (§2.3). Le périmètre (agence, copropriété,
  * contact) vient de la garde du portail ; le corps ne porte aucun identifiant
@@ -326,6 +340,11 @@ export async function readPaymentProof(params: {
     );
     if (outcome.ok) {
       reading = normalizeModelRead(outcome.result, now);
+      // Champ « Référence » masqué par l'agence : la référence lue n'est ni proposée ni conservée.
+      if (await isReferenceHidden(tenantId)) {
+        reading.transactionReference = null;
+        delete reading.confidence.transactionReference;
+      }
       rowOutcome = reading.quality;
     } else if (outcome.reason === 'DISABLED') {
       rowOutcome = 'DISABLED';

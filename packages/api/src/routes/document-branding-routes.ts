@@ -4,6 +4,7 @@ import { requireTenantAccess } from '../middleware/tenant-middleware';
 import { enforcePropertyTenantIsolation } from '../middleware/tenant-isolation-middleware';
 import { requireAnyPropertyPermission, requirePropertyPermission } from '../middleware/property-rbac-middleware';
 import { requirePermission } from '../middleware/rbac-middleware';
+import { formFieldModes } from '../lib/form-settings/apply';
 import { brandingImageUpload } from '../middleware/branding-upload-middleware';
 import {
   createMandatingAgencyHandler,
@@ -55,9 +56,21 @@ const MANDANT_IMAGE = `${MANDANT}/images/:kind`;
 const MANDANT_LOGO = `${MANDANT}/images/logo`;
 
 router.get(MANDANTS, ...syndicGuards, canView, listMandatingAgenciesHandler);
-router.post(MANDANTS, ...syndicGuards, canCreate, createMandatingAgencyHandler);
+router.post(
+  MANDANTS,
+  ...syndicGuards,
+  canCreate,
+  formFieldModes('syndic.agence-mandante'),
+  createMandatingAgencyHandler
+);
 router.get(MANDANT, ...syndicGuards, canView, getMandatingAgencyHandler);
-router.patch(MANDANT, ...syndicGuards, canEdit, updateMandatingAgencyHandler);
+router.patch(
+  MANDANT,
+  ...syndicGuards,
+  canEdit,
+  formFieldModes('syndic.agence-mandante', { partial: true }),
+  updateMandatingAgencyHandler
+);
 router.delete(MANDANT, ...syndicGuards, canEdit, deleteMandatingAgencyHandler);
 router.get(MANDANT_IMAGE, ...syndicGuards, canView, readMandantImageHandler);
 // Le logo d'un mandant se gère comme la fiche. Sa signature et son cachet

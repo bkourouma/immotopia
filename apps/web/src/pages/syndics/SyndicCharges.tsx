@@ -62,6 +62,7 @@ import { useListSearch } from '../../hooks/useListSearch';
 import { collectAllPages } from '../../utils/table-export/collect';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { t } from '../../i18n/t';
+import { useFormFieldModes } from '../../hooks/useFormFieldModes';
 import { displayCurrency } from '../../utils/syndic-currency';
 import { lotsWithShares, previewAllocation } from '../../utils/charge-allocation-preview';
 
@@ -106,6 +107,8 @@ export const SyndicCharges: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const fm = useFormFieldModes('syndic.appel-de-charges');
+  const recurringVisible = fm.isVisible('isRecurring');
   const [form] = Form.useForm();
   const dueDateValue = Form.useWatch('dueDate', form) as Dayjs | null | undefined;
   const targetModeValue = Form.useWatch('targetMode', form) as 'single' | 'multiple' | 'all' | undefined;
@@ -338,10 +341,14 @@ export const SyndicCharges: React.FC = () => {
       allocationMethod: allocationMethod ?? undefined,
       currency: values.currency || 'XOF',
       dueDate: values.dueDate.toISOString(),
-      fundId: values.fundId || undefined,
-      isRecurring: Boolean(values.isRecurring),
-      recurrenceFrequency: values.isRecurring ? values.recurrenceFrequency : undefined,
-      recurrenceCount: values.isRecurring ? values.recurrenceCount : undefined
+      ...(fm.isVisible('fundId') ? { fundId: values.fundId || undefined } : {}),
+      ...(recurringVisible
+        ? {
+            isRecurring: Boolean(values.isRecurring),
+            recurrenceFrequency: values.isRecurring ? values.recurrenceFrequency : undefined,
+            recurrenceCount: values.isRecurring ? values.recurrenceCount : undefined
+          }
+        : {})
     };
 
     setSubmitting(true);
@@ -691,30 +698,33 @@ export const SyndicCharges: React.FC = () => {
             <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
           </Form.Item>
 
-          {funds.length > 0 ? (
+          {fm.isVisible('fundId') && (funds.length > 0 || fm.isRequired('fundId', false)) ? (
             <Form.Item
-              label={t('Fonds alimenté (optionnel)')}
+              label={fm.isRequired('fundId', false) ? t('Fonds alimenté') : t('Fonds alimenté (optionnel)')}
               name="fundId"
+              rules={[{ required: fm.isRequired('fundId', false), message: t('Le fonds alimenté est obligatoire') }]}
               extra={t('Tout ce qui sera payé sur cet appel sera versé à ce fonds.')}
             >
               <Select allowClear showSearch optionFilterProp="label" options={fundSelectOptions} />
             </Form.Item>
           ) : null}
 
-          <Form.Item label={t('Charge récurrente')} name="isRecurring">
-            <Select
-              showSearch
-              optionFilterProp="label"
-              options={[
-                { label: t('Non'), value: false },
-                { label: t('Oui'), value: true }
-              ]}
-            />
-          </Form.Item>
+          {recurringVisible ? (
+            <Form.Item label={t('Charge récurrente')} name="isRecurring">
+              <Select
+                showSearch
+                optionFilterProp="label"
+                options={[
+                  { label: t('Non'), value: false },
+                  { label: t('Oui'), value: true }
+                ]}
+              />
+            </Form.Item>
+          ) : null}
 
           <Form.Item noStyle dependencies={['isRecurring']}>
             {({ getFieldValue }) =>
-              getFieldValue('isRecurring') ? (
+              recurringVisible && getFieldValue('isRecurring') ? (
                 <Row gutter={12}>
                   <Col xs={24} md={12}>
                     <Form.Item
@@ -756,10 +766,10 @@ export const SyndicCharges: React.FC = () => {
           )}
         </Paragraph>
         <Select
-          allowClear
           showSearch
           optionFilterProp="label"
           style={{ width: '100%' }}
+          allowClear
           placeholder={t('Aucun fonds (selon les postes du budget)')}
           value={fundChoice}
           onChange={value => setFundChoice(value)}
