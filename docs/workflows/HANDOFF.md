@@ -29,6 +29,22 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 **Pièges** — La démo (`.claude/worktrees/demo`) est sur `a1ece321` en dépendances propres (`demo:sync --install` avec `NODE_OPTIONS=--max-old-space-size=4096`, le premier `npm ci` plantait en mémoire) ; elle tourne en `SUBSCRIPTION_ENFORCEMENT=warn` : le menu n'y est pas filtré par pack. Données de recette laissées dans l'agence « Test — Pack Patrimoine Essentiel · 6 mois » de la base de démo. Le hook `validate-bash` refuse un `git push` quand `main` apparaît ailleurs dans la même commande (ex. `gh pr create --base main`) : séparer les deux.
 
+## fix/maintenance-modale-prestataire — 2026-11-16
+
+**État** — PR 224 vers `main`, ouverte, à fusionner par l'utilisateur. Branche depuis `origin/main` `a8720c3a`, correctif commité en `a87731c0`. Rien déployé, aucune migration.
+
+**Fait** — La page Maintenance > Prestataires (`pages/admin/maintenance/Vendors.tsx`) retrouve la modale de création et d'édition, retirée par `f12842ac` (recherche multicritères). La recherche est conservée. Les bornes des champs sont celles de `createVendorSchema` / `updateVendorSchema`. Le test `__tests__/maintenance/prestataires-modale.test.tsx` couvre la création, le refus d'un nom trop court et l'édition, avec un mock sur `api-client`. Les 5 nouveaux messages sont traduits en en et en ar.
+
+**Vérifié** — Le test et les tests de recherche existants passent (10/10). Le typecheck et le lint web ne remontent aucune erreur, et le hook pre-commit est vert.
+
+**Reste** — Suivre la CI de la PR 224. Aucune recette navigateur n'a été faite contre une API réelle.
+
+**Pièges** :
+
+- Dans ce worktree, le typecheck API échoue (291 erreurs, `helpFeedback`…), car le client Prisma partagé par jonction a été généré depuis le checkout principal, qui est sur une autre branche. Lancer `prisma generate` dans le worktree avant de juger l'API.
+- `npm run i18n:extract` ramasse des écarts déjà présents sur `main` (20 clés, `HeaderActions.tsx`) : ne garder que ses propres clés.
+- Le bouton d'édition, qui n'a qu'une icône, n'a pas « Modifier » comme nom accessible : le cibler avec `getByTitle`.
+
 ## fix/chantier-zone-date-obligatoires — 2026-11-16
 
 **État** — Branche depuis `origin/main` `a8720c3a`, poussée, PR vers `main` (fusion par l'utilisateur). Rien déployé.
