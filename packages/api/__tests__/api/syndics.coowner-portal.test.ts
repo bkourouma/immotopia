@@ -33,6 +33,11 @@ import { findDiskPathLeaks } from '../helpers/disk-path-leaks';
 
 const mockPrisma = createFakePrisma();
 
+// Formulaires paramétrables : aucun réglage d'agence (tous les champs gardent leur mode par défaut).
+jest.mock('../../src/lib/form-settings/service', () => ({
+  getEffectiveFieldModes: jest.fn(async (_tenantId: string, formKey: string) => ({ formKey, fields: {} }))
+}));
+
 jest.mock('../../src/utils/database', () => ({ prisma: mockPrisma }));
 
 // Paiement en ligne (spec 042) : la liste des appels interroge la disponibilité et les tentatives ouvertes.

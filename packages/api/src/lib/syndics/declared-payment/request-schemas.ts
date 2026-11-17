@@ -28,7 +28,8 @@ const declarationFields = {
   payerPhone: z.string().trim().min(1).max(40),
   amount: z.number().int(),
   paidAt: z.string().trim().datetime({ offset: true }),
-  transactionReference: z.string().trim().min(1).max(80),
+  // Obligatoire par défaut : le middleware formFieldModes l'exige tant que l'agence ne l'a pas rendue facultative ou masquée.
+  transactionReference: z.string().trim().max(80).nullable().optional(),
   lines: z.array(lineSchema).min(1).max(10),
   comment: z.string().max(500).nullable().optional()
 };

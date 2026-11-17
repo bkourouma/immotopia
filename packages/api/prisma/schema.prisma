@@ -859,6 +859,9 @@ model Tenant {
   syndicPaymentDeclarations      SyndicPaymentDeclaration[]
   syndicPaymentDeclarationLines  SyndicPaymentDeclarationLine[]
   syndicPaymentProofReads        SyndicPaymentProofRead[]
+  // Formulaires paramétrables : réglages de champs par agence et déverrouillages super-admin.
+  formFieldSettings              TenantFormFieldSetting[]
+  formFieldUnlocks               TenantFormFieldUnlock[]
   // Avis sur les fiches d'aide interne rattaches a cette agence.
   helpFeedbacks                  HelpFeedback[]
 
@@ -11261,7 +11264,7 @@ model SyndicPaymentDeclaration {
   payerPhone           String                         @map("payer_phone")
   amount               Decimal                        @db.Decimal(14, 2)
   paidAt               DateTime                       @map("paid_at")
-  transactionReference String                         @map("transaction_reference") // normalisée
+  transactionReference String?                        @map("transaction_reference") // normalisée
   comment              String?                        @db.VarChar(500)
   proofFileUrl         String?                        @map("proof_file_url")
   proofSha256          String?                        @map("proof_sha256")
@@ -11836,4 +11839,38 @@ model HelpFeedback {
   @@index([tenantId])
   @@index([userId])
   @@map("help_feedback")
+}
+
+/// Formulaires paramétrables : mode d'un champ (REQUIRED / OPTIONAL / HIDDEN) réglé par l'agence. Validé par le registre.
+model TenantFormFieldSetting {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id")
+  formKey     String   @map("form_key")
+  fieldKey    String   @map("field_key")
+  mode        String
+  updatedById String?  @map("updated_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, formKey, fieldKey])
+  @@index([tenantId, formKey])
+  @@map("tenant_form_field_settings")
+}
+
+/// Formulaires paramétrables : déverrouillage, par le super-admin, d'un champ « facultatif sous condition » (GATED).
+model TenantFormFieldUnlock {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id")
+  formKey      String   @map("form_key")
+  fieldKey     String   @map("field_key")
+  reason       String?  @db.VarChar(500)
+  unlockedById String   @map("unlocked_by_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, formKey, fieldKey])
+  @@map("tenant_form_field_unlocks")
 }

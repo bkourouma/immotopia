@@ -20,6 +20,12 @@ const deleteSyndicReceivingNumber = vi.fn();
 const getSyndicDeclaredSettings = vi.fn();
 const updateSyndicDeclaredSettings = vi.fn();
 
+// Réglages des formulaires : défauts (aucun réglage d'agence), sans AuthProvider ni réseau.
+vi.mock(
+  '../../../hooks/useFormFieldModes',
+  async () => (await import('../../../__tests__/syndics/charges-form-modes-mock')).formModesModule
+);
+
 vi.mock('../../../services/syndic-declared-payment-service', () => ({
   listSyndicReceivingNumbers: (...a: unknown[]) => listSyndicReceivingNumbers(...a),
   createSyndicReceivingNumber: (...a: unknown[]) => createSyndicReceivingNumber(...a),

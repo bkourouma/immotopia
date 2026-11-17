@@ -8,6 +8,7 @@ import { SYNDIC_DD_KEYS } from './keys';
 import { STALE_TIME } from '../../../lib/query-keys';
 import { HelpSectionTitle } from '../../../help';
 import { t } from '../../../i18n/t';
+import { useFormFieldModes } from '../../../hooks/useFormFieldModes';
 
 const { Text } = Typography;
 
@@ -53,6 +54,7 @@ export const SyndicMandateFormModal: React.FC<SyndicMandateFormModalProps> = ({
   onCreated
 }) => {
   const { message } = App.useApp();
+  const fm = useFormFieldModes('syndic.mandat-prelevement');
   const [form] = Form.useForm<FormValues>();
   const [lotId, setLotId] = useState<string | undefined>();
   const [debtorId, setDebtorId] = useState<string | undefined>();
@@ -161,9 +163,11 @@ export const SyndicMandateFormModal: React.FC<SyndicMandateFormModalProps> = ({
         debtorContactId: values.debtorContactId,
         iban: values.iban,
         holderName: values.holderName.trim(),
-        ...(values.maxAmount != null ? { maxAmount: values.maxAmount } : {}),
-        ...(values.collectionDay != null ? { collectionDay: values.collectionDay } : {}),
-        ...(values.notes?.trim() ? { notes: values.notes.trim() } : {})
+        ...(fm.isVisible('maxAmount') && values.maxAmount != null ? { maxAmount: values.maxAmount } : {}),
+        ...(fm.isVisible('collectionDay') && values.collectionDay != null
+          ? { collectionDay: values.collectionDay }
+          : {}),
+        ...(fm.isVisible('notes') && values.notes?.trim() ? { notes: values.notes.trim() } : {})
       });
       // L'IBAN saisi disparaît dès l'envoi réussi.
       reset();
@@ -273,15 +277,41 @@ export const SyndicMandateFormModal: React.FC<SyndicMandateFormModalProps> = ({
         >
           <Input autoComplete="off" disabled={!stepTwoReady} />
         </Form.Item>
-        <Form.Item name="maxAmount" label={t('Plafond par prélèvement (FCFA), facultatif')}>
-          <InputNumber min={1} style={{ width: '100%' }} disabled={!stepTwoReady} />
-        </Form.Item>
-        <Form.Item name="collectionDay" label={t('Jour de collecte (1 à 28), facultatif')}>
-          <InputNumber min={1} max={28} precision={0} style={{ width: '100%' }} disabled={!stepTwoReady} />
-        </Form.Item>
-        <Form.Item name="notes" label={t('Notes')}>
-          <Input.TextArea rows={2} disabled={!stepTwoReady} />
-        </Form.Item>
+        {fm.isVisible('maxAmount') && (
+          <Form.Item
+            name="maxAmount"
+            label={
+              fm.isRequired('maxAmount', false)
+                ? t('Plafond par prélèvement (FCFA)')
+                : t('Plafond par prélèvement (FCFA), facultatif')
+            }
+            rules={[{ required: fm.isRequired('maxAmount', false), message: t('Champ obligatoire') }]}
+          >
+            <InputNumber min={1} style={{ width: '100%' }} disabled={!stepTwoReady} />
+          </Form.Item>
+        )}
+        {fm.isVisible('collectionDay') && (
+          <Form.Item
+            name="collectionDay"
+            label={
+              fm.isRequired('collectionDay', false)
+                ? t('Jour de collecte (1 à 28)')
+                : t('Jour de collecte (1 à 28), facultatif')
+            }
+            rules={[{ required: fm.isRequired('collectionDay', false), message: t('Champ obligatoire') }]}
+          >
+            <InputNumber min={1} max={28} precision={0} style={{ width: '100%' }} disabled={!stepTwoReady} />
+          </Form.Item>
+        )}
+        {fm.isVisible('notes') && (
+          <Form.Item
+            name="notes"
+            label={t('Notes')}
+            rules={[{ required: fm.isRequired('notes', false), whitespace: true, message: t('Champ obligatoire') }]}
+          >
+            <Input.TextArea rows={2} disabled={!stepTwoReady} />
+          </Form.Item>
+        )}
       </Form>
     </Modal>
   );

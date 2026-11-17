@@ -4,10 +4,12 @@ import { App, Alert, Button, Drawer, Empty, Form, Input, Space, Spin, Tooltip, T
 import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined } from '@ant-design/icons';
 import { useAuth } from '../../hooks/useAuth';
+import { useFormFieldModes } from '../../hooks/useFormFieldModes';
 import { Table, useConfirmAction } from '../../components/primitives';
 import { BrandingImageField } from '../../components/documents/BrandingImageField';
 import {
   createMandatingAgency,
+  type CreateMandatingAgencyRequest,
   deleteMandatingAgency,
   fetchMandantImageBlob,
   listMandatingAgencies,
@@ -63,6 +65,7 @@ interface MandatingAgencyFormValues {
 export const SyndicMandatingAgencies: React.FC = () => {
   const { message } = App.useApp();
   const confirmAction = useConfirmAction();
+  const fm = useFormFieldModes('syndic.agence-mandante');
   const { tenantId } = useParams<{ tenantId: string }>();
   const { tenantMembership } = useAuth();
   const effectiveTenantId = tenantId || tenantMembership?.tenantId;
@@ -127,16 +130,16 @@ export const SyndicMandatingAgencies: React.FC = () => {
 
   const handleSubmit = async () => {
     if (!effectiveTenantId) return;
-    const values = await form.validateFields();
-    const payload = {
-      name: values.name,
-      legalName: values.legalName || null,
-      address: values.address || null,
-      phone: values.phone || null,
-      email: values.email || '',
-      rccm: values.rccm || null,
-      taxId: values.taxId || null
-    };
+    const values = await form.validateFields().catch(() => null);
+    if (!values) return;
+    // Un champ masqué par l'agence n'est pas envoyé : la valeur enregistrée reste inchangée.
+    const payload: CreateMandatingAgencyRequest = { name: values.name };
+    if (fm.isVisible('legalName')) payload.legalName = values.legalName || null;
+    if (fm.isVisible('address')) payload.address = values.address || null;
+    if (fm.isVisible('phone')) payload.phone = values.phone || null;
+    if (fm.isVisible('email')) payload.email = values.email || '';
+    if (fm.isVisible('rccm')) payload.rccm = values.rccm || null;
+    if (fm.isVisible('taxId')) payload.taxId = values.taxId || null;
 
     setSubmitting(true);
     try {
@@ -375,57 +378,132 @@ export const SyndicMandatingAgencies: React.FC = () => {
           <Form.Item label={t('Nom')} name="name" rules={[{ required: true, message: t('Le nom est obligatoire') }]}>
             <Input />
           </Form.Item>
-          <Form.Item label={t('Dénomination légale')} name="legalName">
-            <Input />
-          </Form.Item>
-          <Form.Item label={t('Adresse')} name="address">
-            <Input.TextArea rows={2} />
-          </Form.Item>
-          <Form.Item label={t('Téléphone')} name="phone">
-            <Input />
-          </Form.Item>
-          <Form.Item
-            label={t('E-mail')}
-            name="email"
-            rules={[{ type: 'email', message: t('Adresse e-mail invalide') }]}
-          >
-            <Input />
-          </Form.Item>
-          <Form.Item label={t('RCCM')} name="rccm">
-            <Input />
-          </Form.Item>
-          <Form.Item label={t('NIF')} name="taxId">
-            <Input />
-          </Form.Item>
+          {fm.isVisible('legalName') && (
+            <Form.Item
+              label={t('Dénomination légale')}
+              name="legalName"
+              rules={[
+                {
+                  required: fm.isRequired('legalName', false),
+                  whitespace: fm.isRequired('legalName', false),
+                  message: t('Ce champ est obligatoire')
+                }
+              ]}
+            >
+              <Input />
+            </Form.Item>
+          )}
+          {fm.isVisible('address') && (
+            <Form.Item
+              label={t('Adresse')}
+              name="address"
+              rules={[
+                {
+                  required: fm.isRequired('address', false),
+                  whitespace: fm.isRequired('address', false),
+                  message: t('Ce champ est obligatoire')
+                }
+              ]}
+            >
+              <Input.TextArea rows={2} />
+            </Form.Item>
+          )}
+          {fm.isVisible('phone') && (
+            <Form.Item
+              label={t('Téléphone')}
+              name="phone"
+              rules={[
+                {
+                  required: fm.isRequired('phone', false),
+                  whitespace: fm.isRequired('phone', false),
+                  message: t('Ce champ est obligatoire')
+                }
+              ]}
+            >
+              <Input />
+            </Form.Item>
+          )}
+          {fm.isVisible('email') && (
+            <Form.Item
+              label={t('E-mail')}
+              name="email"
+              rules={[
+                {
+                  required: fm.isRequired('email', false),
+                  whitespace: fm.isRequired('email', false),
+                  message: t('Ce champ est obligatoire')
+                },
+                { type: 'email', message: t('Adresse e-mail invalide') }
+              ]}
+            >
+              <Input />
+            </Form.Item>
+          )}
+          {fm.isVisible('rccm') && (
+            <Form.Item
+              label={t('RCCM')}
+              name="rccm"
+              rules={[
+                {
+                  required: fm.isRequired('rccm', false),
+                  whitespace: fm.isRequired('rccm', false),
+                  message: t('Ce champ est obligatoire')
+                }
+              ]}
+            >
+              <Input />
+            </Form.Item>
+          )}
+          {fm.isVisible('taxId') && (
+            <Form.Item
+              label={t('NIF')}
+              name="taxId"
+              rules={[
+                {
+                  required: fm.isRequired('taxId', false),
+                  whitespace: fm.isRequired('taxId', false),
+                  message: t('Ce champ est obligatoire')
+                }
+              ]}
+            >
+              <Input />
+            </Form.Item>
+          )}
         </Form>
 
         {editingAgency ? (
           <Space direction="vertical" size="large" style={{ width: '100%', marginTop: 24 }}>
             <Text strong>{t('Images pour les documents')}</Text>
-            <BrandingImageField
-              label={t('Logo')}
-              hasImage={editingAgency.hasLogo}
-              imageVersion={imageVersion}
-              fetchImage={() => fetchMandantImageBlob(effectiveTenantId!, editingAgency.id, 'logo')}
-              onUpload={file => handleImageUpload('logo', file)}
-              onRemove={() => handleImageRemove('logo')}
-            />
-            <BrandingImageField
-              label={t('Signature')}
-              hasImage={editingAgency.hasSignature}
-              imageVersion={imageVersion}
-              fetchImage={() => fetchMandantImageBlob(effectiveTenantId!, editingAgency.id, 'signature')}
-              onUpload={file => handleImageUpload('signature', file)}
-              onRemove={() => handleImageRemove('signature')}
-            />
-            <BrandingImageField
-              label={t('Cachet')}
-              hasImage={editingAgency.hasStamp}
-              imageVersion={imageVersion}
-              fetchImage={() => fetchMandantImageBlob(effectiveTenantId!, editingAgency.id, 'stamp')}
-              onUpload={file => handleImageUpload('stamp', file)}
-              onRemove={() => handleImageRemove('stamp')}
-            />
+            {fm.isVisible('logo') && (
+              <BrandingImageField
+                label={t('Logo')}
+                hasImage={editingAgency.hasLogo}
+                imageVersion={imageVersion}
+                fetchImage={() => fetchMandantImageBlob(effectiveTenantId!, editingAgency.id, 'logo')}
+                onUpload={file => handleImageUpload('logo', file)}
+                onRemove={() => handleImageRemove('logo')}
+              />
+            )}
+            {fm.isVisible('signature') && (
+              <BrandingImageField
+                label={t('Signature')}
+                hasImage={editingAgency.hasSignature}
+                imageVersion={imageVersion}
+                fetchImage={() => fetchMandantImageBlob(effectiveTenantId!, editingAgency.id, 'signature')}
+                onUpload={file => handleImageUpload('signature', file)}
+                onRemove={() => handleImageRemove('signature')}
+              />
+            )}
+            {fm.isVisible('stamp') && (
+              <BrandingImageField
+                label={t('Cachet')}
+                hasImage={editingAgency.hasStamp}
+                imageVersion={imageVersion}
+                fetchImage={() => fetchMandantImageBlob(effectiveTenantId!, editingAgency.id, 'stamp')}
+                onUpload={file => handleImageUpload('stamp', file)}
+                onRemove={() => handleImageRemove('stamp')}
+              />
+            )}
           </Space>
         ) : (
           <Alert

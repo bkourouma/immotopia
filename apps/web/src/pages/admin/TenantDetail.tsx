@@ -14,6 +14,7 @@ import { InvoicesTab } from '../../components/admin/tenant-detail/InvoicesTab';
 import { ActivityTab } from '../../components/admin/tenant-detail/ActivityTab';
 import { DataExportTab } from '../../components/admin/tenant-detail/DataExportTab';
 import { CollaboratorsTab } from '../../components/admin/tenant-detail/CollaboratorsTab';
+import { TenantFormUnlocksTab } from '../../components/admin/tenant-detail/TenantFormUnlocksTab';
 import {
   Building2,
   ArrowLeft,
@@ -25,7 +26,8 @@ import {
   AlertTriangle,
   CheckCircle,
   Users,
-  DatabaseBackup
+  DatabaseBackup,
+  ListChecks
 } from 'lucide-react';
 import { App } from 'antd';
 import { StatusTag, useConfirmAction } from '../../components/primitives';
@@ -52,7 +54,8 @@ const TENANT_DETAIL_TABS = [
   'invoices',
   'activity',
   'stats',
-  'data-export'
+  'data-export',
+  'forms'
 ] as const;
 type TenantDetailTab = (typeof TENANT_DETAIL_TABS)[number];
 const isTenantDetailTab = (value: string | null): value is TenantDetailTab =>
@@ -237,7 +240,8 @@ export const TenantDetail: React.FC = () => {
               { id: 'invoices', label: t('Factures'), icon: Receipt },
               { id: 'activity', label: t('Activité'), icon: Activity },
               { id: 'stats', label: t('Statistiques'), icon: BarChart3 },
-              { id: 'data-export', label: t('Export des données'), icon: DatabaseBackup }
+              { id: 'data-export', label: t('Export des données'), icon: DatabaseBackup },
+              { id: 'forms', label: t('Formulaires'), icon: ListChecks }
             ].map(tab => (
               <button
                 key={tab.id}
@@ -358,6 +362,12 @@ export const TenantDetail: React.FC = () => {
           {activeTab === 'data-export' && (
             <div>
               <DataExportTab tenantId={tenantId!} />
+            </div>
+          )}
+
+          {activeTab === 'forms' && (
+            <div>
+              <TenantFormUnlocksTab tenantId={tenantId!} />
             </div>
           )}
 

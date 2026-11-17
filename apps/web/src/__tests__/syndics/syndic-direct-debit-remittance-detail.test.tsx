@@ -35,6 +35,12 @@ const settleAllSyndicRemittanceLines = vi.fn();
 const saveBlob = vi.fn();
 let permissions: Set<string> | null = null;
 
+// Réglages des formulaires : défauts (aucun réglage d'agence), sans AuthProvider ni réseau.
+vi.mock(
+  '../../hooks/useFormFieldModes',
+  async () => (await import('../../__tests__/syndics/charges-form-modes-mock')).formModesModule
+);
+
 vi.mock('../../services/syndic-direct-debit-service', () => ({
   getSyndicRemittance: (...a: unknown[]) => getSyndicRemittance(...a),
   refreshSyndicRemittance: (...a: unknown[]) => refreshSyndicRemittance(...a),

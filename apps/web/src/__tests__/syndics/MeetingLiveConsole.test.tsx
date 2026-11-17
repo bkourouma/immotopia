@@ -14,6 +14,16 @@ import type {
 } from '../../types/syndic-live-types';
 import type { MeetingStatus } from '../../types/syndic-types';
 
+let fieldModes: Record<string, 'REQUIRED' | 'OPTIONAL' | 'HIDDEN'> = {};
+vi.mock('../../hooks/useFormFieldModes', () => ({
+  useFormFieldModes: () => ({
+    loading: false,
+    mode: (key: string, fallback = 'OPTIONAL') => fieldModes[key] ?? fallback,
+    isVisible: (key: string) => fieldModes[key] !== 'HIDDEN',
+    isRequired: (key: string, fallback: boolean) => (fieldModes[key] ? fieldModes[key] === 'REQUIRED' : fallback)
+  })
+}));
+
 const api = {
   getLiveMeeting: vi.fn(),
   listMeetingParticipants: vi.fn(),
@@ -264,6 +274,7 @@ configure({ asyncUtilTimeout: 10000 });
 
 beforeEach(() => {
   vi.clearAllMocks();
+  fieldModes = {};
   api.getLiveMeeting.mockResolvedValue(live());
   api.listMeetingParticipants.mockResolvedValue(participants);
   // Visio non configurée par défaut : l'API répond 409 et la console reste inchangée.
@@ -388,6 +399,22 @@ describe('MeetingLiveConsole', () => {
       })
     );
     await waitFor(() => expect(onMeetingChanged).toHaveBeenCalled());
+  });
+
+  it('réglage agence : lien de visio masqué, carte absente', async () => {
+    fieldModes = { videoConferenceUrl: 'HIDDEN' };
+    mount('PLANNED');
+    await screen.findByRole('combobox', { name: 'Émargement du lot B2' });
+    expect(screen.queryByLabelText('Lien de visioconférence')).toBeNull();
+  });
+
+  it('réglage agence : lien de visio obligatoire, message si vidé et pas d enregistrement', async () => {
+    fieldModes = { videoConferenceUrl: 'REQUIRED' };
+    mount('PLANNED', { videoConferenceUrl: 'https://meet.example.com/x' });
+    const input = (await screen.findByLabelText('Lien de visioconférence')) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '' } });
+    expect(screen.getByText('Le lien de visioconférence est obligatoire')).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Enregistrer' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('propose la projection en lien externe', async () => {

@@ -6,6 +6,7 @@ export const routes: HelpRoute[] = [
   { pattern: '/tenant/:tenantId/settings/finance', helpId: 'administration.agence.finance' },
   { pattern: '/tenant/:tenantId/settings/abonnement', helpId: 'administration.agence.abonnement' },
   { pattern: '/tenant/:tenantId/settings/facturation', helpId: 'administration.agence.facturation' },
+  { pattern: '/tenant/:tenantId/settings/formulaires', helpId: 'administration.agence.formulaires' },
   { pattern: '/tenant/:tenantId/activity', helpId: 'administration.agence.activite' },
   { pattern: '/tenant/:tenantId/collaborators', helpId: 'administration.equipe.collaborateurs' },
   { pattern: '/tenant/:tenantId/collaborators/:userId', helpId: 'administration.equipe.collaborateur-detail' },

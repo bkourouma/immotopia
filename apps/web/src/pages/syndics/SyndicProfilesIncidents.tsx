@@ -23,6 +23,7 @@ import {
   updateLotTenantProfile,
   updateSyndicIncident
 } from '../../services/syndic-service';
+import { useFormFieldModes } from '../../hooks/useFormFieldModes';
 import { CoOwnerInvitationResult } from '../../components/syndics/CoOwnerInvitationResult';
 import { useTabParam } from '../../components/syndics/finances/url-params';
 import { IncidentsTab } from '../../components/syndics/profiles/IncidentsTab';
@@ -121,6 +122,10 @@ function contactLabel(profile: LotOwnerProfile): string {
 export const SyndicProfilesIncidents: React.FC = () => {
   const { message, modal } = App.useApp();
   const queryClient = useQueryClient();
+  const ownerProfileFm = useFormFieldModes('syndic.profil-proprietaire');
+  const incidentCreateFm = useFormFieldModes('syndic.incident-creation');
+  const incidentEditFm = useFormFieldModes('syndic.incident-modification');
+  const imputationFm = useFormFieldModes('syndic.incident-imputation');
 
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
   const [activeTab, setActiveTab] = useTabParam<ProfileTab>(PROFILE_TABS, 'proprietaires');
@@ -382,7 +387,10 @@ export const SyndicProfilesIncidents: React.FC = () => {
         contactId: values.contactId,
         ownershipPercentage: values.ownershipPercentage,
         ownedSince: new Date(values.ownedSince).toISOString(),
-        portalAccessEnabled: values.portalAccessEnabled || false,
+        // Champ masqué : non envoyé, le serveur applique « sans accès ».
+        ...(ownerProfileFm.isVisible('portalAccessEnabled')
+          ? { portalAccessEnabled: values.portalAccessEnabled || false }
+          : {}),
         ...(previousOwnersHandling ? { previousOwnersHandling } : {})
       });
       message.success(t('Profil propriétaire créé'));
@@ -448,7 +456,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
     try {
       await createSyndicIncident(effectiveTenantId, syndicId, {
         reportedByContactId: values.reportedByContactId,
-        lotId: values.lotId || undefined,
+        lotId: incidentCreateFm.isVisible('lotId') ? values.lotId || undefined : undefined,
         incidentType: values.incidentType,
         description: values.description,
         urgency: values.urgency
@@ -498,10 +506,10 @@ export const SyndicProfilesIncidents: React.FC = () => {
         imputationType: values.imputationType,
         amount: values.amount,
         currency: values.currency || 'XOF',
-        budgetLineId: values.budgetLineId || undefined,
-        contractId: values.contractId || undefined,
-        lotId: values.lotId || undefined,
-        notes: values.notes || undefined
+        budgetLineId: imputationFm.isVisible('budgetLineId') ? values.budgetLineId || undefined : undefined,
+        contractId: imputationFm.isVisible('contractId') ? values.contractId || undefined : undefined,
+        lotId: imputationFm.isVisible('lotId') ? values.lotId || undefined : undefined,
+        notes: imputationFm.isVisible('notes') ? values.notes || undefined : undefined
       });
       message.success(t('Imputation enregistrée'));
       setOpenImputation(false);
@@ -567,11 +575,19 @@ export const SyndicProfilesIncidents: React.FC = () => {
 
     const payload: Partial<SyndicateIncident> = {};
     if (values.status !== editingIncident.status) payload.status = values.status;
-    if ((values.providerId || null) !== (editingIncident.providerId || null)) {
+    if (
+      incidentEditFm.isVisible('providerId') &&
+      (values.providerId || null) !== (editingIncident.providerId || null)
+    ) {
       payload.providerId = values.providerId || null;
     }
     if (values.description !== editingIncident.description) payload.description = values.description;
-    if (becomesResolvedOrClosed && resolvedAt && resolvedAt !== editingIncident.resolvedAt) {
+    if (
+      incidentEditFm.isVisible('resolvedAt') &&
+      becomesResolvedOrClosed &&
+      resolvedAt &&
+      resolvedAt !== editingIncident.resolvedAt
+    ) {
       payload.resolvedAt = resolvedAt;
     }
 
@@ -840,16 +856,27 @@ export const SyndicProfilesIncidents: React.FC = () => {
           <Form.Item label={t('Date de début')} name="ownedSince" rules={[{ required: true }]}>
             <Input type="date" />
           </Form.Item>
-          <Form.Item label={t('Activer accès portail')} name="portalAccessEnabled">
-            <Select
-              showSearch
-              optionFilterProp="label"
-              options={[
-                { value: true, label: t('Oui') },
-                { value: false, label: t('Non') }
+          {ownerProfileFm.isVisible('portalAccessEnabled') && (
+            <Form.Item
+              label={t('Activer accès portail')}
+              name="portalAccessEnabled"
+              rules={[
+                {
+                  required: ownerProfileFm.isRequired('portalAccessEnabled', false),
+                  message: t('Ce champ est obligatoire')
+                }
               ]}
-            />
-          </Form.Item>
+            >
+              <Select
+                showSearch
+                optionFilterProp="label"
+                options={[
+                  { value: true, label: t('Oui') },
+                  { value: false, label: t('Non') }
+                ]}
+              />
+            </Form.Item>
+          )}
         </Form>
       </Modal>
 
@@ -949,17 +976,25 @@ export const SyndicProfilesIncidents: React.FC = () => {
           >
             {renderContactSelect('incident')}
           </Form.Item>
-          <Form.Item label={t('Lot (optionnel)')} name="lotId">
-            <Select
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              options={lots.map(lot => ({
-                value: lot.id,
-                label: getLotOptionLabel(lot, propertiesByInternalReference)
-              }))}
-            />
-          </Form.Item>
+          {incidentCreateFm.isVisible('lotId') && (
+            <Form.Item
+              label={incidentCreateFm.isRequired('lotId', false) ? t('Lot') : t('Lot (optionnel)')}
+              name="lotId"
+              rules={[
+                { required: incidentCreateFm.isRequired('lotId', false), message: t('Ce champ est obligatoire') }
+              ]}
+            >
+              <Select
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                options={lots.map(lot => ({
+                  value: lot.id,
+                  label: getLotOptionLabel(lot, propertiesByInternalReference)
+                }))}
+              />
+            </Form.Item>
+          )}
           <Form.Item label={t('Type incident')} name="incidentType" rules={[{ required: true }]}>
             <Select
               showSearch
@@ -1006,15 +1041,23 @@ export const SyndicProfilesIncidents: React.FC = () => {
               options={INCIDENT_STATUSES.map(value => ({ value, label: getIncidentStatusLabel(value) }))}
             />
           </Form.Item>
-          <Form.Item label={t('Prestataire')} name="providerId">
-            <Select
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              placeholder={t('Aucun prestataire')}
-              options={providers.map(provider => ({ value: provider.id, label: provider.name }))}
-            />
-          </Form.Item>
+          {incidentEditFm.isVisible('providerId') && (
+            <Form.Item
+              label={t('Prestataire')}
+              name="providerId"
+              rules={[
+                { required: incidentEditFm.isRequired('providerId', false), message: t('Ce champ est obligatoire') }
+              ]}
+            >
+              <Select
+                allowClear={!incidentEditFm.isRequired('providerId', false)}
+                showSearch
+                optionFilterProp="label"
+                placeholder={t('Aucun prestataire')}
+                options={providers.map(provider => ({ value: provider.id, label: provider.name }))}
+              />
+            </Form.Item>
+          )}
           <Form.Item
             label={t('Description')}
             name="description"
@@ -1022,8 +1065,15 @@ export const SyndicProfilesIncidents: React.FC = () => {
           >
             <Input.TextArea rows={3} />
           </Form.Item>
-          {editIncidentStatus === 'RESOLVED' || editIncidentStatus === 'CLOSED' ? (
-            <Form.Item label={t('Date de résolution')} name="resolvedAt">
+          {incidentEditFm.isVisible('resolvedAt') &&
+          (editIncidentStatus === 'RESOLVED' || editIncidentStatus === 'CLOSED') ? (
+            <Form.Item
+              label={t('Date de résolution')}
+              name="resolvedAt"
+              rules={[
+                { required: incidentEditFm.isRequired('resolvedAt', false), message: t('Ce champ est obligatoire') }
+              ]}
+            >
               <DatePicker style={{ width: '100%' }} format={dateFormat('short')} />
             </Form.Item>
           ) : null}
@@ -1057,41 +1107,77 @@ export const SyndicProfilesIncidents: React.FC = () => {
           <Form.Item label={t('Devise')}>
             <Input value="FCFA" readOnly disabled />
           </Form.Item>
-          <Form.Item label={t('Poste de budget (optionnel)')} name="budgetLineId">
-            <Select
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              placeholder={t('Aucun poste de budget')}
-              options={budgetLineOptions}
-            />
-          </Form.Item>
-          <Form.Item label={t('Contrat (optionnel)')} name="contractId">
-            <Select
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              placeholder={t('Aucun contrat')}
-              options={contracts.map(contract => ({
-                value: contract.id,
-                label: contract.provider?.name ? `${contract.nature} — ${contract.provider.name}` : contract.nature
-              }))}
-            />
-          </Form.Item>
-          <Form.Item label={t('Lot (optionnel)')} name="lotId">
-            <Select
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              options={lots.map(lot => ({
-                value: lot.id,
-                label: getLotOptionLabel(lot, propertiesByInternalReference)
-              }))}
-            />
-          </Form.Item>
-          <Form.Item label={t('Notes')} name="notes">
-            <Input.TextArea rows={2} />
-          </Form.Item>
+          {imputationFm.isVisible('budgetLineId') && (
+            <Form.Item
+              label={
+                imputationFm.isRequired('budgetLineId', false) ? t('Poste de budget') : t('Poste de budget (optionnel)')
+              }
+              name="budgetLineId"
+              rules={[
+                { required: imputationFm.isRequired('budgetLineId', false), message: t('Ce champ est obligatoire') }
+              ]}
+            >
+              <Select
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                placeholder={t('Aucun poste de budget')}
+                options={budgetLineOptions}
+              />
+            </Form.Item>
+          )}
+          {imputationFm.isVisible('contractId') && (
+            <Form.Item
+              label={imputationFm.isRequired('contractId', false) ? t('Contrat') : t('Contrat (optionnel)')}
+              name="contractId"
+              rules={[
+                { required: imputationFm.isRequired('contractId', false), message: t('Ce champ est obligatoire') }
+              ]}
+            >
+              <Select
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                placeholder={t('Aucun contrat')}
+                options={contracts.map(contract => ({
+                  value: contract.id,
+                  label: contract.provider?.name ? `${contract.nature} — ${contract.provider.name}` : contract.nature
+                }))}
+              />
+            </Form.Item>
+          )}
+          {imputationFm.isVisible('lotId') && (
+            <Form.Item
+              label={imputationFm.isRequired('lotId', false) ? t('Lot') : t('Lot (optionnel)')}
+              name="lotId"
+              rules={[{ required: imputationFm.isRequired('lotId', false), message: t('Ce champ est obligatoire') }]}
+            >
+              <Select
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                options={lots.map(lot => ({
+                  value: lot.id,
+                  label: getLotOptionLabel(lot, propertiesByInternalReference)
+                }))}
+              />
+            </Form.Item>
+          )}
+          {imputationFm.isVisible('notes') && (
+            <Form.Item
+              label={t('Notes')}
+              name="notes"
+              rules={[
+                {
+                  required: imputationFm.isRequired('notes', false),
+                  whitespace: imputationFm.isRequired('notes', false),
+                  message: t('Ce champ est obligatoire')
+                }
+              ]}
+            >
+              <Input.TextArea rows={2} />
+            </Form.Item>
+          )}
         </Form>
       </Modal>
     </>

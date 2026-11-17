@@ -169,7 +169,7 @@ export function DeclarationsList({ items, onChanged, serverList }: DeclarationsL
     { title: t('Lot(s)'), key: 'lots', render: (_, row) => lotsLabel(row) },
     { title: t('Copropriété'), key: 'syndicate', render: (_, row) => row.syndicate.name },
     { title: t('Numéro de réception'), key: 'receiving', render: (_, row) => receivingLabel(row) },
-    { title: t('Référence'), key: 'reference', render: (_, row) => row.transactionReference },
+    { title: t('Référence'), key: 'reference', render: (_, row) => row.transactionReference ?? '—' },
     {
       title: t('Montant déclaré'),
       key: 'amount',
@@ -213,7 +213,7 @@ export function DeclarationsList({ items, onChanged, serverList }: DeclarationsL
           highlight={<AmountCell declaration={row} />}
           fields={[
             { label: t('Numéro de réception'), value: receivingLabel(row) },
-            { label: t('Référence'), value: row.transactionReference },
+            { label: t('Référence'), value: row.transactionReference ?? '—' },
             { label: t('Statut'), value: <StatusCell declaration={row} onChanged={onChanged} /> }
           ]}
         />

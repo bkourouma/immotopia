@@ -26,6 +26,12 @@ const previewSyndicReturnFile = vi.fn();
 const applySyndicReturnFile = vi.fn();
 let permissions: Set<string> | null = null;
 
+// Réglages des formulaires : défauts (aucun réglage d'agence), sans AuthProvider ni réseau.
+vi.mock(
+  '../../hooks/useFormFieldModes',
+  async () => (await import('../../__tests__/syndics/charges-form-modes-mock')).formModesModule
+);
+
 vi.mock('../../services/syndic-direct-debit-service', () => ({
   getSyndicCreditor: (...a: unknown[]) => getSyndicCreditor(...a),
   saveSyndicCreditor: vi.fn(),

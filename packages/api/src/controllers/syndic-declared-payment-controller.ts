@@ -205,6 +205,7 @@ export const createManagerDeclarationHandler = asyncHandler(async (req: Request,
   const { declarationId } = await createDeclaration({
     tenantId,
     syndicateId,
+    formKey: 'syndic.paiement-declare-gestionnaire',
     actor: { type: 'MANAGER', userId: actorOf(req), declaredForContactId: declaredForContactId ?? null },
     input,
     proof: req.file ?? null

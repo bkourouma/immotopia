@@ -107,6 +107,8 @@ export const TENANT_ROUTE_FEATURES: readonly RouteFeatureRule[] = [
   { prefix: '/treasury', feature: 'CORE' },
   { prefix: '/settings/finance', feature: 'CORE' },
   { prefix: '/settings/payment-gateway', feature: 'CORE' },
+  { prefix: '/settings/forms', feature: 'CORE', note: 'Réglage des champs des formulaires paramétrables.' },
+  { prefix: '/forms', feature: 'CORE', note: 'Modes des champs, lus par les écrans de saisie.' },
   {
     prefix: '/settings/receiving-accounts',
     feature: 'CORE',

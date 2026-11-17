@@ -8,6 +8,7 @@ import {
   syndicDeclaredWriteRateLimiter
 } from '../middleware/rate-limit-middleware';
 import { receiveDeclarationProof } from '../middleware/declared-proof-upload';
+import { formFieldModes } from '../lib/form-settings/apply';
 import { receiveReceivingAccountQr } from '../middleware/receiving-account-upload';
 import {
   receivingAccountQrReadRateLimiter,
@@ -82,6 +83,7 @@ router.post(
   ...guards,
   canEdit,
   syndicDeclaredWriteRateLimiter,
+  formFieldModes('syndic.paiement-declare-validation'),
   approveDeclarationHandler
 );
 router.post(
@@ -99,6 +101,7 @@ router.post(
   canEdit,
   syndicDeclaredWriteRateLimiter,
   receiveDeclarationProof,
+  formFieldModes('syndic.paiement-declare-gestionnaire', { payloadField: 'payload' }),
   createManagerDeclarationHandler
 );
 

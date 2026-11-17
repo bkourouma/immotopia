@@ -646,7 +646,7 @@ type CoOwnerSource = {
   amount: unknown;
   acceptedAmount: unknown;
   paidAt: Date;
-  transactionReference: string;
+  transactionReference: string | null;
   rejectReason: DeclarationRejectReason | null;
   reviewNote: string | null;
   reviewedAt: Date | null;

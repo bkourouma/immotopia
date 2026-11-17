@@ -61,12 +61,13 @@ export interface DeclaredPaymentSettings {
 export interface DeclarationLineInput {
   lotId: string;
   amount: number;
-  chargeCallIds: string[];
+  chargeCallIds?: string[];
 }
 
 export type DeclarationAlert =
   | { kind: 'REFERENCE_ON_EXISTING_PAYMENT'; chargePaymentId: string; paidAt: string; amount: number }
   | { kind: 'PROBABLE_DUPLICATE'; declarationId: string; createdAt: string }
+  | { kind: 'DUPLICATE_PROOF'; declarationId: string; createdAt: string }
   | { kind: 'EXCESS'; lotId: string; excess: number }
   | { kind: 'PARTIAL'; lotId: string; remaining: number }
   | { kind: 'DECLARANT_NOT_CURRENT_OWNER'; lotId: string }
@@ -97,7 +98,7 @@ export interface SyndicDeclarationRow {
   acceptedAmount: number | null;
   paidAt: string;
   acceptedPaidAt: string | null;
-  transactionReference: string;
+  transactionReference: string | null;
   lines: DeclarationLineView[];
   hasProof: boolean;
   aiPrefilled: boolean;
@@ -179,7 +180,7 @@ export interface CreateManagerDeclarationInput {
   payerPhone: string;
   amount: number;
   paidAt: string;
-  transactionReference: string;
+  transactionReference?: string | null;
   lines: DeclarationLineInput[];
   comment?: string | null;
   declaredForContactId?: string;

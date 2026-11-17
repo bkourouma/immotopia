@@ -14,6 +14,12 @@ import type { DeclarationAlert, SyndicDeclarationRow } from '../../../services/s
 const getSyndicDeclaration = vi.fn();
 const getSyndicDeclarationProof = vi.fn();
 
+// Réglages des formulaires : défauts (aucun réglage d'agence), sans AuthProvider ni réseau.
+vi.mock(
+  '../../../hooks/useFormFieldModes',
+  async () => (await import('../../../__tests__/syndics/charges-form-modes-mock')).formModesModule
+);
+
 vi.mock('../../../services/syndic-declared-payment-service', () => ({
   getSyndicDeclaration: (...a: unknown[]) => getSyndicDeclaration(...a),
   getSyndicDeclarationProof: (...a: unknown[]) => getSyndicDeclarationProof(...a)

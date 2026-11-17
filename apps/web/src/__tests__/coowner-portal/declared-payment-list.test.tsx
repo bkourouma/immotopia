@@ -12,6 +12,12 @@ const cancelDeclaration = vi.fn();
 const feedbackSuccess = vi.fn();
 const feedbackError = vi.fn();
 
+// Réglages des formulaires : défauts (aucun réglage d'agence), sans AuthProvider ni réseau.
+vi.mock(
+  '../../hooks/useFormFieldModes',
+  async () => (await import('../../__tests__/syndics/charges-form-modes-mock')).formModesModule
+);
+
 vi.mock('../../services/coowner-portal-service', async () => {
   const actual = await vi.importActual<typeof import('../../services/coowner-portal-service')>(
     '../../services/coowner-portal-service'
@@ -126,6 +132,12 @@ describe('DeclarationsList', () => {
     expect(screen.getByText(/Montant corrigé selon le relevé\./)).toBeInTheDocument();
     expect(screen.getByText(/Quittance Q-2026-001/)).toBeInTheDocument();
     expect(screen.getByText(/Retrouvez-les dans « Mes quittances »/)).toBeInTheDocument();
+  });
+
+  it('affiche « — » pour une déclaration sans référence', () => {
+    mount([declaration({ transactionReference: null })]);
+    expect(screen.queryByText('MP261010.ABCD')).toBeNull();
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0);
   });
 
   it("n'affiche pas de bouton quand canCancel est faux", () => {

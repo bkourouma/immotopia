@@ -5,6 +5,7 @@ import { formatMoney } from '../../primitives';
 import { RecordGatewayPayoutResult, recordSyndicGatewayPayout } from '../../../services/syndic-online-payment-service';
 import { t } from '../../../i18n/t';
 import { HelpSectionTitle } from '../../../help';
+import { useFormFieldModes } from '../../../hooks/useFormFieldModes';
 import { apiErrorMessage } from './helpers';
 
 const { Text, Paragraph } = Typography;
@@ -39,6 +40,7 @@ export const PayoutModal: React.FC<PayoutModalProps> = ({
   onClose,
   onRecorded
 }) => {
+  const fm = useFormFieldModes('syndic.reversement-paiement-en-ligne');
   const [accountNumber, setAccountNumber] = useState<string>(accounts[0]?.accountNumber ?? '5525');
   const [amount, setAmount] = useState<number | null>(null);
   const [date, setDate] = useState<Dayjs | null>(dayjs());
@@ -62,7 +64,14 @@ export const PayoutModal: React.FC<PayoutModalProps> = ({
   const selected = accounts.find(option => option.accountNumber === accountNumber);
   const collectionBalance = selected?.balance ?? 0;
   const exceeds = amount !== null && amount > collectionBalance;
-  const valid = amount !== null && amount > 0 && !exceeds && date !== null && reference.trim().length > 0;
+  const noteRequired = fm.isVisible('note') && fm.isRequired('note', false);
+  const valid =
+    amount !== null &&
+    amount > 0 &&
+    !exceeds &&
+    date !== null &&
+    reference.trim().length > 0 &&
+    (!noteRequired || note.trim().length > 0);
 
   const submit = async () => {
     if (!valid || amount === null || !date) return;
@@ -73,7 +82,7 @@ export const PayoutModal: React.FC<PayoutModalProps> = ({
         amount,
         date: date.format('YYYY-MM-DD'),
         reference: reference.trim(),
-        note: note.trim() ? note.trim() : null,
+        ...(fm.isVisible('note') ? { note: note.trim() ? note.trim() : null } : {}),
         ...(accountNumber !== '5525' ? { treasuryAccountNumber: accountNumber } : {})
       });
       onRecorded(result);
@@ -172,18 +181,20 @@ export const PayoutModal: React.FC<PayoutModalProps> = ({
           />
         </div>
 
-        <div>
-          <label htmlFor="payout-note">
-            <Text strong>{t('Note (facultative)')}</Text>
-          </label>
-          <Input
-            id="payout-note"
-            style={{ marginTop: 8 }}
-            maxLength={250}
-            value={note}
-            onChange={event => setNote(event.target.value)}
-          />
-        </div>
+        {fm.isVisible('note') && (
+          <div>
+            <label htmlFor="payout-note">
+              <Text strong>{noteRequired ? t('Note (obligatoire)') : t('Note (facultative)')}</Text>
+            </label>
+            <Input
+              id="payout-note"
+              style={{ marginTop: 8 }}
+              maxLength={250}
+              value={note}
+              onChange={event => setNote(event.target.value)}
+            />
+          </div>
+        )}
 
         {error ? <Alert type="error" showIcon message={error} /> : null}
       </Space>

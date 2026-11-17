@@ -20,6 +20,7 @@ import { DocumentVault } from '../../components/syndics/DocumentVault';
 import { createSyndicDocument, listSyndicDocuments } from '../../services/syndic-service';
 import { SyndicateDocument } from '../../types/syndic-types';
 import { useMyMenuAccess } from '../../hooks/useMenuAccess';
+import { useFormFieldModes } from '../../hooks/useFormFieldModes';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
 import { HelpSectionTitle } from '../../help';
@@ -43,6 +44,7 @@ function documentTypeOptions() {
 
 export const SyndicDocuments: React.FC = () => {
   const { message } = App.useApp();
+  const fm = useFormFieldModes('syndic.document');
 
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
 
@@ -91,7 +93,8 @@ export const SyndicDocuments: React.FC = () => {
 
   const handleCreateDocument = async () => {
     if (!effectiveTenantId || !syndicId) return;
-    const values = await form.validateFields();
+    const values = await form.validateFields().catch(() => null);
+    if (!values) return;
     if (!selectedFile) {
       message.error(t('Veuillez selectionner un fichier'));
       return;
@@ -102,8 +105,9 @@ export const SyndicDocuments: React.FC = () => {
         title: values.title,
         type: values.type,
         file: selectedFile,
-        expiresAt: values.expiresAt ? values.expiresAt.toISOString() : undefined,
-        visibleToCoOwners
+        expiresAt: fm.isVisible('expiresAt') && values.expiresAt ? values.expiresAt.toISOString() : undefined,
+        // Case masquée : non envoyée, le serveur applique le défaut du type.
+        visibleToCoOwners: fm.isVisible('visibleToCoOwners') ? visibleToCoOwners : undefined
       });
       message.success(t('Document ajoute'));
       form.resetFields();
@@ -179,22 +183,24 @@ export const SyndicDocuments: React.FC = () => {
               }}
             />
           </Form.Item>
-          <Form.Item>
-            <Checkbox
-              checked={visibleToCoOwners}
-              onChange={event => {
-                visibilityTouched.current = true;
-                setVisibleToCoOwners(event.target.checked);
-              }}
-            >
-              {t('Visible des copropriétaires')}
-            </Checkbox>
-            <div>
-              <Text type="secondary">
-                {t('Les copropriétaires voient et téléchargent ce document depuis leur portail.')}
-              </Text>
-            </div>
-          </Form.Item>
+          {fm.isVisible('visibleToCoOwners') && (
+            <Form.Item>
+              <Checkbox
+                checked={visibleToCoOwners}
+                onChange={event => {
+                  visibilityTouched.current = true;
+                  setVisibleToCoOwners(event.target.checked);
+                }}
+              >
+                {t('Visible des copropriétaires')}
+              </Checkbox>
+              <div>
+                <Text type="secondary">
+                  {t('Les copropriétaires voient et téléchargent ce document depuis leur portail.')}
+                </Text>
+              </div>
+            </Form.Item>
+          )}
           <Form.Item label={t('Fichier')} required>
             <Upload
               maxCount={1}
@@ -209,9 +215,15 @@ export const SyndicDocuments: React.FC = () => {
               <Button>{t('Choisir un fichier')}</Button>
             </Upload>
           </Form.Item>
-          <Form.Item label={t("Date d'expiration")} name="expiresAt">
-            <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
-          </Form.Item>
+          {fm.isVisible('expiresAt') && (
+            <Form.Item
+              label={t("Date d'expiration")}
+              name="expiresAt"
+              rules={[{ required: fm.isRequired('expiresAt', false), message: t('Ce champ est obligatoire') }]}
+            >
+              <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
+            </Form.Item>
+          )}
         </Form>
       </Modal>
     </>

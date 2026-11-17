@@ -14,6 +14,12 @@ import type { SyndicDeclarationRow } from '../../../services/syndic-declared-pay
 
 let heldPermissions: Set<string> | null = null;
 let permissionsReady = true;
+// Réglages des formulaires : défauts (aucun réglage d'agence), sans AuthProvider ni réseau.
+vi.mock(
+  '../../../hooks/useFormFieldModes',
+  async () => (await import('../../../__tests__/syndics/charges-form-modes-mock')).formModesModule
+);
+
 vi.mock('../../../hooks/useMenuAccess', () => ({
   useMyMenuAccess: () => ({
     disabled: new Set<string>(),

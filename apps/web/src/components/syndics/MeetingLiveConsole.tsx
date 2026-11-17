@@ -44,6 +44,7 @@ import { LiveOptionNotice } from './live/LiveOptionNotice';
 import { useLiveOption } from '../../hooks/useLiveOption';
 import { isOptionNotIncludedError } from '../../utils/option-not-included';
 import { t } from '../../i18n/t';
+import { useFormFieldModes } from '../../hooks/useFormFieldModes';
 import { HelpSectionTitle } from '../../help';
 
 const { Text } = Typography;
@@ -209,6 +210,7 @@ const MeetingLiveConsoleBody: React.FC<MeetingLiveConsoleBodyProps> = ({
   const [videoDraft, setVideoDraft] = useState<string | null>(null);
   const [savingVideo, setSavingVideo] = useState(false);
   const [visioRoomOpen, setVisioRoomOpen] = useState(false);
+  const fmInfo = useFormFieldModes('syndic.assemblee-informations');
 
   const frozen = meetingStatus === 'COMPLETED' || meetingStatus === 'CANCELLED';
   const inProgress = meetingStatus === 'IN_PROGRESS';
@@ -441,9 +443,12 @@ const MeetingLiveConsoleBody: React.FC<MeetingLiveConsoleBodyProps> = ({
   const videoValue = videoDraft ?? savedVideo;
   const videoTrimmed = videoValue.trim();
   const videoInvalid = videoTrimmed !== '' && !isSafeVideoUrl(videoTrimmed);
+  // Réglage de l'agence : lien obligatoire (refus d'un champ vidé, jamais envoyé s'il est masqué).
+  const videoRequired = fmInfo.isRequired('videoConferenceUrl', false);
+  const videoMissing = videoRequired && videoTrimmed === '';
 
   const handleSaveVideo = async () => {
-    if (videoInvalid) return;
+    if (videoInvalid || videoMissing) return;
     setSavingVideo(true);
     try {
       await updateMeeting(tenantId, syndicId, meetingId, {
@@ -573,31 +578,36 @@ const MeetingLiveConsoleBody: React.FC<MeetingLiveConsoleBodyProps> = ({
         />
       ) : null}
 
-      <Card
-        size="small"
-        title={<HelpSectionTitle title={t('Visioconférence')} helpId="syndic.assemblees.detail.direct-visio" />}
-      >
-        <Space.Compact style={{ width: '100%' }}>
-          <Input
-            value={videoValue}
-            placeholder={t('https://… (lien Zoom, Meet, Teams…)')}
-            aria-label={t('Lien de visioconférence')}
-            status={videoInvalid ? 'error' : undefined}
-            disabled={frozen}
-            maxLength={2000}
-            onChange={event => setVideoDraft(event.target.value)}
-          />
-          <Button
-            type="primary"
-            loading={savingVideo}
-            disabled={frozen || videoInvalid || videoTrimmed === savedVideo}
-            onClick={() => void handleSaveVideo()}
-          >
-            {t('Enregistrer')}
-          </Button>
-        </Space.Compact>
-        {videoInvalid ? <Text type="danger">{t('Le lien doit commencer par https://')}</Text> : null}
-      </Card>
+      {fmInfo.isVisible('videoConferenceUrl') ? (
+        <Card
+          size="small"
+          title={<HelpSectionTitle title={t('Visioconférence')} helpId="syndic.assemblees.detail.direct-visio" />}
+        >
+          <Space.Compact style={{ width: '100%' }}>
+            <Input
+              value={videoValue}
+              placeholder={t('https://… (lien Zoom, Meet, Teams…)')}
+              aria-label={t('Lien de visioconférence')}
+              status={videoInvalid || (videoMissing && videoDraft !== null) ? 'error' : undefined}
+              disabled={frozen}
+              maxLength={2000}
+              onChange={event => setVideoDraft(event.target.value)}
+            />
+            <Button
+              type="primary"
+              loading={savingVideo}
+              disabled={frozen || videoInvalid || videoMissing || videoTrimmed === savedVideo}
+              onClick={() => void handleSaveVideo()}
+            >
+              {t('Enregistrer')}
+            </Button>
+          </Space.Compact>
+          {videoInvalid ? <Text type="danger">{t('Le lien doit commencer par https://')}</Text> : null}
+          {videoMissing && videoDraft !== null ? (
+            <Text type="danger">{t('Le lien de visioconférence est obligatoire')}</Text>
+          ) : null}
+        </Card>
+      ) : null}
 
       <Card size="small" title={t('Lots et émargement')}>
         <LiveLotsTable

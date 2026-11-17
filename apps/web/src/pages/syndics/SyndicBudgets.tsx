@@ -36,6 +36,7 @@ import { useLocalListSearch } from '../../utils/list-search';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { t } from '../../i18n/t';
+import { useFormFieldModes } from '../../hooks/useFormFieldModes';
 import { HelpSectionTitle } from '../../help';
 
 const { Paragraph, Title } = Typography;
@@ -187,6 +188,7 @@ export const SyndicBudgets: React.FC = () => {
   const [linesBudget, setLinesBudget] = useState<SyndicateBudget | null>(null);
   const [savingLineId, setSavingLineId] = useState<string | null>(null);
 
+  const fm = useFormFieldModes('syndic.budget');
   const [budgetForm] = Form.useForm();
   const watchedBudgetLines = Form.useWatch('lines', budgetForm) as BudgetLineFormValue[] | undefined;
   const budgetFormTotal = sumFormLines(watchedBudgetLines);
@@ -361,7 +363,7 @@ export const SyndicBudgets: React.FC = () => {
           description: String(line.description),
           amountForecast: Number(line.amountForecast),
           distributionKey: values.distributionKey,
-          fundId: line.fundId || undefined
+          ...(fm.isVisible('lines[].fundId') ? { fundId: line.fundId || undefined } : {})
         }))
       });
       message.success(t('Budget créé'));
@@ -845,10 +847,20 @@ export const SyndicBudgets: React.FC = () => {
                     >
                       <InputNumber style={{ width: '100%' }} />
                     </Form.Item>
-                    {funds.length > 0 ? (
+                    {fm.isVisible('lines[].fundId') && (funds.length > 0 || fm.isRequired('lines[].fundId', false)) ? (
                       <Form.Item
-                        label={t('Fonds alimenté par ce poste (optionnel)')}
+                        label={
+                          fm.isRequired('lines[].fundId', false)
+                            ? t('Fonds alimenté par ce poste')
+                            : t('Fonds alimenté par ce poste (optionnel)')
+                        }
                         name={[field.name, 'fundId']}
+                        rules={[
+                          {
+                            required: fm.isRequired('lines[].fundId', false),
+                            message: t('Le fonds alimenté est obligatoire')
+                          }
+                        ]}
                         extra={t('Le fonds recevra la part de ce poste dans chaque paiement de charges.')}
                       >
                         <Select allowClear showSearch optionFilterProp="label" options={fundSelectOptions} />
