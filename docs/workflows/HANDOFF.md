@@ -21,7 +21,7 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 **État** — Branche depuis `origin/main` `a1ece321`, poussée ; PR 226 vers `main` (fusion par l'utilisateur). Rien déployé.
 
-**Fait** — « Mon relevé » du portail locataire répondait 404 tant que le compte de tiers du locataire n'existait pas (créé au premier mouvement de grand livre) ; `handleTenantPortalFinanceStatement` renvoie maintenant 200 avec un relevé vide. Test de `__tests__/api/finance.test.ts` adapté. Contexte : recette du pack Patrimoine Essentiel sur la démo (gestion locative + portail locataire OK, barrière « détenu en propre » OK en mode enforce).
+**Fait** — « Mon relevé » du portail locataire répondait 404 tant que le compte de tiers du locataire n'existait pas (créé au premier mouvement de grand livre) ; `handleTenantPortalFinanceStatement` renvoie maintenant 200 avec un relevé vide portant le nom du locataire (même libellé que la création du compte). Rejoué sur la démo (SHA 328fe063) : OK. Test de `__tests__/api/finance.test.ts` adapté. Contexte : recette du pack Patrimoine Essentiel sur la démo (gestion locative + portail locataire OK, barrière « détenu en propre » OK en mode enforce).
 
 **Vérifié** — `finance.test.ts` : 31 tests verts ; hooks de commit passés.
 
