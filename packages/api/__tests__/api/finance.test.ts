@@ -618,12 +618,20 @@ describe('GET /portal/tenant/finance/statement', () => {
     expect(secondLocataire.body.data.accountId).toBe('compte-locataire-2');
   });
 
-  it('renvoie 404 quand le locataire connecté ne porte encore aucun compte de tiers', async () => {
+  it('renvoie un relevé vide (200) quand le locataire connecté ne porte encore aucun compte de tiers', async () => {
     thirdPartyAccountFindFirst.mockResolvedValue(null);
 
     const response = await request(app).get('/api/portal/tenant/finance/statement');
 
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(200);
+    expect(response.body.data).toMatchObject({
+      accountId: '',
+      kind: 'TENANT',
+      openingBalance: 0,
+      closingBalance: 0,
+      movements: [],
+      total: 0
+    });
     expect(getAccountStatement).not.toHaveBeenCalled();
   });
 
