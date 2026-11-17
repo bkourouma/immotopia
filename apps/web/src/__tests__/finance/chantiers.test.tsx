@@ -187,6 +187,18 @@ function mountListe(url = '/tenant/agence-1/finance/chantiers') {
   );
 }
 
+/**
+ * Saisit la date de début du formulaire « Nouveau chantier ». Le `DatePicker`
+ * d'AntD n'a pas de placeholder stable d'un environnement à l'autre : on cible
+ * l'entrée par l'`id` que l'écran lui donne (même procédé que
+ * `baux-de-terrain.test.tsx`).
+ */
+function saisirDateDebut(valeur: string) {
+  const champ = document.getElementById('chantier-debut') as HTMLInputElement;
+  fireEvent.change(champ, { target: { value: valeur } });
+  fireEvent.keyDown(champ, { key: 'Enter', code: 'Enter' });
+}
+
 function mountDetail(url = '/tenant/agence-1/finance/chantiers/chantier-1') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
@@ -258,15 +270,47 @@ describe('Chantiers — liste et création', () => {
 
     const champNom = await screen.findByLabelText('Nom du chantier');
     await user.type(champNom, 'Terrain loué — Riviera');
+    await user.type(screen.getByLabelText('Zone'), 'Riviera, Cocody');
+    saisirDateDebut('01/09/2026');
 
     await user.click(screen.getByRole('button', { name: 'Créer le chantier' }));
 
     await waitFor(() => expect(createConstructionSite).toHaveBeenCalledTimes(1));
     const [, params] = createConstructionSite.mock.calls[0];
-    expect(params).toMatchObject({ name: 'Terrain loué — Riviera' });
+    expect(params).toMatchObject({ name: 'Terrain loué — Riviera', zone: 'Riviera, Cocody', startDate: '2026-09-01' });
     // Le point du récit : aucun bien n'est exigé, et aucun n'a été choisi.
     expect(params.propertyId).toBeUndefined();
   });
+
+  it('exige la zone et la date de début avant l’envoi, comme le contrat de l’API', async () => {
+    listConstructionSites.mockResolvedValue([]);
+    const user = userEvent.setup({ delay: null });
+    mountListe();
+
+    await screen.findByText("Aucun chantier n'est encore enregistré.", {}, { timeout: 8000 });
+    await user.click(screen.getAllByRole('button', { name: /Nouveau chantier/ })[0]);
+
+    const champNom = await screen.findByLabelText('Nom du chantier');
+    const champZone = screen.getByLabelText('Zone');
+    // Les trois champs exigés par `CreateConstructionSiteRequest` sont annoncés comme tels.
+    expect(champNom).toHaveAttribute('aria-required', 'true');
+    expect(champZone).toHaveAttribute('aria-required', 'true');
+    expect(document.getElementById('chantier-debut')).toHaveAttribute('aria-required', 'true');
+
+    // Nom seul : la zone manque, rien ne part vers l'API.
+    await user.type(champNom, 'Villa — Bingerville');
+    await user.click(screen.getByRole('button', { name: 'Créer le chantier' }));
+    expect(await screen.findByText('La zone du chantier est obligatoire.', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(champZone.closest('.ant-input-status-error, .ant-input-affix-wrapper-status-error')).not.toBeNull();
+
+    // Nom et zone : la date de début manque encore.
+    await user.type(champZone, 'Bingerville');
+    await user.click(screen.getByRole('button', { name: 'Créer le chantier' }));
+    expect(
+      await screen.findByText('La date de début du chantier est obligatoire.', {}, { timeout: 8000 })
+    ).toBeInTheDocument();
+    expect(createConstructionSite).not.toHaveBeenCalled();
+  }, 20000);
 
   it('affiche un état d’erreur avec un moyen de réessayer', async () => {
     listConstructionSites.mockRejectedValue(new Error('panne'));
