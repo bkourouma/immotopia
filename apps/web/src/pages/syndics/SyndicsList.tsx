@@ -20,6 +20,7 @@ import {
 import { PlusOutlined } from '@ant-design/icons';
 import { SyndicateCard } from '../../components/syndics/SyndicateCard';
 import { useAuth } from '../../hooks/useAuth';
+import { useFormFieldModes } from '../../hooks/useFormFieldModes';
 import { createSyndicate, deleteSyndicate, listSyndicates } from '../../services/syndic-service';
 import { listMandatingAgencies, MandatingAgency } from '../../services/document-branding-service';
 import { CreateSyndicateRequest, Syndicate } from '../../types/syndic-types';
@@ -63,6 +64,7 @@ const ACCESSEURS = {
 export const SyndicsList: React.FC = () => {
   const { message } = App.useApp();
   const confirmAction = useConfirmAction();
+  const fm = useFormFieldModes('syndic.copropriete');
 
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
@@ -186,7 +188,8 @@ export const SyndicsList: React.FC = () => {
       return;
     }
 
-    const values = await form.validateFields();
+    const values = await form.validateFields().catch(() => null);
+    if (!values) return;
 
     setSubmitting(true);
     try {
@@ -318,34 +321,68 @@ export const SyndicsList: React.FC = () => {
           >
             <Input.TextArea rows={3} />
           </Form.Item>
-          <Form.Item label={t('Référence cadastrale')} name="cadastralReference">
-            <Input />
-          </Form.Item>
-          <Form.Item
-            label={t('Total de référence des tantièmes')}
-            name="totalGeneralShares"
-            extra={t('Facultatif. Sert à avertir si la somme des tantièmes des lots diffère.')}
-          >
-            <InputNumber min={1} precision={0} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item label={t("N° d'immatriculation")} name="registrationNo">
-            <Input />
-          </Form.Item>
-          <Form.Item
-            label={t('Agence mandante')}
-            name="mandatingAgencyId"
-            extra={t(
-              'Les documents de cette copropriété porteront le logo, la signature et le cachet du mandant choisi.'
-            )}
-          >
-            <Select
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              placeholder={t('Aucune (identité de l’agence)')}
-              options={mandatingAgencies.map(agency => ({ value: agency.id, label: agency.name }))}
-            />
-          </Form.Item>
+          {fm.isVisible('cadastralReference') && (
+            <Form.Item
+              label={t('Référence cadastrale')}
+              name="cadastralReference"
+              rules={[
+                {
+                  required: fm.isRequired('cadastralReference', false),
+                  whitespace: fm.isRequired('cadastralReference', false),
+                  message: t('Ce champ est obligatoire')
+                }
+              ]}
+            >
+              <Input />
+            </Form.Item>
+          )}
+          {fm.isVisible('totalGeneralShares') && (
+            <Form.Item
+              label={t('Total de référence des tantièmes')}
+              name="totalGeneralShares"
+              extra={
+                fm.isRequired('totalGeneralShares', false)
+                  ? t('Sert à avertir si la somme des tantièmes des lots diffère.')
+                  : t('Facultatif. Sert à avertir si la somme des tantièmes des lots diffère.')
+              }
+              rules={[{ required: fm.isRequired('totalGeneralShares', false), message: t('Ce champ est obligatoire') }]}
+            >
+              <InputNumber min={1} precision={0} style={{ width: '100%' }} />
+            </Form.Item>
+          )}
+          {fm.isVisible('registrationNo') && (
+            <Form.Item
+              label={t("N° d'immatriculation")}
+              name="registrationNo"
+              rules={[
+                {
+                  required: fm.isRequired('registrationNo', false),
+                  whitespace: fm.isRequired('registrationNo', false),
+                  message: t('Ce champ est obligatoire')
+                }
+              ]}
+            >
+              <Input />
+            </Form.Item>
+          )}
+          {fm.isVisible('mandatingAgencyId') && (
+            <Form.Item
+              label={t('Agence mandante')}
+              name="mandatingAgencyId"
+              extra={t(
+                'Les documents de cette copropriété porteront le logo, la signature et le cachet du mandant choisi.'
+              )}
+              rules={[{ required: fm.isRequired('mandatingAgencyId', false), message: t('Ce champ est obligatoire') }]}
+            >
+              <Select
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                placeholder={t('Aucune (identité de l’agence)')}
+                options={mandatingAgencies.map(agency => ({ value: agency.id, label: agency.name }))}
+              />
+            </Form.Item>
+          )}
         </Form>
       </Modal>
     </>

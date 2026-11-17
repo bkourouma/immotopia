@@ -70,6 +70,7 @@ export async function createCoOwnerDeclaration(
   const { declarationId } = await createDeclaration({
     tenantId: scope.tenantId,
     syndicateId: syndicId,
+    formKey: 'syndic.paiement-declare-portail',
     actor: { type: 'COOWNER', scope, contactId: firstLot.contactId },
     input,
     proof: proof ?? null

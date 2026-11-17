@@ -181,7 +181,14 @@ export async function sendCoOwnerDeclarationMessage(
         syndicName: declaration.syndicate?.name ?? '',
         amount: money(declared, language),
         acceptedAmount: money(accepted, language),
-        transactionReference: declaration.transactionReference,
+        transactionReference: declaration.transactionReference ?? '',
+        // Pas de « référence : » vide quand la déclaration n'en porte pas (champ facultatif ou masqué).
+        referenceClause: declaration.transactionReference
+          ? `${t('référence')} ${declaration.transactionReference}, `
+          : '',
+        referenceInline: declaration.transactionReference
+          ? ` (${t('référence')} ${declaration.transactionReference})`
+          : '',
         paidAt: moment(declaration.paidAt, language),
         corrected: corrected ? t('oui') : t('non'),
         reviewNote: declaration.reviewNote ?? '',

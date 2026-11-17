@@ -23,6 +23,7 @@ import { ApartmentOutlined, BankOutlined, EditOutlined, FolderOpenOutlined } fro
 import { LotTable } from '../../components/syndics/LotTable';
 import { LotTypeRatesCard } from '../../components/syndics/LotTypeRatesCard';
 import { useMyMenuAccess } from '../../hooks/useMenuAccess';
+import { useFormFieldModes } from '../../hooks/useFormFieldModes';
 import { BrandingImageField } from '../../components/documents/BrandingImageField';
 import { DataCard, DataView, StatCard } from '../../components/primitives';
 import { ChargeCallsTab } from '../../components/syndics/finances/ChargeCallsTab';
@@ -183,6 +184,7 @@ function buildBuildingRows(syndicate: SyndicateWithProperty | null): BuildingRow
 
 export const SyndicDetail: React.FC = () => {
   const { message } = App.useApp();
+  const fm = useFormFieldModes('syndic.copropriete');
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
   // Même logique que SyndicCharges : l'API reste l'autorité (SYNDIC_EDIT pour modifier le barème).
   const { permissions, ready: permissionsReady } = useMyMenuAccess(effectiveTenantId);
@@ -293,17 +295,19 @@ export const SyndicDetail: React.FC = () => {
 
     setEditSubmitting(true);
     try {
+      // Un champ masqué par l'agence (réglage de formulaire) n'est pas envoyé :
+      // la valeur enregistrée reste inchangée.
       const payload: UpdateSyndicateRequest = {
         name: values.name,
         address: values.address,
-        registrationNo: values.registrationNo || null,
-        cadastralReference: values.cadastralReference || null,
-        totalGeneralShares: values.totalGeneralShares ?? null,
         fiscalYear: values.fiscalYear,
-        syndicManagerId: values.syndicManagerId || null,
-        status: values.status,
-        mandatingAgencyId: values.mandatingAgencyId || null
+        status: values.status
       };
+      if (fm.isVisible('registrationNo')) payload.registrationNo = values.registrationNo || null;
+      if (fm.isVisible('cadastralReference')) payload.cadastralReference = values.cadastralReference || null;
+      if (fm.isVisible('totalGeneralShares')) payload.totalGeneralShares = values.totalGeneralShares ?? null;
+      if (fm.isVisible('syndicManagerId')) payload.syndicManagerId = values.syndicManagerId || null;
+      if (fm.isVisible('mandatingAgencyId')) payload.mandatingAgencyId = values.mandatingAgencyId || null;
       await updateSyndicate(effectiveTenantId, syndicId, payload);
       message.success(t('Copropriété mise à jour'));
       closeEditModal();
@@ -494,19 +498,50 @@ export const SyndicDetail: React.FC = () => {
           >
             <Input.TextArea rows={3} />
           </Form.Item>
-          <Form.Item label={t("N° d'immatriculation")} name="registrationNo">
-            <Input />
-          </Form.Item>
-          <Form.Item label={t('Référence cadastrale')} name="cadastralReference">
-            <Input />
-          </Form.Item>
-          <Form.Item
-            label={t('Total de référence des tantièmes')}
-            name="totalGeneralShares"
-            extra={t('Facultatif. Sert à avertir si la somme des tantièmes des lots diffère.')}
-          >
-            <InputNumber min={1} precision={0} style={{ width: '100%' }} />
-          </Form.Item>
+          {fm.isVisible('registrationNo') && (
+            <Form.Item
+              label={t("N° d'immatriculation")}
+              name="registrationNo"
+              rules={[
+                {
+                  required: fm.isRequired('registrationNo', false),
+                  whitespace: fm.isRequired('registrationNo', false),
+                  message: t('Ce champ est obligatoire')
+                }
+              ]}
+            >
+              <Input />
+            </Form.Item>
+          )}
+          {fm.isVisible('cadastralReference') && (
+            <Form.Item
+              label={t('Référence cadastrale')}
+              name="cadastralReference"
+              rules={[
+                {
+                  required: fm.isRequired('cadastralReference', false),
+                  whitespace: fm.isRequired('cadastralReference', false),
+                  message: t('Ce champ est obligatoire')
+                }
+              ]}
+            >
+              <Input />
+            </Form.Item>
+          )}
+          {fm.isVisible('totalGeneralShares') && (
+            <Form.Item
+              label={t('Total de référence des tantièmes')}
+              name="totalGeneralShares"
+              extra={
+                fm.isRequired('totalGeneralShares', false)
+                  ? t('Sert à avertir si la somme des tantièmes des lots diffère.')
+                  : t('Facultatif. Sert à avertir si la somme des tantièmes des lots diffère.')
+              }
+              rules={[{ required: fm.isRequired('totalGeneralShares', false), message: t('Ce champ est obligatoire') }]}
+            >
+              <InputNumber min={1} precision={0} style={{ width: '100%' }} />
+            </Form.Item>
+          )}
           <Form.Item label={t('Exercice')} name="fiscalYear">
             <InputNumber min={1} max={12} style={{ width: '100%' }} />
           </Form.Item>
@@ -525,30 +560,39 @@ export const SyndicDetail: React.FC = () => {
               }))}
             />
           </Form.Item>
-          <Form.Item label={t('Gestionnaire')} name="syndicManagerId">
-            <Select
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              placeholder={t('Sélectionner un contact CRM')}
-              options={managerOptions}
-            />
-          </Form.Item>
-          <Form.Item
-            label={t('Agence mandante')}
-            name="mandatingAgencyId"
-            extra={t(
-              'Les documents de cette copropriété porteront le logo, la signature et le cachet du mandant choisi.'
-            )}
-          >
-            <Select
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              placeholder={t('Aucune (identité de l’agence)')}
-              options={mandatingAgencies.map(agency => ({ value: agency.id, label: agency.name }))}
-            />
-          </Form.Item>
+          {fm.isVisible('syndicManagerId') && (
+            <Form.Item
+              label={t('Gestionnaire')}
+              name="syndicManagerId"
+              rules={[{ required: fm.isRequired('syndicManagerId', false), message: t('Ce champ est obligatoire') }]}
+            >
+              <Select
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                placeholder={t('Sélectionner un contact CRM')}
+                options={managerOptions}
+              />
+            </Form.Item>
+          )}
+          {fm.isVisible('mandatingAgencyId') && (
+            <Form.Item
+              label={t('Agence mandante')}
+              name="mandatingAgencyId"
+              extra={t(
+                'Les documents de cette copropriété porteront le logo, la signature et le cachet du mandant choisi.'
+              )}
+              rules={[{ required: fm.isRequired('mandatingAgencyId', false), message: t('Ce champ est obligatoire') }]}
+            >
+              <Select
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                placeholder={t('Aucune (identité de l’agence)')}
+                options={mandatingAgencies.map(agency => ({ value: agency.id, label: agency.name }))}
+              />
+            </Form.Item>
+          )}
         </Form>
       </Modal>
 

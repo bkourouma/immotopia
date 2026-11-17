@@ -15,6 +15,12 @@ const createChargeCallPaymentLink = vi.fn();
 const listChargeCallPaymentLinks = vi.fn();
 const revokeChargeCallPaymentLink = vi.fn();
 
+// Réglages des formulaires : défauts (aucun réglage d'agence), sans AuthProvider ni réseau.
+vi.mock(
+  '../../../hooks/useFormFieldModes',
+  async () => (await import('../../../__tests__/syndics/charges-form-modes-mock')).formModesModule
+);
+
 vi.mock('../../../services/syndic-online-payment-service', () => ({
   createChargeCallPaymentLink: (...a: unknown[]) => createChargeCallPaymentLink(...a),
   listChargeCallPaymentLinks: (...a: unknown[]) => listChargeCallPaymentLinks(...a),

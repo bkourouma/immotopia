@@ -14,6 +14,7 @@ import {
 } from 'antd';
 import dayjs, { Dayjs } from 'dayjs';
 import { formatMoney } from '../../primitives';
+import { useFormFieldModes } from '../../../hooks/useFormFieldModes';
 import {
   ApproveDeclarationBody,
   ApproveDeclarationResponse,
@@ -79,6 +80,7 @@ export const ApproveModal: React.FC<ApproveModalProps> = ({
   // Appels choisis PAR le gestionnaire : seuls ceux-là partent. Sans choix, la liste affichée n'est qu'indicative
   // et la ligne garde son affectation (« plus anciens d'abord » si la déclaration n'en nommait aucun).
   const [callsTouched, setCallsTouched] = useState<Record<string, boolean>>({});
+  const fm = useFormFieldModes('syndic.paiement-declare-validation');
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -128,7 +130,9 @@ export const ApproveModal: React.FC<ApproveModalProps> = ({
   const noteTrimmed = note.trim();
   const realCorrection = correcting && (view.dateChanged || view.linesChanged);
   const noteLengthOk = noteTrimmed.length >= NOTE_MIN_LENGTH && noteTrimmed.length <= NOTE_MAX_LENGTH;
-  const noteOk = realCorrection ? noteLengthOk : noteTrimmed.length === 0 || noteLengthOk;
+  // Note exigée dès qu'il y a une correction, ou à chaque validation si l'agence l'a rendue obligatoire.
+  const noteRequired = realCorrection || fm.isRequired('note', false);
+  const noteOk = noteRequired ? noteLengthOk : noteTrimmed.length === 0 || noteLengthOk;
   const dateOk = !yearClosed || (!!paidAt && view.dateChanged);
   const linesOk = !correcting || (view.amountsValid && view.hasPositive && !view.overDeclared);
   const canSubmit = noteOk && dateOk && linesOk;
@@ -223,7 +227,7 @@ export const ApproveModal: React.FC<ApproveModalProps> = ({
             {formatPhone(declaration.receivingNumber.phoneNumber)}
           </Descriptions.Item>
           <Descriptions.Item label={t('Payeur')}>{formatPhone(declaration.payerPhone)}</Descriptions.Item>
-          <Descriptions.Item label={t('Référence')}>{declaration.transactionReference}</Descriptions.Item>
+          <Descriptions.Item label={t('Référence')}>{declaration.transactionReference ?? '—'}</Descriptions.Item>
           <Descriptions.Item label={t('Montant déclaré')}>{formatMoney(declaration.amount)}</Descriptions.Item>
           <Descriptions.Item label={t('Date et heure déclarées')}>
             {formatDateTime(declaration.paidAt)}
@@ -288,30 +292,32 @@ export const ApproveModal: React.FC<ApproveModalProps> = ({
                     {t('Ligne non encaissée')}
                   </Text>
                 ) : null}
-                <div style={{ marginBlockStart: 8 }}>
-                  <label htmlFor={`approve-calls-${line.id}`}>
-                    <Text>{t('Appels de charges visés')}</Text>
-                  </label>
-                  <Select
-                    id={`approve-calls-${line.id}`}
-                    mode="multiple"
-                    allowClear
-                    style={{ width: '100%', marginBlockStart: 4 }}
-                    placeholder={t('Plus anciens d’abord')}
-                    value={calls[line.id] ?? []}
-                    onChange={value => {
-                      setCalls(prev => ({ ...prev, [line.id]: value }));
-                      setCallsTouched(prev => ({ ...prev, [line.id]: true }));
-                    }}
-                    options={callOptionsOf(line).map(call => ({
-                      value: call.id,
-                      label: t('{{periode}} · reste dû {{montant}}', {
-                        periode: call.period,
-                        montant: formatMoney(call.remainingDue)
-                      })
-                    }))}
-                  />
-                </div>
+                {fm.isVisible('correction.lines[].chargeCallIds') && (
+                  <div style={{ marginBlockStart: 8 }}>
+                    <label htmlFor={`approve-calls-${line.id}`}>
+                      <Text>{t('Appels de charges visés')}</Text>
+                    </label>
+                    <Select
+                      id={`approve-calls-${line.id}`}
+                      mode="multiple"
+                      allowClear
+                      style={{ width: '100%', marginBlockStart: 4 }}
+                      placeholder={t('Plus anciens d’abord')}
+                      value={calls[line.id] ?? []}
+                      onChange={value => {
+                        setCalls(prev => ({ ...prev, [line.id]: value }));
+                        setCallsTouched(prev => ({ ...prev, [line.id]: true }));
+                      }}
+                      options={callOptionsOf(line).map(call => ({
+                        value: call.id,
+                        label: t('{{periode}} · reste dû {{montant}}', {
+                          periode: call.period,
+                          montant: formatMoney(call.remainingDue)
+                        })
+                      }))}
+                    />
+                  </div>
+                )}
                 {(() => {
                   const balance = lineBalance(line);
                   if (!balance) return null;
@@ -355,7 +361,7 @@ export const ApproveModal: React.FC<ApproveModalProps> = ({
 
         <div>
           <label htmlFor="approve-note">
-            <Text strong>{realCorrection ? t('Note (obligatoire)') : t('Note (facultative)')}</Text>
+            <Text strong>{noteRequired ? t('Note (obligatoire)') : t('Note (facultative)')}</Text>
           </label>
           <Input.TextArea
             id="approve-note"

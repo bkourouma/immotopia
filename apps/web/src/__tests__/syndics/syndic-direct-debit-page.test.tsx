@@ -42,6 +42,12 @@ const listSyndicateLots = vi.fn();
 const saveBlob = vi.fn();
 const listSyndicReturnImports = vi.fn();
 
+// Réglages des formulaires : défauts (aucun réglage d'agence), sans AuthProvider ni réseau.
+vi.mock(
+  '../../hooks/useFormFieldModes',
+  async () => (await import('../../__tests__/syndics/charges-form-modes-mock')).formModesModule
+);
+
 vi.mock('../../services/syndic-direct-debit-service', () => ({
   getSyndicCreditor: (...a: unknown[]) => getSyndicCreditor(...a),
   saveSyndicCreditor: (...a: unknown[]) => saveSyndicCreditor(...a),

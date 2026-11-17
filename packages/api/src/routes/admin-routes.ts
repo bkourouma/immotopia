@@ -56,6 +56,7 @@ import {
 } from '../controllers/platform-billing-controller';
 import { platformInvoiceAdminRouter } from './platform-invoice-routes';
 import { tenantDataExportAdminRouter } from './tenant-data-export-routes';
+import { adminFormUnlocksRouter } from './admin-form-unlocks-routes';
 import { authenticate } from '../middleware/auth-middleware';
 import { requirePermission } from '../middleware/rbac-middleware';
 
@@ -235,6 +236,9 @@ router.use(platformInvoiceAdminRouter);
 
 // Export complet des donnees d'une agence (lot S7) : super-admin seulement.
 router.use(tenantDataExportAdminRouter);
+
+// Formulaires parametrables : deverrouillage des champs GATED par le super-admin.
+router.use(adminFormUnlocksRouter);
 
 // Statistics routes
 router.get('/statistics', requirePermission('PLATFORM_TENANTS_VIEW'), getGlobalStatisticsHandler);

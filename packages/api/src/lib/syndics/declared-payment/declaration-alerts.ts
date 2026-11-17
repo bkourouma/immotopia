@@ -28,6 +28,9 @@ type Client = PrismaTransactionClient | typeof prisma;
 /** Écart maximal de `paidAt` entre deux déclarations pour un doublon probable (R10). */
 export const PROBABLE_DUPLICATE_WINDOW_MS = 10 * 60 * 1000;
 
+/** Fenêtre grossière (en base) pour les doublons sans référence : la même journée. */
+const SAME_DAY_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 const PREFILL_FIELDS: readonly PrefillField[] = ['operator', 'amount', 'paidAt', 'transactionReference', 'payerPhone'];
 
 /** Plafond de ChargePayment signalés par déclaration (l'écran n'en montre pas davantage). */
@@ -53,6 +56,7 @@ export const DECLARATION_ALERTS_SELECT = {
   paidAt: true,
   createdAt: true,
   transactionReference: true,
+  proofSha256: true,
   status: true,
   declaredByContactId: true,
   aiPrefill: true,
@@ -79,7 +83,10 @@ export interface DeclarationForAlerts {
   amount: unknown;
   paidAt: Date;
   createdAt: Date;
-  transactionReference: string;
+  /** `null` : déclaration sans référence (champ facultatif ou masqué par l'agence). */
+  transactionReference: string | null;
+  /** Empreinte de la capture jointe, `null` sans capture. */
+  proofSha256?: string | null;
   status: DeclarationStatus;
   declaredByContactId: string | null;
   aiPrefill: unknown;
@@ -205,9 +212,14 @@ export async function resolveLineTargets(client: Client, lines: LineTargetInput[
  */
 export async function findDeclarationsOnExistingPayment(
   client: Client,
-  declarations: Array<{ id: string; syndicateId: string; transactionReference: string }>
+  allDeclarations: Array<{ id: string; syndicateId: string; transactionReference: string | null }>
 ): Promise<Set<string>> {
   const flagged = new Set<string>();
+  // Sans référence, rien à rapprocher d'un paiement existant : pas d'alerte.
+  const declarations = allDeclarations.filter(
+    (declaration): declaration is typeof declaration & { transactionReference: string } =>
+      declaration.transactionReference !== null
+  );
   if (declarations.length === 0) return flagged;
   const payments = await client.chargePayment.findMany({
     where: {
@@ -244,7 +256,8 @@ export interface DuplicateProbe {
   amount: unknown;
   paidAt: Date;
   createdAt: Date;
-  transactionReference: string;
+  transactionReference: string | null;
+  proofSha256?: string | null;
 }
 
 export const DUPLICATE_PROBE_SELECT = {
@@ -254,14 +267,21 @@ export const DUPLICATE_PROBE_SELECT = {
   amount: true,
   paidAt: true,
   createdAt: true,
-  transactionReference: true
+  transactionReference: true,
+  proofSha256: true
 } satisfies Prisma.SyndicPaymentDeclarationSelect;
 
 /**
  * Déclarations de `pool` qui sont un doublon probable de `target` : même numéro
  * de réception, même montant, même numéro payeur, `paidAt` à 10 minutes près,
  * références DIFFÉRENTES (une même référence est refusée à la création).
+ * Quand l'une des deux références est absente, la fenêtre s'élargit à la même
+ * journée (UTC) : sans référence, l'heure seule est un indice trop faible.
  */
+function sameUtcDay(a: Date, b: Date): boolean {
+  return a.toISOString().slice(0, 10) === b.toISOString().slice(0, 10);
+}
+
 export function matchProbableDuplicates(target: DuplicateProbe, pool: DuplicateProbe[]): DuplicateProbe[] {
   const cents = toCents(target.amount);
   return pool
@@ -270,9 +290,16 @@ export function matchProbableDuplicates(target: DuplicateProbe, pool: DuplicateP
         other.id !== target.id &&
         other.receivingNumberId === target.receivingNumberId &&
         other.payerPhone === target.payerPhone &&
-        other.transactionReference !== target.transactionReference &&
+        // Référence absente = « inconnue » : deux références nulles ne prouvent pas un même paiement.
+        !(
+          other.transactionReference !== null &&
+          target.transactionReference !== null &&
+          other.transactionReference === target.transactionReference
+        ) &&
         toCents(other.amount) === cents &&
-        Math.abs(other.paidAt.getTime() - target.paidAt.getTime()) <= PROBABLE_DUPLICATE_WINDOW_MS
+        (other.transactionReference === null || target.transactionReference === null
+          ? sameUtcDay(other.paidAt, target.paidAt)
+          : Math.abs(other.paidAt.getTime() - target.paidAt.getTime()) <= PROBABLE_DUPLICATE_WINDOW_MS)
     )
     .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
 }
@@ -298,11 +325,34 @@ export async function loadDuplicateCandidates(
       receivingNumberId: { in: Array.from(new Set(targets.map(target => target.receivingNumberId))) },
       payerPhone: { in: Array.from(new Set(targets.map(target => target.payerPhone))) },
       paidAt: {
-        gte: new Date(Math.min(...times) - PROBABLE_DUPLICATE_WINDOW_MS),
-        lte: new Date(Math.max(...times) + PROBABLE_DUPLICATE_WINDOW_MS)
+        gte: new Date(Math.min(...times) - SAME_DAY_WINDOW_MS),
+        lte: new Date(Math.max(...times) + SAME_DAY_WINDOW_MS)
       }
     },
     select: DUPLICATE_PROBE_SELECT
+  });
+}
+
+/**
+ * Déclarations `PENDING` ou `APPROVED` de la même agence (comparaison finale à l'appel) qui portent la même capture
+ * (empreinte identique) qu'une des `targets` : doublon probable même sans référence.
+ */
+export async function loadProofDuplicates(
+  client: Client,
+  targets: Array<{ id: string; tenantId: string; proofSha256?: string | null }>
+): Promise<Array<{ id: string; tenantId: string; createdAt: Date; proofSha256: string | null }>> {
+  const hashes = Array.from(
+    new Set(targets.map(target => target.proofSha256).filter((hash): hash is string => Boolean(hash)))
+  );
+  if (hashes.length === 0) return [];
+  return client.syndicPaymentDeclaration.findMany({
+    where: {
+      tenantId: { in: Array.from(new Set(targets.map(target => target.tenantId))) },
+      status: { in: ['PENDING', 'APPROVED'] },
+      proofSha256: { in: hashes }
+    },
+    select: { id: true, tenantId: true, createdAt: true, proofSha256: true },
+    take: 200
   });
 }
 
@@ -392,7 +442,9 @@ export async function computeDeclarationAlertsBatch(
   const syndicateIds = Array.from(new Set(pending.map(declaration => declaration.syndicateId)));
   const lines = pending.flatMap(declaration => declaration.lines.map(line => ({ declaration, line })));
   const lotIds = Array.from(new Set(lines.map(({ line }) => line.lotId)));
-  const references = Array.from(new Set(pending.map(declaration => declaration.transactionReference)));
+  const references = Array.from(
+    new Set(pending.map(declaration => declaration.transactionReference).filter((ref): ref is string => ref !== null))
+  );
   const contactIds = Array.from(
     new Set(pending.map(declaration => declaration.declaredByContactId).filter((id): id is string => Boolean(id)))
   );
@@ -406,60 +458,65 @@ export async function computeDeclarationAlertsBatch(
     });
   }
 
-  const [rulesList, payments, duplicatePools, targets, ownerProfiles, closedBudgets] = await Promise.all([
-    Promise.all(
-      Array.from(tenantPairs.values()).map(async pair => ({
-        key: `${pair.tenantId}|${pair.syndicateId}`,
-        rules: await getDeclaredPaymentRules(client, pair.tenantId, pair.syndicateId)
-      }))
-    ),
-    client.chargePayment.findMany({
-      where: {
-        OR: references.map(reference => ({ reference: { equals: reference, mode: 'insensitive' as const } })),
-        lot: { syndicateId: { in: syndicateIds } }
-      },
-      select: {
-        id: true,
-        reference: true,
-        paidAt: true,
-        amount: true,
-        lot: { select: { syndicateId: true } }
-      },
-      orderBy: { paidAt: 'asc' },
-      take: 200
-    }),
-    Promise.all(
-      Array.from(tenantPairs.values()).map(async pair => ({
-        key: `${pair.tenantId}|${pair.syndicateId}`,
-        pool: await loadDuplicateCandidates(
-          client,
-          pair.tenantId,
-          pair.syndicateId,
-          pending.filter(d => d.tenantId === pair.tenantId && d.syndicateId === pair.syndicateId)
-        )
-      }))
-    ),
-    resolveLineTargets(
-      client,
-      lines.map(({ declaration, line }) => ({
-        key: line.id,
-        syndicateId: declaration.syndicateId,
-        lotId: line.lotId,
-        amountCents: toCents(line.amount),
-        chargeCallIds: line.chargeCallIds
-      }))
-    ),
-    contactIds.length === 0
-      ? Promise.resolve([])
-      : client.lotOwnerProfile.findMany({
-          where: { lotId: { in: lotIds }, contactId: { in: contactIds }, isActive: true },
-          select: { lotId: true, contactId: true, ownedSince: true, ownedUntil: true }
-        }),
-    client.syndicateBudget.findMany({
-      where: { syndicateId: { in: syndicateIds }, status: 'CLOSED', fiscalYear: { in: years } },
-      select: { syndicateId: true, fiscalYear: true }
-    })
-  ]);
+  const [rulesList, payments, duplicatePools, proofDuplicates, targets, ownerProfiles, closedBudgets] =
+    await Promise.all([
+      Promise.all(
+        Array.from(tenantPairs.values()).map(async pair => ({
+          key: `${pair.tenantId}|${pair.syndicateId}`,
+          rules: await getDeclaredPaymentRules(client, pair.tenantId, pair.syndicateId)
+        }))
+      ),
+      // `OR: []` ne renverrait rien en Prisma, mais on évite la requête quand aucune référence n'est fournie.
+      references.length === 0
+        ? Promise.resolve([])
+        : client.chargePayment.findMany({
+            where: {
+              OR: references.map(reference => ({ reference: { equals: reference, mode: 'insensitive' as const } })),
+              lot: { syndicateId: { in: syndicateIds } }
+            },
+            select: {
+              id: true,
+              reference: true,
+              paidAt: true,
+              amount: true,
+              lot: { select: { syndicateId: true } }
+            },
+            orderBy: { paidAt: 'asc' },
+            take: 200
+          }),
+      Promise.all(
+        Array.from(tenantPairs.values()).map(async pair => ({
+          key: `${pair.tenantId}|${pair.syndicateId}`,
+          pool: await loadDuplicateCandidates(
+            client,
+            pair.tenantId,
+            pair.syndicateId,
+            pending.filter(d => d.tenantId === pair.tenantId && d.syndicateId === pair.syndicateId)
+          )
+        }))
+      ),
+      loadProofDuplicates(client, pending),
+      resolveLineTargets(
+        client,
+        lines.map(({ declaration, line }) => ({
+          key: line.id,
+          syndicateId: declaration.syndicateId,
+          lotId: line.lotId,
+          amountCents: toCents(line.amount),
+          chargeCallIds: line.chargeCallIds
+        }))
+      ),
+      contactIds.length === 0
+        ? Promise.resolve([])
+        : client.lotOwnerProfile.findMany({
+            where: { lotId: { in: lotIds }, contactId: { in: contactIds }, isActive: true },
+            select: { lotId: true, contactId: true, ownedSince: true, ownedUntil: true }
+          }),
+      client.syndicateBudget.findMany({
+        where: { syndicateId: { in: syndicateIds }, status: 'CLOSED', fiscalYear: { in: years } },
+        select: { syndicateId: true, fiscalYear: true }
+      })
+    ]);
 
   const rulesByKey = new Map(rulesList.map(entry => [entry.key, entry.rules]));
   const poolByKey = new Map(duplicatePools.map(entry => [entry.key, entry.pool]));
@@ -470,7 +527,7 @@ export async function computeDeclarationAlertsBatch(
 
     // Référence déjà portée par un paiement de charges de la copropriété (saisie manuelle antérieure).
     // Comparaison sur la forme normalisée : un paiement saisi à la main peut avoir des espaces ou des minuscules.
-    for (const payment of payments) {
+    for (const payment of declaration.transactionReference === null ? [] : payments) {
       if (alerts.filter(a => a.kind === 'REFERENCE_ON_EXISTING_PAYMENT').length >= MAX_EXISTING_PAYMENT_ALERTS) break;
       if (payment.lot?.syndicateId !== declaration.syndicateId || !payment.reference) continue;
       const normalized =
@@ -490,6 +547,23 @@ export async function computeDeclarationAlertsBatch(
         declarationId: duplicate.id,
         createdAt: duplicate.createdAt.toISOString()
       });
+    }
+
+    // Même capture jointe à une autre déclaration de l'agence (utile surtout sans référence).
+    if (declaration.proofSha256) {
+      const alreadyFlagged = new Set(
+        alerts.filter(a => a.kind === 'PROBABLE_DUPLICATE').map(a => (a as { declarationId: string }).declarationId)
+      );
+      for (const other of proofDuplicates) {
+        if (
+          other.id === declaration.id ||
+          other.tenantId !== declaration.tenantId ||
+          other.proofSha256 !== declaration.proofSha256
+        )
+          continue;
+        if (alreadyFlagged.has(other.id)) continue;
+        alerts.push({ kind: 'DUPLICATE_PROOF', declarationId: other.id, createdAt: other.createdAt.toISOString() });
+      }
     }
 
     for (const line of declaration.lines) {

@@ -6,6 +6,15 @@ import { MAX_MONTHLY_PENALTY_RATE } from './finance-utils';
 
 const uuidSchema = z.string().uuid();
 
+/**
+ * Formulaires paramétrables : un champ facultatif envoyé vide ('' ou null, cas
+ * d'un champ affiché mais laissé vide) vaut « absent » ; le défaut éventuel du
+ * schéma s'applique alors. Le caractère obligatoire est contrôlé en amont par
+ * le middleware `formFieldModes`, pas par zod.
+ */
+const blankAsAbsent = <T extends z.ZodTypeAny>(schema: T) =>
+  z.preprocess(value => (value === '' || value === null ? undefined : value), schema);
+
 export const paginationQuerySchema = z.object({
   page: z.coerce.number().int().positive().optional().default(1),
   limit: z.coerce.number().int().positive().max(100).optional().default(20)
@@ -58,12 +67,12 @@ export const createSyndicateSchema = z.object({
     .optional(),
   registrationNo: z.string().max(100, "Le numero d'immatriculation ne doit pas depasser 100 caracteres").optional(),
   fiscalYear: z.number().int().min(1).max(12).optional().default(1),
-  syndicManagerId: z.string().uuid().optional(),
+  syndicManagerId: blankAsAbsent(z.string().uuid().optional()),
   cadastralReference: z.string().max(100, 'La reference cadastrale ne doit pas depasser 100 caracteres').optional(),
   totalLots: z.number().int().nonnegative().default(0),
   totalBuildings: z.number().int().positive().default(1),
   // H7 : total de reference des tantiemes (facultatif), compare a la somme des lots.
-  totalGeneralShares: z.number().int().positive().optional(),
+  totalGeneralShares: blankAsAbsent(z.number().int().positive().optional()),
   // Lot S1 : agence mandante (facultative) dont l'identite figure sur les documents.
   mandatingAgencyId: z.string().uuid().nullable().optional()
 });
@@ -114,7 +123,7 @@ export const createLotSchema = z.object({
   // docs/recette/SCENARIO_SYNDIC_ABONNEMENT.md, MC1). Seuls les lots
   // principaux (Appartement, Bureau, Commercial) comptent dans le quota de
   // lots, que le bien soit renseigne ou non (voir lot-registry-service.ts).
-  propertyId: z.string().uuid().optional(),
+  propertyId: blankAsAbsent(z.string().uuid().optional()),
   coownerId: z.string().uuid().optional(),
   lotNumber: z.string().trim().min(1, 'Le numero de lot est obligatoire'),
   lotType: z.enum(['APARTMENT', 'PARKING', 'CELLAR', 'OFFICE', 'COMMERCIAL', 'OTHER']),
@@ -214,8 +223,8 @@ export const createMeetingSchema = z.object({
   syndicateId: z.string().uuid(),
   type: z.enum(['ORDINARY', 'EXTRAORDINARY']),
   scheduledAt: z.coerce.date(),
-  startTime: z.coerce.date().optional(),
-  endTime: z.coerce.date().optional(),
+  startTime: blankAsAbsent(z.coerce.date().optional()),
+  endTime: blankAsAbsent(z.coerce.date().optional()),
   location: z.string().optional(),
   /** Envoi de la convocation a la creation : non par defaut (decision metier QA2). */
   sendConvocation: z.boolean().default(false)
@@ -290,8 +299,8 @@ export const updateAgendaItemSchema = z
 
 export const createServiceProviderSchema = z.object({
   name: z.string().trim().min(1, 'Le nom du prestataire est obligatoire'),
-  specialty: z.string().min(1).optional(),
-  email: z.string().email("L'email du prestataire doit etre valide").optional(),
+  specialty: blankAsAbsent(z.string().min(1).optional()),
+  email: blankAsAbsent(z.string().email("L'email du prestataire doit etre valide").optional()),
   phone: z.string().optional()
 });
 
@@ -311,10 +320,10 @@ export const createContractSchema = z.object({
   providerId: z.string().uuid(),
   nature: z.string().min(1, 'La nature du contrat est obligatoire'),
   startDate: z.coerce.date(),
-  endDate: z.coerce.date().optional(),
-  annualAmount: z.number().positive().optional(),
-  currency: z.string().default('XOF'),
-  renewalAlertDays: z.number().int().nonnegative().default(30)
+  endDate: blankAsAbsent(z.coerce.date().optional()),
+  annualAmount: blankAsAbsent(z.number().positive().optional()),
+  currency: blankAsAbsent(z.string().default('XOF')),
+  renewalAlertDays: blankAsAbsent(z.number().int().nonnegative().default(30))
 });
 
 const documentTypeSchema = z.enum([
@@ -341,9 +350,9 @@ export const createDocumentSchema = z.object({
   title: z.string().min(1, 'Le titre du document est obligatoire'),
   type: documentTypeSchema,
   fileUrl: httpUrl('Le lien du document doit etre une URL valide').optional(),
-  expiresAt: z.coerce.date().optional(),
+  expiresAt: blankAsAbsent(z.coerce.date().optional()),
   // Absent : le défaut dépend du type (règlement et PV d'AG visibles), voir queries.ts.
-  visibleToCoOwners: formBooleanSchema.optional()
+  visibleToCoOwners: blankAsAbsent(formBooleanSchema.optional())
 });
 
 export const updateDocumentSchema = z
@@ -359,8 +368,8 @@ export const updateDocumentSchema = z
 export const createLotTenantAssignmentSchema = z.object({
   tenantId: uuidSchema,
   startDate: z.coerce.date(),
-  endDate: z.coerce.date().optional(),
-  leaseId: uuidSchema.optional(),
+  endDate: blankAsAbsent(z.coerce.date().optional()),
+  leaseId: blankAsAbsent(uuidSchema.optional()),
   notes: z.string().optional()
 });
 
@@ -545,7 +554,7 @@ export const createJournalEntrySchema = z
 export const createIncidentSchema = z.object({
   syndicateId: uuidSchema,
   reportedByContactId: uuidSchema,
-  lotId: uuidSchema.optional(),
+  lotId: blankAsAbsent(uuidSchema.optional()),
   assetId: uuidSchema.optional(),
   incidentType: z.enum(['BREAKDOWN', 'LEAK', 'VANDALISM', 'SAFETY', 'OTHER']),
   description: z.string().min(1),
@@ -558,9 +567,9 @@ export const createIncidentImputationSchema = z.object({
   imputationType: z.enum(['SYNDICATE_BUDGET', 'INSURANCE', 'LOT_OWNER', 'THIRD_PARTY']),
   amount: z.number().positive(),
   currency: z.string().default('XOF'),
-  budgetLineId: uuidSchema.optional(),
-  lotId: uuidSchema.optional(),
-  contractId: uuidSchema.optional(),
+  budgetLineId: blankAsAbsent(uuidSchema.optional()),
+  lotId: blankAsAbsent(uuidSchema.optional()),
+  contractId: blankAsAbsent(uuidSchema.optional()),
   notes: z.string().optional()
 });
 
@@ -624,14 +633,14 @@ export const updateLotTenantProfileSchema = z
 
 export const createManualReminderSchema = z.object({
   reminderLevel: z.number().int().min(1).max(4).optional().default(1),
-  channel: z.enum(['EMAIL', 'SMS', 'WHATSAPP', 'PUSH']).optional().default('EMAIL'),
+  channel: blankAsAbsent(z.enum(['EMAIL', 'SMS', 'WHATSAPP', 'PUSH']).optional().default('EMAIL')),
   sentAt: z.coerce.date().optional(),
   status: z.enum(['SENT', 'DELIVERED', 'FAILED']).optional().default('SENT'),
   responseAction: z.string().optional()
 });
 
 export const createPenaltyRequestSchema = z.object({
-  daysLate: z.number().int().nonnegative().optional(),
+  daysLate: blankAsAbsent(z.number().int().nonnegative().optional()),
   // Taux MENSUEL en %, plafonne (BUG-053).
   penaltyRate: z.number().positive().max(MAX_MONTHLY_PENALTY_RATE),
   penaltyAmount: z.number().positive().optional(),
@@ -645,7 +654,7 @@ export const waivePenaltySchema = z.object({
 });
 
 export const createScheduleRequestSchema = z.object({
-  agreedAt: z.coerce.date().optional(),
+  agreedAt: blankAsAbsent(z.coerce.date().optional()),
   totalAmount: z.number().positive(),
   instalments: z
     .array(

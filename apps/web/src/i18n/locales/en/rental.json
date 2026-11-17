@@ -1,5 +1,4 @@
 {
-  "Date d’encaissement": "Collection date",
   "- Échéance du": "- Instalment due",
   "(Par défaut)": "(Default)",
   "{{count}} bail en gestion": "{{count}} lease under management",
@@ -344,6 +343,7 @@
   "Date d'échec": "Failure date",
   "Date d'effet": "Effective date",
   "Date d'emménagement": "Move-in date",
+  "Date d’encaissement": "Collection date",
   "Date d'envoi": "Sending date",
   "Date d'initiation": "Initiation date",
   "Date de création": "Creation date",

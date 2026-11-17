@@ -15,6 +15,12 @@ import { ProviderInvoicesTab } from '../../components/syndics/ProviderInvoicesTa
 const listProviderInvoices = vi.hoisted(() => vi.fn());
 const listProviderBalances = vi.hoisted(() => vi.fn());
 
+// Réglages des formulaires : défauts (aucun réglage d'agence), sans AuthProvider ni réseau.
+vi.mock(
+  '../../hooks/useFormFieldModes',
+  async () => (await import('../../__tests__/syndics/charges-form-modes-mock')).formModesModule
+);
+
 vi.mock('../../hooks/useBreakpoint', () => ({
   useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
 }));

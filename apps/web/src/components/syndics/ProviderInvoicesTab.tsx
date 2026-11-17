@@ -47,6 +47,7 @@ import { providerInvoiceStatusColors, providerInvoiceStatusLabels } from './labe
 import { ProviderInvoiceDrawer } from './ProviderInvoiceDrawer';
 import { dateFormat } from '../../i18n/format';
 import { t } from '../../i18n/t';
+import { useFormFieldModes } from '../../hooks/useFormFieldModes';
 import { HelpButton, HelpSectionTitle } from '../../help';
 import { displayCurrency } from '../../utils/syndic-currency';
 
@@ -100,6 +101,7 @@ export const ProviderInvoicesTab: React.FC<ProviderInvoicesTabProps> = ({
   const [createVatAmount, setCreateVatAmount] = useState(0);
   const [createCurrency, setCreateCurrency] = useState('XOF');
   const [createForm] = Form.useForm();
+  const fm = useFormFieldModes('syndic.facture-prestataire');
 
   useEffect(() => {
     void loadReferenceData();
@@ -229,19 +231,20 @@ export const ProviderInvoicesTab: React.FC<ProviderInvoicesTabProps> = ({
     try {
       const result = await createProviderInvoice(tenantId, syndicId, {
         providerId: values.providerId,
-        contractId: values.contractId || undefined,
-        incidentId: values.incidentId || undefined,
-        budgetLineItemId: values.budgetLineItemId || undefined,
-        fundId: values.fundId || undefined,
+        // Un champ masqué n'est pas envoyé.
+        contractId: (fm.isVisible('contractId') && values.contractId) || undefined,
+        incidentId: (fm.isVisible('incidentId') && values.incidentId) || undefined,
+        budgetLineItemId: (fm.isVisible('budgetLineItemId') && values.budgetLineItemId) || undefined,
+        fundId: (fm.isVisible('fundId') && values.fundId) || undefined,
         expenseKind: values.expenseKind,
         number: values.number,
         label: values.label,
         invoiceDate: values.invoiceDate.toISOString(),
-        dueDate: values.dueDate ? values.dueDate.toISOString() : undefined,
+        dueDate: fm.isVisible('dueDate') && values.dueDate ? values.dueDate.toISOString() : undefined,
         amountHT: values.amountHT,
         vatAmount: values.vatAmount ?? 0,
         currency: values.currency || 'XOF',
-        file: createFile ?? undefined
+        file: fm.isVisible('file') ? (createFile ?? undefined) : undefined
       });
       message.success(t('Facture enregistrée'));
       if (!result.incidentImputation.linked && result.incidentImputation.reason !== 'NO_INCIDENT') {
@@ -455,42 +458,66 @@ export const ProviderInvoicesTab: React.FC<ProviderInvoicesTabProps> = ({
               placeholder={t('Sélectionner un prestataire')}
             />
           </Form.Item>
-          <Form.Item label={t('Contrat')} name="contractId">
-            <Select
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              options={contracts.map(contract => ({ value: contract.id, label: contract.nature }))}
-              placeholder={t('Sans contrat')}
-            />
-          </Form.Item>
-          <Form.Item label={t('Incident')} name="incidentId">
-            <Select
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              options={incidents.map(incident => ({ value: incident.id, label: incident.description }))}
-              placeholder={t('Sans incident')}
-            />
-          </Form.Item>
-          <Form.Item label={t('Ligne budgétaire')} name="budgetLineItemId">
-            <Select
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              options={budgetLineOptions}
-              placeholder={t('Déduite du contrat si possible')}
-            />
-          </Form.Item>
-          <Form.Item label={t('Fonds débité par défaut')} name="fundId">
-            <Select
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              options={funds.map(fund => ({ value: fund.id, label: fund.name }))}
-              placeholder={t('À choisir au moment du paiement')}
-            />
-          </Form.Item>
+          {fm.isVisible('contractId') && (
+            <Form.Item
+              label={t('Contrat')}
+              name="contractId"
+              rules={[{ required: fm.isRequired('contractId', false), message: t('Champ obligatoire') }]}
+            >
+              <Select
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                options={contracts.map(contract => ({ value: contract.id, label: contract.nature }))}
+                placeholder={t('Sans contrat')}
+              />
+            </Form.Item>
+          )}
+          {fm.isVisible('incidentId') && (
+            <Form.Item
+              label={t('Incident')}
+              name="incidentId"
+              rules={[{ required: fm.isRequired('incidentId', false), message: t('Champ obligatoire') }]}
+            >
+              <Select
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                options={incidents.map(incident => ({ value: incident.id, label: incident.description }))}
+                placeholder={t('Sans incident')}
+              />
+            </Form.Item>
+          )}
+          {fm.isVisible('budgetLineItemId') && (
+            <Form.Item
+              label={t('Ligne budgétaire')}
+              name="budgetLineItemId"
+              rules={[{ required: fm.isRequired('budgetLineItemId', false), message: t('Champ obligatoire') }]}
+            >
+              <Select
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                options={budgetLineOptions}
+                placeholder={t('Déduite du contrat si possible')}
+              />
+            </Form.Item>
+          )}
+          {fm.isVisible('fundId') && (
+            <Form.Item
+              label={t('Fonds débité par défaut')}
+              name="fundId"
+              rules={[{ required: fm.isRequired('fundId', false), message: t('Champ obligatoire') }]}
+            >
+              <Select
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                options={funds.map(fund => ({ value: fund.id, label: fund.name }))}
+                placeholder={t('À choisir au moment du paiement')}
+              />
+            </Form.Item>
+          )}
           <Form.Item label={t('Nature de la dépense')} name="expenseKind">
             <Select
               options={[
@@ -520,9 +547,15 @@ export const ProviderInvoicesTab: React.FC<ProviderInvoicesTabProps> = ({
           >
             <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
           </Form.Item>
-          <Form.Item label={t('Échéance')} name="dueDate">
-            <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
-          </Form.Item>
+          {fm.isVisible('dueDate') && (
+            <Form.Item
+              label={t('Échéance')}
+              name="dueDate"
+              rules={[{ required: fm.isRequired('dueDate', false), message: t('Champ obligatoire') }]}
+            >
+              <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
+            </Form.Item>
+          )}
           <Form.Item
             label={t('Montant HT')}
             name="amountHT"
@@ -549,19 +582,21 @@ export const ProviderInvoicesTab: React.FC<ProviderInvoicesTabProps> = ({
           <Form.Item label={t('Devise')} name="currency">
             <Input onChange={event => setCreateCurrency(event.target.value)} />
           </Form.Item>
-          <Form.Item label={t('Pièce jointe')}>
-            <Upload
-              maxCount={1}
-              accept=".pdf,.png,.jpg,.jpeg"
-              beforeUpload={file => {
-                setCreateFile(file as unknown as File);
-                return false;
-              }}
-              onRemove={() => setCreateFile(null)}
-            >
-              <Button icon={<UploadOutlined />}>{t('Choisir un fichier')}</Button>
-            </Upload>
-          </Form.Item>
+          {fm.isVisible('file') && (
+            <Form.Item label={t('Pièce jointe')}>
+              <Upload
+                maxCount={1}
+                accept=".pdf,.png,.jpg,.jpeg"
+                beforeUpload={file => {
+                  setCreateFile(file as unknown as File);
+                  return false;
+                }}
+                onRemove={() => setCreateFile(null)}
+              >
+                <Button icon={<UploadOutlined />}>{t('Choisir un fichier')}</Button>
+              </Upload>
+            </Form.Item>
+          )}
         </Form>
       </Modal>
     </Space>

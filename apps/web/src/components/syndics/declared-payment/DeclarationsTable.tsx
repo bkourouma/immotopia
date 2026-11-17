@@ -173,12 +173,15 @@ export const DeclarationsTable: React.FC<DeclarationsTableProps> = ({
       title: t('Référence'),
       dataIndex: 'transactionReference',
       key: 'transactionReference',
-      render: (value: string) => (
-        // Le clic sur « copier » ne doit pas ouvrir la ligne.
-        <span onClick={event => event.stopPropagation()}>
-          <Text copyable={{ text: value }}>{value}</Text>
-        </span>
-      )
+      render: (value: string | null) =>
+        value ? (
+          // Le clic sur « copier » ne doit pas ouvrir la ligne.
+          <span onClick={event => event.stopPropagation()}>
+            <Text copyable={{ text: value }}>{value}</Text>
+          </span>
+        ) : (
+          <Text type="secondary">—</Text>
+        )
     },
     {
       title: t('Montant déclaré'),

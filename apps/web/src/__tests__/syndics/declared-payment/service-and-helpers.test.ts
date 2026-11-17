@@ -178,7 +178,7 @@ describe('helpers', () => {
     expect(formatPhone('+33612345678')).toBe('+33612345678');
   });
 
-  it('alertView couvre les 9 variantes', () => {
+  it('alertView couvre les 10 variantes', () => {
     const alerts: DeclarationAlert[] = [
       { kind: 'REFERENCE_ON_EXISTING_PAYMENT', chargePaymentId: 'p1', paidAt: '2026-10-10T08:00:00Z', amount: 25000 },
       { kind: 'PROBABLE_DUPLICATE', declarationId: 'd2', createdAt: '2026-10-17T10:00:00Z' },
@@ -188,7 +188,8 @@ describe('helpers', () => {
       { kind: 'AI_FIELDS_EDITED', fields: ['amount', 'paidAt'] },
       { kind: 'RECIPIENT_MISMATCH', recipientPhone: '+2250101010101' },
       { kind: 'FISCAL_YEAR_CLOSED' },
-      { kind: 'OVERDUE', businessDays: 4 }
+      { kind: 'OVERDUE', businessDays: 4 },
+      { kind: 'DUPLICATE_PROOF', declarationId: 'd3', createdAt: '2026-10-17T10:00:00Z' }
     ];
     const views = alerts.map(a => alertView(a, row));
     expect(views.map(v => v.severity)).toEqual([
@@ -200,12 +201,14 @@ describe('helpers', () => {
       'info',
       'warning',
       'error',
+      'warning',
       'warning'
     ]);
     for (const v of views) expect(v.text).not.toMatch(/\{\{|undefined/);
     expect(views[0].text).toContain('10/10/2026');
     expect(views[0].text).toMatch(/25\D*000/);
-    expect(views[1].text).toMatch(/10 minutes/);
+    expect(views[1].text).not.toMatch(/minutes/);
+    expect(views[9].text).toContain('capture');
     expect(views[2].text).toMatch(/5\D*000 FCFA/);
     expect(views[2].text).toContain('A12');
     expect(views[3].text).toMatch(/7\D*000 FCFA/);
@@ -227,6 +230,9 @@ describe('helpers', () => {
         alerts: [{ kind: 'REFERENCE_ON_EXISTING_PAYMENT', chargePaymentId: 'p', paidAt: 'x', amount: 1 }]
       })
     ).toBe(true);
+    expect(hasDuplicateSuspicion({ alerts: [{ kind: 'DUPLICATE_PROOF', declarationId: 'x', createdAt: 'y' }] })).toBe(
+      true
+    );
     expect(hasDuplicateSuspicion({ alerts: [{ kind: 'OVERDUE', businessDays: 3 }] })).toBe(false);
     expect(hasDuplicateSuspicion({ alerts: [] })).toBe(false);
   });

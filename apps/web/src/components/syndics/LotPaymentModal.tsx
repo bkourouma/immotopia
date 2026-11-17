@@ -24,6 +24,7 @@ import { saveBlob } from '../../utils/save-blob';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { chargeCallStatusConfig } from './ChargeCallTable';
 import { t } from '../../i18n/t';
+import { useFormFieldModes } from '../../hooks/useFormFieldModes';
 import { HelpSectionTitle } from '../../help';
 import { displayCurrency } from '../../utils/syndic-currency';
 
@@ -95,6 +96,9 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
   onClose,
   onRecorded
 }) => {
+  const fm = useFormFieldModes('syndic.paiement-lot');
+  const referenceVisible = fm.isVisible('reference');
+  const callsVisible = fm.isVisible('chargeCallIds');
   const [lotId, setLotId] = useState<string | undefined>(initialLotId);
   const [amount, setAmount] = useState<number | null>(null);
   const [paidAt, setPaidAt] = useState<Dayjs | null>(dayjs());
@@ -262,7 +266,9 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
     }
   ];
 
-  const canSubmit = Boolean(lotId && amount && amount > 0 && paidAt && method);
+  // Référence rendue obligatoire par l'agence (champ visible seulement).
+  const referenceMissing = referenceVisible && fm.isRequired('reference', false) && !reference.trim();
+  const canSubmit = Boolean(lotId && amount && amount > 0 && paidAt && method && !referenceMissing);
 
   const handleSubmit = async () => {
     if (!lotId || !amount || amount <= 0 || !paidAt || !method) {
@@ -278,8 +284,8 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
         amount,
         paidAt: paidAt.toISOString(),
         method,
-        reference: reference || undefined,
-        chargeCallIds: selectedCallIds.length > 0 ? selectedCallIds : undefined,
+        reference: (referenceVisible && reference) || undefined,
+        chargeCallIds: callsVisible && selectedCallIds.length > 0 ? selectedCallIds : undefined,
         idempotencyKey: idempotencyKeyRef.current
       });
       idempotencyKeyRef.current = newIdempotencyKey();
@@ -481,43 +487,49 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
           </div>
         </Space>
 
-        <div>
-          <Text strong>{t('Référence (optionnel)')}</Text>
-          <Input
-            id="lot-payment-reference"
-            aria-label={t('Référence (optionnel)')}
-            style={{ marginTop: 4 }}
-            value={reference}
-            onChange={event => setReference(event.target.value)}
-          />
-        </div>
+        {referenceVisible && (
+          <div>
+            <Text strong>{fm.isRequired('reference', false) ? t('Référence') : t('Référence (optionnel)')}</Text>
+            <Input
+              id="lot-payment-reference"
+              aria-label={fm.isRequired('reference', false) ? t('Référence') : t('Référence (optionnel)')}
+              style={{ marginTop: 4 }}
+              value={reference}
+              onChange={event => setReference(event.target.value)}
+            />
+          </div>
+        )}
 
-        <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-          {t(
-            "Aucune case cochée : le paiement solde d'abord les appels les plus anciens. Cochez les appels que vous voulez couvrir vous-même ; le surplus devient une avance imputée automatiquement sur les appels suivants."
-          )}
-        </Paragraph>
+        {callsVisible && (
+          <>
+            <Paragraph type="secondary" style={{ marginBottom: 0 }}>
+              {t(
+                "Aucune case cochée : le paiement solde d'abord les appels les plus anciens. Cochez les appels que vous voulez couvrir vous-même ; le surplus devient une avance imputée automatiquement sur les appels suivants."
+              )}
+            </Paragraph>
 
-        <Table<LotOpenChargeCall>
-          // Tableau de sélection des appels à couvrir : rien à exporter.
-          exportable={false}
-          rowKey="id"
-          size="small"
-          loading={callsLoading}
-          dataSource={openCalls}
-          columns={openCallColumns}
-          pagination={false}
-          locale={{ emptyText: t('Aucun appel ouvert pour ce lot') }}
-          rowSelection={{
-            selectedRowKeys: selectedCallIds,
-            onChange: keys => setSelectedCallIds(keys as string[]),
-            // Antd écrit en dur « Select all » / « Select row N » : libellés accessibles fournis ici.
-            getTitleCheckboxProps: () => ({ 'aria-label': t('Sélectionner tous les appels') }),
-            getCheckboxProps: call => ({
-              'aria-label': t("Sélectionner l'appel {{period}}", { period: formatChargePeriod(call) })
-            })
-          }}
-        />
+            <Table<LotOpenChargeCall>
+              // Tableau de sélection des appels à couvrir : rien à exporter.
+              exportable={false}
+              rowKey="id"
+              size="small"
+              loading={callsLoading}
+              dataSource={openCalls}
+              columns={openCallColumns}
+              pagination={false}
+              locale={{ emptyText: t('Aucun appel ouvert pour ce lot') }}
+              rowSelection={{
+                selectedRowKeys: selectedCallIds,
+                onChange: keys => setSelectedCallIds(keys as string[]),
+                // Antd écrit en dur « Select all » / « Select row N » : libellés accessibles fournis ici.
+                getTitleCheckboxProps: () => ({ 'aria-label': t('Sélectionner tous les appels') }),
+                getCheckboxProps: call => ({
+                  'aria-label': t("Sélectionner l'appel {{period}}", { period: formatChargePeriod(call) })
+                })
+              }}
+            />
+          </>
+        )}
 
         <div>
           <Text strong>{t('Aperçu')}</Text>

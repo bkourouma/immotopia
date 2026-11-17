@@ -11,6 +11,8 @@ import apiClient from '../../utils/api-client';
 import AuthContext from '../../context/AuthContext';
 import { AuthContextType } from '../../types/auth-types';
 
+vi.mock('../../hooks/useFormFieldModes', async () => (await import('./charges-form-modes-mock')).formModesModule);
+
 vi.mock('../../utils/api-client', () => ({
   __esModule: true,
   default: {

@@ -30,6 +30,7 @@ import type { LotOpenChargeCall, SyndicateLot } from '../../../types/syndic-type
 import { formatLotLabel } from '../../../utils/syndic-lot-label';
 import { t } from '../../../i18n/t';
 import { HelpSectionTitle } from '../../../help';
+import { useFormFieldModes } from '../../../hooks/useFormFieldModes';
 import { MAX_DECLARATION_AMOUNT, apiErrorCode, apiErrorMessage, formatPhone, operatorLabel } from './helpers';
 
 const { Text, Paragraph } = Typography;
@@ -91,6 +92,7 @@ export const DeclareForThirdPartyModal: React.FC<DeclareForThirdPartyModalProps>
   onCreated
 }) => {
   const { message } = App.useApp();
+  const fm = useFormFieldModes('syndic.paiement-declare-gestionnaire');
   const [form] = Form.useForm<FormValues>();
   const formErrorRef = useRef<HTMLDivElement>(null);
   // `null` : réglages non lus (ou lecture échouée) ; le serveur tranche alors.
@@ -208,13 +210,16 @@ export const DeclareForThirdPartyModal: React.FC<DeclareForThirdPartyModalProps>
       payerPhone: (values.payerPhone ?? '').trim(),
       amount: total,
       paidAt: dayjs(values.paidAt).format(),
-      transactionReference: normalizeReference(values.transactionReference),
+      // Un champ masqué n'est pas envoyé ; une référence facultative laissée vide non plus.
+      ...(fm.isVisible('transactionReference') && normalizeReference(values.transactionReference)
+        ? { transactionReference: normalizeReference(values.transactionReference) }
+        : {}),
       lines: values.lines.map(line => ({
         lotId: line.lotId as string,
         amount: Number(line.amount),
-        chargeCallIds: line.chargeCallIds ?? []
+        ...(fm.isVisible('lines[].chargeCallIds') ? { chargeCallIds: line.chargeCallIds ?? [] } : {})
       })),
-      comment: values.comment?.trim() ? values.comment.trim() : null,
+      ...(fm.isVisible('comment') ? { comment: values.comment?.trim() ? values.comment.trim() : null } : {}),
       declaredForContactId: values.coownerId
     };
     setSubmitting(true);
@@ -392,29 +397,31 @@ export const DeclareForThirdPartyModal: React.FC<DeclareForThirdPartyModalProps>
                         <InputNumber<number> min={1} precision={0} style={{ width: '100%' }} inputMode="numeric" />
                       </Form.Item>
                     </div>
-                    <Form.Item
-                      name={[field.name, 'chargeCallIds']}
-                      label={t('Appels visés')}
-                      extra={t('Laissez vide pour imputer sur les appels les plus anciens d’abord.')}
-                      rules={[
-                        {
-                          type: 'array',
-                          max: MAX_CHARGE_CALLS_PER_LINE,
-                          message: t('{{n}} appels au plus par lot.', { n: MAX_CHARGE_CALLS_PER_LINE })
-                        }
-                      ]}
-                      style={{ marginBottom: 8 }}
-                    >
-                      <Select
-                        mode="multiple"
-                        options={callOptions(line.lotId)}
-                        optionFilterProp="label"
-                        maxCount={MAX_CHARGE_CALLS_PER_LINE}
-                        loading={entry === 'loading'}
-                        disabled={!line.lotId}
-                        placeholder={t('Plus anciens d’abord')}
-                      />
-                    </Form.Item>
+                    {fm.isVisible('lines[].chargeCallIds') && (
+                      <Form.Item
+                        name={[field.name, 'chargeCallIds']}
+                        label={t('Appels visés')}
+                        extra={t('Laissez vide pour imputer sur les appels les plus anciens d’abord.')}
+                        rules={[
+                          {
+                            type: 'array',
+                            max: MAX_CHARGE_CALLS_PER_LINE,
+                            message: t('{{n}} appels au plus par lot.', { n: MAX_CHARGE_CALLS_PER_LINE })
+                          }
+                        ]}
+                        style={{ marginBottom: 8 }}
+                      >
+                        <Select
+                          mode="multiple"
+                          options={callOptions(line.lotId)}
+                          optionFilterProp="label"
+                          maxCount={MAX_CHARGE_CALLS_PER_LINE}
+                          loading={entry === 'loading'}
+                          disabled={!line.lotId}
+                          placeholder={t('Plus anciens d’abord')}
+                        />
+                      </Form.Item>
+                    )}
                     {entry === 'error' && (
                       <Text type="warning">{t('Les appels ouverts de ce lot n’ont pas pu être chargés.')}</Text>
                     )}
@@ -512,35 +519,53 @@ export const DeclareForThirdPartyModal: React.FC<DeclareForThirdPartyModalProps>
           />
         </Form.Item>
 
-        <Form.Item
-          name="transactionReference"
-          label={t('Référence de transaction')}
-          validateFirst
-          rules={[
-            { required: true, whitespace: true, message: t('Saisissez la référence de transaction.') },
-            {
-              validator: (_, value: string | undefined) =>
-                !value || REFERENCE_PATTERN.test(normalizeReference(value))
-                  ? Promise.resolve()
-                  : Promise.reject(
-                      new Error(t('La référence compte 4 à 40 caractères : lettres, chiffres, point ou tiret.'))
-                    )
+        {fm.isVisible('transactionReference') && (
+          <Form.Item
+            name="transactionReference"
+            label={t('Référence de transaction')}
+            validateFirst
+            rules={[
+              {
+                required: fm.isRequired('transactionReference', true),
+                whitespace: true,
+                message: t('Saisissez la référence de transaction.')
+              },
+              {
+                validator: (_, value: string | undefined) =>
+                  !value || REFERENCE_PATTERN.test(normalizeReference(value))
+                    ? Promise.resolve()
+                    : Promise.reject(
+                        new Error(t('La référence compte 4 à 40 caractères : lettres, chiffres, point ou tiret.'))
+                      )
+              }
+            ]}
+            extra={
+              normalizedReference ? (
+                <span>
+                  {t('Référence enregistrée :')} <Text code>{normalizedReference}</Text>
+                </span>
+              ) : undefined
             }
-          ]}
-          extra={
-            normalizedReference ? (
-              <span>
-                {t('Référence enregistrée :')} <Text code>{normalizedReference}</Text>
-              </span>
-            ) : undefined
-          }
-        >
-          <Input autoComplete="off" />
-        </Form.Item>
+          >
+            <Input autoComplete="off" />
+          </Form.Item>
+        )}
 
-        <Form.Item name="comment" label={t('Commentaire (facultatif)')}>
-          <Input.TextArea rows={2} maxLength={COMMENT_MAX} showCount />
-        </Form.Item>
+        {fm.isVisible('comment') && (
+          <Form.Item
+            name="comment"
+            label={fm.isRequired('comment', false) ? t('Commentaire') : t('Commentaire (facultatif)')}
+            rules={[
+              {
+                required: fm.isRequired('comment', false),
+                whitespace: true,
+                message: t('Saisissez un commentaire.')
+              }
+            ]}
+          >
+            <Input.TextArea rows={2} maxLength={COMMENT_MAX} showCount />
+          </Form.Item>
+        )}
 
         <Form.Item label={t('Capture du transfert (facultative)')} validateStatus={proofError ? 'error' : undefined}>
           <Upload

@@ -29,6 +29,25 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 **Pièges** — `npm run i18n:extract` sur `main` ramasse de la dérive sans rapport (HeaderActions, clés « Seuil budgétaire… » vides) : ne garder que ses propres clés.
 
+## orch/2026-11-16-formulaires-parametrables — 2026-11-16
+
+**État** — Branche depuis `origin/main` `a8720c3a`, poussée ; PR vers `main` (fusion par l'utilisateur). Rien déployé. Migration `20261116120000_formulaires_parametrables` (2 tables + `syndic_payment_declarations.transaction_reference` NULLABLE) appliquée sur aucune base. Suivi local d'orchestration dans `.orchestration/` du worktree `.claude/worktrees/formulaires` (exclu de git).
+
+**Fait** — Moteur de formulaires paramétrables, périmètre « moteur + Syndic » choisi par Baba :
+
+- règle de gouvernance : champ jamais facultatif = hors registre ; « sous condition » (GATED) = réglable par l'agence seulement après déverrouillage super-admin ; « paramétrable » (OPEN) = réglable par l'admin d'agence ;
+- API : registre `packages/api/src/lib/form-settings/registry/syndic-*.ts` (43 formKey), résolution avec cache 30 s par processus et repli sur les défauts si la lecture échoue, middleware `formFieldModes` avant zod (`partial` sur PATCH, `payloadField` en multipart) ; routes `/api/tenants/:tenantId/settings/forms`, `/forms/:formKey/modes`, `/api/portal/copropriete/forms/:formKey/modes`, `/api/admin/tenants/:tenantId/form-unlocks`, auditées ;
+- web : hook `useFormFieldModes` (agence de l'URL, sinon active), page Paramétrage > Agence > Formulaires, onglet super-admin « Formulaires » de la fiche agence, aide fr/en/ar, classeur des fonctionnalités ;
+- cas Haiku : référence de transaction facultative/masquée possible ; contrôle aussi dans `createDeclaration` ; doublon probable élargi à la journée sans référence ; alerte `DUPLICATE_PROOF` sur capture identique.
+
+**Vérifié** — tsc web et API 0 erreur ; lint 0 erreur ; check:architecture OK ; jest ciblé 59 suites / 1483 tests ; vitest dossiers form-settings, syndics, coowner-portal, help, settings, admin, navigation, rental paiements : verts (MeetingLiveConsole lent sous charge). Relecture indépendante et audit sécurité faits, défauts corrigés.
+
+**Non vérifié** — Recette navigateur (le worktree n'a pas de `.env`) ; `npm run test:isolation` ; migration sur une vraie base.
+
+**Pièges** — Jest ne rend pas la main après les suites (handles ouverts) : tuer les processus restants. Les suites qui rendent un écran Syndic mockent `hooks/useFormFieldModes` (`__tests__/syndics/charges-form-modes-mock.ts`) sinon l'appel des modes consomme les réponses mockées d'`apiClient.get`. `npm run i18n:extract` web enveloppe à tort `HeaderActions.tsx` (`aria-keyshortcuts`) : rétablir le fichier. Cache non partagé entre instances API : un réglage met jusqu'à 30 s à se propager.
+
+**Reste** — Hypothèse H3 à valider (capture du paiement déclaré hors moteur, reste `proofRequired`). Autres modules (locatif, CRM, patrimoine…) à brancher sur le même moteur. Recette navigateur.
+
 ## orch/2026-11-14-aide-interne — 2026-11-14
 
 **État** — PR 222. Branche d'intégration `orch/2026-11-14-aide-interne` depuis `origin/main` `af33a6da`, poussée ; PR vers `main` (fusion par l'utilisateur). Rien déployé ; migration `20261114100000_help_feedback` (additive : une table) appliquée sur aucune base. Orchestration chef-orchestre : lots A, 0/0b, C1 à C7, Z1 à Z3 ; suivi local dans `.orchestration/2026-11-14-aide-interne/suivi.md`.

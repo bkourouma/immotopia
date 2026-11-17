@@ -16,6 +16,7 @@ import {
   SyndicateLot
 } from '../../../types/syndic-types';
 import { t } from '../../../i18n/t';
+import { useFormFieldModes } from '../../../hooks/useFormFieldModes';
 import { previewScheduleAllocation } from '../../../utils/charge-allocation-preview';
 import { ratesUnavailableMessage, useLotTypeRatesForAllocation } from '../charge-allocation/ChargeAllocationControls';
 import { ScheduleFormValues } from './types';
@@ -41,6 +42,7 @@ export function useScheduleDrawer(
   const { message } = App.useApp();
   const { lots, loadData, preview, loadPreview, resetPreview, runs, loadRuns, resetRuns } = args;
 
+  const fm = useFormFieldModes('syndic.programmation-appels');
   const [submitting, setSubmitting] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<ChargeSchedule | null>(null);
@@ -180,7 +182,7 @@ export function useScheduleDrawer(
       ...(isFixed && method === 'SHARES' ? { includeAnnexLots: values.includeAnnexLots ?? true } : {}),
       currency: values.currency || 'XOF',
       startDate: values.startDate,
-      endDate: values.endDate || null,
+      ...(fm.isVisible('endDate') ? { endDate: values.endDate || null } : {}),
       active: values.active
     };
     setSubmitting(true);

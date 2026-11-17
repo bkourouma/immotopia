@@ -49,11 +49,11 @@ export const WHATSAPP_NOTIFICATION_DEFAULT_TEMPLATES: Record<WhatsappNotificatio
   CHARGE_CALL_PAYMENT_LINK_SENT:
     'Bonjour {{ownerName}}, l’appel de charges {{period}} de votre lot {{lotLabel}} ({{syndicateName}}) est à régler : {{amountDue}}, échéance le {{dueDate}}. Payez en ligne par Mobile Money : {{paymentUrl}} (lien personnel, valable jusqu’au {{expiresAt}}).',
   SYNDIC_PAYMENT_DECLARATION_RECEIVED:
-    'Bonjour {{ownerName}}, nous avons bien reçu votre déclaration de paiement mobile money de {{amount}} (référence {{transactionReference}}) pour la copropriété {{syndicName}}. Elle est en cours de vérification : votre compte sera crédité après validation.',
+    'Bonjour {{ownerName}}, nous avons bien reçu votre déclaration de paiement mobile money de {{amount}}{{referenceInline}} pour la copropriété {{syndicName}}. Elle est en cours de vérification : votre compte sera crédité après validation.',
   SYNDIC_PAYMENT_DECLARATION_APPROVED:
-    'Bonjour {{ownerName}}, votre paiement mobile money (référence {{transactionReference}}) pour la copropriété {{syndicName}} a été validé : {{acceptedAmount}} enregistrés sur votre compte. Montant corrigé : {{corrected}}. {{reviewNote}} Votre reçu ou quittance vous est envoyé séparément.',
+    'Bonjour {{ownerName}}, votre paiement mobile money{{referenceInline}} pour la copropriété {{syndicName}} a été validé : {{acceptedAmount}} enregistrés sur votre compte. Montant corrigé : {{corrected}}. {{reviewNote}} Votre reçu ou quittance vous est envoyé séparément.',
   SYNDIC_PAYMENT_DECLARATION_REJECTED:
-    'Bonjour {{ownerName}}, votre déclaration de paiement mobile money de {{amount}} (référence {{transactionReference}}) pour la copropriété {{syndicName}} n’a pas été retenue. Motif : {{rejectReasonLabel}}. {{reviewNote}} Aucun montant n’a été enregistré.',
+    'Bonjour {{ownerName}}, votre déclaration de paiement mobile money de {{amount}}{{referenceInline}} pour la copropriété {{syndicName}} n’a pas été retenue. Motif : {{rejectReasonLabel}}. {{reviewNote}} Aucun montant n’a été enregistré.',
   RENTAL_PAYMENT_DECLARATION_TO_REVIEW:
     '{{agencyName}} : {{count}} paiement(s) de loyer déclaré(s) attendent votre vérification.\n{{lines}}\nOuvrir : {{reviewUrl}}',
   RENTAL_PAYMENT_DECLARATION_OVERDUE_ALERT:

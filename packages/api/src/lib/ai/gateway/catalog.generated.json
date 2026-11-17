@@ -1355,6 +1355,17 @@
       "sensitive": false
     },
     {
+      "id": "GET /api/tenants/:tenantId/forms/:formKey/modes",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/forms/:formKey/modes",
+      "pathParams": ["formKey"],
+      "module": "forms",
+      "summary": "forms / {formKey} / modes",
+      "permissions": null,
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
       "id": "GET /api/tenants/:tenantId/help-feedback",
       "method": "GET",
       "path": "/api/tenants/:tenantId/help-feedback",
@@ -2977,6 +2988,17 @@
       "pathParams": [],
       "module": "settings",
       "summary": "settings / finance / owners",
+      "permissions": ["TENANT_SETTINGS_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/settings/forms",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/settings/forms",
+      "pathParams": [],
+      "module": "settings",
+      "summary": "settings / forms",
       "permissions": ["TENANT_SETTINGS_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
@@ -8897,6 +8919,17 @@
       "pathParams": ["ownerClientId"],
       "module": "settings",
       "summary": "settings / finance / owners / {ownerClientId}",
+      "permissions": ["TENANT_SETTINGS_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "PUT /api/tenants/:tenantId/settings/forms/:formKey",
+      "method": "PUT",
+      "path": "/api/tenants/:tenantId/settings/forms/:formKey",
+      "pathParams": ["formKey"],
+      "module": "settings",
+      "summary": "settings / forms / {formKey}",
       "permissions": ["TENANT_SETTINGS_EDIT"],
       "anyOfPermissions": null,
       "sensitive": false

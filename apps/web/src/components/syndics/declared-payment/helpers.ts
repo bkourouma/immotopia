@@ -125,7 +125,14 @@ export function alertView(
       return {
         severity: 'warning',
         text: t(
-          'Doublon probable : même numéro de réception, même montant et même payeur qu’une autre déclaration, à moins de 10 minutes.'
+          'Doublon probable : même numéro de réception, même montant et même payeur qu’une autre déclaration rapprochée dans le temps.'
+        )
+      };
+    case 'DUPLICATE_PROOF':
+      return {
+        severity: 'warning',
+        text: t(
+          'Cette capture de paiement est déjà jointe à une autre déclaration en attente ou approuvée de l’agence.'
         )
       };
     case 'EXCESS':
@@ -180,5 +187,7 @@ export function alertView(
 
 /** Vrai si la déclaration porte un soupçon de doublon (référence connue ou doublon probable). */
 export function hasDuplicateSuspicion(row: Pick<SyndicDeclarationRow, 'alerts'>): boolean {
-  return row.alerts.some(a => a.kind === 'PROBABLE_DUPLICATE' || a.kind === 'REFERENCE_ON_EXISTING_PAYMENT');
+  return row.alerts.some(
+    a => a.kind === 'PROBABLE_DUPLICATE' || a.kind === 'DUPLICATE_PROOF' || a.kind === 'REFERENCE_ON_EXISTING_PAYMENT'
+  );
 }

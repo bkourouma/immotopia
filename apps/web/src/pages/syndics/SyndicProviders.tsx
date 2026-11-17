@@ -29,6 +29,7 @@ import {
 } from '../../services/syndic-service';
 import { ServiceProvider, SyndicProvidersPayload } from '../../types/syndic-types';
 import { useTabParam } from '../../components/syndics/finances/url-params';
+import { useFormFieldModes } from '../../hooks/useFormFieldModes';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
 import { HelpSectionTitle } from '../../help';
@@ -49,6 +50,8 @@ interface ProviderFormValues {
 export const SyndicProviders: React.FC = () => {
   const { message } = App.useApp();
   const confirmAction = useConfirmAction();
+  const contractFm = useFormFieldModes('syndic.contrat-maintenance');
+  const providerFm = useFormFieldModes('syndic.prestataire');
 
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
   const [activeTab, setActiveTab] = useTabParam<ProviderTab>(PROVIDER_TABS, 'prestataires');
@@ -123,19 +126,20 @@ export const SyndicProviders: React.FC = () => {
     try {
       let provider: ServiceProvider;
       if (editingProvider) {
+        // Un champ masqué n'est pas envoyé : la valeur enregistrée reste inchangée.
         provider = await updateProvider(effectiveTenantId, syndicId, editingProvider.id, {
           name: values.name,
-          specialty: values.specialty || null,
-          email: values.email || null,
-          phone: values.phone || null
+          ...(providerFm.isVisible('specialty') ? { specialty: values.specialty || null } : {}),
+          ...(providerFm.isVisible('email') ? { email: values.email || null } : {}),
+          ...(providerFm.isVisible('phone') ? { phone: values.phone || null } : {})
         });
         message.success(t('Prestataire mis à jour'));
       } else {
         provider = await createProvider(effectiveTenantId, syndicId, {
           name: values.name,
-          specialty: values.specialty || undefined,
-          email: values.email || undefined,
-          phone: values.phone || undefined
+          specialty: providerFm.isVisible('specialty') ? values.specialty || undefined : undefined,
+          email: providerFm.isVisible('email') ? values.email || undefined : undefined,
+          phone: providerFm.isVisible('phone') ? values.phone || undefined : undefined
         });
         message.success(t('Prestataire créé'));
       }
@@ -190,10 +194,11 @@ export const SyndicProviders: React.FC = () => {
         providerId: values.providerId,
         nature: values.nature,
         startDate: values.startDate.toISOString(),
-        endDate: values.endDate ? values.endDate.toISOString() : undefined,
-        annualAmount: values.annualAmount ?? undefined,
-        currency: values.currency || 'XOF',
-        renewalAlertDays: values.renewalAlertDays ?? 30
+        endDate: contractFm.isVisible('endDate') && values.endDate ? values.endDate.toISOString() : undefined,
+        annualAmount: contractFm.isVisible('annualAmount') ? (values.annualAmount ?? undefined) : undefined,
+        // Devise et délai masqués : non envoyés, le serveur applique XOF et 30 jours.
+        currency: contractFm.isVisible('currency') ? values.currency || 'XOF' : undefined,
+        renewalAlertDays: contractFm.isVisible('renewalAlertDays') ? (values.renewalAlertDays ?? 30) : undefined
       });
       message.success(t('Contrat créé avec succès'));
       setOpenCreateContract(false);
@@ -351,18 +356,52 @@ export const SyndicProviders: React.FC = () => {
           >
             <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
           </Form.Item>
-          <Form.Item label={t('Date de fin')} name="endDate">
-            <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
-          </Form.Item>
-          <Form.Item label={t('Montant annuel')} name="annualAmount">
-            <InputNumber style={{ width: '100%' }} min={0} precision={2} />
-          </Form.Item>
-          <Form.Item label={t('Devise')} name="currency">
-            <Input />
-          </Form.Item>
-          <Form.Item label={t('Alerte renouvellement (jours)')} name="renewalAlertDays">
-            <InputNumber style={{ width: '100%' }} min={0} precision={0} />
-          </Form.Item>
+          {contractFm.isVisible('endDate') && (
+            <Form.Item
+              label={t('Date de fin')}
+              name="endDate"
+              rules={[{ required: contractFm.isRequired('endDate', false), message: t('Ce champ est obligatoire') }]}
+            >
+              <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
+            </Form.Item>
+          )}
+          {contractFm.isVisible('annualAmount') && (
+            <Form.Item
+              label={t('Montant annuel')}
+              name="annualAmount"
+              rules={[
+                { required: contractFm.isRequired('annualAmount', false), message: t('Ce champ est obligatoire') }
+              ]}
+            >
+              <InputNumber style={{ width: '100%' }} min={0} precision={2} />
+            </Form.Item>
+          )}
+          {contractFm.isVisible('currency') && (
+            <Form.Item
+              label={t('Devise')}
+              name="currency"
+              rules={[
+                {
+                  required: contractFm.isRequired('currency', false),
+                  whitespace: contractFm.isRequired('currency', false),
+                  message: t('Ce champ est obligatoire')
+                }
+              ]}
+            >
+              <Input />
+            </Form.Item>
+          )}
+          {contractFm.isVisible('renewalAlertDays') && (
+            <Form.Item
+              label={t('Alerte renouvellement (jours)')}
+              name="renewalAlertDays"
+              rules={[
+                { required: contractFm.isRequired('renewalAlertDays', false), message: t('Ce champ est obligatoire') }
+              ]}
+            >
+              <InputNumber style={{ width: '100%' }} min={0} precision={0} />
+            </Form.Item>
+          )}
         </Form>
       </Modal>
 
@@ -383,19 +422,52 @@ export const SyndicProviders: React.FC = () => {
           >
             <Input placeholder={t('Ex: Ascenseurs Pro')} />
           </Form.Item>
-          <Form.Item label={t('Spécialité')} name="specialty">
-            <Input placeholder={t('Ex: Ascenseur, nettoyage, sécurité...')} />
-          </Form.Item>
-          <Form.Item
-            label={t('Email')}
-            name="email"
-            rules={[{ type: 'email', message: t("L'email doit être valide") }]}
-          >
-            <Input placeholder="contact@prestataire.test" />
-          </Form.Item>
-          <Form.Item label={t('Téléphone')} name="phone">
-            <Input />
-          </Form.Item>
+          {providerFm.isVisible('specialty') && (
+            <Form.Item
+              label={t('Spécialité')}
+              name="specialty"
+              rules={[
+                {
+                  required: providerFm.isRequired('specialty', false),
+                  whitespace: providerFm.isRequired('specialty', false),
+                  message: t('Ce champ est obligatoire')
+                }
+              ]}
+            >
+              <Input placeholder={t('Ex: Ascenseur, nettoyage, sécurité...')} />
+            </Form.Item>
+          )}
+          {providerFm.isVisible('email') && (
+            <Form.Item
+              label={t('Email')}
+              name="email"
+              rules={[
+                {
+                  required: providerFm.isRequired('email', false),
+                  whitespace: providerFm.isRequired('email', false),
+                  message: t('Ce champ est obligatoire')
+                },
+                { type: 'email', message: t("L'email doit être valide") }
+              ]}
+            >
+              <Input placeholder="contact@prestataire.test" />
+            </Form.Item>
+          )}
+          {providerFm.isVisible('phone') && (
+            <Form.Item
+              label={t('Téléphone')}
+              name="phone"
+              rules={[
+                {
+                  required: providerFm.isRequired('phone', false),
+                  whitespace: providerFm.isRequired('phone', false),
+                  message: t('Ce champ est obligatoire')
+                }
+              ]}
+            >
+              <Input />
+            </Form.Item>
+          )}
         </Form>
       </Modal>
     </>

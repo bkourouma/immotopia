@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import dayjs from 'dayjs';
 import { DeclarationForm } from '../../components/coowner-portal/declared-payment/DeclarationForm';
+import { formModes } from '../syndics/charges-form-modes-mock';
 import type {
   CoOwnerChargeCall,
   CoOwnerDeclaration,
@@ -20,6 +21,12 @@ import type {
 
 const createDeclaration = vi.fn();
 const readPaymentProof = vi.fn();
+
+// Réglages des formulaires : défauts (aucun réglage d'agence), sans AuthProvider ni réseau.
+vi.mock(
+  '../../hooks/useFormFieldModes',
+  async () => (await import('../../__tests__/syndics/charges-form-modes-mock')).formModesModule
+);
 
 vi.mock('../../services/coowner-portal-service', async () => {
   const actual = await vi.importActual<typeof import('../../services/coowner-portal-service')>(
@@ -165,7 +172,60 @@ function proofFile(name = 'sms.png', type = 'image/png', size = 2048) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  formModes.current = {};
   createDeclaration.mockResolvedValue(DECLARATION);
+});
+
+describe('DeclarationForm — champs réglés par l’agence', () => {
+  it('référence facultative : envoi accepté sans référence, qui n’est pas transmise', async () => {
+    formModes.current = { transactionReference: 'OPTIONAL' };
+    const user = userEvent.setup();
+    mountForm();
+    setValue(/Montant envoyé/, '45000');
+    await setPaidAt(user);
+    await user.click(submitButton());
+
+    await waitFor(() => expect(createDeclaration).toHaveBeenCalledTimes(1), WAIT);
+    expect(createDeclaration.mock.calls[0][0]).not.toHaveProperty('transactionReference');
+  }, 30000);
+
+  it('référence masquée : champ absent, jamais transmise', async () => {
+    formModes.current = { transactionReference: 'HIDDEN' };
+    const user = userEvent.setup();
+    mountForm();
+    expect(screen.queryByLabelText('Référence de la transaction')).toBeNull();
+    setValue(/Montant envoyé/, '45000');
+    await setPaidAt(user);
+    await user.click(submitButton());
+
+    await waitFor(() => expect(createDeclaration).toHaveBeenCalledTimes(1), WAIT);
+    expect(createDeclaration.mock.calls[0][0]).not.toHaveProperty('transactionReference');
+  }, 30000);
+
+  it('référence facultative mais saisie : elle reste normalisée et contrôlée', async () => {
+    formModes.current = { transactionReference: 'OPTIONAL' };
+    const user = userEvent.setup();
+    mountForm();
+    await user.type(screen.getByLabelText('Référence de la transaction'), 'ab');
+    await user.click(submitButton());
+    expect(
+      await screen.findByText('La référence doit comporter 4 à 40 caractères : lettres, chiffres, tiret ou point.')
+    ).toBeInTheDocument();
+    expect(createDeclaration).not.toHaveBeenCalled();
+  }, 30000);
+
+  it('commentaire masqué : champ absent', () => {
+    formModes.current = { comment: 'HIDDEN' };
+    mountForm();
+    expect(screen.queryByLabelText(/Commentaire/)).toBeNull();
+  });
+
+  it('commentaire obligatoire : libellé sans « facultatif »', () => {
+    formModes.current = { comment: 'REQUIRED' };
+    mountForm();
+    expect(screen.getByLabelText('Commentaire')).toBeInTheDocument();
+    expect(screen.queryByText('Commentaire (facultatif)')).toBeNull();
+  });
 });
 
 describe('DeclarationForm — un seul lot', () => {

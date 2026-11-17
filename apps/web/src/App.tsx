@@ -534,6 +534,11 @@ const TenantSubscriptionSettings = lazy(() =>
     default: m.TenantSubscriptionSettings
   }))
 );
+const FormFieldSettingsPage = lazy(() =>
+  import(/* webpackChunkName: "settings" */ './pages/settings/FormFieldSettingsPage').then(m => ({
+    default: m.FormFieldSettingsPage
+  }))
+);
 const TenantBillingSettings = lazy(() =>
   import(/* webpackChunkName: "tenant" */ './pages/tenant/TenantBillingSettings').then(m => ({
     default: m.TenantBillingSettings
@@ -1126,6 +1131,7 @@ function App() {
                             path="/tenant/:tenantId/settings/abonnement"
                             element={<TenantSubscriptionSettings />}
                           />
+                          <Route path="/tenant/:tenantId/settings/formulaires" element={<FormFieldSettingsPage />} />
                           <Route path="/tenant/:tenantId/settings/facturation" element={<TenantBillingSettings />} />
                           <Route path="/tenant/:tenantId/documents/templates" element={<DocumentTemplates />} />
                           <Route path="/tenant/:tenantId/signatures" element={<SignaturesPage />} />

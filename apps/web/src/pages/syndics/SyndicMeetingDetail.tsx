@@ -58,6 +58,7 @@ import {
 } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
+import { useFormFieldModes } from '../../hooks/useFormFieldModes';
 import { saveBlob } from '../../utils/save-blob';
 import { describeDownloadError } from '../../utils/download-error';
 import { HelpButton, HelpSectionTitle, helpAnchor } from '../../help';
@@ -103,6 +104,11 @@ export const SyndicMeetingDetail: React.FC = () => {
   const [resolutionForm] = Form.useForm();
   const [agendaForm] = Form.useForm();
   const [meetingMetaForm] = Form.useForm();
+  const fmInfo = useFormFieldModes('syndic.assemblee-informations');
+  const fmResolution = useFormFieldModes('syndic.assemblee-resolution');
+  const fmAgenda = useFormFieldModes('syndic.assemblee-ordre-du-jour');
+  // Tous les champs masqués : rien à enregistrer (un PATCH vide serait refusé en 400).
+  const metaEditable = fmInfo.isVisible('startTime') || fmInfo.isVisible('endTime') || fmInfo.isVisible('location');
 
   useEffect(() => {
     if (!effectiveTenantId || !syndicId || !meetingId) {
@@ -201,6 +207,11 @@ export const SyndicMeetingDetail: React.FC = () => {
       } catch {
         return; // saisie invalide : les messages sont affichés dans le formulaire
       }
+      if (!fmResolution.isVisible('description')) {
+        // Champ masqué par l'agence : jamais envoyé.
+        const { description: _hidden, ...rest } = values;
+        values = rest;
+      }
       // La clé suit le contenu : une saisie modifiée après un échec est une nouvelle résolution.
       const fingerprint = JSON.stringify(values);
       if (resolutionFingerprintRef.current !== fingerprint) {
@@ -273,7 +284,12 @@ export const SyndicMeetingDetail: React.FC = () => {
 
   const handleSaveAgenda = async () => {
     if (!effectiveTenantId || !syndicId || !meetingId) return;
-    const values = await agendaForm.validateFields();
+    let values;
+    try {
+      values = await agendaForm.validateFields();
+    } catch {
+      return; // saisie invalide : les messages sont affichés dans le formulaire
+    }
     const discussions = String(values.discussionsText || '')
       .split('\n')
       .map((item: string) => item.trim())
@@ -285,13 +301,13 @@ export const SyndicMeetingDetail: React.FC = () => {
         await updateMeetingAgendaItem(effectiveTenantId, syndicId, meetingId, editingAgendaId, {
           title: values.title,
           orderIndex: Number(values.orderIndex),
-          discussions
+          ...(fmAgenda.isVisible('discussions') ? { discussions } : {})
         });
       } else {
         await addMeetingAgendaItem(effectiveTenantId, syndicId, meetingId, {
           title: values.title,
           orderIndex: Number(values.orderIndex),
-          discussions
+          ...(fmAgenda.isVisible('discussions') ? { discussions } : {})
         });
       }
       message.success(t("Point d'ordre du jour enregistré"));
@@ -357,7 +373,12 @@ export const SyndicMeetingDetail: React.FC = () => {
 
   const handleSaveMeetingMeta = async () => {
     if (!effectiveTenantId || !syndicId || !meetingId || !meeting) return;
-    const values = await meetingMetaForm.validateFields();
+    let values;
+    try {
+      values = await meetingMetaForm.validateFields();
+    } catch {
+      return; // saisie invalide : les messages sont affichés dans le formulaire
+    }
     const meetingDate = dayjs(meeting.scheduledAt);
     const startTime = values.startTime
       ? meetingDate
@@ -371,12 +392,14 @@ export const SyndicMeetingDetail: React.FC = () => {
       ? meetingDate.hour(values.endTime.hour()).minute(values.endTime.minute()).second(0).millisecond(0).toISOString()
       : null;
 
+    if (!metaEditable) return;
     setSavingMeetingMeta(true);
     try {
+      // Un champ masqué par l'agence n'est pas envoyé (la valeur existante reste inchangée).
       await updateMeeting(effectiveTenantId, syndicId, meetingId, {
-        startTime,
-        endTime,
-        location: values.location?.trim() ? values.location.trim() : null
+        ...(fmInfo.isVisible('startTime') ? { startTime } : {}),
+        ...(fmInfo.isVisible('endTime') ? { endTime } : {}),
+        ...(fmInfo.isVisible('location') ? { location: values.location?.trim() ? values.location.trim() : null } : {})
       });
       message.success(t('Informations de réunion mises à jour'));
       await refreshMeetingSilently();
@@ -432,28 +455,61 @@ export const SyndicMeetingDetail: React.FC = () => {
               Date: {dayjs(meeting.scheduledAt).format('DD/MM/YYYY HH:mm')} {t('| Type:')}{' '}
               {t(meetingTypeLabels[meeting.type] ?? meeting.type)}
             </Paragraph>
-            <Form form={meetingMetaForm} layout="inline" disabled={frozen}>
-              <Form.Item label={t('Heure début')} name="startTime">
-                <TimePicker format="HH:mm" minuteStep={5} allowClear disabled={frozen} />
-              </Form.Item>
-              <Form.Item label={t('Heure fin')} name="endTime">
-                <TimePicker format="HH:mm" minuteStep={5} allowClear disabled={frozen} />
-              </Form.Item>
-              <Form.Item label={t('Lieu')} name="location">
-                <Input placeholder={t("Lieu de l'assemblée")} style={{ minWidth: 240 }} disabled={frozen} />
-              </Form.Item>
-              <Form.Item>
-                {frozen ? (
-                  <Tooltip title={meetingFrozenReason(meeting.status)}>
-                    <Button disabled>{t('Enregistrer')}</Button>
-                  </Tooltip>
-                ) : (
-                  <Button onClick={() => void handleSaveMeetingMeta()} loading={savingMeetingMeta}>
-                    {t('Enregistrer')}
-                  </Button>
+            {metaEditable ? (
+              <Form form={meetingMetaForm} layout="inline" disabled={frozen}>
+                {fmInfo.isVisible('startTime') && (
+                  <Form.Item
+                    label={t('Heure début')}
+                    name="startTime"
+                    rules={[
+                      {
+                        required: fmInfo.isRequired('startTime', false),
+                        message: t("L'heure de début est obligatoire")
+                      }
+                    ]}
+                  >
+                    <TimePicker format="HH:mm" minuteStep={5} allowClear disabled={frozen} />
+                  </Form.Item>
                 )}
-              </Form.Item>
-            </Form>
+                {fmInfo.isVisible('endTime') && (
+                  <Form.Item
+                    label={t('Heure fin')}
+                    name="endTime"
+                    rules={[
+                      { required: fmInfo.isRequired('endTime', false), message: t("L'heure de fin est obligatoire") }
+                    ]}
+                  >
+                    <TimePicker format="HH:mm" minuteStep={5} allowClear disabled={frozen} />
+                  </Form.Item>
+                )}
+                {fmInfo.isVisible('location') && (
+                  <Form.Item
+                    label={t('Lieu')}
+                    name="location"
+                    rules={[
+                      {
+                        required: fmInfo.isRequired('location', false),
+                        whitespace: true,
+                        message: t('Le lieu est obligatoire')
+                      }
+                    ]}
+                  >
+                    <Input placeholder={t("Lieu de l'assemblée")} style={{ minWidth: 240 }} disabled={frozen} />
+                  </Form.Item>
+                )}
+                <Form.Item>
+                  {frozen ? (
+                    <Tooltip title={meetingFrozenReason(meeting.status)}>
+                      <Button disabled>{t('Enregistrer')}</Button>
+                    </Tooltip>
+                  ) : (
+                    <Button onClick={() => void handleSaveMeetingMeta()} loading={savingMeetingMeta}>
+                      {t('Enregistrer')}
+                    </Button>
+                  )}
+                </Form.Item>
+              </Form>
+            ) : null}
           </Space>
           <Space wrap align="start">
             <MeetingStatusActions status={meeting.status} onChange={handleStatusChange} loading={changingStatus} />
@@ -668,9 +724,21 @@ export const SyndicMeetingDetail: React.FC = () => {
           >
             <Input />
           </Form.Item>
-          <Form.Item label={t('Description')} name="description">
-            <Input.TextArea rows={4} />
-          </Form.Item>
+          {fmResolution.isVisible('description') && (
+            <Form.Item
+              label={t('Description')}
+              name="description"
+              rules={[
+                {
+                  required: fmResolution.isRequired('description', false),
+                  whitespace: true,
+                  message: t('La description est obligatoire')
+                }
+              ]}
+            >
+              <Input.TextArea rows={4} />
+            </Form.Item>
+          )}
           <Form.Item
             label={t('Règle de majorité')}
             name="majorityRule"
@@ -706,9 +774,21 @@ export const SyndicMeetingDetail: React.FC = () => {
           >
             <Input type="number" min={1} />
           </Form.Item>
-          <Form.Item label={t('Discussions (une ligne par discussion)')} name="discussionsText">
-            <Input.TextArea rows={6} />
-          </Form.Item>
+          {fmAgenda.isVisible('discussions') && (
+            <Form.Item
+              label={t('Discussions (une ligne par discussion)')}
+              name="discussionsText"
+              rules={[
+                {
+                  required: fmAgenda.isRequired('discussions', false),
+                  whitespace: true,
+                  message: t('Les discussions sont obligatoires')
+                }
+              ]}
+            >
+              <Input.TextArea rows={6} />
+            </Form.Item>
+          )}
         </Form>
       </Modal>
     </>

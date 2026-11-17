@@ -73,6 +73,9 @@ describe('catalogue d’audit', () => {
     // ici, et nulle part ailleurs : la migration est figée.
     const postMigrationKeys = [
       'AUDIT_VIEWED',
+      // Formulaires parametrables.
+      'TENANT_FORM_FIELD_SETTINGS_UPDATED',
+      'PLATFORM_FORM_FIELD_UNLOCK_CHANGED',
       // Lot 049-0 : parité Syndic du paiement locatif.
       'RENTAL_RECEIVING_NUMBER_CREATED',
       'RENTAL_RECEIVING_NUMBER_UPDATED',

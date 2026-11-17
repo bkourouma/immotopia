@@ -1,4 +1,15 @@
 import React from 'react';
+
+// Formulaires paramétrables : sans réglage, chaque champ garde son comportement actuel (le hook réel exige un AuthProvider).
+vi.mock('../../hooks/useFormFieldModes', () => ({
+  useFormFieldModes: () => ({
+    loading: false,
+    mode: (_key: string, fallback = 'OPTIONAL') => fallback,
+    isVisible: () => true,
+    isRequired: (_key: string, fallback: boolean) => fallback
+  })
+}));
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';

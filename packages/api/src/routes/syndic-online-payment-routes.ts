@@ -1,5 +1,6 @@
 import { Router, type RequestHandler } from 'express';
 import { authenticate } from '../middleware/auth-middleware';
+import { formFieldModes } from '../lib/form-settings/apply';
 import { requireTenantAccess } from '../middleware/tenant-middleware';
 import { enforcePropertyTenantIsolation } from '../middleware/tenant-isolation-middleware';
 import { requireAnyPropertyPermission, requirePropertyPermission } from '../middleware/property-rbac-middleware';
@@ -83,7 +84,14 @@ router.post(
 
 // 1.8 et 1.9 : reversements du compte de collecte 5525.
 router.get(`${GATEWAY}/reversements`, ...guards, canView, listPayoutsHandler);
-router.post(`${GATEWAY}/reversements`, ...guards, canEdit, syndicGatewayWriteRateLimiter, recordPayoutHandler);
+router.post(
+  `${GATEWAY}/reversements`,
+  ...guards,
+  canEdit,
+  syndicGatewayWriteRateLimiter,
+  formFieldModes('syndic.reversement-paiement-en-ligne'),
+  recordPayoutHandler
+);
 
 // 1.10 : lien « Payer cet appel » (créer ou copier, envoyer, lister, révoquer).
 router.post(
@@ -91,6 +99,7 @@ router.post(
   ...guards,
   canEdit,
   syndicGatewayWriteRateLimiter,
+  formFieldModes('syndic.lien-paiement-appel'),
   createChargeCallPaymentLinkHandler
 );
 router.get(`${BASE}/charges/:chargeId/liens-paiement`, ...guards, canView, listChargeCallPaymentLinksHandler);

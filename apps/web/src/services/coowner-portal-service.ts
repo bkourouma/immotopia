@@ -620,7 +620,7 @@ export interface DeclarationLineInput {
   /** Part de ce lot, entier > 0. */
   amount: number;
   /** 0 à 24 appels ouverts du lot ; [] = plus anciens d'abord. */
-  chargeCallIds: string[];
+  chargeCallIds?: string[];
 }
 
 export interface DeclarationInput {
@@ -631,7 +631,7 @@ export interface DeclarationInput {
   amount: number;
   /** Date-heure ISO avec décalage. */
   paidAt: string;
-  transactionReference: string;
+  transactionReference?: string | null;
   /** 1 à 10 lots distincts. */
   lines: DeclarationLineInput[];
   /** 500 caractères au plus. */
@@ -651,7 +651,7 @@ export interface CoOwnerDeclaration {
   /** Si corrigé par le gestionnaire. */
   acceptedAmount: number | null;
   paidAt: string;
-  transactionReference: string;
+  transactionReference?: string | null;
   lines: Array<{
     lot: { id: string; lotNumber: string };
     amount: number;

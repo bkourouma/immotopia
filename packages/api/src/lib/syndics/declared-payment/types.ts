@@ -118,7 +118,7 @@ export interface DeclarationInput {
   payerPhone: string;
   amount: number; // 1 à 5 000 000 (D13), = somme des lignes
   paidAt: string; // ≤ maintenant + 10 min, ≥ maintenant − 90 jours
-  transactionReference: string;
+  transactionReference?: string | null; // facultative ou masquée selon le réglage de l'agence
   lines: DeclarationLineInput[]; // 1 à 10, lots distincts de la même copropriété
   comment?: string | null; // 500 caractères au plus
   /** Lecture IA dont la capture devient la preuve (PR3). Exclusif avec un fichier `proof`. */
@@ -133,6 +133,8 @@ export type DeclarationAlert =
       amount: number;
     }
   | { kind: 'PROBABLE_DUPLICATE'; declarationId: string; createdAt: string }
+  /** Même capture (empreinte identique) qu'une autre déclaration de l'agence, en attente ou validée. */
+  | { kind: 'DUPLICATE_PROOF'; declarationId: string; createdAt: string }
   | { kind: 'EXCESS'; lotId: string; excess: number } // deviendra une avance
   | { kind: 'PARTIAL'; lotId: string; remaining: number }
   | { kind: 'DECLARANT_NOT_CURRENT_OWNER'; lotId: string }
@@ -173,7 +175,7 @@ export interface SyndicDeclarationRow {
   acceptedAmount: number | null;
   paidAt: string;
   acceptedPaidAt: string | null;
-  transactionReference: string;
+  transactionReference: string | null;
   lines: DeclarationLineView[];
   hasProof: boolean;
   aiPrefilled: boolean;
@@ -202,7 +204,7 @@ export interface CoOwnerDeclaration {
   amount: number;
   acceptedAmount: number | null; // si corrigé
   paidAt: string;
-  transactionReference: string;
+  transactionReference: string | null;
   lines: Array<{
     lot: { id: string; lotNumber: string };
     amount: number;

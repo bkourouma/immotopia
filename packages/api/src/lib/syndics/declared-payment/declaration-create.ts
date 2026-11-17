@@ -13,6 +13,7 @@ import { PENDING_REUSE_WINDOW_MS } from '../online-payment/checkout-start';
 import { lockLotPayment } from '../lot-payment-lock';
 import { assertLotOfSyndicate, assertSyndicateOfTenant, listOpenCallsForLot } from '../charge-allocation';
 import { ownedChargeCallsWhere, type CoOwnerPortalScope } from '../coowner-portal';
+import { getEffectiveFieldModes } from '../../form-settings/service';
 import { normalizeIvorianMsisdn } from './phone';
 import {
   discardTempProof,
@@ -96,7 +97,8 @@ function referenceUsedError(): AppError {
 
 interface CheckedBody {
   payerPhone: string;
-  transactionReference: string;
+  /** `null` : référence non fournie (champ facultatif ou masqué par l'agence). */
+  transactionReference: string | null;
   amount: number;
   paidAt: Date;
   comment: string | null;
@@ -115,12 +117,17 @@ function checkBody(input: CreateDeclarationInput, now: Date): CheckedBody {
       ErrorCode.INVALID_PHONE
     );
   }
-  const transactionReference = normalizeTransactionReference(input.transactionReference);
-  if (!transactionReference) {
-    throw badRequest(
-      t('La référence de transaction doit comporter de 4 à 40 caractères (lettres, chiffres, tirets, points).'),
-      ErrorCode.INVALID_TRANSACTION_REFERENCE
-    );
+  // La référence n'est normalisée et contrôlée que si elle est fournie (réglage « facultative » ou « masquée »).
+  const rawReference = typeof input.transactionReference === 'string' ? input.transactionReference.trim() : '';
+  let transactionReference: string | null = null;
+  if (rawReference) {
+    transactionReference = normalizeTransactionReference(rawReference);
+    if (!transactionReference) {
+      throw badRequest(
+        t('La référence de transaction doit comporter de 4 à 40 caractères (lettres, chiffres, tirets, points).'),
+        ErrorCode.INVALID_TRANSACTION_REFERENCE
+      );
+    }
   }
 
   if (!isPositiveInteger(input.amount)) {
@@ -359,9 +366,14 @@ async function removeStoredProof(tenantId: string, syndicateId: string, stored: 
 // Point d'entrée
 // ---------------------------------------------------------------------------
 
+/** Formulaires paramétrables de la déclaration, selon l'appelant (gestionnaire ou portail). */
+export type DeclarationFormKey = 'syndic.paiement-declare-gestionnaire' | 'syndic.paiement-declare-portail';
+
 export async function createDeclaration(params: {
   tenantId: string;
   syndicateId: string;
+  /** Formulaire dont les modes de champs s'appliquent (règle imposée ici, indépendamment du middleware). */
+  formKey: DeclarationFormKey;
   actor: DeclarationActor;
   input: CreateDeclarationInput;
   proof?: ProofFileInput | null;
@@ -390,6 +402,18 @@ export async function createDeclaration(params: {
 
   // 3. Téléphone, référence, montant, lignes, date.
   const body = checkBody(input, now);
+
+  // Référence obligatoire selon le réglage de l'agence : règle imposée côté service.
+  const formModes = await getEffectiveFieldModes(tenantId, params.formKey);
+  if (formModes.fields.transactionReference === 'REQUIRED' && body.transactionReference === null) {
+    throw new AppError(
+      t('Le champ {{label}} est obligatoire.', { label: t(formModes.labels?.transactionReference ?? 'Référence') }),
+      400,
+      ErrorCode.FORM_FIELD_REQUIRED,
+      undefined,
+      { fieldKey: 'transactionReference' }
+    );
+  }
 
   // 4. Périmètre : lots, déclarant, appels visés.
   const lotIds = body.lines.map(line => line.lotId);
@@ -425,15 +449,19 @@ export async function createDeclaration(params: {
 
   // Doublon de référence par lecture (réponse rapide) : même agence et même téléphone de
   // réception, y compris une autre copropriété (numéro partagé, D10). L'index partiel arbitre.
-  const sameReference = await prisma.syndicPaymentDeclaration.findFirst({
-    where: {
-      tenantId,
-      receivingPhone: receivingNumber.phoneNumber,
-      transactionReference: body.transactionReference,
-      status: { in: ['PENDING', 'APPROVED'] }
-    },
-    select: { id: true }
-  });
+  // Sans référence : rien à comparer ici, seule l'alerte « doublon probable » reste (lecture de la file).
+  const sameReference =
+    body.transactionReference === null
+      ? null
+      : await prisma.syndicPaymentDeclaration.findFirst({
+          where: {
+            tenantId,
+            receivingPhone: receivingNumber.phoneNumber,
+            transactionReference: body.transactionReference,
+            status: { in: ['PENDING', 'APPROVED'] }
+          },
+          select: { id: true }
+        });
   if (sameReference) throw referenceUsedError();
 
   // 7. Écriture : identifiant d'abord (il nomme le fichier), capture, puis une transaction.
@@ -525,7 +553,7 @@ export async function createDeclaration(params: {
     });
   } catch (error) {
     if (stored) await removeStoredProof(tenantId, syndicateId, stored);
-    if (isReferenceUniqueViolation(error)) throw referenceUsedError();
+    if (body.transactionReference !== null && isReferenceUniqueViolation(error)) throw referenceUsedError();
     throw error;
   }
   if (proofRead) {

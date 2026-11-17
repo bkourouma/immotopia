@@ -724,6 +724,11 @@ function buildNavigation(): Record<PersonaId, PersonaNav> {
               label: t('Paramètres financiers'),
               href: '/tenant/:tenantId/settings/finance'
             },
+            {
+              key: 'agence-form-settings',
+              label: t('Formulaires'),
+              href: '/tenant/:tenantId/settings/formulaires'
+            },
             { key: 'agence-activity', label: t("Journal d'activité"), href: '/tenant/:tenantId/activity' },
             {
               key: 'agence-help-feedback',

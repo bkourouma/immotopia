@@ -13,6 +13,12 @@ import type { SyndicDeclarationRow } from '../../../services/syndic-declared-pay
 
 const approveSyndicDeclaration = vi.fn();
 const rejectSyndicDeclaration = vi.fn();
+// Réglages des formulaires : défauts (aucun réglage d'agence), sans AuthProvider ni réseau.
+vi.mock(
+  '../../../hooks/useFormFieldModes',
+  async () => (await import('../../../__tests__/syndics/charges-form-modes-mock')).formModesModule
+);
+
 vi.mock('../../../services/syndic-declared-payment-service', () => ({
   approveSyndicDeclaration: (...a: unknown[]) => approveSyndicDeclaration(...a),
   rejectSyndicDeclaration: (...a: unknown[]) => rejectSyndicDeclaration(...a)
