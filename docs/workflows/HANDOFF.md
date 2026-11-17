@@ -17,6 +17,18 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 
 Modèle de section : voir le bloc « Modèle de section » plus bas.
 
+## fix/portail-locataire-releve-vide — 2026-11-17
+
+**État** — Branche depuis `origin/main` `a1ece321`, poussée ; PR 226 vers `main` (fusion par l'utilisateur). Rien déployé.
+
+**Fait** — « Mon relevé » du portail locataire répondait 404 tant que le compte de tiers du locataire n'existait pas (créé au premier mouvement de grand livre) ; `handleTenantPortalFinanceStatement` renvoie maintenant 200 avec un relevé vide. Test de `__tests__/api/finance.test.ts` adapté. Contexte : recette du pack Patrimoine Essentiel sur la démo (gestion locative + portail locataire OK, barrière « détenu en propre » OK en mode enforce).
+
+**Vérifié** — `finance.test.ts` : 31 tests verts ; hooks de commit passés.
+
+**Pas vérifié** — Pas de rejeu navigateur après correctif ; rendu de l'écran avec relevé vide ; typecheck complet.
+
+**Pièges** — La démo (`.claude/worktrees/demo`) est sur `a1ece321` en dépendances propres (`demo:sync --install` avec `NODE_OPTIONS=--max-old-space-size=4096`, le premier `npm ci` plantait en mémoire) ; elle tourne en `SUBSCRIPTION_ENFORCEMENT=warn` : le menu n'y est pas filtré par pack. Données de recette laissées dans l'agence « Test — Pack Patrimoine Essentiel · 6 mois » de la base de démo. Le hook `validate-bash` refuse un `git push` quand `main` apparaît ailleurs dans la même commande (ex. `gh pr create --base main`) : séparer les deux.
+
 ## fix/chantier-zone-date-obligatoires — 2026-11-16
 
 **État** — Branche depuis `origin/main` `a8720c3a`, poussée, PR vers `main` (fusion par l'utilisateur). Rien déployé.
