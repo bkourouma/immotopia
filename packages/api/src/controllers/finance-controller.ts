@@ -429,9 +429,14 @@ export async function handleTenantPortalFinanceStatement(req: Request, res: Resp
     // tout juste signé n'en a pas encore. Ce n'est pas une erreur pour le locataire, son
     // relevé est simplement vide (solde nul), et non un 404 « Impossible de charger ».
     if (!account) {
+      // Même libellé que celui que `getOrCreateTenantAccountTx` copiera à la création du compte.
+      const renter = await prisma.tenantClient.findFirst({
+        where: { id: tenantClientId, tenantId },
+        select: { user: { select: { fullName: true, email: true } } }
+      });
       const empty: AccountStatementResult = {
         accountId: '',
-        label: '',
+        label: renter?.user?.fullName || renter?.user?.email || 'Locataire',
         kind: 'TENANT',
         openingBalance: 0,
         closingBalance: 0,
