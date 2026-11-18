@@ -24,6 +24,7 @@ import { LotTable } from '../../components/syndics/LotTable';
 import { useFormFieldModes } from '../../hooks/useFormFieldModes';
 import { listSyndicDeclarations } from '../../services/syndic-declared-payment-service';
 import { StatCard } from '../../components/primitives';
+import { getLotTypeRates, type LotTypeRates } from '../../services/syndic-lot-type-rates-service';
 import { listContacts } from '../../services/crm-service';
 import { listProperties } from '../../services/property-service';
 import {
@@ -54,6 +55,9 @@ import { getLotTypeLabel } from '../../utils/syndic-lot-label';
 const { Paragraph, Title } = Typography;
 
 const LOT_TYPES: LotType[] = ['APARTMENT', 'PARKING', 'CELLAR', 'OFFICE', 'COMMERCIAL', 'OTHER'];
+
+/** Tantièmes d'un lot créé sans les saisir : le montant vient du barème, mais le lot reste actif (0 = inactif). */
+const DEFAULT_LOT_SHARES = 1;
 
 /** Options du sélecteur de type, calculées au rendu pour suivre la langue affichée. */
 function getLotTypeOptions(): Array<{ label: string; value: LotType }> {
@@ -175,6 +179,7 @@ export const SyndicLots: React.FC = () => {
   const [importPropertyOptions, setImportPropertyOptions] = useState<PropertySelectOption[]>([]);
   const [ownerOptions, setOwnerOptions] = useState<OwnerSelectOption[]>([]);
   const [referenceWarning, setReferenceWarning] = useState<string | null>(null);
+  const [lotTypeRates, setLotTypeRates] = useState<LotTypeRates>({});
   const [form] = Form.useForm();
   const [importForm] = Form.useForm<{ propertyIds: string[] }>();
   const [tenantForm] = Form.useForm<{
@@ -290,6 +295,10 @@ export const SyndicLots: React.FC = () => {
       ]);
       setSyndicate(syndicateData);
       setLots(lotData);
+      // Information annexe : sans le droit ou en cas d'échec, les lots restent utilisables sans montant affiché.
+      getLotTypeRates(effectiveTenantId, syndicId)
+        .then(view => setLotTypeRates(view.rates ?? {}))
+        .catch(() => setLotTypeRates({}));
       await loadReferenceData(effectiveTenantId);
     } catch (err: any) {
       setError(err.response?.data?.error || t('Impossible de charger les lots'));
@@ -371,6 +380,8 @@ export const SyndicLots: React.FC = () => {
 
   const sharesSum = useMemo(() => lots.reduce((sum, lot) => sum + lot.generalShares, 0), [lots]);
   const referenceShares = syndicate?.totalGeneralShares ?? null;
+  // Barème renseigné : les appels se calculent par type de lot, la somme des tantièmes n'a plus à être contrôlée.
+  const usesLotTypeRates = Object.keys(lotTypeRates).length > 0;
 
   const resetModalState = () => {
     setOpen(false);
@@ -491,7 +502,9 @@ export const SyndicLots: React.FC = () => {
   };
 
   // Avertissements non bloquants de l'API (total de référence des tantièmes) : le lot est enregistré.
+  // Sans objet quand la copropriété appelle ses charges selon le barème par type de lot.
   const showLotWarnings = (warnings?: string[]) => {
+    if (usesLotTypeRates) return;
     (warnings || []).forEach(warning => message.warning(warning, 8));
   };
 
@@ -524,7 +537,10 @@ export const SyndicLots: React.FC = () => {
         message.success(t('Lot mis à jour'));
         showLotWarnings(updated?.warnings);
       } else {
-        const created = await createSyndicateLot(effectiveTenantId, syndicId, payload as CreateSyndicateLotRequest);
+        const created = await createSyndicateLot(effectiveTenantId, syndicId, {
+          ...payload,
+          generalShares: payload.generalShares ?? DEFAULT_LOT_SHARES
+        } as CreateSyndicateLotRequest);
         message.success(t('Lot créé'));
         showLotWarnings(created?.warnings);
       }
@@ -661,7 +677,7 @@ export const SyndicLots: React.FC = () => {
           <>
             {referenceWarning ? <Alert type="warning" message={referenceWarning} showIcon /> : null}
 
-            {referenceShares !== null && sharesSum !== referenceShares ? (
+            {!usesLotTypeRates && referenceShares !== null && sharesSum !== referenceShares ? (
               <Alert
                 type="warning"
                 showIcon
@@ -712,6 +728,7 @@ export const SyndicLots: React.FC = () => {
             <Card title={t('Tableau des lots')} {...helpAnchor('lots-tableau')}>
               <LotTable
                 lots={lots}
+                lotTypeRates={lotTypeRates}
                 declaredPendingLotIds={declaredPendingLotIds}
                 showMobileHint
                 portalManageHref={`/tenant/${effectiveTenantId}/syndics/${syndicId}/profils-incidents`}
@@ -805,9 +822,13 @@ export const SyndicLots: React.FC = () => {
                 label={t('Tantièmes généraux')}
                 name="generalShares"
                 tooltip={t('0 tantième : le lot est inactif, exclu de la clé de répartition et des appels futurs.')}
-                rules={[{ required: true, message: t('Champ obligatoire') }]}
+                rules={editingLot ? [{ required: true, message: t('Champ obligatoire') }] : []}
               >
-                <InputNumber min={0} style={{ width: '100%' }} />
+                <InputNumber
+                  min={0}
+                  placeholder={editingLot ? undefined : String(DEFAULT_LOT_SHARES)}
+                  style={{ width: '100%' }}
+                />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>

@@ -114,4 +114,16 @@ describe('syndic-lot-payment-service (lot S2)', () => {
       params: { year: 2026 }
     });
   });
+
+  it('getMonthlyTracking ajoute budgetId aux paramètres seulement quand un budget est choisi', async () => {
+    mockApiClient.get.mockResolvedValue({
+      data: { success: true, data: { year: 2026, currency: 'XOF', months: [], lots: [] } }
+    });
+
+    await getMonthlyTracking('tenant-1', 'syndic-1', 2026, 'budget-1');
+
+    expect(mockApiClient.get).toHaveBeenLastCalledWith('/tenants/tenant-1/syndics/syndic-1/suivi-mensuel', {
+      params: { year: 2026, budgetId: 'budget-1' }
+    });
+  });
 });

@@ -71,7 +71,14 @@ const sampleResult = {
     reference: null
   },
   allocations: [
-    { paymentId: '55555555-5555-4555-8555-555555555555', chargeCallId: CALL_A, period: '2026-01', amount: 20000, source: 'PAYMENT', callStatusAfter: 'PAID' }
+    {
+      paymentId: '55555555-5555-4555-8555-555555555555',
+      chargeCallId: CALL_A,
+      period: '2026-01',
+      amount: 20000,
+      source: 'PAYMENT',
+      callStatusAfter: 'PAID'
+    }
   ],
   advance: 5000,
   lotAdvanceBalance: 5000,
@@ -168,13 +175,31 @@ describe('lectures', () => {
     mockGetMonthly.mockResolvedValue({ year: 2026, months: [], lots: [] });
     const response = await request(app).get(`${BASE}/suivi-mensuel?year=2026`);
     expect(response.status).toBe(200);
-    expect(mockGetMonthly).toHaveBeenCalledWith(TENANT, SYNDIC, 2026);
+    expect(mockGetMonthly).toHaveBeenCalledWith(TENANT, SYNDIC, 2026, undefined);
 
     await request(app).get(`${BASE}/suivi-mensuel`);
-    expect(mockGetMonthly).toHaveBeenLastCalledWith(TENANT, SYNDIC, new Date().getUTCFullYear());
+    expect(mockGetMonthly).toHaveBeenLastCalledWith(TENANT, SYNDIC, new Date().getUTCFullYear(), undefined);
 
     expect((await request(app).get(`${BASE}/suivi-mensuel?year=abc`)).status).toBe(400);
     expect((await request(app).get(`${BASE}/suivi-mensuel?year=1999`)).status).toBe(400);
+  });
+
+  it('GET .../suivi-mensuel?budgetId=... transmet le budget, 400 si ce n est pas un UUID', async () => {
+    const budgetId = '3f0f3a0e-6b5c-4d58-9a39-0d1c6f2f9b11';
+    mockGetMonthly.mockResolvedValue({ year: 2026, months: [], lots: [] });
+    const response = await request(app).get(`${BASE}/suivi-mensuel?year=2026&budgetId=${budgetId}`);
+    expect(response.status).toBe(200);
+    expect(mockGetMonthly).toHaveBeenLastCalledWith(TENANT, SYNDIC, 2026, budgetId);
+
+    // Sans année, un budget donne son année au service (année non transmise) ; sans budget, l'année courante.
+    await request(app).get(`${BASE}/suivi-mensuel?budgetId=${budgetId}`);
+    expect(mockGetMonthly).toHaveBeenLastCalledWith(TENANT, SYNDIC, undefined, budgetId);
+
+    // Paramètre vide : aucun filtre.
+    await request(app).get(`${BASE}/suivi-mensuel?year=2026&budgetId=`);
+    expect(mockGetMonthly).toHaveBeenLastCalledWith(TENANT, SYNDIC, 2026, undefined);
+
+    expect((await request(app).get(`${BASE}/suivi-mensuel?year=2026&budgetId=nope`)).status).toBe(400);
   });
 
   it('404 sur une copropriete qui n est pas un UUID', async () => {

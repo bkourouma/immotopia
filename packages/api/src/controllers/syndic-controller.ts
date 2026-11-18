@@ -446,7 +446,9 @@ export const listChargeCallsHandler = asyncHandler(async (req: Request, res: Res
     period: criteria.period,
     status: criteria.status,
     search: criteria.search,
-    lotId: criteria.lotId
+    lotId: criteria.lotId,
+    budgetId: criteria.budgetId,
+    fundId: criteria.fundId
   };
 
   const [chargeCalls, summary] = await Promise.all([

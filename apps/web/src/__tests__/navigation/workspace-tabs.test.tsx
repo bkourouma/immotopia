@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { WorkspaceTabs } from '../../components/navigation/WorkspaceTabs';
@@ -134,6 +134,84 @@ describe('WorkspaceTabs', () => {
   it("n'affiche rien quand la liste d'onglets est vide", () => {
     const { container } = renderTabs('/tenant/t1/syndics/s1', []);
     expect(container).toBeEmptyDOMElement();
+  });
+});
+
+describe('WorkspaceTabs — défilement des onglets qui débordent', () => {
+  // jsdom ne mesure rien : on simule une barre de 300 px portant 1 000 px d'onglets.
+  const scrollBy = vi.fn();
+  let scrollLeft = 0;
+
+  beforeEach(() => {
+    scrollBy.mockReset();
+    scrollLeft = 0;
+    Object.defineProperty(HTMLElement.prototype, 'scrollWidth', { configurable: true, get: () => 1000 });
+    Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 300 });
+    Object.defineProperty(HTMLElement.prototype, 'scrollLeft', {
+      configurable: true,
+      get: () => scrollLeft,
+      set: (value: number) => {
+        scrollLeft = value;
+      }
+    });
+    Object.defineProperty(HTMLElement.prototype, 'scrollBy', { configurable: true, value: scrollBy });
+  });
+
+  afterEach(() => {
+    delete (HTMLElement.prototype as unknown as Record<string, unknown>).scrollWidth;
+    delete (HTMLElement.prototype as unknown as Record<string, unknown>).clientWidth;
+    delete (HTMLElement.prototype as unknown as Record<string, unknown>).scrollLeft;
+    delete (HTMLElement.prototype as unknown as Record<string, unknown>).scrollBy;
+  });
+
+  it('propose seulement la flèche de fin au début de la barre, et elle fait défiler vers la fin', async () => {
+    const user = userEvent.setup();
+    renderTabs('/tenant/t1/syndics/s1');
+
+    expect(screen.queryByTestId('workspace-tabs-scroll-start')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Voir les onglets suivants' }));
+
+    expect(scrollBy).toHaveBeenCalledWith({ left: 180, behavior: 'smooth' });
+  });
+
+  it('propose les deux flèches au milieu, puis seulement celle du début en bout de barre', () => {
+    scrollLeft = 200;
+    renderTabs('/tenant/t1/syndics/s1');
+    expect(screen.getByRole('button', { name: 'Voir les onglets précédents' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Voir les onglets suivants' })).toBeInTheDocument();
+
+    cleanup();
+    scrollLeft = 700; // 1000 - 300 : tout au bout
+    renderTabs('/tenant/t1/syndics/s1');
+    expect(screen.getByRole('button', { name: 'Voir les onglets précédents' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Voir les onglets suivants' })).not.toBeInTheDocument();
+  });
+
+  it('fait défiler vers la gauche physique pour « suivants » en RTL', async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={['/tenant/t1/syndics/s1']}>
+        <div dir="rtl">
+          <WorkspaceTabs items={ITEMS} ariaLabel="Sections de la copropriété" />
+        </div>
+      </MemoryRouter>
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Voir les onglets suivants' }));
+    expect(scrollBy).toHaveBeenCalledWith({ left: -180, behavior: 'smooth' });
+  });
+
+  it('garde les flèches hors de l’ordre de tabulation (le clavier a déjà les flèches du tablist)', () => {
+    renderTabs('/tenant/t1/syndics/s1');
+    expect(screen.getByTestId('workspace-tabs-scroll-end')).toHaveAttribute('tabindex', '-1');
+  });
+});
+
+describe('WorkspaceTabs — barre qui ne déborde pas', () => {
+  it("n'affiche aucune flèche quand tous les onglets tiennent", () => {
+    renderTabs('/tenant/t1/syndics/s1');
+    expect(screen.queryByTestId('workspace-tabs-scroll-start')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('workspace-tabs-scroll-end')).not.toBeInTheDocument();
   });
 });
 

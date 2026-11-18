@@ -97,7 +97,11 @@ describe('comptes de démonstration par pack', () => {
   });
 
   it('garde les comptes historiques, sans doublon d’adresse ni d’identifiant', () => {
-    expect(LEGACY_GROUPS.map(group => group.id)).toEqual(['385a1e76-ac08-4db5-9802-8b2ddfb1672b']);
+    // « presentation-locative » : portails de la démonstration de gestion locative (scripts de présentation).
+    expect(LEGACY_GROUPS.map(group => group.id)).toEqual([
+      'presentation-locative',
+      '385a1e76-ac08-4db5-9802-8b2ddfb1672b'
+    ]);
     const emails = DEV_TENANT_ACCOUNTS.flatMap(group => group.accounts.map(account => account.email.toLowerCase()));
     expect(new Set(emails).size).toBe(emails.length);
     const ids = DEV_TENANT_ACCOUNTS.map(group => group.id);

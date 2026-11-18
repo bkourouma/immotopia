@@ -34,7 +34,7 @@ import {
 import { useTabParam } from '../../components/syndics/finances/url-params';
 import { useLocalListSearch } from '../../utils/list-search';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
-import { formatLotLabel } from '../../utils/syndic-lot-label';
+import { getLotTypeLabel } from '../../utils/syndic-lot-label';
 import { t } from '../../i18n/t';
 import { useFormFieldModes } from '../../hooks/useFormFieldModes';
 import { HelpSectionTitle } from '../../help';
@@ -142,9 +142,37 @@ function sumFormLines(lines: BudgetLineFormValue[] | undefined): number {
   return Math.round(total * 100) / 100;
 }
 
+/**
+ * Budgets du sélecteur des onglets Répartition et Campagnes : information annexe, son échec laisse le
+ * sélecteur vide au lieu de bloquer l'onglet.
+ */
+async function listBudgetsForFilter(tenantId: string, syndicId: string): Promise<SyndicateBudget[]> {
+  try {
+    const data = await listBudgets(tenantId, syndicId);
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Budget créé en dernier : celui que le tableau des allocations montre tant qu'on n'en choisit pas un autre. */
+function latestCreatedBudget(budgets: SyndicateBudget[]): SyndicateBudget | null {
+  return budgets.reduce<SyndicateBudget | null>(
+    (latest, item) => (!latest || item.createdAt > latest.createdAt ? item : latest),
+    null
+  );
+}
+
+/** « A-101 · Appartement » : le numéro et le type suffisent ici, les tantièmes ne servent pas à la répartition. */
 function buildLotDisplayName(allocation: BudgetAllocation, lotDirectoryEntry?: SyndicateLot): string {
   const lot = allocation.lot || lotDirectoryEntry;
-  return formatLotLabel(lot, allocation.lotId);
+  const lotNumber = lot?.lotNumber?.trim() || allocation.lotId || t('Lot inconnu');
+  return [lotNumber, getLotTypeLabel(lot?.lotType)].filter(Boolean).join(' · ');
+}
+
+/** Propriétaires du lot tels que les calcule l'API (indivision comprise), repli sur le copropriétaire du lot. */
+function buildLotOwnersLabel(lot?: SyndicateLot): string {
+  return lot?.ownersLabel?.trim() || lot?.coowner?.fullName?.trim() || t('Non renseigné');
 }
 
 // Accesseurs de la recherche locale : constantes de module, pour garder le filtrage mémoïsé.
@@ -175,8 +203,8 @@ export const SyndicBudgets: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedBudget, setSelectedBudget] = useState<SyndicateBudget | null>(null);
-  const [allocationBudgetLabel, setAllocationBudgetLabel] = useState<string | null>(null);
-  const [allocationRows, setAllocationRows] = useState<BudgetAllocation[]>([]);
+  // Budget dont le tableau « Répartition des lots » affiche les allocations ; `null` = le dernier créé.
+  const [filterBudgetId, setFilterBudgetId] = useState<string | null>(null);
 
   const [openBudgetModal, setOpenBudgetModal] = useState(false);
   const [openGenerateModal, setOpenGenerateModal] = useState(false);
@@ -215,13 +243,23 @@ export const SyndicBudgets: React.FC = () => {
           setBudgets(budgetsData);
           setLinesBudget(current => (current ? (budgetsData.find(item => item.id === current.id) ?? null) : null));
         } else if (tab === 'repartition') {
-          const lotsData = await listSyndicateLots(effectiveTenantId, syndicId);
+          // Le sélecteur de budget a besoin de la liste des budgets, en plus des lots.
+          const [lotsData, budgetsData] = await Promise.all([
+            listSyndicateLots(effectiveTenantId, syndicId),
+            listBudgetsForFilter(effectiveTenantId, syndicId)
+          ]);
           if (cancelled) return;
           setLots(lotsData);
+          setBudgets(budgetsData);
         } else {
-          const batchesData = await listChargeCallBatches(effectiveTenantId, syndicId);
+          // Idem pour le filtre par budget des campagnes d'appels.
+          const [batchesData, budgetsData] = await Promise.all([
+            listChargeCallBatches(effectiveTenantId, syndicId),
+            listBudgetsForFilter(effectiveTenantId, syndicId)
+          ]);
           if (cancelled) return;
           setBatches(batchesData);
+          setBudgets(budgetsData);
         }
       } catch (err: any) {
         if (!cancelled) setError(err.response?.data?.error || t('Impossible de charger les budgets'));
@@ -240,6 +278,34 @@ export const SyndicBudgets: React.FC = () => {
   const reload = () => setRefresh(value => value + 1);
   /** Relit l'onglet visé : sur place s'il est actif, sinon en y basculant (le changement d'onglet recharge). */
   const reloadTab = (target: (typeof BUDGET_TABS)[number]) => (tab === target ? reload() : setTab(target));
+
+  const filterBudget = useMemo(
+    () => budgets.find(item => item.id === filterBudgetId) ?? latestCreatedBudget(budgets),
+    [budgets, filterBudgetId]
+  );
+  const allocationRows: BudgetAllocation[] = filterBudget?.allocations ?? [];
+  const budgetFilterOptions = useMemo(
+    () => budgets.map(item => ({ value: item.id, label: `${item.label} (${item.fiscalYear})` })),
+    [budgets]
+  );
+  // Les campagnes saisies à la main (sans budget) restent toujours visibles ; les autres suivent le budget choisi.
+  const visibleBatches = useMemo(
+    () => (filterBudget ? batches.filter(batch => !batch.budgetId || batch.budgetId === filterBudget.id) : batches),
+    [batches, filterBudget]
+  );
+  // Même sélecteur pour les allocations et les campagnes : un seul budget affiché à la fois.
+  const budgetFilterSelect =
+    budgetFilterOptions.length > 0 ? (
+      <Select
+        aria-label={t('Budget')}
+        style={{ minWidth: 280 }}
+        showSearch
+        optionFilterProp="label"
+        value={filterBudget?.id}
+        options={budgetFilterOptions}
+        onChange={setFilterBudgetId}
+      />
+    ) : null;
 
   const lotsById = useMemo(
     () =>
@@ -290,7 +356,7 @@ export const SyndicBudgets: React.FC = () => {
     text: allocationText
   });
 
-  const batchSearch = useLocalListSearch<ChargeCallBatch>(batches, {
+  const batchSearch = useLocalListSearch<ChargeCallBatch>(visibleBatches, {
     paramPrefix: 'cam',
     ariaLabel: t("Rechercher dans les campagnes d'appels"),
     criteria: [
@@ -353,7 +419,7 @@ export const SyndicBudgets: React.FC = () => {
     setSubmitting(true);
     try {
       const formLines: BudgetLineFormValue[] = values.lines || [];
-      await createBudget(effectiveTenantId, syndicId, {
+      const created = await createBudget(effectiveTenantId, syndicId, {
         fiscalYear: values.fiscalYear,
         label: values.label,
         totalAmount: sumFormLines(formLines),
@@ -367,6 +433,7 @@ export const SyndicBudgets: React.FC = () => {
         }))
       });
       message.success(t('Budget créé'));
+      setFilterBudgetId(created.id);
       closeBudgetModal();
       reloadTab('budgets');
     } catch (err: any) {
@@ -445,9 +512,7 @@ export const SyndicBudgets: React.FC = () => {
     setSubmitting(true);
     try {
       const allocations = await recomputeBudgetAllocations(effectiveTenantId, syndicId, budgetId);
-      const budget = budgets.find(item => item.id === budgetId) || null;
-      setAllocationRows(allocations);
-      setAllocationBudgetLabel(budget ? `${budget.label} (${budget.fiscalYear})` : budgetId);
+      setFilterBudgetId(budgetId);
       message.success(t('Allocations recalculées ({{length}} lot(s))', { length: allocations.length }));
       // Le détail s'affiche dans l'onglet « Répartition des lots » ; les budgets se relisent au retour.
       setTab('repartition');
@@ -491,6 +556,7 @@ export const SyndicBudgets: React.FC = () => {
         periodIndex
       });
       message.success(t("Campagne d'appels générée"));
+      setFilterBudgetId(selectedBudget.id);
       setOpenGenerateModal(false);
       setSelectedBudget(null);
       generateForm.resetFields();
@@ -518,6 +584,8 @@ export const SyndicBudgets: React.FC = () => {
         period: values.period,
         dueDate: new Date(values.dueDate).toISOString(),
         batchType: values.batchType,
+        // Rattachée au budget affiché, sinon elle disparaîtrait du tableau filtré.
+        budgetId: filterBudget?.id,
         totalAmount: values.totalAmount,
         currency: values.currency || 'XOF'
       });
@@ -636,16 +704,6 @@ export const SyndicBudgets: React.FC = () => {
                               <Button size="small" onClick={() => setLinesBudget(budget)}>
                                 {t('Postes et fonds')}
                               </Button>
-                              <Button
-                                size="small"
-                                disabled={!budget.allocations || budget.allocations.length === 0}
-                                onClick={() => {
-                                  setAllocationRows(budget.allocations || []);
-                                  setAllocationBudgetLabel(`${budget.label} (${budget.fiscalYear})`);
-                                }}
-                              >
-                                {t('Voir allocations')}
-                              </Button>
                               {!isClosed && (
                                 <Button
                                   size="small"
@@ -681,13 +739,7 @@ export const SyndicBudgets: React.FC = () => {
               label: t('Répartition des lots'),
               children: (
                 <>
-                  <Paragraph strong style={{ marginBottom: 12 }}>
-                    {allocationBudgetLabel
-                      ? t('Répartition des lots - {{allocationBudgetLabel}}', {
-                          allocationBudgetLabel: allocationBudgetLabel
-                        })
-                      : t('Répartition des lots')}
-                  </Paragraph>
+                  {budgetFilterSelect ? <div style={{ marginBottom: 12 }}>{budgetFilterSelect}</div> : null}
                   <Table
                     {...allocationSearch.tableProps}
                     helpId="syndic.budgets.liste.repartition"
@@ -700,12 +752,16 @@ export const SyndicBudgets: React.FC = () => {
                     locale={
                       allocationSearch.isFiltered
                         ? undefined
-                        : { emptyText: t('Cliquez sur Répartir ou Voir allocations pour afficher le détail.') }
+                        : { emptyText: t('Aucune allocation pour ce budget : cliquez sur Répartir pour la calculer.') }
                     }
                     columns={[
                       {
                         title: t('Lot'),
                         render: (_, row) => buildLotDisplayName(row, row.lotId ? lotsById[row.lotId] : undefined)
+                      },
+                      {
+                        title: t('Copropriétaires'),
+                        render: (_, row) => buildLotOwnersLabel(row.lotId ? lotsById[row.lotId] : undefined)
                       },
                       {
                         title: t('Total alloué'),
@@ -730,6 +786,7 @@ export const SyndicBudgets: React.FC = () => {
               label: t("Campagnes d'appels"),
               children: (
                 <>
+                  {budgetFilterSelect ? <div style={{ marginBottom: 12 }}>{budgetFilterSelect}</div> : null}
                   <Table
                     {...batchSearch.tableProps}
                     helpId="syndic.budgets.liste.campagnes"

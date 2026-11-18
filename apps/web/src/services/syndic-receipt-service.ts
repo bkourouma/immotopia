@@ -30,6 +30,7 @@ function toParams(query: ReceiptListParams): Record<string, unknown> {
     backfilled: query.backfilled === undefined ? undefined : query.backfilled,
     lotId: query.lotId || undefined,
     contactId: query.contactId || undefined,
+    budgetId: query.budgetId || undefined,
     kind: query.kind || undefined,
     from: query.from || undefined,
     to: query.to || undefined,

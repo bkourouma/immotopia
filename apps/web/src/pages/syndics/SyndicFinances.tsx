@@ -163,6 +163,7 @@ export const SyndicFinances: React.FC = () => {
 
   const fundRows = useMemo(() => buildFundRows(summary), [summary]);
   const fundsTable = useLocalTable(fundRows, 10);
+  const fundOptions = useMemo(() => fundRows.map(fund => ({ value: fund.id, label: fund.name })), [fundRows]);
 
   const fundColumns: ColumnsType<FundRow> = [
     { title: t('Fonds'), dataIndex: 'name', key: 'name' },
@@ -273,7 +274,7 @@ export const SyndicFinances: React.FC = () => {
     {
       key: 'appels',
       label: t('Détail des appels de fonds'),
-      children: ready ? <ChargeCallsTab tenantId={tenantKey} syndicId={syndicKey} /> : null
+      children: ready ? <ChargeCallsTab tenantId={tenantKey} syndicId={syndicKey} fundOptions={fundOptions} /> : null
     },
     {
       key: 'paiements',

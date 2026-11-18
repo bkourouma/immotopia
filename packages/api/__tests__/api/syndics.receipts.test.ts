@@ -60,6 +60,7 @@ const TENANT = 'tenant-1';
 const SYNDIC = '11111111-1111-4111-8111-111111111111';
 const LOT = '22222222-2222-4222-8222-222222222222';
 const RECEIPT = '33333333-3333-4333-8333-333333333333';
+const BUDGET = '44444444-4444-4444-8444-444444444444';
 const BASE = `/api/tenants/${TENANT}/syndics/${SYNDIC}`;
 
 const view = {
@@ -90,7 +91,7 @@ describe('GET .../quittances', () => {
   it('200 avec la liste, filtres convertis, sans chemin disque', async () => {
     mockList.mockResolvedValue(page);
     const response = await request(app).get(
-      `${BASE}/quittances?kind=QUITTANCE&lotId=${LOT}&contactId=contact-1&from=2026-01-01&to=2026-03-31&page=2&limit=10`
+      `${BASE}/quittances?kind=QUITTANCE&lotId=${LOT}&contactId=contact-1&budgetId=${BUDGET}&from=2026-01-01&to=2026-03-31&page=2&limit=10`
     );
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ success: true, data: page });
@@ -99,6 +100,7 @@ describe('GET .../quittances', () => {
       kind: 'QUITTANCE',
       lotId: LOT,
       contactId: 'contact-1',
+      budgetId: BUDGET,
       from: new Date('2026-01-01T00:00:00.000Z'),
       to: new Date('2026-03-31T00:00:00.000Z'),
       page: 2,
@@ -110,6 +112,7 @@ describe('GET .../quittances', () => {
     for (const query of [
       'kind=AUTRE',
       'lotId=pas-un-uuid',
+      'budgetId=pas-un-uuid',
       'from=2026-02-30',
       'from=2026-03-01&to=2026-01-01',
       'limit=500',

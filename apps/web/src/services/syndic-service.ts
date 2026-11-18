@@ -306,6 +306,10 @@ export interface ChargeCallsPageQuery extends ListWithPaginationQuery {
   /** Recherche libre : référence / libellé de l'appel, numéro de lot, nom du copropriétaire. */
   search?: string;
   lotId?: string;
+  /** Appels des lots d'appels rattachés à ce budget. */
+  budgetId?: string;
+  /** Appels qui alimentent ce fonds (affectés ou issus d'un poste de budget). */
+  fundId?: string;
 }
 
 /**
@@ -343,7 +347,7 @@ export async function listChargeCallsPage(
 export async function listAllChargeCallsWithSummary(
   tenantId: string,
   syndicId: string,
-  filters?: { period?: string; status?: string }
+  filters?: { period?: string; status?: string; budgetId?: string }
 ): Promise<{ items: ChargeCall[]; summary: ChargeCallSummary }> {
   const limit = 100;
   let items: ChargeCall[] = [];
@@ -381,7 +385,7 @@ export async function listAllChargeCallsWithSummary(
 export async function listAllChargeCalls(
   tenantId: string,
   syndicId: string,
-  filters?: { period?: string; status?: string }
+  filters?: { period?: string; status?: string; fundId?: string }
 ): Promise<ChargeCall[]> {
   const limit = 100;
   let page = 1;

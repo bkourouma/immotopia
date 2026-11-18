@@ -28,6 +28,7 @@ vi.mock('../../services/syndic-service', () => ({
   },
   createChargeCall: (...args: unknown[]) => createChargeCall(...args),
   listSyndicateFunds: vi.fn(async () => [{ id: 'fund-1', name: 'Fonds travaux' }]),
+  listBudgets: vi.fn(async () => []),
   assignChargeCallFund: vi.fn()
 }));
 

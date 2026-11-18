@@ -80,7 +80,9 @@ if [ -n "$WEB_TS_FILES" ]; then
   fi
 
   mapfile -t WEB_TS_ARRAY <<< "$WEB_TS_FILES"
-  ESLINT_WEB_OUT="$(node node_modules/eslint/bin/eslint.js "${WEB_TS_ARRAY[@]}" --quiet 2>&1)"
+  # Par lots : une fusion indexe des centaines de fichiers et dépasse la
+  # longueur maximale de commande de Windows en un seul appel.
+  ESLINT_WEB_OUT="$(printf '%s\n' "${WEB_TS_ARRAY[@]}" | xargs -n 100 node node_modules/eslint/bin/eslint.js --quiet 2>&1)"
   ESLINT_WEB_STATUS=$?
   if [ "$ESLINT_WEB_STATUS" -ne 0 ]; then
     {
@@ -108,7 +110,7 @@ if [ -n "$API_TS_FILES" ]; then
     fi
   done
 
-  ESLINT_API_OUT="$(node node_modules/eslint/bin/eslint.js "${API_TS_ARRAY[@]}" --quiet 2>&1)"
+  ESLINT_API_OUT="$(printf '%s\n' "${API_TS_ARRAY[@]}" | xargs -n 100 node node_modules/eslint/bin/eslint.js --quiet 2>&1)"
   ESLINT_API_STATUS=$?
 
   if [ -n "$FILTERED_TSC" ] || [ "$ESLINT_API_STATUS" -ne 0 ]; then

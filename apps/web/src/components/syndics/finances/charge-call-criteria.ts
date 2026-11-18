@@ -13,8 +13,12 @@ const CHARGE_CALL_STATUSES = ['PENDING', 'PARTIAL', 'PAID', 'OVERDUE'] as const;
  * libellé libre (`2026-T1`, `2026-03-R2`…) dont la liste n'est pas connue ; le
  * champ libre, lui, cherche déjà la période par « contient ».
  */
-export function chargeCallCriteria(lotOptions: readonly SearchOption[]): SearchCriterion[] {
-  return [
+export function chargeCallCriteria(
+  lotOptions: readonly SearchOption[],
+  extra: { budgetOptions?: readonly SearchOption[]; fundOptions?: readonly SearchOption[] } = {}
+): SearchCriterion[] {
+  const { budgetOptions, fundOptions } = extra;
+  const criteria: SearchCriterion[] = [
     {
       key: 'q',
       type: 'text',
@@ -37,4 +41,26 @@ export function chargeCallCriteria(lotOptions: readonly SearchOption[]): SearchC
       placeholder: t('Tous les lots')
     }
   ];
+  // Budget des appels affichés (et des cartes) ; vide = tous les appels, y compris ceux sans budget.
+  if (budgetOptions) {
+    criteria.push({
+      key: 'budgetId',
+      type: 'select',
+      label: t('Budget'),
+      primary: true,
+      options: budgetOptions,
+      placeholder: t('Filtrer par budget')
+    });
+  }
+  // Appels qui alimentent ce fonds : affectés au fonds, ou issus d'un budget dont un poste l'alimente.
+  if (fundOptions) {
+    criteria.push({
+      key: 'fundId',
+      type: 'select',
+      label: t('Fonds'),
+      options: fundOptions,
+      placeholder: t('Filtrer par fonds')
+    });
+  }
+  return criteria;
 }

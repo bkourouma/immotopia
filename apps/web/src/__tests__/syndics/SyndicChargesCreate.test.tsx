@@ -29,6 +29,7 @@ vi.mock('../../services/syndic-service', () => ({
   createChargeCall: (...args: unknown[]) => createChargeCall(...args),
   // Fonds de la copropriete : aucun ici, le champ « Fonds alimente » reste masque.
   listSyndicateFunds: vi.fn(async () => []),
+  listBudgets: vi.fn(async () => []),
   assignChargeCallFund: vi.fn()
 }));
 
