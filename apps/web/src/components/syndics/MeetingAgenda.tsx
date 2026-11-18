@@ -22,7 +22,7 @@ const { Paragraph, Text, Title } = Typography;
  * visible corresponde toujours à qui votait réellement.
  */
 function lotLabelWithVoters(lot: MeetingLot | undefined, fallbackReference?: string | null): string {
-  return `${formatLotLabel(lot, fallbackReference)} — ${voterNames(lot)}`;
+  return `${formatLotLabel(lot, fallbackReference, { withShares: true })} — ${voterNames(lot)}`;
 }
 
 interface MeetingAgendaProps {

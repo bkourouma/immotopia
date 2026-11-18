@@ -35,6 +35,7 @@ import {
   assignChargeCallFund,
   createChargeCall,
   getSyndicate,
+  listBudgets,
   listChargeCallsPage,
   type ChargeCallsPageQuery,
   listSyndicateFunds,
@@ -51,6 +52,7 @@ import {
   CreateChargeCallRequest,
   LotPaymentResult,
   Syndicate,
+  SyndicateBudget,
   SyndicateFund,
   SyndicateLot
 } from '../../types/syndic-types';
@@ -98,10 +100,15 @@ export const SyndicCharges: React.FC = () => {
   // (`q`, `status`, `lotId`, `page`, `limit`). Les options du critère « Lot » sont la liste
   // déjà chargée des lots de la copropriété.
   const lotSelectOptions = useMemo(() => lots.map(lot => ({ value: lot.id, label: formatLotLabel(lot) })), [lots]);
+  const [budgets, setBudgets] = useState<SyndicateBudget[]>([]);
+  const budgetOptions = useMemo(
+    () => budgets.map(budget => ({ value: budget.id, label: `${budget.label} (${budget.fiscalYear})` })),
+    [budgets]
+  );
   const search = useListSearch({
     ariaLabel: t('Rechercher dans les appels de charges'),
     apiNames: { sort: false },
-    criteria: chargeCallCriteria(lotSelectOptions)
+    criteria: chargeCallCriteria(lotSelectOptions, { budgetOptions })
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -167,6 +174,22 @@ export const SyndicCharges: React.FC = () => {
     overdueCount: 0
   };
   const chargesError = chargesQuery.isError ? t('Impossible de charger les appels de charges') : null;
+
+  // Liste des budgets du filtre : information annexe, son échec laisse simplement le filtre vide.
+  useEffect(() => {
+    if (!effectiveTenantId || !syndicId) return;
+    let cancelled = false;
+    listBudgets(effectiveTenantId, syndicId)
+      .then(data => {
+        if (!cancelled) setBudgets(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        if (!cancelled) setBudgets([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveTenantId, syndicId]);
 
   const loadDeclaredPending = async () => {
     if (!effectiveTenantId || !syndicId) return;

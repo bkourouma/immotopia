@@ -52,11 +52,11 @@ const HeaderActions: React.FC<{ showAssistant: boolean; isDesktop: boolean }> = 
         <Button
           type="text"
           icon={<RobotOutlined />}
-          aria-label={assistantTranslation('Demander à ImmoCopilot')}
-          aria-keyshortcuts="Control+K Meta+K"
+          aria-label={assistantTranslation(t('Demander à ImmoCopilot'))}
+          aria-keyshortcuts={t('Control+K Meta+K')}
           onClick={() => window.dispatchEvent(new Event('immotopia:ask-assistant'))}
         >
-          {isDesktop ? assistantTranslation('Demander à ImmoCopilot') : undefined}
+          {isDesktop ? assistantTranslation(t('Demander à ImmoCopilot')) : undefined}
         </Button>
       )}
       <NotificationBell scope={scope} />

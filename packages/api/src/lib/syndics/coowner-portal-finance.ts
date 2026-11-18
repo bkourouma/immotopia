@@ -18,6 +18,7 @@ import { isoDay, paymentMethodLabel } from './charge-receipt-snapshot';
 import { ownedChargeCallsWhere, type CoOwnerLotScope, type CoOwnerPortalScope } from './coowner-portal';
 import type { CoOwnerPaymentsQuery, CoOwnerReceiptsQuery } from './coowner-portal-schemas';
 import { lastDayOfMonth, utcDay } from './period';
+import { compareLotNumbers } from './lot-order';
 
 /**
  * Portail copropriétaire enrichi (lot S5, besoin 2) — paiements, reçus et
@@ -100,11 +101,11 @@ export function visibleReceiptsWhere(
 
 async function loadScopedLots(scope: CoOwnerPortalScope, lotIds: string[]) {
   if (lotIds.length === 0) return [];
-  return prisma.syndicateLot.findMany({
+  const lots = await prisma.syndicateLot.findMany({
     where: { id: { in: lotIds }, syndicateId: { in: scope.syndicateIds } },
-    select: { id: true, syndicateId: true, lotNumber: true },
-    orderBy: { lotNumber: 'asc' }
+    select: { id: true, syndicateId: true, lotNumber: true }
   });
+  return lots.sort(compareLotNumbers);
 }
 
 async function loadSyndicateNames(scope: CoOwnerPortalScope, syndicateIds: string[]) {

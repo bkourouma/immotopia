@@ -11,6 +11,7 @@ import {
 import { readBrandingImage, type BrandingImage } from '../documents/branding-storage';
 import { contactDisplayName } from './charge-receipt-snapshot';
 import type { CoOwnerPortalScope } from './coowner-portal';
+import { compareLotNumbers } from './lot-order';
 
 /**
  * Fiche d'une copropriété vue du portail copropriétaire (lot S5).
@@ -115,12 +116,13 @@ export async function getCoOwnerSyndicate(scope: CoOwnerPortalScope, syndicateId
     prisma.syndicateLot.count({ where: { syndicateId: syndicate.id } }),
     prisma.syndicateLot.findMany({
       where: { syndicateId: syndicate.id, id: { in: scope.lotIds } },
-      select: { id: true, lotNumber: true, lotType: true },
-      orderBy: { lotNumber: 'asc' }
+      select: { id: true, lotNumber: true, lotType: true }
     }),
     loadIssuer(scope.tenantId, syndicate.mandatingAgencyId),
     loadSyndicContact(scope.tenantId, syndicate.syndicManagerId)
   ]);
+
+  myLots.sort(compareLotNumbers);
 
   return {
     id: syndicate.id,

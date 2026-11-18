@@ -1,10 +1,16 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Card, Pagination, Space, Spin, Tooltip, Typography } from 'antd';
+import { Alert, Card, Pagination, Select, Space, Spin, Tag, Tooltip, Typography } from 'antd';
 import { formatMoney, ListSearch, MoneyValue, StateBlock } from '../../components/primitives';
 import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion } from '../../utils/list-search';
 import { getMonthlyTracking } from '../../services/syndic-lot-payment-service';
-import { MonthlyTracking, MonthlyTrackingLotRow, MonthlyTrackingStatus } from '../../types/syndic-types';
+import { listBudgets } from '../../services/syndic-service';
+import {
+  MonthlyTracking,
+  MonthlyTrackingLotRow,
+  MonthlyTrackingStatus,
+  SyndicateBudget
+} from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
 import { displayCurrency } from '../../utils/syndic-currency';
@@ -54,6 +60,14 @@ const STATUS_CONFIG: Record<MonthlyTrackingStatus, { color: string; textColor: s
     NONE: { color: 'transparent', textColor: 'var(--text-secondary, #999)', label: t('—') }
   }));
 
+/** Budget créé en dernier : celui que la page affiche tant qu'on n'en choisit pas un autre. */
+function latestCreatedBudget(budgets: SyndicateBudget[]): SyndicateBudget | null {
+  return budgets.reduce<SyndicateBudget | null>(
+    (latest, item) => (!latest || item.createdAt > latest.createdAt ? item : latest),
+    null
+  );
+}
+
 // Statuts proposés au critère : NONE (« — », aucun appel ce mois-ci) n'est pas un statut à chercher.
 const STATUTS_RECHERCHABLES: MonthlyTrackingStatus[] = ['PAID', 'PARTIAL', 'DUE', 'OVERDUE'];
 
@@ -64,20 +78,38 @@ const ACCESSEURS = {
   statut: (row: MonthlyTrackingLotRow) => row.months.map(cell => cell.status)
 };
 
-function yearRange(current: number): number[] {
-  const years: number[] = [];
-  for (let year = current - 3; year <= current + 1; year += 1) {
-    years.push(year);
-  }
-  return years;
-}
-
 export const SyndicMonthlyTracking: React.FC = () => {
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
-  const [year, setYear] = useState(() => new Date().getFullYear());
+  // Budget affiché : le dernier créé par défaut. Vide seulement quand la copropriété n'a aucun budget.
+  const [budgetId, setBudgetId] = useState('');
+  const [budgets, setBudgets] = useState<SyndicateBudget[]>([]);
+  const [budgetsLoaded, setBudgetsLoaded] = useState(false);
   const [tracking, setTracking] = useState<MonthlyTracking | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Liste des budgets : la grille attend sa réponse pour savoir quel budget afficher. Son échec laisse
+  // simplement la grille de l'année courante, sans filtre.
+  useEffect(() => {
+    if (!effectiveTenantId || !syndicId) return;
+    let cancelled = false;
+    listBudgets(effectiveTenantId, syndicId)
+      .then(data => {
+        if (cancelled) return;
+        const list = Array.isArray(data) ? data : [];
+        setBudgets(list);
+        setBudgetId(current => current || latestCreatedBudget(list)?.id || '');
+      })
+      .catch(() => {
+        if (!cancelled) setBudgets([]);
+      })
+      .finally(() => {
+        if (!cancelled) setBudgetsLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveTenantId, syndicId]);
 
   useEffect(() => {
     if (!effectiveTenantId || !syndicId) {
@@ -85,10 +117,12 @@ export const SyndicMonthlyTracking: React.FC = () => {
       setError(t('Paramètres suivi mensuel manquants'));
       return;
     }
+    if (!budgetsLoaded) return;
     let cancelled = false;
     setLoading(true);
     setError(null);
-    getMonthlyTracking(effectiveTenantId, syndicId, year)
+    // L'année n'est pas demandée : l'API la déduit du budget (celle de ses appels).
+    getMonthlyTracking(effectiveTenantId, syndicId, undefined, budgetId || undefined)
       .then(data => {
         if (!cancelled) setTracking(data);
       })
@@ -101,9 +135,12 @@ export const SyndicMonthlyTracking: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [effectiveTenantId, syndicId, year]);
+  }, [effectiveTenantId, syndicId, budgetsLoaded, budgetId]);
 
-  const years = useMemo(() => yearRange(new Date().getFullYear()), []);
+  const budgetOptions = useMemo(
+    () => budgets.map(budget => ({ value: budget.id, label: `${budget.label} (${budget.fiscalYear})` })),
+    [budgets]
+  );
   const currency = tracking?.currency;
 
   const lots = useMemo(() => tracking?.lots ?? [], [tracking]);
@@ -145,21 +182,21 @@ export const SyndicMonthlyTracking: React.FC = () => {
           </Paragraph>
         </Space>
 
-        <label>
-          <Text style={{ marginInlineEnd: 8 }}>{t('Exercice')}</Text>
-          <select
-            aria-label={t('Exercice')}
-            value={year}
-            onChange={event => setYear(Number(event.target.value))}
-            style={{ padding: '4px 8px', borderRadius: 6 }}
-          >
-            {years.map(candidate => (
-              <option key={candidate} value={candidate}>
-                {candidate}
-              </option>
-            ))}
-          </select>
-        </label>
+        {budgetOptions.length > 0 ? (
+          <Space size={8}>
+            <Text>{t('Budget')}</Text>
+            <Select
+              aria-label={t('Budget')}
+              style={{ minWidth: 280 }}
+              showSearch
+              optionFilterProp="label"
+              value={budgetId}
+              options={budgetOptions}
+              onChange={setBudgetId}
+            />
+            {tracking ? <Tag>{tracking.year}</Tag> : null}
+          </Space>
+        ) : null}
       </div>
 
       {error ? <Alert type="error" message={error} showIcon /> : null}

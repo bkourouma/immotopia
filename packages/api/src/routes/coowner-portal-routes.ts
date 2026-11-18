@@ -11,6 +11,7 @@ import {
   clientIpKey
 } from '../middleware/rate-limit-middleware';
 import {
+  castCoOwnerVoteHandler,
   downloadCoOwnerDocumentHandler,
   getCoOwnerLotAccountHandler,
   issueCoOwnerMeetingAccessHandler,
@@ -70,7 +71,7 @@ const coOwnerOnlinePaymentStatusLimiter = onlinePaymentLimiter('status', 90);
 
 /**
  * Portail copropriétaire, monté sur `/api/portal/copropriete` (app.ts).
- * Lecture seule ; chaque route passe par `requireCoOwnerPortalAccess`.
+ * Lecture seule, hors vote sur une résolution ; chaque route passe par `requireCoOwnerPortalAccess`.
  * Comme les deux autres portails, hors abonnement (route-features, D8).
  */
 const router = Router();
@@ -86,6 +87,9 @@ router.get('/appels/:chargeId/avis', coOwnerChargeNoticeRateLimiter, downloadCoO
 router.get('/documents', listCoOwnerDocumentsHandler);
 router.get('/documents/:documentId/fichier', downloadCoOwnerDocumentHandler);
 router.get('/assemblees', listCoOwnerMeetingsHandler);
+// Vote en ligne sur une résolution d'une assemblée ouverte, pour un lot du copropriétaire.
+router.put('/resolutions/:resolutionId/vote', castCoOwnerVoteHandler);
+
 // Spec 043 : lien personnel pour rejoindre l'AG en direct (page publique /ag-direct).
 router.post('/assemblees/:meetingId/acces', coOwnerMeetingAccessRateLimiter, issueCoOwnerMeetingAccessHandler);
 

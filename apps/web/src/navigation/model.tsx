@@ -5,6 +5,7 @@ import {
   BankOutlined,
   BellOutlined,
   BuildOutlined,
+  CalendarOutlined,
   ContactsOutlined,
   CreditCardOutlined,
   DashboardOutlined,
@@ -630,21 +631,23 @@ function buildNavigation(): Record<PersonaId, PersonaNav> {
             // copropriété, la décrire, gérer son argent, la faire voter. Le
             // détail vit dans les onglets de SyndicWorkspaceLayout ; les clés
             // réutilisent les anciennes pour garder les réglages de menu des rôles.
-            { key: 'syndics-list', label: t('Copropriétés'), href: '/tenant/:tenantId/syndics' },
+            // L'entrée « Copropriété » (fiche) a été retirée : la fiche et ses
+            // écrans de description allument « Copropriétés ».
             {
-              key: 'syndics-mandating-agencies',
-              label: t('Agences mandantes'),
-              href: '/tenant/:tenantId/syndics/mandants'
-            },
-            {
-              key: 'syndics-detail',
-              label: t('Copropriété'),
-              href: '/tenant/:tenantId/syndics/:syndicId',
+              key: 'syndics-list',
+              label: t('Copropriétés'),
+              href: '/tenant/:tenantId/syndics',
               activeFor: [
+                '/tenant/:tenantId/syndics/:syndicId',
                 '/tenant/:tenantId/syndics/:syndicId/lots',
                 '/tenant/:tenantId/syndics/:syndicId/prestataires',
                 '/tenant/:tenantId/syndics/:syndicId/profils-incidents'
               ]
+            },
+            {
+              key: 'syndics-mandating-agencies',
+              label: t('Agences mandantes'),
+              href: '/tenant/:tenantId/syndics/mandants'
             },
             {
               key: 'syndics-finances',
@@ -909,20 +912,49 @@ function buildNavigation(): Record<PersonaId, PersonaNav> {
           href: '/copropriete/documents'
         },
         // Lot S5 (besoin 2) : paiements, quittances, suivi mensuel, fiche de la
-        // copropriété. Derrière « Plus », comme le fait le portail propriétaire.
+        // copropriété. Entrées directes dans la sidebar, sans groupe « Plus » ;
+        // la zone `more` les garde dans la feuille du cinquième onglet mobile.
         {
-          key: 'plus',
-          label: t('Plus'),
-          icon: <EllipsisOutlined />,
+          key: 'coprop-paiements',
+          label: t('Mes paiements'),
+          icon: <CreditCardOutlined />,
           zone: 'more',
-          children: [
-            { key: 'coprop-paiements', label: t('Mes paiements'), href: '/copropriete/paiements' },
-            { key: 'coprop-quittances', label: t('Mes quittances'), href: '/copropriete/quittances' },
-            { key: 'coprop-suivi-mensuel', label: t('Suivi mensuel'), href: '/copropriete/suivi-mensuel' },
-            { key: 'coprop-ma-copropriete', label: t('Ma copropriété'), href: '/copropriete/ma-copropriete' },
-            { key: 'coprop-notifications', label: t('Notifications'), href: '/notifications' },
-            { key: 'coprop-messagerie', label: t('Messagerie'), href: '/messages' }
-          ]
+          href: '/copropriete/paiements'
+        },
+        {
+          key: 'coprop-quittances',
+          label: t('Mes quittances'),
+          icon: <FileTextOutlined />,
+          zone: 'more',
+          href: '/copropriete/quittances'
+        },
+        {
+          key: 'coprop-suivi-mensuel',
+          label: t('Suivi mensuel'),
+          icon: <CalendarOutlined />,
+          zone: 'more',
+          href: '/copropriete/suivi-mensuel'
+        },
+        {
+          key: 'coprop-ma-copropriete',
+          label: t('Ma copropriété'),
+          icon: <BankOutlined />,
+          zone: 'more',
+          href: '/copropriete/ma-copropriete'
+        },
+        {
+          key: 'coprop-notifications',
+          label: t('Notifications'),
+          icon: <BellOutlined />,
+          zone: 'more',
+          href: '/notifications'
+        },
+        {
+          key: 'coprop-messagerie',
+          label: t('Messagerie'),
+          icon: <MessageOutlined />,
+          zone: 'more',
+          href: '/messages'
         }
       ]
     }

@@ -1,6 +1,6 @@
 ﻿import React from 'react';
 import { Button, Space, Tag, Tooltip, Typography } from 'antd';
-import { FilePdfOutlined, FileWordOutlined, LinkOutlined } from '@ant-design/icons';
+import { BankOutlined, FilePdfOutlined, FileWordOutlined, LinkOutlined, WalletOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { MoneyValue } from '../primitives/MoneyValue';
@@ -144,13 +144,19 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
       title: t('Période'),
       dataIndex: 'period',
       key: 'period',
-      render: (value: string) => <Text strong>{value}</Text>
+      width: 110,
+      render: (value: string) => (
+        <Text strong style={{ whiteSpace: 'nowrap' }}>
+          {value}
+        </Text>
+      )
     },
     {
       title: t('Lot'),
       dataIndex: ['lot', 'lotNumber'],
       key: 'lotNumber',
-      render: (_: unknown, item: ChargeCall) => buildLotLabel(item)
+      width: 280,
+      render: (_: unknown, item: ChargeCall) => <span style={{ whiteSpace: 'nowrap' }}>{buildLotLabel(item)}</span>
     },
     {
       title: t('Montant'),
@@ -163,9 +169,14 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
       title: t('Échéance'),
       dataIndex: 'dueDate',
       key: 'dueDate',
+      width: 120,
       render: (value: string, item: ChargeCall) => {
         const isLate = dayjs(value).isBefore(dayjs(), 'day') && item.status !== 'PAID';
-        return <Text type={isLate ? 'danger' : undefined}>{dayjs(value).format(dateFormat('short'))}</Text>;
+        return (
+          <Text type={isLate ? 'danger' : undefined} style={{ whiteSpace: 'nowrap' }}>
+            {dayjs(value).format(dateFormat('short'))}
+          </Text>
+        );
       }
     },
     {
@@ -223,17 +234,29 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
           {
             title: t('Actions'),
             key: 'actions',
+            width: 130,
             render: (_: unknown, item: ChargeCall) => (
-              <Space size={8} wrap>
+              <Space size={4} wrap={false}>
                 {onRecordPayment ? (
-                  <Button size="small" disabled={item.status === 'PAID'} onClick={() => onRecordPayment(item)}>
-                    {t('Enregistrer un paiement')}
-                  </Button>
+                  <Tooltip title={t('Enregistrer un paiement')}>
+                    <Button
+                      type="text"
+                      icon={<WalletOutlined />}
+                      aria-label={t('Enregistrer un paiement')}
+                      disabled={item.status === 'PAID'}
+                      onClick={() => onRecordPayment(item)}
+                    />
+                  </Tooltip>
                 ) : null}
                 {onDownloadNotice ? (
-                  <Button size="small" icon={<FilePdfOutlined />} onClick={() => onDownloadNotice(item)}>
-                    {t("Avis d'appel (PDF)")}
-                  </Button>
+                  <Tooltip title={t("Avis d'appel (PDF)")}>
+                    <Button
+                      type="text"
+                      icon={<FilePdfOutlined />}
+                      aria-label={t("Avis d'appel (PDF)")}
+                      onClick={() => onDownloadNotice(item)}
+                    />
+                  </Tooltip>
                 ) : null}
                 {onDownloadNoticeWord ? (
                   <Button size="small" icon={<FileWordOutlined />} onClick={() => onDownloadNoticeWord(item)}>
@@ -241,9 +264,14 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
                   </Button>
                 ) : null}
                 {onAssignFund ? (
-                  <Button size="small" onClick={() => onAssignFund(item)}>
-                    {t('Affecter à un fonds')}
-                  </Button>
+                  <Tooltip title={t('Affecter à un fonds')}>
+                    <Button
+                      type="text"
+                      icon={<BankOutlined />}
+                      aria-label={t('Affecter à un fonds')}
+                      onClick={() => onAssignFund(item)}
+                    />
+                  </Tooltip>
                 ) : null}
                 {onPaymentLink && canOfferChargePaymentLink(item) ? (
                   <Button size="small" icon={<LinkOutlined />} onClick={() => onPaymentLink(item)}>

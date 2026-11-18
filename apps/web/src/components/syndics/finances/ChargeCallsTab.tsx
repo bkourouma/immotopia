@@ -4,6 +4,7 @@ import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { DataCard, DataView, MoneyValue } from '../../primitives';
+import type { SearchOption } from '../../../utils/list-search';
 import { listChargeCallsPage, type ChargeCallsPageQuery } from '../../../services/syndic-service';
 import { useListSearch } from '../../../hooks/useListSearch';
 import { collectAllPages } from '../../../utils/table-export/collect';
@@ -16,18 +17,23 @@ import { financeKeys } from './query-keys';
 
 /**
  * Détail des appels de fonds, paginé et filtré par le serveur (préfixe d'URL
- * « ap » : `ap.q`, `ap.status`, `ap.lotId`, `ap.page`, `ap.limit`).
+ * « ap » : `ap.q`, `ap.status`, `ap.lotId`, `ap.fundId`, `ap.page`, `ap.limit`).
  *
  * Pas de tri de colonne : l'API ne trie pas, et trier la seule page reçue
  * donnerait un ordre trompeur (la page 2 ne prolongerait pas la page 1).
  */
-export const ChargeCallsTab: React.FC<{ tenantId: string; syndicId: string }> = ({ tenantId, syndicId }) => {
+export const ChargeCallsTab: React.FC<{
+  tenantId: string;
+  syndicId: string;
+  /** Options du critère « Fonds » (fonds de la copropriété) ; absent = pas de critère. */
+  fundOptions?: readonly SearchOption[];
+}> = ({ tenantId, syndicId, fundOptions }) => {
   const lotOptions = useSyndicLotOptions(tenantId, syndicId);
   const search = useListSearch({
     paramPrefix: 'ap',
     ariaLabel: t('Rechercher dans les appels de fonds'),
     apiNames: { sort: false },
-    criteria: chargeCallCriteria(lotOptions)
+    criteria: chargeCallCriteria(lotOptions, { fundOptions })
   });
 
   const query = useQuery({

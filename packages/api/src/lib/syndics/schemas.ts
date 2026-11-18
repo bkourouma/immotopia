@@ -762,7 +762,10 @@ export const chargeCallListQuerySchema = z.object({
   search: searchQuery,
   lotId: optionalQuery(z.string().uuid()),
   status: csvEnumQuery(z.enum(['PENDING', 'PARTIAL', 'PAID', 'OVERDUE'])),
-  period: optionalQuery(z.string().trim().min(1).max(100))
+  period: optionalQuery(z.string().trim().min(1).max(100)),
+  // Un identifiant d'un autre syndic ou d'une autre agence ne ramène aucun appel : la requête reste bornée à la copropriété.
+  budgetId: optionalQuery(z.string().uuid()),
+  fundId: optionalQuery(z.string().uuid())
 });
 
 export const ownerAccountTransactionListQuerySchema = z

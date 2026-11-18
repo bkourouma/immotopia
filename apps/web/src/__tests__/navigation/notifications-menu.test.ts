@@ -40,13 +40,22 @@ describe('menus notifications et messagerie', () => {
 describe('menus de portail : notifications et messagerie', () => {
   it.each([
     ['proprietaire', 'plus', 'owner-notifications', 'owner-messagerie'],
-    ['locataire', 'plus', 'tenant-notifications', 'tenant-messagerie'],
-    ['coproprietaire', 'plus', 'coprop-notifications', 'coprop-messagerie']
+    ['locataire', 'plus', 'tenant-notifications', 'tenant-messagerie']
   ] as const)('%s : entrées sans permission d’agence', (persona, group, notifKey, msgKey) => {
     const children = getNavigation()[persona].tree.find(g => g.key === group)?.children ?? [];
     expect(children.find(c => c.key === notifKey)?.href).toBe('/notifications');
     expect(children.find(c => c.key === msgKey)?.href).toBe('/messages');
     expect(requirementsFor(notifKey)).toEqual([]);
     expect(requirementsFor(msgKey)).toEqual([]);
+  });
+});
+
+describe('menu copropriétaire à plat : notifications et messagerie', () => {
+  it('expose les deux entrées sans groupe « Plus » et sans permission d’agence', () => {
+    const tree = getNavigation().coproprietaire.tree;
+    expect(tree.find(g => g.key === 'coprop-notifications')?.href).toBe('/notifications');
+    expect(tree.find(g => g.key === 'coprop-messagerie')?.href).toBe('/messages');
+    expect(requirementsFor('coprop-notifications')).toEqual([]);
+    expect(requirementsFor('coprop-messagerie')).toEqual([]);
   });
 });

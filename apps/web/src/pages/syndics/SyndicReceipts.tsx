@@ -8,7 +8,7 @@ import { useListSearch } from '../../hooks/useListSearch';
 import { MoneyValue, Table } from '../../components/primitives';
 import { collectAllPages } from '../../utils/table-export/collect';
 import { PrintReceiptsModal } from '../../components/syndics/PrintReceiptsModal';
-import { listSyndicateLots } from '../../services/syndic-service';
+import { listBudgets, listSyndicateLots } from '../../services/syndic-service';
 import {
   backfillMissingReceipts,
   downloadReceiptFile,
@@ -16,7 +16,7 @@ import {
   listSyndicateReceipts,
   resendReceiptEmail
 } from '../../services/syndic-receipt-service';
-import { ReceiptKind, ReceiptView, SyndicateLot } from '../../types/syndic-types';
+import { ReceiptKind, ReceiptView, SyndicateBudget, SyndicateLot } from '../../types/syndic-types';
 import type { ReceiptListParams } from '../../services/syndic-receipt-service';
 import { describeDownloadError } from '../../utils/download-error';
 import { saveBlob } from '../../utils/save-blob';
@@ -70,6 +70,7 @@ function toListParams(params: Record<string, string | number>): ReceiptListParam
     kind: params.kind as ReceiptKind | undefined,
     lotId: params.lotId as string | undefined,
     contactId: params.contactId as string | undefined,
+    budgetId: params.budgetId as string | undefined,
     from: params.from as string | undefined,
     to: params.to as string | undefined,
     backfilled: params.backfilled === undefined ? undefined : params.backfilled === 'true',
@@ -113,6 +114,21 @@ export const SyndicReceipts: React.FC = () => {
     staleTime: 5 * 60_000
   });
   const lots = useMemo<SyndicateLot[]>(() => lotsQuery.data ?? [], [lotsQuery.data]);
+  // Budgets du filtre : information annexe, son échec laisse simplement le critère sans options.
+  const budgetsQuery = useQuery({
+    queryKey: ['syndic-receipts', 'budgets', tenantId, syndic],
+    queryFn: () => listBudgets(tenantId, syndic),
+    enabled: ready,
+    staleTime: 5 * 60_000
+  });
+  const budgetOptions = useMemo(
+    () =>
+      (Array.isArray(budgetsQuery.data) ? (budgetsQuery.data as SyndicateBudget[]) : []).map(budget => ({
+        value: budget.id,
+        label: `${budget.label} (${budget.fiscalYear})`
+      })),
+    [budgetsQuery.data]
+  );
 
   const lotOptions = useMemo(() => lots.map(lot => ({ value: lot.id, label: formatLotLabel(lot) })), [lots]);
 
@@ -169,6 +185,15 @@ export const SyndicReceipts: React.FC = () => {
         label: t('Copropriétaire'),
         api: 'contactId',
         options: ownerOptions
+      },
+      {
+        // Vide = tous les documents, y compris ceux sans budget.
+        key: 'budget',
+        type: 'select',
+        label: t('Budget'),
+        api: 'budgetId',
+        options: budgetOptions,
+        placeholder: t('Tous les budgets')
       },
       {
         key: 'backfilled',

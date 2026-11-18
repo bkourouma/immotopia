@@ -12,9 +12,35 @@ import { SyndicMonthlyTracking } from '../../pages/syndics/SyndicMonthlyTracking
  */
 
 const getMonthlyTracking = vi.fn();
+const listBudgets = vi.fn();
 
 vi.mock('../../services/syndic-lot-payment-service', () => ({
   getMonthlyTracking: (...args: unknown[]) => getMonthlyTracking(...args)
+}));
+
+// Le `Select` d'Ant Design devient un <select> natif : `onChange` reçoit la valeur d'origine de l'option
+// (nombre ou texte), comme le composant réel.
+vi.mock('antd', async () => {
+  const actual = await vi.importActual<typeof import('antd')>('antd');
+  const Select = ({ options = [], value, onChange, 'aria-label': ariaLabel }: any) => (
+    <select
+      aria-label={ariaLabel}
+      value={String(value ?? '')}
+      onChange={event => onChange?.(options.find((option: any) => String(option.value) === event.target.value)?.value)}
+    >
+      {options.map((option: any) => (
+        <option key={String(option.value)} value={String(option.value)}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+  );
+  return { ...actual, Select };
+});
+
+// Liste des budgets du filtre : seule la lecture est utilisée par la page.
+vi.mock('../../services/syndic-service', () => ({
+  listBudgets: (...args: unknown[]) => listBudgets(...args)
 }));
 
 const authValue: AuthContextType = {
@@ -69,6 +95,7 @@ function renderWithRoute() {
 describe('SyndicMonthlyTracking (lot S2, besoin 5)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    listBudgets.mockResolvedValue([]);
   });
 
   it('affiche la grille lot × mois avec les statuts et l’avance de chaque lot', async () => {
@@ -102,7 +129,7 @@ describe('SyndicMonthlyTracking (lot S2, besoin 5)', () => {
 
     renderWithRoute();
 
-    await waitFor(() => expect(getMonthlyTracking).toHaveBeenCalledWith('tenant-1', 'syndic-1', 2026));
+    await waitFor(() => expect(getMonthlyTracking).toHaveBeenCalledWith('tenant-1', 'syndic-1', undefined, undefined));
 
     expect(await screen.findByText('A-01')).toBeTruthy();
     expect(await screen.findByText('Awa Diop')).toBeTruthy();
@@ -114,15 +141,47 @@ describe('SyndicMonthlyTracking (lot S2, besoin 5)', () => {
     expect(screen.getByLabelText('Légende')).toBeTruthy();
   });
 
-  it('recharge la grille quand on change d’exercice', async () => {
+  it('sans budget, affiche la grille de l’année courante sans sélecteur', async () => {
     getMonthlyTracking.mockResolvedValue({ year: 2026, currency: 'XOF', months: [], lots: [] });
 
     renderWithRoute();
-    await waitFor(() => expect(getMonthlyTracking).toHaveBeenCalledWith('tenant-1', 'syndic-1', 2026));
+    await waitFor(() => expect(getMonthlyTracking).toHaveBeenCalledWith('tenant-1', 'syndic-1', undefined, undefined));
+    expect(screen.queryByLabelText('Budget')).toBeNull();
+    expect(screen.queryByLabelText('Exercice')).toBeNull();
+  });
 
-    const yearSelect = screen.getByLabelText('Exercice') as HTMLSelectElement;
-    fireEvent.change(yearSelect, { target: { value: '2025' } });
+  it('affiche par défaut le dernier budget créé, sans sélecteur d’exercice, puis le budget choisi', async () => {
+    getMonthlyTracking.mockResolvedValue({ year: 2025, currency: 'XOF', months: [], lots: [] });
+    listBudgets.mockResolvedValue([
+      { id: 'budget-1', label: 'Budget prévisionnel 2025', fiscalYear: 2025, createdAt: '2026-10-27T10:00:00.000Z' },
+      {
+        id: 'budget-2',
+        label: 'Budget travaux et réserves 2026',
+        fiscalYear: 2026,
+        createdAt: '2026-10-27T12:00:00.000Z'
+      }
+    ]);
 
-    await waitFor(() => expect(getMonthlyTracking).toHaveBeenCalledWith('tenant-1', 'syndic-1', 2025));
+    renderWithRoute();
+    // Le dernier créé est affiché, sans année demandée : l'API la déduit du budget.
+    await waitFor(() => expect(getMonthlyTracking).toHaveBeenCalledWith('tenant-1', 'syndic-1', undefined, 'budget-2'));
+    expect(getMonthlyTracking).toHaveBeenCalledTimes(1);
+    expect(screen.queryByLabelText('Exercice')).toBeNull();
+    expect(screen.queryByText('Tous les budgets')).toBeNull();
+
+    fireEvent.change(screen.getByLabelText('Budget'), { target: { value: 'budget-1' } });
+    await waitFor(() =>
+      expect(getMonthlyTracking).toHaveBeenLastCalledWith('tenant-1', 'syndic-1', undefined, 'budget-1')
+    );
+  });
+
+  it('montre l’année de la grille renvoyée par l’API à côté du budget', async () => {
+    getMonthlyTracking.mockResolvedValue({ year: 2025, currency: 'XOF', months: [], lots: [] });
+    listBudgets.mockResolvedValue([
+      { id: 'budget-1', label: 'Budget prévisionnel 2025', fiscalYear: 2025, createdAt: '2026-10-27T10:00:00.000Z' }
+    ]);
+
+    renderWithRoute();
+    expect(await screen.findByText('2025')).toBeTruthy();
   });
 });

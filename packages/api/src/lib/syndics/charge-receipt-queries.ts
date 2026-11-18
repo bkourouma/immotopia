@@ -72,10 +72,17 @@ function listWhere(
   tenantId: string,
   syndicateId: string,
   filters: Pick<ReceiptListQuery, 'lotId' | 'contactId' | 'kind' | 'from' | 'to'> &
-    Partial<Pick<ReceiptListQuery, 'search' | 'backfilled'>>
+    Partial<Pick<ReceiptListQuery, 'search' | 'backfilled' | 'budgetId'>>
 ): Prisma.SyndicChargeReceiptWhereInput {
   const period = periodWhere(filters.from, filters.to);
   const and: Prisma.SyndicChargeReceiptWhereInput[] = period ? [period] : [];
+  if (filters.budgetId) {
+    // Une quittance suit l'appel qu'elle atteste ; un reçu n'a pas d'appel : il suit les appels que son paiement a soldés.
+    const callOfBudget = { batch: { budgetId: filters.budgetId } };
+    and.push({
+      OR: [{ chargeCall: callOfBudget }, { chargePayment: { allocations: { some: { chargeCall: callOfBudget } } } }]
+    });
+  }
   if (filters.search) {
     // Numéro du document, numéro du lot, nom / e-mail du contact rattaché.
     and.push({

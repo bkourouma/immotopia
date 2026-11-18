@@ -17,6 +17,7 @@ const getSyndicate = vi.fn();
 const listSyndicateLots = vi.fn();
 const listChargeCalls = vi.fn();
 const createChargeCall = vi.fn();
+const listBudgets = vi.fn();
 
 vi.mock('../../services/syndic-service', () => ({
   getSyndicate: (...args: unknown[]) => getSyndicate(...args),
@@ -28,6 +29,7 @@ vi.mock('../../services/syndic-service', () => ({
   createChargeCall: (...args: unknown[]) => createChargeCall(...args),
   // Fonds de la copropriete : aucun ici, le champ « Fonds alimente » reste masque.
   listSyndicateFunds: vi.fn(async () => []),
+  listBudgets: (...args: unknown[]) => listBudgets(...args),
   assignChargeCallFund: vi.fn()
 }));
 
@@ -105,6 +107,7 @@ describe('SyndicCharges — cartes de synthèse (BUG-047)', () => {
     vi.clearAllMocks();
     getSyndicate.mockResolvedValue({ id: 'syndic-1', tenantId: 'tenant-1', name: 'Residence Test', status: 'ACTIVE' });
     listSyndicateLots.mockResolvedValue([]);
+    listBudgets.mockResolvedValue([]);
   });
 
   it('affiche les totaux de l’API même quand les lignes chargées ne les reproduisent pas', async () => {
@@ -150,5 +153,28 @@ describe('SyndicCharges — cartes de synthèse (BUG-047)', () => {
       search: '2026-T1',
       lotId: 'lot-9'
     });
+  });
+
+  it('filtre les appels et les cartes par budget, puis retire le filtre', async () => {
+    listChargeCalls.mockResolvedValue({ items: [], summary: SUMMARY });
+    listBudgets.mockResolvedValue([
+      { id: 'budget-2025', label: 'Budget prévisionnel 2025', fiscalYear: 2025, createdAt: '2026-10-27T10:00:00.000Z' }
+    ]);
+    renderPage();
+    await waitFor(() => expect(listChargeCalls).toHaveBeenCalled());
+
+    // Rendu mobile (jsdom) : les critères sont dans la feuille « Filtres », appliqués par « Appliquer ».
+    fireEvent.click(screen.getByRole('button', { name: 'Filtres' }));
+    fireEvent.mouseDown(await screen.findByLabelText('Budget'));
+    fireEvent.click(await screen.findByText('Budget prévisionnel 2025 (2025)'));
+    fireEvent.click(screen.getByRole('button', { name: /Appliquer/ }));
+
+    await waitFor(() =>
+      expect(listChargeCalls).toHaveBeenLastCalledWith(
+        'tenant-1',
+        'syndic-1',
+        expect.objectContaining({ budgetId: 'budget-2025' })
+      )
+    );
   });
 });

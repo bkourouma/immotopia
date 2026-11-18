@@ -29,11 +29,13 @@ vi.mock(
 vi.mock('../../services/syndic-service', () => ({
   getSyndicate: (...args: unknown[]) => getSyndicate(...args),
   listSyndicateLots: (...args: unknown[]) => listSyndicateLots(...args),
+  listAllChargeCallsWithSummary: (...args: unknown[]) => listChargeCalls(...args),
   listChargeCallsPage: async (...args: unknown[]) => {
     const page = await listChargeCalls(...args);
     return page && { pagination: { page: 1, limit: 20, total: page.items.length, totalPages: 1 }, ...page };
   },
-  createChargeCall: (...args: unknown[]) => createChargeCall(...args)
+  createChargeCall: (...args: unknown[]) => createChargeCall(...args),
+  listBudgets: vi.fn(async () => [])
 }));
 
 const listOpenLotCharges = vi.fn();

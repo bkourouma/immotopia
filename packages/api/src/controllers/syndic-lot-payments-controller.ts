@@ -75,6 +75,14 @@ export const listLotOpenCallsHandler = asyncHandler(async (req: Request, res: Re
 });
 
 export const getMonthlyTrackingHandler = asyncHandler(async (req: Request, res: Response) => {
-  const { year } = monthlyTrackingQuerySchema.parse({ year: req.query.year ?? new Date().getUTCFullYear() });
-  res.json({ success: true, data: await getMonthlyTrackingBySyndicate(tenantIdOf(req), syndicIdOf(req), year) });
+  const query = monthlyTrackingQuerySchema.parse({
+    year: req.query.year || undefined,
+    budgetId: req.query.budgetId || undefined
+  });
+  // Sans année : l'année courante, sauf avec un budget, dont le service déduit l'année de ses appels.
+  const year = query.year ?? (query.budgetId ? undefined : new Date().getUTCFullYear());
+  res.json({
+    success: true,
+    data: await getMonthlyTrackingBySyndicate(tenantIdOf(req), syndicIdOf(req), year, query.budgetId)
+  });
 });
