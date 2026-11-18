@@ -142,6 +142,19 @@ function sumFormLines(lines: BudgetLineFormValue[] | undefined): number {
   return Math.round(total * 100) / 100;
 }
 
+/**
+ * Budgets du sélecteur des onglets Répartition et Campagnes : information annexe, son échec laisse le
+ * sélecteur vide au lieu de bloquer l'onglet.
+ */
+async function listBudgetsForFilter(tenantId: string, syndicId: string): Promise<SyndicateBudget[]> {
+  try {
+    const data = await listBudgets(tenantId, syndicId);
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
 /** Budget créé en dernier : celui que le tableau des allocations montre tant qu'on n'en choisit pas un autre. */
 function latestCreatedBudget(budgets: SyndicateBudget[]): SyndicateBudget | null {
   return budgets.reduce<SyndicateBudget | null>(
@@ -233,7 +246,7 @@ export const SyndicBudgets: React.FC = () => {
           // Le sélecteur de budget a besoin de la liste des budgets, en plus des lots.
           const [lotsData, budgetsData] = await Promise.all([
             listSyndicateLots(effectiveTenantId, syndicId),
-            listBudgets(effectiveTenantId, syndicId)
+            listBudgetsForFilter(effectiveTenantId, syndicId)
           ]);
           if (cancelled) return;
           setLots(lotsData);
@@ -242,7 +255,7 @@ export const SyndicBudgets: React.FC = () => {
           // Idem pour le filtre par budget des campagnes d'appels.
           const [batchesData, budgetsData] = await Promise.all([
             listChargeCallBatches(effectiveTenantId, syndicId),
-            listBudgets(effectiveTenantId, syndicId)
+            listBudgetsForFilter(effectiveTenantId, syndicId)
           ]);
           if (cancelled) return;
           setBatches(batchesData);
@@ -275,9 +288,9 @@ export const SyndicBudgets: React.FC = () => {
     () => budgets.map(item => ({ value: item.id, label: `${item.label} (${item.fiscalYear})` })),
     [budgets]
   );
-  // Sans budget, les campagnes saisies à la main restent toutes visibles.
+  // Les campagnes saisies à la main (sans budget) restent toujours visibles ; les autres suivent le budget choisi.
   const visibleBatches = useMemo(
-    () => (filterBudget ? batches.filter(batch => batch.budgetId === filterBudget.id) : batches),
+    () => (filterBudget ? batches.filter(batch => !batch.budgetId || batch.budgetId === filterBudget.id) : batches),
     [batches, filterBudget]
   );
   // Même sélecteur pour les allocations et les campagnes : un seul budget affiché à la fois.
