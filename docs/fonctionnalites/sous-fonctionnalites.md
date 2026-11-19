@@ -11,9 +11,9 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Maintenance | 35 |
 | Communication et Documents | 131 |
 | Syndic copropriete | 247 |
-| Administration plateforme | 153 |
+| Administration plateforme | 154 |
 | Portails externes | 85 |
-| **Total** | **1302** |
+| **Total** | **1303** |
 
 ## Sous-fonctionnalités
 
@@ -1273,6 +1273,7 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Tous packs | CORE | Fiche agence (plateforme) › Formulaires | Consulter les champs sous condition d'une agence et leur déverrouillage | Dans la fiche d'une agence, onglet « Formulaires » : lister les champs « sous condition » (GATED) regroupés par module puis formulaire, avec leur état (verrouillé ou déverrouillé), le motif et l'auteur du déverrouillage, et le texte « ce qui casse ». | `tenantId` (URL) | `{ entries[] }` (formulaire, champ, déverrouillé ou non, motif, date, auteur) ; 404 agence introuvable |  | Super-admin (PLATFORM_TENANTS_VIEW) | Plateforme | GET /api/admin/tenants/:tenantId/form-unlocks | requirePermission('PLATFORM_TENANTS_VIEW') | Disponible | Administration > Agences > fiche agence > onglet Formulaires |
 | Tous packs | CORE | Fiche agence (plateforme) › Formulaires | Déverrouiller ou reverrouiller un champ sous condition pour une agence | Autoriser (ou retirer l'autorisation) l'administrateur de l'agence à régler un champ sous condition, avec un motif facultatif de 500 caractères au plus. Reverrouiller ramène l'agence au mode par défaut sans effacer son réglage : il reprend effet si le champ est déverrouillé de nouveau. Opération idempotente. | Corps `.strict()` : `formKey`, `fieldKey`, `unlocked` (booléen), `reason?` (500 caractères au plus) | 200 `{ formKey, fieldKey, unlocked }` ; 400 champ inconnu ou champ non soumis à déverrouillage ; 404 agence introuvable. Audit `PLATFORM_FORM_FIELD_UNLOCK_CHANGED` | Consulter les champs sous condition d'une agence et leur déverrouillage | Super-admin (PLATFORM_TENANTS_EDIT) | Plateforme | PUT /api/admin/tenants/:tenantId/form-unlocks | requirePermission('PLATFORM_TENANTS_EDIT') | Disponible | Administration > Agences > fiche agence > onglet Formulaires (interrupteur de déverrouillage et motif) |
 | Agence, Syndic, Promoteur, Opérateur intégré | CORE | Formulaires paramétrables (écrans de saisie) | Lire les modes effectifs d'un formulaire côté écran de saisie | Un écran de saisie de l'agence demande les modes effectifs des champs de son formulaire (obligatoire, facultatif, masqué) pour adapter l'affichage : astérisque, champ caché. Le serveur applique les mêmes modes au corps reçu à l'enregistrement : champ obligatoire absent refusé (`FORM_FIELD_REQUIRED`), champ masqué ignoré et non enregistré. | `formKey` (URL) | `{ formKey, fields }` (mode effectif par champ réglable) ; 404 formulaire inconnu | Modifier le mode des champs d'un formulaire | Tout membre de l'agence | Agence | GET /api/tenants/:tenantId/forms/:formKey/modes | requireTenantAccess (aucune permission RBAC nommée) | Disponible | Aucun menu dédié : utilisé par les formulaires de saisie du module Syndic |
+| N/A (plateforme) | Administration plateforme | Gestion des agences | Copier le lien d'invitation de l'administrateur | Permettre à l'administrateur d'une agence de démarrer quand l'e-mail d'invitation n'est pas arrivé | `invitationId` optionnel (sinon invitation en attente la plus ancienne de l'agence) | Nouveau lien d'acceptation (`acceptUrl`), e-mail destinataire, date d'expiration ; aucun e-mail ni WhatsApp envoyé ; l'ancien lien est invalidé | Agence créée avec invitation en attente | Super-admin | Super-admin | POST /api/admin/tenants/:tenantId/invitation-link | PLATFORM_TENANTS_EDIT | Disponible | Administration > Agences > fiche agence > Copier le lien d'invitation |
 
 ### Portails externes
 

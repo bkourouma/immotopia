@@ -17,6 +17,18 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 
 Modèle de section : voir le bloc « Modèle de section » plus bas.
 
+## feat/lien-invitation-agence — 2026-11-19
+
+**État** — Branche depuis `origin/main` `25e340fe`, avant pull request (fusion par l'utilisateur). Rien déployé, aucune migration.
+
+**Fait** — Bouton « Copier le lien d'invitation » sur la fiche d'agence du super-admin (`pages/admin/TenantDetail.tsx`). Il appelle `POST /api/admin/tenants/:tenantId/invitation-link` (`PLATFORM_TENANTS_EDIT`, limiteur 20 par 10 min) qui régénère le jeton de l'unique invitation en attente (même expirée ; plusieurs en attente : 409), sans e-mail ni WhatsApp, `Cache-Control: no-store`. L'ancien lien, y compris celui de l'e-mail, est invalidé (seul le hash est stocké). Ligne ajoutée au classeur des fonctionnalités.
+
+**Vérifié** — Service : 7 tests ; bouton : 3 tests ; `check:architecture` propre ; ESLint sans erreur.
+
+**Reste** — `routes-inventory.test.ts` n'a pas tourné sur ce poste (module `yauzl` absent du `node_modules` partagé) : le relancer ou laisser la CI. Aucune recette navigateur ni appel sur une vraie base.
+
+**Pièges** — Le typecheck API de ce worktree affiche des erreurs étrangères (client Prisma partagé généré depuis une autre branche). `i18n:extract` ajoute des clés vides sans rapport : ne garder que les siennes.
+
 ## feat/integration-copro-20261118 — 2026-11-18
 
 **État :** intégration terminée, tests web verts (8 fichiers corrigés, voir ci-dessous) ; tests serveur à confirmer. Branche depuis `origin/main` `1a8caaa6`, avant pull request (fusion par l'utilisateur) puis validation staging. Rien n'est déployé.
