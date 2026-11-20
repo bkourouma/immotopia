@@ -99,7 +99,8 @@ export interface CoOwnerChargeCall {
 export interface CoOwnerDocument {
   id: string;
   title: string;
-  type: 'REGULATION' | 'GENERAL_MEETING_MINUTES';
+  /** Tout type de `SyndicateDocType` : l'agence peut ouvrir un diagnostic, une assurance, un budget... */
+  type: 'REGULATION' | 'GENERAL_MEETING_MINUTES' | 'DIAGNOSTIC' | 'INSURANCE' | 'BUDGET' | 'OTHER';
   createdAt: string;
   syndicate: string | null;
   /** Fichier déposé, téléchargeable par `downloadCoOwnerDocument`. */

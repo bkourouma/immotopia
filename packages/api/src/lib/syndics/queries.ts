@@ -2287,6 +2287,14 @@ export async function updateMeetingByTenant(
 
   return prisma.$transaction(async tx => {
     const existing = await findMeetingForTenant(tx, tenantId, syndicateId, meetingId);
+    // Meme garde qu'a la creation : les heures saisies doivent rester dans l'ordre.
+    if (has('startTime') || has('endTime')) {
+      const start = has('startTime') ? data.startTime : existing.startTime;
+      const end = has('endTime') ? data.endTime : existing.endTime;
+      if (start && end && start > end) {
+        throw unprocessableEntity("L'heure de debut doit etre inferieure a l'heure de fin");
+      }
+    }
     // Verrou de l'AG : un vote ou un emargement simultane ne se perd pas dans le recalcul de cloture.
     await lockMeetingTx(tx, meetingId);
 

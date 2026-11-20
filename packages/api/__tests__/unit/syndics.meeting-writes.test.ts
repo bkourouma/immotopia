@@ -60,6 +60,31 @@ describe('meeting-writes', () => {
       expect(mockQueries.getMeetingByTenant).toHaveBeenCalledWith('t1', 's1', 'm1');
     });
 
+    it('donne aux resolutions des dates de creation strictement croissantes (ordre de lecture stable)', async () => {
+      mockPrisma.syndicate.findFirst.mockResolvedValue({ id: 's1' });
+      const createMany = jest.fn();
+      mockPrisma.$transaction.mockImplementation(async (callback: (tx: unknown) => Promise<string>) =>
+        callback({
+          generalMeeting: { create: jest.fn(async () => ({ id: 'm1' })) },
+          gMResolution: { createMany }
+        })
+      );
+      mockQueries.getMeetingByTenant.mockResolvedValue({ id: 'm1' });
+
+      await createMeetingForTenant('t1', {
+        syndicateId: 's1',
+        type: 'ORDINARY',
+        scheduledAt: new Date('2026-02-20T09:00:00Z'),
+        resolutions: [{ title: 'A' }, { title: 'B' }, { title: 'C' }]
+      });
+
+      const rows = createMany.mock.calls[0][0].data as Array<{ title: string; createdAt: Date }>;
+      expect(rows.map(row => row.title)).toEqual(['A', 'B', 'C']);
+      const times = rows.map(row => row.createdAt.getTime());
+      expect(times[1]).toBeGreaterThan(times[0]);
+      expect(times[2]).toBeGreaterThan(times[1]);
+    });
+
     it("refuse une copropriete d'une autre agence (404)", async () => {
       mockPrisma.syndicate.findFirst.mockResolvedValue(null);
       await expect(

@@ -290,6 +290,20 @@ describe('Documents de copropriété', () => {
     expect(downloadCoOwnerDocument).toHaveBeenCalledWith('doc-1', 'Règlement');
     expect(createObjectURL).toHaveBeenCalled();
   });
+
+  it("ne présente pas un diagnostic ou une assurance ouverts par l'agence comme un procès-verbal", async () => {
+    listMyDocuments.mockResolvedValue([
+      { ...documents[0], id: 'doc-3', title: 'Diagnostic amiante', type: 'DIAGNOSTIC', externalUrl: null },
+      { ...documents[0], id: 'doc-4', title: 'Police incendie', type: 'INSURANCE', externalUrl: null }
+    ]);
+
+    mount('/copropriete/documents');
+
+    expect(await screen.findByText('Diagnostic amiante', {}, WAIT)).toBeInTheDocument();
+    expect(screen.getByText('Diagnostic', { selector: 'td' })).toBeInTheDocument();
+    expect(screen.getByText('Assurance', { selector: 'td' })).toBeInTheDocument();
+    expect(screen.queryByText("Procès-verbal d'assemblée générale", { selector: 'td' })).not.toBeInTheDocument();
+  });
 });
 
 describe('Assemblées générales', () => {

@@ -11,7 +11,7 @@ import {
   type CoOwnerMonthStatus
 } from '../../services/coowner-portal-service';
 import { displayCurrency } from '../../utils/syndic-currency';
-import { portalErrorMessage } from './portal-error';
+import { isNotFound, portalErrorMessage } from './portal-error';
 
 const { Title, Text } = Typography;
 
@@ -148,6 +148,12 @@ export default function CoOwnerMonthlyTracking() {
         <StateBlock variant="empty" description={t("Aucun lot n'est ouvert à votre compte pour le moment.")} />
       ) : !lotId || tracking.isPending ? (
         <SkeletonList rows={3} />
+      ) : isNotFound(tracking.error) ? (
+        // 404 : exercice antérieur à l'acquisition du lot (changement de propriétaire) — pas une panne.
+        <StateBlock
+          variant="empty"
+          description={t("Aucun suivi n'est disponible pour cet exercice : il précède votre acquisition de ce lot.")}
+        />
       ) : tracking.error ? (
         <StateBlock
           variant="error"

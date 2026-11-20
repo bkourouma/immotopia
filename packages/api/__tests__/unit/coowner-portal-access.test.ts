@@ -162,6 +162,49 @@ describe('requireCoOwnerPortalAccess', () => {
     expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 403 }));
   });
 
+  describe('compte copropriétaire dans deux agences', () => {
+    // Agence B : plus ancienne, lien de copropriété encore posé mais plus aucun lot ouvert (lots vendus).
+    beforeEach(() => {
+      const renter = mockPrisma.tenantClient.rows.find((row: any) => row.id === 'tc-renter');
+      if (!renter) throw new Error('tc-renter introuvable');
+      renter.details = { syndicCoOwnerContactIds: ['contact-b'] };
+      mockPrisma.crmContact.rows.push({ id: 'contact-b', tenantId: 'tenant-b' });
+      mockPrisma.syndicate.rows.push({ id: 'syndic-b', tenantId: 'tenant-b' });
+      mockPrisma.syndicateLot.rows.push({ id: 'lot-b', syndicateId: 'syndic-b' });
+      mockPrisma.lotOwnerProfile.rows.push({
+        id: 'p-b',
+        lotId: 'lot-b',
+        contactId: 'contact-b',
+        ownershipPercentage: 100,
+        ownedSince: new Date('2020-01-01'),
+        ownedUntil: new Date('2024-01-01'),
+        isActive: true,
+        portalAccessEnabled: true,
+        createdAt: new Date('2020-01-01')
+      });
+    });
+
+    it("sans en-tête : l'agence la plus ancienne qui ouvre encore un lot, pas un refus", async () => {
+      const req: any = { user: { userId: 'user-1' }, headers: {} };
+      const next = jest.fn();
+      await requireCoOwnerPortalAccess(req, {} as any, next);
+
+      expect(next).toHaveBeenCalledWith();
+      expect(req.coOwnerPortal.scope.tenantId).toBe('tenant-a');
+      expect(req.coOwnerPortal.tenantClientId).toBe('tc-coowner');
+    });
+
+    it("avec l'en-tête de l'agence sans lot ouvert : 403, aucun repli sur l'autre agence", async () => {
+      const next = jest.fn();
+      await requireCoOwnerPortalAccess(
+        { user: { userId: 'user-1' }, headers: { 'x-portal-tenant-id': 'tenant-b' } } as any,
+        {} as any,
+        next
+      );
+      expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 403 }));
+    });
+  });
+
   it('compte désactivé ou introuvable : 403, même avec une session valide', async () => {
     mockPrisma.user.rows[0].isActive = false;
     const inactive = jest.fn();

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Card, Col, Descriptions, Row, Select, Space, Typography } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { PhoneNumber, SkeletonList, StateBlock } from '../../components/primitives';
@@ -21,13 +21,18 @@ const { Title, Text } = Typography;
  * `<img src>` direct (la route exige la session, qu'une balise `<img>` ne
  * porte pas de façon fiable). L'URL d'objet est révoquée au démontage.
  */
-function PortalImage({ loader, alt }: { loader: () => Promise<Blob>; alt: string }) {
+function PortalImage({ loader, alt, cacheKey }: { loader: () => Promise<Blob>; alt: string; cacheKey: string }) {
   const [url, setUrl] = useState<string | null>(null);
+  // Le chargeur est recréé à chaque rendu du parent : seule `cacheKey` relance le chargement.
+  const loaderRef = useRef(loader);
+  loaderRef.current = loader;
 
   useEffect(() => {
     let objectUrl: string | null = null;
     let cancelled = false;
-    loader()
+    setUrl(null);
+    loaderRef
+      .current()
       .then(blob => {
         if (cancelled) return;
         objectUrl = URL.createObjectURL(blob);
@@ -40,7 +45,7 @@ function PortalImage({ loader, alt }: { loader: () => Promise<Blob>; alt: string
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [loader]);
+  }, [cacheKey]);
 
   if (!url) return null;
   return <img src={url} alt={alt} style={{ maxHeight: 72, maxWidth: 200, objectFit: 'contain' }} />;
@@ -78,7 +83,15 @@ function SyndicateDetails({ data }: { data: CoOwnerSyndicateSheet }) {
     <>
       <Card
         title={data.name}
-        extra={data.hasLogo ? <PortalImage loader={() => fetchCoOwnerSyndicateLogo(data.id)} alt={data.name} /> : null}
+        extra={
+          data.hasLogo ? (
+            <PortalImage
+              loader={() => fetchCoOwnerSyndicateLogo(data.id)}
+              alt={data.name}
+              cacheKey={`logo-${data.id}`}
+            />
+          ) : null
+        }
       >
         <Descriptions column={{ xs: 1, sm: 2 }} size="small">
           <Descriptions.Item label={t('Adresse')}>{data.address}</Descriptions.Item>
@@ -115,7 +128,11 @@ function SyndicateDetails({ data }: { data: CoOwnerSyndicateSheet }) {
             }
             extra={
               data.hasIssuerLogo ? (
-                <PortalImage loader={() => fetchCoOwnerIssuerLogo(data.id)} alt={data.issuer.name} />
+                <PortalImage
+                  loader={() => fetchCoOwnerIssuerLogo(data.id)}
+                  alt={data.issuer.name}
+                  cacheKey={`issuer-${data.id}`}
+                />
               ) : null
             }
           >

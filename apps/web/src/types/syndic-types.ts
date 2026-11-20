@@ -456,6 +456,8 @@ export interface MeetingConvocationResult {
   emailSkippedNoAddress: number;
   whatsappSent: number;
   failures: string[];
+  /** Renvoi : nombre de copropriétaires déjà servis, non relancés. */
+  alreadyServed?: number;
   /** Présent si l'envoi a échoué en bloc. */
   error?: string;
   skipped?: 'MEETING_NOT_FOUND' | 'NO_OWNER_CONTACT';
