@@ -19,7 +19,7 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 ## Revue Syndic et Gestion locative — 2026-11-20
 
-**Branche :** `orch/2026-11-20-revue-syndic-locatif`, base `origin/main` `25e340fe` ; dernier commit : voir `git log` de la branche. Pull request à venir (fusion par l'utilisateur).
+**Branche :** `orch/2026-11-20-revue-syndic-locatif`, base `origin/main` `25e340fe` ; dernier commit : voir `git log` de la branche. Pull request https://github.com/bkourouma/immotopia/pull/234 (fusion par l'utilisateur).
 
 **Fait :** revue en 6 lots, tous fusionnés sur la branche : syndic financier ; AG et portail copropriétaire ; bail ; paiements, portails et maintenance ; décisions syndic H2/H3 ; décisions locatif H1/H3/H4/H5. Lot final : catalogues i18n web et API complétés en anglais et en arabe (`i18n:check` vert dans les deux paquets), textes encore en dur enveloppés dans `t()` (AllocatePaymentForm, PaymentDetailPage, OwnerPortal/Documents, LeaseDetailPage), classeur des fonctionnalités mis à jour (+22 lignes, ligne « Supprimer un bail » précisée) et miroir régénéré (`wiki:check` vert).
 
