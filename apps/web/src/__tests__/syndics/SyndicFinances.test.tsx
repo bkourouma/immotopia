@@ -57,6 +57,12 @@ vi.mock('../../hooks/useBreakpoint', () => ({
   useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
 }));
 
+// Droits de la personne connectée : `null` = aucune restriction connue (administrateur d'agence, échec réseau).
+const menuAccess: { permissions: Set<string> | null } = { permissions: null };
+vi.mock('../../hooks/useMenuAccess', () => ({
+  useMyMenuAccess: () => ({ disabled: new Set(), enabled: new Set(), permissions: menuAccess.permissions, ready: true })
+}));
+
 const authValue: AuthContextType = {
   user: {
     id: 'user-1',
@@ -512,5 +518,36 @@ describe('SyndicFinances — pagination des paiements et relances serveur', () =
     mount('/tenant/tenant-1/syndics/syndic-1/finances?tab=impayes&im.reminded=0');
     expect(await screen.findByText('Ali Vierge', {}, T)).toBeInTheDocument();
     expect(screen.queryByText('Awa Relancée')).not.toBeInTheDocument();
+  });
+});
+
+describe('SyndicFinances — droits d’écriture', () => {
+  afterEach(() => {
+    menuAccess.permissions = null;
+  });
+
+  it('grise la création, le renommage et l’ajustement d’un fonds sans SYNDIC_EDIT', async () => {
+    menuAccess.permissions = new Set(['SYNDIC_VIEW']);
+    mockNonEmptyData();
+    mount();
+
+    expect((await screen.findAllByText('Fonds de roulement', {}, { timeout: 8000 })).length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: /Nouveau fonds/ })).toBeDisabled();
+    for (const button of screen.getAllByRole('button', { name: 'Renommer' })) expect(button).toBeDisabled();
+    for (const button of screen.getAllByRole('button', { name: 'Ajuster le solde' })) expect(button).toBeDisabled();
+    // La lecture reste possible.
+    for (const button of screen.getAllByRole('button', { name: 'Historique des mouvements' })) {
+      expect(button).toBeEnabled();
+    }
+  });
+
+  it('laisse les actions actives avec SYNDIC_EDIT', async () => {
+    menuAccess.permissions = new Set(['SYNDIC_VIEW', 'SYNDIC_EDIT']);
+    mockNonEmptyData();
+    mount();
+
+    expect((await screen.findAllByText('Fonds de roulement', {}, { timeout: 8000 })).length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: /Nouveau fonds/ })).toBeEnabled();
+    for (const button of screen.getAllByRole('button', { name: 'Ajuster le solde' })) expect(button).toBeEnabled();
   });
 });

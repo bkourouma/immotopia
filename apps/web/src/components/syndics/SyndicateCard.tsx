@@ -20,6 +20,8 @@ interface SyndicateCardProps {
   tenantId: string;
   onDelete?: (syndicId: string) => void;
   deleting?: boolean;
+  /** Droit `SYNDIC_EDIT` : sans lui, « Supprimer » est grisé (l'API répondrait 403). Vrai par défaut. */
+  canDelete?: boolean;
   /** Fiche d'aide de la carte (posée sur une seule carte de la liste). */
   helpId?: string;
 }
@@ -44,7 +46,14 @@ function isSyndicateEmpty(syndicate: Syndicate): boolean | null {
   return total === 0;
 }
 
-export const SyndicateCard: React.FC<SyndicateCardProps> = ({ syndicate, tenantId, onDelete, deleting, helpId }) => {
+export const SyndicateCard: React.FC<SyndicateCardProps> = ({
+  syndicate,
+  tenantId,
+  onDelete,
+  deleting,
+  canDelete = true,
+  helpId
+}) => {
   const status = statusConfig[syndicate.status];
   const lotCount = syndicate._count?.lots ?? syndicate.totalLots ?? syndicate.lots?.length ?? 0;
   const empty = isSyndicateEmpty(syndicate);
@@ -55,7 +64,7 @@ export const SyndicateCard: React.FC<SyndicateCardProps> = ({ syndicate, tenantI
       danger
       aria-label={t('Supprimer')}
       loading={deleting}
-      disabled={deleteDisabled}
+      disabled={deleteDisabled || !canDelete}
       onClick={() => onDelete?.(syndicate.id)}
     >
       {deleting ? null : <DeleteOutlined />}

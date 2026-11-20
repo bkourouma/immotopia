@@ -2,7 +2,9 @@ jest.mock('@prisma/client', () => {
   const tx = {
     latePaymentPenalty: {
       create: jest.fn(),
-      update: jest.fn()
+      update: jest.fn(),
+      // Remise : bascule atomique `waived: false` -> `true` (une seule passe).
+      updateMany: jest.fn(async () => ({ count: 1 }))
     },
     paymentReminder: {
       count: jest.fn(),

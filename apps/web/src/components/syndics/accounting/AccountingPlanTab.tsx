@@ -32,6 +32,8 @@ interface AccountingPlanTabProps {
   accounts: ChartOfAccount[];
   loading: boolean;
   submitting: boolean;
+  /** Droit `SYNDIC_EDIT` : sans lui, le chargement du plan est grisé (l'API répondrait 403). Vrai par défaut. */
+  canLoadTemplate?: boolean;
   onLoadTemplate: () => void;
 }
 
@@ -40,6 +42,7 @@ export const AccountingPlanTab: React.FC<AccountingPlanTabProps> = ({
   accounts,
   loading,
   submitting,
+  canLoadTemplate = true,
   onLoadTemplate
 }) => {
   const criteria: SearchCriterion[] = [
@@ -111,7 +114,13 @@ export const AccountingPlanTab: React.FC<AccountingPlanTabProps> = ({
             'Le plan comptable de cette copropriété est vide. Chargez le plan SYSCOHADA de copropriété pour démarrer.'
           )}
         </Paragraph>
-        <Button type="primary" icon={<DownloadOutlined />} onClick={onLoadTemplate} loading={submitting}>
+        <Button
+          type="primary"
+          icon={<DownloadOutlined />}
+          onClick={onLoadTemplate}
+          loading={submitting}
+          disabled={!canLoadTemplate}
+        >
           {t('Charger le plan SYSCOHADA')}
         </Button>
       </div>

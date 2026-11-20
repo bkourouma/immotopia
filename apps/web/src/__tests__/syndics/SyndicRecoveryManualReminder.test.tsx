@@ -1,0 +1,282 @@
+import React from 'react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import AuthContext from '../../context/AuthContext';
+import { AuthContextType } from '../../types/auth-types';
+import { SyndicRecovery } from '../../pages/syndics/SyndicRecovery';
+import apiClient from '../../utils/api-client';
+
+vi.mock('../../utils/api-client', () => ({
+  __esModule: true,
+  default: {
+    get: vi.fn(),
+    post: vi.fn(),
+    patch: vi.fn(),
+    delete: vi.fn()
+  }
+}));
+
+vi.mock('@ant-design/icons', async () => {
+  // Vitest resolves named imports against the keys of this object, so the mock
+  // must expose the real export names — a Proxy over {} declares none.
+  const actual = await vi.importActual<Record<string, unknown>>('@ant-design/icons');
+  const Icon = () => <span />;
+  return Object.fromEntries(Object.keys(actual).map(name => [name, Icon]));
+});
+
+// Le bouton « Exporter » des tableaux a ses propres tests (primitives/export-menu) : ici il est neutralisé.
+vi.mock('../../components/primitives/ExportMenu', () => ({ ExportMenu: () => null }));
+
+// La barre de recherche a ses propres tests (primitives/list-search, SyndicChargesSearch, SyndicRecoverySearch) :
+// ce fichier moque tout antd, la barre y est neutralisée.
+vi.mock('../../components/primitives/ListSearch', () => ({ ListSearch: () => null }));
+
+vi.mock('antd', async () => {
+  // importActual reaches the real module from inside a hoisted mock factory;
+  // a plain dynamic import here deadlocks the module graph.
+  const React = await vi.importActual<typeof import('react')>('react');
+  const passthrough =
+    (Tag: keyof JSX.IntrinsicElements = 'div') =>
+    ({ children, ...props }: any) =>
+      React.createElement(Tag, props, children);
+
+  const mockForm = {
+    validateFields: vi.fn(),
+    resetFields: vi.fn(),
+    setFieldsValue: vi.fn(),
+    getFieldValue: vi.fn()
+  };
+
+  const FormComponent: any = passthrough('form');
+  FormComponent.useForm = () => [mockForm];
+  FormComponent.Item = passthrough();
+  FormComponent.List = ({ children }: any) =>
+    children([], {
+      add: vi.fn(),
+      remove: vi.fn()
+    });
+
+  const antdMock: Record<string, unknown> = {
+    Alert: passthrough(),
+    Button: passthrough('button'),
+    Card: passthrough(),
+    Col: passthrough(),
+    DatePicker: passthrough('input'),
+    Form: FormComponent,
+    Input: Object.assign(passthrough('input'), { TextArea: passthrough('textarea') }),
+    InputNumber: passthrough('input'),
+    // Une modale fermée ne rend rien ; ouverte, elle expose son bouton de confirmation.
+    Modal: ({ children, open, onOk, okText, okButtonProps }: any) =>
+      open === false ? null : (
+        <div>
+          {children}
+          {okButtonProps?.style?.display === 'none' ? null : <button onClick={onOk}>{okText}</button>}
+        </div>
+      ),
+    Row: passthrough(),
+    Select: passthrough('select'),
+    Space: passthrough(),
+    Spin: passthrough(),
+    Statistic: ({ title, value }: any) => (
+      <div>
+        {title}:{value}
+      </div>
+    ),
+    Table: ({ dataSource }: any) => <div>{JSON.stringify(dataSource || [])}</div>,
+    // Onglets : seul le panneau actif est rendu (comme `destroyOnHidden`).
+    Tabs: ({ items, activeKey }: any) => (
+      <div>{items.find((item: any) => item.key === activeKey)?.children ?? null}</div>
+    ),
+    Tag: passthrough('span'),
+    Typography: {
+      Title: passthrough('h1'),
+      Paragraph: passthrough('p'),
+      Text: passthrough('span')
+    },
+    message: {
+      success: vi.fn(),
+      error: vi.fn(),
+      warning: vi.fn()
+    }
+  };
+  const appApi = {
+    message: antdMock.message ?? { success() {}, error() {}, warning() {}, info() {}, loading() {} },
+    modal: { confirm() {}, info() {}, warning() {}, error() {}, success() {} },
+    notification: { open() {}, success() {}, error() {}, warning() {}, info() {} }
+  };
+  return {
+    ...antdMock,
+    App: { useApp: () => appApi },
+    // Aucun palier actif : le rendu par defaut des tests est le mobile.
+    Grid: { useBreakpoint: () => ({}) }
+  };
+});
+
+const mockApiClient = apiClient as any;
+
+const authValue: AuthContextType = {
+  user: {
+    id: 'user-1',
+    email: 'test@example.com',
+    fullName: 'Test User',
+    avatarUrl: null,
+    globalRole: 'USER',
+    emailVerified: true,
+    preferredLanguage: null,
+    isActive: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+  isAuthenticated: true,
+  isLoading: false,
+  error: null,
+  tenantMembership: {
+    id: 'membership-1',
+    tenantId: 'tenant-1',
+    tenant: { id: 'tenant-1', name: 'Tenant Demo', slug: 'tenant-demo' },
+    status: 'ACTIVE'
+  },
+  tenantClient: null,
+  isLoadingMembership: false,
+  login: async () => undefined,
+  logout: async () => undefined,
+  register: async () => undefined,
+  refreshToken: async () => undefined,
+  clearError: vi.fn(),
+  refreshMembership: async () => undefined,
+  availableTenants: [],
+  activeTenantId: null,
+  switchTenant: () => undefined
+};
+
+function renderWithRoute() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <AuthContext.Provider value={authValue}>
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={['/tenant/tenant-1/syndics/syndic-1/recouvrement']}>
+          <Routes>
+            <Route path="/tenant/:tenantId/syndics/:syndicId/recouvrement" element={<SyndicRecovery />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    </AuthContext.Provider>
+  );
+}
+
+const OVERDUE_RESPONSE = {
+  data: {
+    success: true,
+    data: {
+      items: [
+        {
+          chargeCallId: 'charge-1',
+          lotId: 'lot-1',
+          lotNumber: 'A-01',
+          owner: { id: 'owner-1', firstName: 'Awa', lastName: 'Diop', email: 'awa@example.com' },
+          dueDate: '2026-02-01T00:00:00.000Z',
+          status: 'OVERDUE',
+          amount: 200000,
+          paid: 50000,
+          outstanding: 150000,
+          daysLate: 15
+        }
+      ],
+      totals: { overdueCount: 1, overdueAmount: 150000 }
+    }
+  }
+};
+
+function mockGets(permissionKeys: string[] | null) {
+  mockApiClient.get.mockImplementation((url: string) => {
+    if (url.endsWith('/retards')) return Promise.resolve(OVERDUE_RESPONSE);
+    if (url.endsWith('/roles/menu-access/me')) {
+      return Promise.resolve({ data: { success: true, data: { disabledMenuKeys: [], permissionKeys } } });
+    }
+    if (url.endsWith('/relances') || url.endsWith('/penalites') || url.endsWith('/echeanciers')) {
+      return Promise.resolve({ data: { success: true, data: [] } });
+    }
+    return Promise.reject(new Error(`Unhandled GET ${url}`));
+  });
+}
+
+describe('Syndics recovery page - relance manuelle et droits', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('avertit le gestionnaire quand un paiement mobile money déclaré attend déjà sa vérification (spec 047, R14)', async () => {
+    mockGets(null);
+    const { message } = (await import('antd')) as any;
+    const mockForm = ((await import('antd')) as any).Form.useForm()[0];
+    mockForm.validateFields.mockResolvedValue({ chargeCallId: 'charge-1', reminderLevel: 1, channel: 'EMAIL' });
+    mockApiClient.post.mockResolvedValue({
+      data: {
+        success: true,
+        data: {
+          id: 'reminder-1',
+          status: 'SENT',
+          pendingDeclaration: { declarationId: 'decl-1', createdAt: '2026-02-10T00:00:00.000Z' }
+        },
+        notificationFailed: false
+      }
+    });
+
+    renderWithRoute();
+    fireEvent.click(await screen.findByText('Relance manuelle'));
+    fireEvent.click(await screen.findByText('Créer'));
+
+    await waitFor(() => expect(message.success).toHaveBeenCalled());
+    expect(message.warning).toHaveBeenCalledWith(
+      'Un paiement mobile money déclaré attend déjà sa vérification pour cet appel.'
+    );
+  });
+
+  it("n'avertit pas quand aucune déclaration n'est en attente", async () => {
+    mockGets(null);
+    const { message } = (await import('antd')) as any;
+    const mockForm = ((await import('antd')) as any).Form.useForm()[0];
+    mockForm.validateFields.mockResolvedValue({ chargeCallId: 'charge-1', reminderLevel: 1, channel: 'EMAIL' });
+    mockApiClient.post.mockResolvedValue({
+      data: {
+        success: true,
+        data: { id: 'reminder-1', status: 'SENT', pendingDeclaration: null },
+        notificationFailed: false
+      }
+    });
+
+    renderWithRoute();
+    fireEvent.click(await screen.findByText('Relance manuelle'));
+    fireEvent.click(await screen.findByText('Créer'));
+
+    await waitFor(() => expect(message.success).toHaveBeenCalled());
+    expect(message.warning).not.toHaveBeenCalled();
+  });
+
+  it("grise les actions d'écriture quand la personne n'a que SYNDIC_VIEW", async () => {
+    mockGets(['SYNDIC_VIEW']);
+    renderWithRoute();
+    await screen.findByText('Recouvrement des impayés');
+    await waitFor(() => {
+      expect((screen.getByText('Relance manuelle').closest('button') as HTMLButtonElement).disabled).toBe(true);
+    });
+    expect((screen.getByText('Appliquer pénalité').closest('button') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByText('Créer échéancier').closest('button') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByText('Lancer les relances groupées').closest('button') as HTMLButtonElement).disabled).toBe(
+      true
+    );
+  });
+
+  it('laisse les actions actives avec SYNDIC_EDIT', async () => {
+    mockGets(['SYNDIC_VIEW', 'SYNDIC_EDIT']);
+    renderWithRoute();
+    await screen.findByText('Recouvrement des impayés');
+    await waitFor(() => {
+      expect((screen.getByText('Relance manuelle').closest('button') as HTMLButtonElement).disabled).toBe(false);
+    });
+    expect((screen.getByText('Lancer les relances groupées').closest('button') as HTMLButtonElement).disabled).toBe(
+      false
+    );
+  });
+});

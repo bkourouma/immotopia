@@ -593,8 +593,27 @@ export async function deleteEmptySyndicateByTenant(
       prisma.chargePayment.count({ where: { lot: { syndicateId } } })
     ]);
 
+  // Prélèvements automatiques (relations Restrict) : créancier, remises et imports de retours rattachés à la
+  // copropriété. Sans ce contrôle, la suppression finissait en erreur de clé étrangère (500) au lieu d'un 409.
+  const [directDebitCreditors, directDebitRemittances, directDebitReturnImports] = await Promise.all([
+    prisma.directDebitCreditor.count({ where: { syndicateId } }),
+    prisma.directDebitRemittance.count({ where: { syndicateId } }),
+    prisma.directDebitReturnImport.count({ where: { syndicateId } })
+  ]);
+
   if (
-    lots + budgets + chargeCalls + meetings + documents + contracts + incidents + ownerAccounts + chargePayments >
+    lots +
+      budgets +
+      chargeCalls +
+      meetings +
+      documents +
+      contracts +
+      incidents +
+      ownerAccounts +
+      chargePayments +
+      directDebitCreditors +
+      directDebitRemittances +
+      directDebitReturnImports >
     0
   ) {
     throw conflict(
@@ -1371,6 +1390,20 @@ export async function addLotTenantBySyndicate(
   await assertLeaseBelongsToTenant(tenantId, data.leaseId);
 
   return prisma.$transaction(async tx => {
+    // Le nouveau locataire remplace l'actuel : l'ancienne affectation est close, et son historique garde une date
+    // de fin (celle d'entrée du nouveau) au lieu d'une affectation « terminée » sans fin.
+    await tx.lotTenantAssignment.updateMany({
+      where: {
+        lotId,
+        isActive: true,
+        endDate: null,
+        startDate: { lte: data.startDate }
+      },
+      data: {
+        isActive: false,
+        endDate: data.startDate
+      }
+    });
     await tx.lotTenantAssignment.updateMany({
       where: {
         lotId,
@@ -1418,18 +1451,20 @@ export async function deactivateLotTenantAssignmentBySyndicate(
         }
       }
     },
-    select: { id: true }
+    select: { id: true, isActive: true, endDate: true }
   });
 
   if (!assignment) {
     throw notFound('Assignation locataire introuvable ou inaccessible');
   }
 
+  // Affectation déjà terminée (remplacée par un autre locataire, ou fin déjà saisie) : sa date de fin est
+  // conservée, on ne la réécrit pas à « aujourd'hui ».
   return prisma.lotTenantAssignment.update({
     where: { id: assignmentId },
     data: {
       isActive: false,
-      endDate: new Date()
+      ...(assignment.endDate ? {} : { endDate: new Date() })
     }
   });
 }
@@ -1722,6 +1757,24 @@ async function createLotChargeCallTx(
   return chargeCall;
 }
 
+/**
+ * Echeance de la `index`-ieme occurrence d'un appel recurrent, en mois calendaires : le jour est ramene au
+ * dernier jour du mois cible (31 janvier + 1 mois = 28/29 fevrier, et non le 3 mars que donne `setMonth` seul).
+ */
+export function shiftChargeDueDate(baseDate: Date, frequency: 'MONTHLY' | 'QUARTERLY' | 'ANNUAL', index: number): Date {
+  const next = new Date(baseDate);
+  if (index <= 0) {
+    return next;
+  }
+  const months = frequency === 'MONTHLY' ? index : frequency === 'QUARTERLY' ? index * 3 : index * 12;
+  const day = next.getDate();
+  next.setDate(1);
+  next.setMonth(next.getMonth() + months);
+  const lastDayOfTarget = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+  next.setDate(Math.min(day, lastDayOfTarget));
+  return next;
+}
+
 export async function createChargeCallAndUpdateStatus(
   tenantId: string,
   data: {
@@ -1858,22 +1911,7 @@ export async function createChargeCallAndUpdateStatus(
   const recurrenceCount = data.isRecurring ? Math.max(1, data.recurrenceCount ?? 1) : 1;
   const recurrenceFrequency = data.recurrenceFrequency ?? 'MONTHLY';
 
-  const addRecurrence = (baseDate: Date, index: number) => {
-    const next = new Date(baseDate);
-    if (index <= 0) {
-      return next;
-    }
-    if (recurrenceFrequency === 'MONTHLY') {
-      next.setMonth(next.getMonth() + index);
-      return next;
-    }
-    if (recurrenceFrequency === 'QUARTERLY') {
-      next.setMonth(next.getMonth() + index * 3);
-      return next;
-    }
-    next.setFullYear(next.getFullYear() + index);
-    return next;
-  };
+  const addRecurrence = (baseDate: Date, index: number) => shiftChargeDueDate(baseDate, recurrenceFrequency, index);
 
   const resolvePeriodLabel = (index: number) => {
     if (recurrenceCount <= 1) {
@@ -3157,6 +3195,10 @@ export async function createMaintenanceContract(
     throw notFound('Prestataire introuvable ou inaccessible');
   }
 
+  if (data.endDate && data.endDate < data.startDate) {
+    throw unprocessableEntity('La date de fin du contrat doit etre posterieure a sa date de debut');
+  }
+
   await assertNoOverlappingContract(data.syndicateId, {
     providerId: data.providerId,
     nature: data.nature,
@@ -3208,11 +3250,29 @@ export async function updateMaintenanceContractByTenant(
         tenantId
       }
     },
-    select: { id: true }
+    select: { id: true, startDate: true, endDate: true }
   });
 
   if (!existing) {
     throw notFound('Contrat introuvable ou inaccessible');
+  }
+
+  // Un prestataire d'une autre agence ne peut pas etre rattache au contrat (meme 404 qu'un inexistant).
+  if (data.providerId) {
+    const provider = await prisma.serviceProvider.findFirst({
+      where: { id: data.providerId, tenantId },
+      select: { id: true }
+    });
+    if (!provider) {
+      throw notFound('Prestataire introuvable ou inaccessible');
+    }
+  }
+
+  // La fin ne precede jamais le debut, sur les valeurs finales (saisies ou deja enregistrees).
+  const finalStart = data.startDate ?? existing.startDate;
+  const finalEnd = data.endDate === undefined ? existing.endDate : data.endDate;
+  if (finalStart && finalEnd && finalEnd < finalStart) {
+    throw unprocessableEntity('La date de fin du contrat doit etre posterieure a sa date de debut');
   }
 
   return prisma.maintenanceContract.update({
@@ -3257,8 +3317,10 @@ export async function listDocumentsBySyndicate(
     }
   });
 
+  // Copropriété d'une autre agence ou inexistante : 404, comme les autres lectures (et non une liste vide
+  // qui laissait croire à un coffre sans document).
   if (!syndicate?.id) {
-    return [];
+    throw notFound('Copropriété introuvable ou inaccessible');
   }
 
   return prisma.syndicateDocument.findMany({
@@ -3341,6 +3403,14 @@ export async function updateDocumentForSyndicate(
 }
 
 export async function listFundsBySyndicate(tenantId: string, syndicateId: string) {
+  // Copropriete d'une autre agence ou inexistante : 404, comme les autres lectures (et non une liste vide).
+  const syndicate = await prisma.syndicate.findFirst({
+    where: { id: syndicateId, tenantId },
+    select: { id: true }
+  });
+  if (!syndicate?.id) {
+    throw notFound('Copropriété introuvable ou inaccessible');
+  }
   return prisma.syndicateFund.findMany({
     where: {
       syndicateId,
@@ -3964,6 +4034,11 @@ export async function createLatePaymentPenaltyForChargeCall(
   // Un montant saisi est plafonné au reste dû, comme le calcul (computeLatePenalty).
   const penaltyAmount = Math.min(roundMoney(data.penaltyAmount ?? computedPenalty), roundMoney(outstanding));
 
+  // Une penalite creee deja remise ne debite rien : sinon le compte du lot porterait un
+  // debit sans credit de remise (et la remise, refusee sur une penalite deja remise,
+  // ne pourrait jamais le compenser).
+  const createdWaived = data.waived === true;
+
   return prisma.$transaction(async tx => {
     const penalty = await tx.latePaymentPenalty.create({
       data: {
@@ -3973,12 +4048,13 @@ export async function createLatePaymentPenaltyForChargeCall(
         penaltyRate: data.penaltyRate,
         penaltyAmount,
         appliedAt,
-        waived: data.waived ?? false,
+        waived: createdWaived,
+        ...(createdWaived ? { waivedAt: appliedAt } : {}),
         waivedReason: data.waivedReason
       }
     });
 
-    const account = await ensureOwnerAccountForLotTx(tx, tenantId, syndicateId, call.lotId);
+    const account = createdWaived ? null : await ensureOwnerAccountForLotTx(tx, tenantId, syndicateId, call.lotId);
     if (account) {
       await appendOwnerAccountTransactionTx(tx, {
         accountId: account.id,
@@ -4011,7 +4087,8 @@ export async function waiveLatePaymentPenaltyByTenant(
     select: {
       id: true,
       penaltyAmount: true,
-      lotId: true
+      lotId: true,
+      waived: true
     }
   });
 
@@ -4019,7 +4096,21 @@ export async function waiveLatePaymentPenaltyByTenant(
     throw notFound('Penalite introuvable ou inaccessible');
   }
 
+  // Une remise ne se rejoue pas : sinon chaque appel recredite le compte du lot.
+  if (penalty.waived) {
+    throw conflict('Cette penalite a deja ete remise');
+  }
+
   return prisma.$transaction(async tx => {
+    // Bascule atomique : sous deux requetes simultanees, une seule passe de `waived: false` a `true`.
+    const switched = await tx.latePaymentPenalty.updateMany({
+      where: { id: penaltyId, waived: false },
+      data: { waived: true }
+    });
+    if (switched.count === 0) {
+      throw conflict('Cette penalite a deja ete remise');
+    }
+
     const updated = await tx.latePaymentPenalty.update({
       where: { id: penaltyId },
       data: {
@@ -4901,7 +4992,18 @@ export async function createBudgetBySyndicate(
     }
   });
 
-  await recomputeBudgetAllocationsByBudget(tenantId, syndicateId, budget.id);
+  try {
+    await recomputeBudgetAllocationsByBudget(tenantId, syndicateId, budget.id);
+  } catch (error) {
+    // Repartition impossible (ex. copropriete sans lot) : on ne laisse pas un budget orphelin,
+    // sans allocations, alors que l'appelant recoit une erreur.
+    try {
+      await prisma.syndicateBudget.delete({ where: { id: budget.id } });
+    } catch {
+      // Le nettoyage est au mieux : l'erreur d'origine reste celle que l'appelant doit voir.
+    }
+    throw error;
+  }
 
   return prisma.syndicateBudget.findUnique({
     where: { id: budget.id },
@@ -5016,7 +5118,8 @@ export async function updateBudgetBySyndicate(
       label: data.label,
       status: data.status as any,
       approvedByResolutionId: data.approvedByResolutionId,
-      approvedAt: data.status === 'APPROVED' ? new Date() : undefined,
+      // La date d'approbation ne se reecrit que lors d'un passage a APPROVED (pas a chaque modification).
+      approvedAt: data.status === 'APPROVED' && budget.status !== 'APPROVED' ? new Date() : undefined,
       totalAmount: data.totalAmount !== undefined ? roundMoney(data.totalAmount) : undefined
     },
     include: {
@@ -5176,6 +5279,10 @@ export async function createChargeCallBatchBySyndicate(
   }
 
   const bounds = resolvePeriodBounds(data);
+  // Meme regle que la generation depuis le budget : un seul lot d'appels ordinaire par periode.
+  if (data.batchType === 'REGULAR') {
+    await assertNoRegularBatchForPeriodTx(prisma as unknown as PrismaTransactionClient, syndicateId, bounds);
+  }
   return prisma.chargeCallBatch.create({
     data: {
       syndicateId,
@@ -5758,6 +5865,11 @@ export async function updateLotOwnerProfileBySyndicate(
   const nextUntil = data.ownedUntil === undefined ? profile.ownedUntil : data.ownedUntil;
   const nextActive = data.isActive ?? profile.isActive;
   const willCount = nextActive && (!nextUntil || nextUntil > new Date());
+  // Même règle qu'à la création : on ne cesse pas d'être propriétaire avant de l'être devenu.
+  if (nextUntil && nextUntil < (data.ownedSince ?? profile.ownedSince)) {
+    const message = t('La date de fin de propriété doit être postérieure ou égale à la date de début.');
+    throw unprocessableEntity(message);
+  }
 
   return prisma.$transaction(async tx => {
     if (willCount) {
@@ -6002,7 +6114,7 @@ export async function updateIncidentBySyndicate(
   await assertSyndicateTenantOwnership(tenantId, syndicateId);
   const incident = await prisma.syndicateIncident.findFirst({
     where: { id: incidentId, syndicateId },
-    select: { id: true }
+    select: { id: true, resolvedAt: true }
   });
   if (!incident) {
     throw notFound('Incident introuvable');
@@ -6018,12 +6130,21 @@ export async function updateIncidentBySyndicate(
     }
   }
 
+  // La date de résolution suit le statut quand l'appelant ne la fixe pas : « Résolu » / « Clôturé » la posent à
+  // aujourd'hui (si elle est vide), et rouvrir l'incident l'efface.
+  let resolvedAt: Date | null | undefined = data.resolvedAt;
+  if (resolvedAt === undefined && data.status !== undefined) {
+    const closing = data.status === 'RESOLVED' || data.status === 'CLOSED';
+    if (closing && !incident.resolvedAt) resolvedAt = new Date();
+    else if (!closing && incident.resolvedAt) resolvedAt = null;
+  }
+
   return prisma.syndicateIncident.update({
     where: { id: incidentId },
     data: {
       status: data.status as any,
       providerId: data.providerId === null ? null : data.providerId,
-      resolvedAt: data.resolvedAt === null ? null : data.resolvedAt,
+      resolvedAt: resolvedAt === null ? null : resolvedAt,
       description: data.description
     },
     include: {

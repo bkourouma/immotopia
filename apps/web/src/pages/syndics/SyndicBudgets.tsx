@@ -34,6 +34,7 @@ import {
 import { useTabParam } from '../../components/syndics/finances/url-params';
 import { useLocalListSearch } from '../../utils/list-search';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
+import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { getLotTypeLabel } from '../../utils/syndic-lot-label';
 import { t } from '../../i18n/t';
 import { useFormFieldModes } from '../../hooks/useFormFieldModes';
@@ -192,6 +193,11 @@ export const SyndicBudgets: React.FC = () => {
   const { message } = App.useApp();
 
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
+
+  // Créer, approuver, répartir, générer et affecter un fonds exigent SYNDIC_EDIT (l'API répondrait 403).
+  // L'API reste l'autorité : on ne grise que lorsque l'absence du droit est connue (lecture, échec réseau : pas de filtre).
+  const { permissions, ready: permissionsReady } = useMyMenuAccess(effectiveTenantId);
+  const canEdit = !(permissionsReady && permissions !== null && !permissions.has('SYNDIC_EDIT'));
 
   const [tab, setTab] = useTabParam(BUDGET_TABS, 'budgets');
   // Incrémenté pour relire les données de l'onglet actif après une action ou un clic sur « Actualiser ».
@@ -613,10 +619,10 @@ export const SyndicBudgets: React.FC = () => {
             </Paragraph>
           </Space>
           <Space>
-            <Button icon={<PlusOutlined />} onClick={() => setOpenBudgetModal(true)}>
+            <Button icon={<PlusOutlined />} disabled={!canEdit} onClick={() => setOpenBudgetModal(true)}>
               {t('Nouveau budget')}
             </Button>
-            <Button icon={<PlusOutlined />} onClick={() => setOpenBatchModal(true)}>
+            <Button icon={<PlusOutlined />} disabled={!canEdit} onClick={() => setOpenBatchModal(true)}>
               {t('Nouvelle campagne')}
             </Button>
             <Button icon={<ReloadOutlined />} onClick={reload}>
@@ -674,6 +680,7 @@ export const SyndicBudgets: React.FC = () => {
                                 <Button
                                   size="small"
                                   icon={<CheckOutlined />}
+                                  disabled={!canEdit}
                                   onClick={() => void handleApproveBudget(budget.id)}
                                 >
                                   {t('Approuver')}
@@ -683,6 +690,7 @@ export const SyndicBudgets: React.FC = () => {
                                 <Button
                                   size="small"
                                   icon={<UndoOutlined />}
+                                  disabled={!canEdit}
                                   onClick={() => void handleReviseBudget(budget.id)}
                                 >
                                   {t('Réviser')}
@@ -693,21 +701,33 @@ export const SyndicBudgets: React.FC = () => {
                                   size="small"
                                   danger
                                   icon={<LockOutlined />}
+                                  disabled={!canEdit}
                                   onClick={() => handleCloseBudget(budget)}
                                 >
                                   {t('Clôturer')}
                                 </Button>
                               )}
-                              <Button size="small" disabled={isClosed} onClick={() => void handleRecompute(budget.id)}>
+                              <Button
+                                size="small"
+                                disabled={isClosed || !canEdit}
+                                onClick={() => void handleRecompute(budget.id)}
+                              >
                                 {t('Répartir')}
                               </Button>
                               <Button size="small" onClick={() => setLinesBudget(budget)}>
                                 {t('Postes et fonds')}
                               </Button>
+                              {/* L'API n'émet des appels que depuis un budget APPROVED (422 sinon). */}
                               {!isClosed && (
                                 <Button
                                   size="small"
                                   type="primary"
+                                  disabled={!canEdit || budget.status !== 'APPROVED'}
+                                  title={
+                                    budget.status !== 'APPROVED'
+                                      ? t('Le budget doit être approuvé avant de générer les appels.')
+                                      : undefined
+                                  }
                                   onClick={() => {
                                     setSelectedBudget(budget);
                                     periodTouched.current = false;
@@ -1047,7 +1067,7 @@ export const SyndicBudgets: React.FC = () => {
                     optionFilterProp="label"
                     style={{ minWidth: 200 }}
                     placeholder={t('Aucun fonds')}
-                    disabled={funds.length === 0 || savingLineId === line.id}
+                    disabled={!canEdit || funds.length === 0 || savingLineId === line.id}
                     value={line.fundId ?? undefined}
                     onChange={value => void handleAssignLineFund(line, value)}
                     options={fundSelectOptions}

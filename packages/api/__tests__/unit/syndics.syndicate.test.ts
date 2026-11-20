@@ -37,6 +37,10 @@ jest.mock('@prisma/client', () => {
     syndicateIncident: { count: jest.fn(async () => 0) },
     ownerAccount: { count: jest.fn(async () => 0) },
     chargePayment: { count: jest.fn(async () => 0) },
+    // Prelevements automatiques (relations Restrict) : comptes de `deleteEmptySyndicateByTenant`.
+    directDebitCreditor: { count: jest.fn(async () => 0) },
+    directDebitRemittance: { count: jest.fn(async () => 0) },
+    directDebitReturnImport: { count: jest.fn(async () => 0) },
     serviceProvider: {
       create: jest.fn(),
       findFirst: jest.fn(),
@@ -527,6 +531,15 @@ describe('Suppression d une copropriete vide uniquement (ecart recette #8)', () 
 
     await expect(deleteEmptySyndicateByTenant('tenant-a', 'syn-1')).rejects.toMatchObject({ status: 409 });
     expect(mockPrisma.chargePayment.count).toHaveBeenCalledWith({ where: { lot: { syndicateId: 'syn-1' } } });
+    expect(mockPrisma.syndicate.delete).not.toHaveBeenCalled();
+  });
+
+  it('refuse (409) si un createur de prelevements (relation Restrict) est rattache, au lieu d une erreur de cle etrangere', async () => {
+    mockPrisma.syndicate.findFirst.mockResolvedValueOnce({ id: 'syn-1' });
+    mockPrisma.directDebitCreditor.count.mockResolvedValueOnce(1);
+
+    await expect(deleteEmptySyndicateByTenant('tenant-a', 'syn-1')).rejects.toMatchObject({ status: 409 });
+    expect(mockPrisma.directDebitCreditor.count).toHaveBeenCalledWith({ where: { syndicateId: 'syn-1' } });
     expect(mockPrisma.syndicate.delete).not.toHaveBeenCalled();
   });
 

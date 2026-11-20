@@ -128,7 +128,13 @@ export const SyndicDocuments: React.FC = () => {
             <Title level={2} className="it-toolbar__title" style={{ margin: 0 }}>
               {t('Coffre documentaire')}
             </Title>
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpenCreate(true)}>
+            {/* Ajouter un document exige SYNDIC_EDIT (403 sinon) : grisé seulement si l'absence du droit est connue. */}
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => setOpenCreate(true)}
+              disabled={permissionsReady && permissions !== null && !permissions.has('SYNDIC_EDIT')}
+            >
               {t('Ajouter un document')}
             </Button>
           </div>

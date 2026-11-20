@@ -35,6 +35,7 @@ import {
   ReminderBatchResult
 } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
+import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { computeLatePenaltyPreview, MAX_MONTHLY_PENALTY_RATE } from '../../utils/syndic-penalty';
 import { t } from '../../i18n/t';
 import { useFormFieldModes } from '../../hooks/useFormFieldModes';
@@ -70,6 +71,11 @@ export const SyndicRecovery: React.FC = () => {
 
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
   const [activeTab, setActiveTab] = useTabParam<RecoveryTab>(RECOVERY_TABS, 'retards');
+
+  // Relancer, appliquer ou remettre une pénalité, créer un échéancier exigent SYNDIC_EDIT (l'API répondrait 403).
+  // L'API reste l'autorité : on ne grise que lorsque l'absence du droit est connue (lecture, échec réseau : pas de filtre).
+  const { permissions, ready: permissionsReady } = useMyMenuAccess(effectiveTenantId);
+  const canEdit = !(permissionsReady && permissions !== null && !permissions.has('SYNDIC_EDIT'));
 
   const ready = Boolean(effectiveTenantId && syndicId);
   const tenantKey = effectiveTenantId ?? '';
@@ -241,6 +247,11 @@ export const SyndicRecovery: React.FC = () => {
       } else {
         message.success(t('Relance créée'));
       }
+      // Spec 047 (R14) : une relance manuelle reste permise, mais le gestionnaire doit voir qu'un paiement
+      // mobile money déclaré attend déjà sa vérification pour cet appel (l'API le renvoie, le service le laisse passer).
+      if (reminder.pendingDeclaration) {
+        message.warning(t('Un paiement mobile money déclaré attend déjà sa vérification pour cet appel.'));
+      }
       setManualOpen(false);
       manualForm.resetFields();
       await refreshAfterWrite('reminders');
@@ -345,24 +356,33 @@ export const SyndicRecovery: React.FC = () => {
             </Paragraph>
           </Space>
           <Space wrap>
-            <Button onClick={() => setManualOpen(true)} icon={<PlusOutlined />} disabled={dashboard.items.length === 0}>
+            <Button
+              onClick={() => setManualOpen(true)}
+              icon={<PlusOutlined />}
+              disabled={!canEdit || dashboard.items.length === 0}
+            >
               {t('Relance manuelle')}
             </Button>
             <Button
               onClick={() => setPenaltyOpen(true)}
               icon={<ExclamationCircleOutlined />}
-              disabled={dashboard.items.length === 0}
+              disabled={!canEdit || dashboard.items.length === 0}
             >
               {t('Appliquer pénalité')}
             </Button>
             <Button
               onClick={() => setScheduleOpen(true)}
               icon={<ClockCircleOutlined />}
-              disabled={dashboard.items.length === 0}
+              disabled={!canEdit || dashboard.items.length === 0}
             >
               {t('Créer échéancier')}
             </Button>
-            <Button type="primary" onClick={() => void handleOpenBatchPreview()} loading={previewLoading}>
+            <Button
+              type="primary"
+              onClick={() => void handleOpenBatchPreview()}
+              loading={previewLoading}
+              disabled={!canEdit}
+            >
               {t('Lancer les relances groupées')}
             </Button>
           </Space>
@@ -416,6 +436,7 @@ export const SyndicRecovery: React.FC = () => {
                 <PenaltiesTab
                   tenantId={tenantKey}
                   syndicId={syndicKey}
+                  canWaive={canEdit}
                   onWaive={penalty => {
                     setSelectedPenalty(penalty);
                     setWaiveOpen(true);
@@ -462,11 +483,18 @@ export const SyndicRecovery: React.FC = () => {
           <Row gutter={12}>
             <Col xs={24} md={12}>
               <Form.Item label={t('Niveau')} name="reminderLevel" rules={[{ required: true }]}>
-                <InputNumber min={1} max={4} style={{ width: '100%' }} />
+                <InputNumber min={1} max={4} precision={0} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
-              <Form.Item label={t('Canal')} name="channel" rules={[{ required: true }]}>
+              <Form.Item
+                label={t('Canal')}
+                name="channel"
+                rules={[{ required: true }]}
+                extra={t(
+                  "Le canal est consigné dans l'historique ; l'envoi part par e-mail et par WhatsApp selon la configuration de l'agence."
+                )}
+              >
                 <Select showSearch optionFilterProp="label" options={reminderChannelOptions} />
               </Form.Item>
             </Col>
@@ -519,7 +547,7 @@ export const SyndicRecovery: React.FC = () => {
                     }
                   ]}
                 >
-                  <InputNumber min={1} style={{ width: '100%' }} />
+                  <InputNumber min={1} precision={0} style={{ width: '100%' }} />
                 </Form.Item>
               ) : null}
             </Col>
