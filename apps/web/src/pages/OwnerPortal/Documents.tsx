@@ -59,10 +59,10 @@ export default function Documents() {
       LEASE_CONTRACT: t('Contrat de bail'),
       LEASE_ADDENDUM: 'Avenant',
       RENT_RECEIPT: t('Quittance de loyer'),
-      RENT_QUITTANCE: 'Quittance',
+      RENT_QUITTANCE: t('Quittance'),
       DEPOSIT_RECEIPT: t('Reçu de dépôt'),
       STATEMENT: t('Relevé'),
-      OTHER: 'Autre'
+      OTHER: t('Autre')
     };
     return labels[type] || type;
   };

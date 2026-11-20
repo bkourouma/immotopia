@@ -14,7 +14,11 @@ export const createPaymentSchema = z.object({
   renterClientId: z.string().uuid().optional(),
   invoiceId: z.string().uuid().optional(),
   method: z.enum(['CASH', 'BANK_TRANSFER', 'CHECK', 'MOBILE_MONEY', 'CARD', 'OTHER']),
-  amount: z.number().positive().max(MONTANT_MAX, 'Le montant dépasse le maximum autorisé (9 999 999 999,99).'),
+  // Minimum 0,01 : un montant inférieur serait arrondi à 0,00 par la colonne `Decimal(12,2)`.
+  amount: z
+    .number()
+    .min(0.01, 'Le montant doit être supérieur à 0.')
+    .max(MONTANT_MAX, 'Le montant dépasse le maximum autorisé (9 999 999 999,99).'),
   currency: z.string().optional().default('FCFA'),
   mmOperator: z.enum(['ORANGE', 'MTN', 'MOOV', 'WAVE', 'OTHER']).optional(),
   mmPhone: z.string().optional(),
@@ -33,7 +37,7 @@ export const createPaymentSchema = z.object({
 
 export const allocatePaymentSchema = z.object({
   installmentIds: z.array(z.string().uuid()).min(1),
-  amounts: z.record(z.string().uuid(), z.number().positive()).optional()
+  amounts: z.record(z.string().uuid(), z.number().min(0.01).max(MONTANT_MAX)).optional()
 });
 
 export const updatePaymentStatusSchema = z.object({

@@ -83,7 +83,7 @@ function paiement(overrides: Record<string, unknown> = {}) {
     amount: 1_000_000,
     currency: 'XOF',
     method: 'CASH',
-    status: 'PENDING',
+    status: 'SUCCESS',
     initiated_at: '2026-05-06T09:30:00.000Z',
     allocations: [],
     depositMovements: [],

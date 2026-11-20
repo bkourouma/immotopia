@@ -474,7 +474,7 @@ export async function createPayment(tenantId: string, data: CreatePaymentData, a
           renter_client_id: data.renterClientId ?? locatairePrincipalDuBail,
           invoice_id: data.invoiceId,
           method: data.method,
-          amount: new Decimal(data.amount),
+          amount: new Decimal(roundMoney(data.amount)),
           currency: data.currency || 'FCFA',
           mm_operator: data.mmOperator as any,
           mm_phone: data.mmPhone,
@@ -642,16 +642,21 @@ export async function allocatePaymentTx(
       where: { installment_id: installment.id, tenant_id: tenantId }
     });
 
-    const allocatedToInstallment = existingAllocations.reduce((sum, alloc) => sum + Number(alloc.amount), 0);
+    // Arrondi au centime à chaque étape : en flottant, 0,1 + 0,2 n'est pas 0,3 et un reste
+    // dû de 1e-13 laissait l'échéance « Partiellement payée » ou créait une affectation fantôme.
+    const allocatedToInstallment = roundMoney(
+      existingAllocations.reduce((sum, alloc) => sum + Number(alloc.amount), 0)
+    );
 
     // Calculate total amount due (rent + service + other fees + penalties)
-    const totalAmountDue =
+    const totalAmountDue = roundMoney(
       Number(installment.amount_rent) +
-      Number(installment.amount_service) +
-      Number(installment.amount_other_fees) +
-      Number(installment.penalty_amount);
+        Number(installment.amount_service) +
+        Number(installment.amount_other_fees) +
+        Number(installment.penalty_amount)
+    );
 
-    const remainingDue = totalAmountDue - allocatedToInstallment;
+    const remainingDue = roundMoney(totalAmountDue - allocatedToInstallment);
 
     if (remainingDue <= 0) continue;
 
@@ -659,10 +664,10 @@ export async function allocatePaymentTx(
     let allocationAmount: number;
     if (data.amounts && data.amounts[installment.id]) {
       // Use manually specified amount, but don't exceed remaining due
-      allocationAmount = Math.min(data.amounts[installment.id], remainingDue, amountToAllocate);
+      allocationAmount = roundMoney(Math.min(data.amounts[installment.id], remainingDue, amountToAllocate));
     } else {
       // Auto-allocate: use minimum of remaining due and remaining payment
-      allocationAmount = Math.min(remainingDue, amountToAllocate);
+      allocationAmount = roundMoney(Math.min(remainingDue, amountToAllocate));
     }
 
     if (allocationAmount > 0) {
@@ -674,7 +679,7 @@ export async function allocatePaymentTx(
         currency: payment.currency
       });
 
-      amountToAllocate -= allocationAmount;
+      amountToAllocate = roundMoney(amountToAllocate - allocationAmount);
     }
   }
 
@@ -722,14 +727,15 @@ export async function allocatePaymentTx(
       });
 
       // Calculate total allocated - allAllocations already includes the newly created allocation
-      const totalAllocated = allAllocations.reduce((sum, alloc) => sum + Number(alloc.amount), 0);
+      const totalAllocated = roundMoney(allAllocations.reduce((sum, alloc) => sum + Number(alloc.amount), 0));
 
       // Calculate total amount due
-      const totalAmountDue =
+      const totalAmountDue = roundMoney(
         Number(installment.amount_rent) +
-        Number(installment.amount_service) +
-        Number(installment.amount_other_fees) +
-        Number(installment.penalty_amount);
+          Number(installment.amount_service) +
+          Number(installment.amount_other_fees) +
+          Number(installment.penalty_amount)
+      );
 
       let newStatus = installment.status;
       if (totalAllocated >= totalAmountDue) {
@@ -964,13 +970,14 @@ async function reverseInstallmentAllocations(
       where: { installment_id: installmentId, tenant_id: tenantId },
       select: { amount: true }
     });
-    const totalPaid = remaining.reduce((sum, alloc) => sum + Number(alloc.amount), 0);
+    const totalPaid = roundMoney(remaining.reduce((sum, alloc) => sum + Number(alloc.amount), 0));
 
-    const totalDue =
+    const totalDue = roundMoney(
       Number(installment.amount_rent) +
-      Number(installment.amount_service) +
-      Number(installment.amount_other_fees) +
-      Number(installment.penalty_amount);
+        Number(installment.amount_service) +
+        Number(installment.amount_other_fees) +
+        Number(installment.penalty_amount)
+    );
 
     const dueDate = new Date(installment.due_date);
     dueDate.setHours(0, 0, 0, 0);

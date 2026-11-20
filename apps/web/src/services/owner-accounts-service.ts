@@ -79,6 +79,12 @@ export interface OwnerAccountTotals {
   vat: number;
   expenses: number;
   payouts: number;
+  /** Retenue à la source prélevée sur les loyers (diminue le solde). */
+  withholdingTax: number;
+  /** Dépôts de garantie conservés par l'agence (augmentent le solde). */
+  depositRetained: number;
+  /** Autres écritures du compte : le solde reste explicable. */
+  otherMovements: number;
 }
 
 export interface OwnerAccountDetail {

@@ -2,7 +2,8 @@ import { escapeLike } from '../utils/like-escape';
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
 import { logAuditEvent, recordAuditEvent } from './audit-service';
-import { ConflictError } from '../middleware/error-middleware';
+import { BadRequestError, ConflictError, NotFoundError } from '../middleware/error-middleware';
+import { OPEN_TICKET_STATUSES } from '../utils/maintenance-ticket-status';
 import { CreateVendorRequest, UpdateVendorRequest } from '../types/maintenance-types';
 
 type ProviderRecord = {
@@ -106,7 +107,7 @@ async function upsertVendorMirrorFromProvider(
  */
 export async function createVendor(tenantId: string, data: CreateVendorRequest, actorUserId?: string) {
   if (!data.name || data.name.trim().length < 2) {
-    throw new Error('Le nom du prestataire doit contenir au moins 2 caracteres');
+    throw new BadRequestError('Le nom du prestataire doit contenir au moins 2 caractères.');
   }
 
   const trimmedName = data.name.trim();
@@ -230,7 +231,7 @@ export async function getVendorById(tenantId: string, vendorId: string) {
   })) as ProviderRecord | null;
 
   if (!provider) {
-    throw new Error('Prestataire introuvable');
+    throw new NotFoundError('Prestataire introuvable');
   }
 
   const mirror = (await prisma.maintenanceVendor.findFirst({
@@ -260,7 +261,7 @@ export async function updateVendor(
   })) as ProviderRecord | null;
 
   if (!existingProvider) {
-    throw new Error('Prestataire introuvable');
+    throw new NotFoundError('Prestataire introuvable');
   }
 
   if (data.name && data.name.trim() !== existingProvider.name) {
@@ -335,18 +336,22 @@ export async function deactivateVendor(tenantId: string, vendorId: string, actor
     }
   });
   if (!provider) {
-    throw new Error('Prestataire introuvable');
+    throw new NotFoundError('Prestataire introuvable');
   }
 
   const activeTickets = await prisma.maintenanceTicket.count({
     where: {
       tenant_id: tenantId,
       assigned_vendor_id: vendorId,
-      status: { not: 'RESOLVED' }
+      // Tickets encore ouverts seulement : un ticket annulé ne retient pas le prestataire
+      // (le filtre `not: RESOLVED` comptait aussi les annulés).
+      status: { in: OPEN_TICKET_STATUSES }
     }
   });
   if (activeTickets > 0) {
-    throw new Error(`Impossible de desactiver ce prestataire car il est assigne a ${activeTickets} ticket(s) actif(s)`);
+    throw new BadRequestError(
+      `Impossible de désactiver ce prestataire : il est assigné à ${activeTickets} ticket(s) actif(s).`
+    );
   }
 
   const mirror = await upsertVendorMirrorFromProvider(provider as ProviderRecord, { isActive: false });
@@ -376,7 +381,7 @@ export async function deleteVendor(tenantId: string, vendorId: string, actorUser
     }
   });
   if (!provider) {
-    throw new Error('Prestataire introuvable');
+    throw new NotFoundError('Prestataire introuvable');
   }
 
   const assignedTickets = await prisma.maintenanceTicket.count({
@@ -386,8 +391,8 @@ export async function deleteVendor(tenantId: string, vendorId: string, actorUser
     }
   });
   if (assignedTickets > 0) {
-    throw new Error(
-      `Impossible de supprimer ce prestataire car il est assigne a ${assignedTickets} ticket(s). Veuillez d'abord reassigner ou resoudre ces tickets.`
+    throw new BadRequestError(
+      `Impossible de supprimer ce prestataire : il est assigné à ${assignedTickets} ticket(s). Veuillez d'abord réassigner ou résoudre ces tickets.`
     );
   }
 
@@ -400,8 +405,8 @@ export async function deleteVendor(tenantId: string, vendorId: string, actorUser
     }
   });
   if (syndicContractsCount > 0) {
-    throw new Error(
-      `Impossible de supprimer ce prestataire car il est lie a ${syndicContractsCount} contrat(s) syndic.`
+    throw new BadRequestError(
+      `Impossible de supprimer ce prestataire : il est lié à ${syndicContractsCount} contrat(s) syndic.`
     );
   }
 
@@ -445,22 +450,27 @@ export async function getActiveVendors(tenantId: string) {
     orderBy: { name: 'asc' }
   })) as ProviderRecord[];
 
-  // Ensure each shared provider can still be assigned in maintenance tickets.
-  await Promise.all(
-    providers.map(provider =>
-      upsertVendorMirrorFromProvider(provider, {
-        specialties: specialtiesFromProvider(provider),
-        isActive: true
-      })
-    )
-  );
+  const providerIds = providers.map(provider => provider.id);
+  let mirrors = providerIds.length
+    ? ((await prisma.maintenanceVendor.findMany({
+        where: { tenant_id: tenantId, id: { in: providerIds } }
+      })) as VendorMirrorRecord[])
+    : [];
 
-  const mirrors = (await prisma.maintenanceVendor.findMany({
-    where: {
-      tenant_id: tenantId,
-      id: { in: providers.map(provider => provider.id) }
-    }
-  })) as VendorMirrorRecord[];
+  // Un prestataire partagé qui n'a pas encore de miroir devient assignable à la
+  // première lecture. Un miroir existant n'est JAMAIS rouvert ici : l'ancienne
+  // version passait `isActive: true` à l'upsert de chaque prestataire, ce qui
+  // réactivait à chaque ouverture de la liste d'assignation un prestataire que
+  // l'agence venait de désactiver.
+  const mirrored = new Set(mirrors.map(mirror => mirror.id));
+  const missing = providers.filter(provider => !mirrored.has(provider.id));
+  if (missing.length > 0) {
+    await Promise.all(missing.map(provider => upsertVendorMirrorFromProvider(provider, { isActive: true })));
+    mirrors = (await prisma.maintenanceVendor.findMany({
+      where: { tenant_id: tenantId, id: { in: providerIds } }
+    })) as VendorMirrorRecord[];
+  }
+
   const mirrorById = new Map(mirrors.map(mirror => [mirror.id, mirror]));
 
   return providers

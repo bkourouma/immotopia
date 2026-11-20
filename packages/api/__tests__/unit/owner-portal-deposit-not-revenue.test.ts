@@ -156,7 +156,7 @@ describe('solde du bail et dépôt détenu', () => {
     store.installments = [echeance('PAID', 400_000), echeance('DRAFT')];
     store.allocations = [{ amount: 400_000 }];
 
-    const details = await service.getLeaseDetails('lease-1', [PROPERTY], T);
+    const details = await service.getLeaseDetails('00000000-0000-4000-8000-0000000000a2', [PROPERTY], T);
 
     expect(details.balance.totalDue).toBe(400_000);
     expect(details.balance.totalPaid).toBe(400_000);
@@ -167,7 +167,7 @@ describe('solde du bail et dépôt détenu', () => {
     store.installments = [echeance('PAID', 400_000), echeance('DUE')];
     store.allocations = [{ amount: 400_000 }];
 
-    const details = await service.getLeaseDetails('lease-1', [PROPERTY], T);
+    const details = await service.getLeaseDetails('00000000-0000-4000-8000-0000000000a2', [PROPERTY], T);
 
     expect(details.balance.totalDue).toBe(800_000);
     expect(details.balance.remaining).toBe(400_000);
@@ -177,7 +177,7 @@ describe('solde du bail et dépôt détenu', () => {
     store.installments = [echeance('PAID', 400_000), echeance('DUE', 0, new Date('2099-01-01'))];
     store.allocations = [{ amount: 400_000 }];
 
-    const details = await service.getLeaseDetails('lease-1', [PROPERTY], T);
+    const details = await service.getLeaseDetails('00000000-0000-4000-8000-0000000000a2', [PROPERTY], T);
 
     expect(details.balance.remaining).toBe(0);
     expect((details.balance as any).upcoming).toBe(400_000);
@@ -196,7 +196,7 @@ describe('solde du bail et dépôt détenu', () => {
       }
     ];
 
-    const details = await service.getLeaseDetails('lease-1', [PROPERTY], T);
+    const details = await service.getLeaseDetails('00000000-0000-4000-8000-0000000000a2', [PROPERTY], T);
 
     expect((details.deposit as any).current_balance).toBe(800_000);
   });

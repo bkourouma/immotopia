@@ -32,6 +32,7 @@ import { BadRequestError } from '../middleware/error-middleware';
 import { t } from '../i18n';
 import { isOpenMaintenanceOverdue, startOfMaintenanceDay } from '../utils/maintenance-ticket-status';
 import { dayEnd, dayStart, zDay, zSearch } from '../utils/list-query-schemas';
+import { parseUuidQuery } from '../utils/maintenance-params';
 
 /** Recherche libre (briques partagées) : rognée, 100 caractères au plus, vide = pas de filtre, sinon 400. */
 function parseSearchQuery(raw: unknown): string | undefined {
@@ -76,6 +77,24 @@ function parseDateQuery(raw: unknown, name: string, endOfDay: boolean): Date | u
  * elles-memes leur statut ; c'est cette reponse-la qui prime.
  */
 function repondreErreurPortee(res: Response, error: unknown): boolean {
+  // Corps de requête illisible (Zod) : 400 avec le motif du premier champ en
+  // cause. Sans cela, `createTicketSchema.parse` levait une ZodError dont le
+  // message (un JSON) ne contient ni « invalide » ni « requis » : le `catch`
+  // d'origine la rendait en 500 « Échec de la création du ticket ».
+  if ((error as { name?: string } | null)?.name === 'ZodError') {
+    const issues = ((error as { issues?: Array<{ path: Array<string | number>; message: string }> }).issues ?? []).map(
+      issue => ({ field: issue.path.join('.'), message: issue.message })
+    );
+    res.status(400).json({
+      success: false,
+      error: 'Validation Error',
+      message: issues[0]?.message || t('Données invalides'),
+      errors: issues,
+      details: issues
+    });
+    return true;
+  }
+
   const porteur = error as { status?: unknown; statusCode?: unknown };
   const statut = Number(porteur?.status ?? porteur?.statusCode);
   if (!Number.isInteger(statut) || statut < 400 || statut >= 600) {
@@ -117,7 +136,7 @@ export async function createTicketHandler(req: Request, res: Response): Promise<
 
     res.status(201).json({
       success: true,
-      data: ticket
+      data: transformWriteResult(ticket)
     });
   } catch (error) {
     if (repondreErreurPortee(res, error)) {
@@ -170,8 +189,9 @@ export async function listTenantTicketsHandler(req: Request, res: Response): Pro
     if (actorContactId) {
       filters.tenantContactId = actorContactId;
     }
-    if (req.query.leaseId) {
-      filters.leaseId = req.query.leaseId as string;
+    const tenantLeaseId = parseUuidQuery(req.query.leaseId, 'leaseId');
+    if (tenantLeaseId) {
+      filters.leaseId = tenantLeaseId;
     }
     const tenantSearch = parseSearchQuery(req.query.search);
     if (tenantSearch) {
@@ -291,7 +311,8 @@ function transformTicketFields(ticket: any): any {
             id: ticket.assignedVendor.id,
             name: ticket.assignedVendor.name || '',
             phone: ticket.assignedVendor.phone || undefined,
-            email: ticket.assignedVendor.email || undefined
+            email: ticket.assignedVendor.email || undefined,
+            specialties: ticket.assignedVendor.specialties || undefined
           }
         : undefined,
     assignedToUser: ticket.assignedToUser
@@ -304,6 +325,15 @@ function transformTicketFields(ticket: any): any {
   };
 
   return transformed;
+}
+
+/**
+ * Réponse d'une écriture (création, modification, annulation) : le ticket Prisma
+ * brut (snake_case) enrichi des champs camelCase que décrit `TicketResponse`
+ * côté web. Les clés d'origine sont conservées : aucun appelant existant ne casse.
+ */
+function transformWriteResult(ticket: any): any {
+  return { ...ticket, ...transformTicketFields(ticket) };
 }
 
 function contractTiming(ticket: Pick<MaintenanceTicket, 'contract_due_date' | 'status'>) {
@@ -403,7 +433,7 @@ export async function cancelTicketHandler(req: Request, res: Response): Promise<
 
       res.status(200).json({
         success: true,
-        data: ticket
+        data: transformWriteResult(ticket)
       });
       return;
     }
@@ -422,7 +452,7 @@ export async function cancelTicketHandler(req: Request, res: Response): Promise<
 
     res.status(200).json({
       success: true,
-      data: ticket
+      data: transformWriteResult(ticket)
     });
   } catch (error) {
     if (repondreErreurPortee(res, error)) {
@@ -480,7 +510,7 @@ export async function updateTenantTicketHandler(req: Request, res: Response): Pr
 
     res.status(200).json({
       success: true,
-      data: ticket
+      data: transformWriteResult(ticket)
     });
   } catch (error) {
     if (repondreErreurPortee(res, error)) {
@@ -686,8 +716,9 @@ export async function listAllTicketsHandler(req: Request, res: Response): Promis
     if (priority) {
       filters.priority = priority;
     }
-    if (req.query.assignedVendorId) {
-      filters.assignedVendorId = req.query.assignedVendorId as string;
+    const assignedVendorId = parseUuidQuery(req.query.assignedVendorId, 'assignedVendorId');
+    if (assignedVendorId) {
+      filters.assignedVendorId = assignedVendorId;
     }
     const category = parseEnumParam(req.query.category, MaintenanceTicketCategory, 'category');
     if (category) {
@@ -796,7 +827,7 @@ export async function updateTicketHandler(req: Request, res: Response): Promise<
 
     res.status(200).json({
       success: true,
-      data: { ...ticket, ...contractTiming(ticket) }
+      data: { ...transformWriteResult(ticket), ...contractTiming(ticket) }
     });
   } catch (error) {
     if (repondreErreurPortee(res, error)) {

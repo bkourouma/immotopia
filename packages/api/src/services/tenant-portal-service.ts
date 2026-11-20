@@ -81,6 +81,62 @@ function installmentRemaining(inst: {
 }
 
 /**
+ * Payé, reste dû et statut affichés pour une échéance : la règle de la LISTE
+ * (cumul des allocations SUCCESS ou `amount_paid`, le plus grand), pour que la
+ * fiche et la liste disent la même chose d'une même échéance. Un brouillon futur
+ * et une annulée gardent leur statut stocké.
+ */
+function installmentDisplay(
+  inst: Parameters<typeof installmentRemaining>[0] & { status: RentalInstallmentStatus; due_date: Date | string },
+  today: Date = startOfToday()
+): { totalAmount: number; paid: number; balance: number; status: RentalInstallmentStatus } {
+  const totalAmount = installmentTotal(inst);
+  const balance = installmentRemaining(inst);
+  const paid = totalAmount - balance;
+  const frozen =
+    (inst.status === RentalInstallmentStatus.DRAFT && !isOverdueDraft(inst, today)) ||
+    inst.status === RentalInstallmentStatus.CANCELED;
+  if (frozen) return { totalAmount, paid, balance, status: inst.status };
+  const dueDate = new Date(inst.due_date);
+  dueDate.setHours(0, 0, 0, 0);
+  let status: RentalInstallmentStatus = inst.status;
+  if (paid >= totalAmount && totalAmount > 0) {
+    status = RentalInstallmentStatus.PAID;
+  } else if (paid > 0) {
+    status = RentalInstallmentStatus.PARTIAL;
+  } else if (dueDate < today) {
+    status = RentalInstallmentStatus.OVERDUE;
+  } else if (inst.status !== RentalInstallmentStatus.PAID && inst.status !== RentalInstallmentStatus.PARTIAL) {
+    status = RentalInstallmentStatus.DUE;
+  }
+  return { totalAmount, paid, balance, status };
+}
+
+/**
+ * Détail de ticket tel que le locataire le voit : le personnel de l'agence n'y
+ * apparaît que par son nom (jamais son e-mail ni son identifiant de compte),
+ * et l'historique de statuts ne dit pas qui a changé quoi.
+ */
+type StaffRef = { id?: string; email?: string; fullName?: string | null } | null | undefined;
+function staffNameOnly(user: StaffRef): { fullName: string } | null {
+  return user?.fullName ? { fullName: user.fullName } : null;
+}
+function toPortalTicketDetails<
+  T extends {
+    assignedToUser?: StaffRef;
+    comments?: Array<{ authorUser?: StaffRef }>;
+    statusHistory?: Array<{ changedByUser?: StaffRef }>;
+  }
+>(details: T): T {
+  return {
+    ...details,
+    assignedToUser: staffNameOnly(details.assignedToUser),
+    comments: (details.comments ?? []).map(comment => ({ ...comment, authorUser: staffNameOnly(comment.authorUser) })),
+    statusHistory: (details.statusHistory ?? []).map(entry => ({ ...entry, changedByUser: null }))
+  };
+}
+
+/**
  * Colonnes d'une ligne d'échéance exposées au portail : ni `tenant_id`, ni
  * `metadata`, ni `installment_id`.
  */
@@ -1006,22 +1062,16 @@ export class TenantPortalService {
         take: 10
       });
 
+      // Même règle que la liste : payé, reste dû et statut calculés (brouillon échu :
+      // « En retard » comme à l'agence, H30), pas la colonne stockée seule.
+      const display = installmentDisplay(installment);
       const installmentDetailsData = {
         installment: {
           ...installment,
-          // Brouillon échu : « En retard » à l'affichage, comme à l'agence (H30).
-          status: isOverdueDraft(installment) ? RentalInstallmentStatus.OVERDUE : installment.status,
-          totalAmount:
-            Number(installment.amount_rent) +
-            Number(installment.amount_service) +
-            Number(installment.amount_other_fees) +
-            Number(installment.penalty_amount || 0),
-          balance:
-            Number(installment.amount_rent) +
-            Number(installment.amount_service) +
-            Number(installment.amount_other_fees) +
-            Number(installment.penalty_amount || 0) -
-            Number(installment.amount_paid)
+          status: display.status,
+          amount_paid: display.paid,
+          totalAmount: display.totalAmount,
+          balance: display.balance
         },
         relatedPayments
       };
@@ -1743,7 +1793,7 @@ export class TenantPortalService {
       // ne recopie que l'identifiant, le nom, le type, la taille, la date, et
       // ajoute `downloadPath`.
       const ticket = {
-        ...details,
+        ...toPortalTicketDetails(details),
         attachments: (attachments ?? []).map(attachment => toPortalAttachment(attachment, visible.id, 'tenant'))
       };
 
@@ -1812,7 +1862,8 @@ export class TenantPortalService {
         commentId: createdComment.id
       });
 
-      return createdComment;
+      // Un commentaire de locataire : son auteur est lui-même ; aucun e-mail de personnel.
+      return { ...createdComment, authorUser: staffNameOnly(createdComment.authorUser) };
     } catch (error) {
       logger.error('Error adding maintenance comment', {
         error,

@@ -131,6 +131,23 @@ describe('updateOwnerStatement : sortie de PAID', () => {
     expect(statementUpdate).toHaveBeenCalled();
   });
 
+  it('pose sentAt en passant à SENT à la main quand il manque', async () => {
+    statementFindFirst.mockResolvedValue({ id: 's1', tenantId: TENANT, status: 'DRAFT', sentAt: null });
+    await updateOwnerStatement(TENANT, 's1', { status: 'SENT' });
+    expect(statementUpdate.mock.calls[0][0].data).toMatchObject({ status: 'SENT', sentAt: expect.any(Date) });
+  });
+
+  it('conserve le sentAt existant en repassant à SENT', async () => {
+    statementFindFirst.mockResolvedValue({
+      id: 's1',
+      tenantId: TENANT,
+      status: 'DRAFT',
+      sentAt: new Date('2026-01-01')
+    });
+    await updateOwnerStatement(TENANT, 's1', { status: 'SENT' });
+    expect(statementUpdate.mock.calls[0][0].data).not.toHaveProperty('sentAt');
+  });
+
   it.each(['DRAFT', 'SENT', 'PAID'])('refuse de poser « Payé » à la main (depuis %s) : 400', async from => {
     statementFindFirst.mockResolvedValue({ id: 's1', tenantId: TENANT, status: from });
     await expect(updateOwnerStatement(TENANT, 's1', { status: 'PAID' })).rejects.toMatchObject({
