@@ -1,4 +1,4 @@
-import { AppError, BadRequestError, NotFoundError } from '../../../middleware/error-middleware';
+import { AppError, BadRequestError, ConflictError, NotFoundError } from '../../../middleware/error-middleware';
 import { t } from '../../../i18n';
 import { prisma } from '../../../utils/database';
 import { assertBelongsToTenant } from '../../../utils/tenant-ownership';
@@ -27,11 +27,16 @@ export const leaseContractSource: SignatureDocumentSource = {
     });
     const lease = await prisma.rentalLease.findFirst({
       where: { id: targetId, tenant_id: ctx.tenantId },
-      select: { id: true, status: true }
+      select: { id: true, status: true, signed_at: true }
     });
     if (!lease) throw new NotFoundError(t('Bail introuvable.'));
     if (lease.status === 'CANCELED' || lease.status === 'ENDED') {
       throw new BadRequestError(t('Ce bail est terminé ou annulé : il ne peut plus être envoyé en signature.'));
+    }
+    // Comme le mandat, le compromis et l'état des lieux : pas de seconde signature. Sinon `onSealed`
+    // réécrirait `signed_at` et `signature_request_id` et la fiche perdrait le lien vers le PDF scellé.
+    if (lease.signed_at) {
+      throw new ConflictError(t('Ce bail est déjà signé : il ne peut pas être envoyé une seconde fois en signature.'));
     }
   },
 

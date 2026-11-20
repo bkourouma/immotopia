@@ -45,13 +45,14 @@ function hasJustification(penalite: RentalPenalty): boolean {
 
 /** Montant réellement retenu (0 est une valeur : `??`, jamais `||`). */
 export function penaltyRetainedAmount(penalite: RentalPenalty): number {
-  return penalite.adjusted_amount ?? penalite.amount;
+  // `amount` arrive en chaîne décimale (« 3200 ») : comparer en nombres.
+  return Number(penalite.adjusted_amount ?? penalite.amount);
 }
 
 /** Ajustée à la main, ou montant retenu différent du calcul initial. */
 export function isPenaltyAdjusted(penalite: RentalPenalty): boolean {
   if (penalite.adjusted_amount != null) return true;
-  return penalite.calculated_amount != null && penalite.calculated_amount !== penaltyRetainedAmount(penalite);
+  return penalite.calculated_amount != null && Number(penalite.calculated_amount) !== penaltyRetainedAmount(penalite);
 }
 
 // Accesseurs STABLES (constantes de module) : le filtrage reste mémoïsé.

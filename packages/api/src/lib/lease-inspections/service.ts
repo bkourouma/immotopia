@@ -300,6 +300,10 @@ export async function createInspection(
 
 const conditionSchema = z.enum(CONDITIONS);
 
+/** Bornes de saisie : au-delà, la colonne entière déborde (500) ou le PDF imprime une notation scientifique. */
+const MAX_KEYS_COUNT = 999;
+const MAX_DEDUCTION_AMOUNT = 100_000_000_000;
+
 const itemSchema = z
   .object({
     id: z.string().trim().min(1, "Identifiant d'élément requis."),
@@ -350,7 +354,10 @@ const roomSchema = z.object({
 const deductionSchema = z.object({
   id: z.string().trim().min(1, 'Identifiant de retenue requis.'),
   label: z.string().trim().min(1, 'Libellé de retenue requis.'),
-  amount: z.number().nonnegative('Le montant de la retenue doit être positif.'),
+  amount: z
+    .number()
+    .nonnegative('Le montant de la retenue doit être positif.')
+    .max(MAX_DEDUCTION_AMOUNT, 'Le montant de la retenue est trop élevé.'),
   roomId: z
     .string()
     .trim()
@@ -372,6 +379,7 @@ const deductionSchema = z.object({
   proposedAmount: z
     .number()
     .nonnegative()
+    .max(MAX_DEDUCTION_AMOUNT)
     .nullable()
     .optional()
     .transform(v => v ?? null)
@@ -408,7 +416,7 @@ const updateInspectionSchema = z
     inspectionDate: dateOnlySchema,
     rooms: z.array(roomSchema),
     meters: metersSchema,
-    keysCount: z.number().int().nonnegative().nullable(),
+    keysCount: z.number().int().nonnegative().max(MAX_KEYS_COUNT, 'Nombre de clés trop élevé.').nullable(),
     generalComment: z
       .string()
       .trim()

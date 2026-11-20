@@ -11,6 +11,7 @@
  * et les listes, pour que l'écran ne dépende pas de l'exécution du job.
  */
 import { RentalInstallmentStatus } from '@prisma/client';
+import { roundMoney } from './money';
 
 export interface InstallmentForStatus {
   status: RentalInstallmentStatus;
@@ -42,12 +43,15 @@ export function computeInstallmentStatus(
     return RentalInstallmentStatus.CANCELED;
   }
 
-  const totalDue =
+  // Arrondi au centime : 0,1 + 0,2 vaut 0,30000000000000004 en flottant, ce qui
+  // laisserait « Partiel » une échéance réglée au centime près.
+  const totalDue = roundMoney(
     Number(installment.amount_rent) +
-    Number(installment.amount_service) +
-    Number(installment.amount_other_fees) +
-    Number(installment.penalty_amount);
-  const paid = Number(installment.amount_paid);
+      Number(installment.amount_service) +
+      Number(installment.amount_other_fees) +
+      Number(installment.penalty_amount)
+  );
+  const paid = roundMoney(Number(installment.amount_paid));
 
   if (paid >= totalDue && totalDue > 0) {
     return RentalInstallmentStatus.PAID;

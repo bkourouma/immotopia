@@ -6,7 +6,7 @@ import { buildInstallmentForPeriod } from '../lib/finance/installment-builder';
 import { appendThirdPartyMovementTx, getOrCreateTenantAccountTx } from '../lib/finance/ledger';
 import { roundMoney } from '../lib/finance/money';
 import type { FinanceSourceType } from '../lib/finance/types';
-import { computeInstallmentStatus, startOfDay } from '../lib/finance/installment-status';
+import { computeInstallmentStatus, startOfDay, type InstallmentForStatus } from '../lib/finance/installment-status';
 import { listBillingPeriods } from '../lib/rental/installment-periods';
 import { withEffectiveAmounts } from '../lib/lease-lifecycle/effective-rent';
 import { logAuditEvent } from './audit-service';
@@ -330,6 +330,26 @@ export async function inscrireEcheanceFactureeTx(
 }
 
 /**
+ * Statut effectif d'une échéance (sans émission : un Brouillon à venir reste
+ * Brouillon). `computeInstallmentStatus` ramène les montants au centime avant la
+ * comparaison payé / dû ; ici on ne fait que normaliser les valeurs nulles.
+ */
+export function statutEcheance(echeance: InstallmentForStatus, now: Date): RentalInstallmentStatus {
+  return computeInstallmentStatus(
+    {
+      ...echeance,
+      amount_rent: Number(echeance.amount_rent ?? 0),
+      amount_service: Number(echeance.amount_service ?? 0),
+      amount_other_fees: Number(echeance.amount_other_fees ?? 0),
+      penalty_amount: Number(echeance.penalty_amount ?? 0),
+      amount_paid: Number(echeance.amount_paid ?? 0)
+    },
+    now,
+    { emitDraft: false }
+  );
+}
+
+/**
  * Generate installments for a lease
  * @param tenantId - Tenant ID
  * @param leaseId - Lease ID
@@ -610,7 +630,7 @@ export async function listInstallments(
   return {
     data: installments.map(echeance => ({
       ...echeance,
-      status: computeInstallmentStatus(echeance, maintenant, { emitDraft: false }),
+      status: statutEcheance(echeance, maintenant),
       pendingDeclaration: enAttente.get(echeance.id) ?? null
     })),
     pagination: {
@@ -675,7 +695,7 @@ export async function getInstallmentById(tenantId: string, installmentId: string
   const enAttente = await declarationsEnAttente(tenantId, [installment.id]);
   return {
     ...installment,
-    status: computeInstallmentStatus(installment, new Date(), { emitDraft: false }),
+    status: statutEcheance(installment, new Date()),
     pendingDeclaration: enAttente.get(installment.id) ?? null
   };
 }
@@ -702,7 +722,7 @@ export async function updateInstallmentStatus(tenantId: string, installmentId: s
   }
 
   // emitDraft:false : une échéance à venir reste Brouillon (aucun débit daté du futur).
-  const newStatus = computeInstallmentStatus(installment, new Date(), { emitDraft: false });
+  const newStatus = statutEcheance(installment, new Date());
 
   // Update if status changed
   if (newStatus !== installment.status) {
@@ -767,7 +787,7 @@ export async function recalculateInstallmentStatuses(tenantId: string, leaseId: 
 
   for (const installment of installments) {
     // emitDraft:false : une échéance à venir reste Brouillon (aucun débit daté du futur).
-    const newStatus = computeInstallmentStatus(installment, new Date(), { emitDraft: false });
+    const newStatus = statutEcheance(installment, new Date());
 
     // Update if status changed
     if (newStatus !== installment.status) {
@@ -825,7 +845,7 @@ export async function markOverdueInstallments(
   for (const installment of candidates) {
     await runWithTenantContext({ tenantId: installment.tenant_id }, async () => {
       try {
-        const newStatus = computeInstallmentStatus(installment, now, { emitDraft: false });
+        const newStatus = statutEcheance(installment, now);
         if (newStatus === installment.status || newStatus === RentalInstallmentStatus.DRAFT) {
           return;
         }

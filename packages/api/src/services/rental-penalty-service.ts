@@ -4,6 +4,7 @@ import { logger } from '../utils/logger';
 import { logAuditEvent, recordAuditEvent } from './audit-service';
 import { diffForAudit } from '../lib/audit/changes';
 import { Prisma, RentalPenaltyMode } from '@prisma/client';
+import { roundMoney, roundMoneyXof } from '../lib/finance/money';
 import {
   compteLocataireTx,
   libellePeriodeEcheance,
@@ -71,6 +72,16 @@ async function inscrirePenaliteTx(
   });
 }
 
+/** Francs CFA : pas de subdivision, une pénalité se facture à l'unité. */
+const DEVISES_SANS_DECIMALES = new Set(['FCFA', 'XOF', 'XAF', 'CFA']);
+
+/** Arrondit une pénalité calculée : à l'unité en franc CFA, au centime sinon. */
+export function arrondirPenalite(montant: number, currency?: string | null): number {
+  return DEVISES_SANS_DECIMALES.has(String(currency ?? 'FCFA').toUpperCase())
+    ? roundMoneyXof(montant)
+    : roundMoney(montant);
+}
+
 /**
  * Get default penalty rule for tenant (or create default if none exists)
  * @param tenantId - Tenant ID
@@ -130,6 +141,16 @@ export async function calculatePenalty(tenantId: string, installmentId: string, 
     throw new NotFoundError(t('Échéance introuvable'));
   }
 
+  // Une échéance annulée ne doit rien, une échéance soldée n'a plus de retard :
+  // sans cette garde, un montant fixe (ou la route unitaire) créait une
+  // pénalité et un débit au compte du locataire sur une pièce qui ne doit rien.
+  if (installment.status === 'CANCELED') {
+    throw new BadRequestError(t('Aucune pénalité ne se calcule sur une échéance annulée'));
+  }
+  if (installment.status === 'PAID') {
+    throw new BadRequestError(t('Aucune pénalité ne se calcule sur une échéance entièrement payée'));
+  }
+
   // Une pénalité ne se calcule que pour un bail actif (brouillon, suspendu,
   // terminé ou annulé : rien n'est dû au titre du retard).
   if (installment.lease.status !== 'ACTIVE') {
@@ -183,10 +204,15 @@ export async function calculatePenalty(tenantId: string, installmentId: string, 
     const totalDue =
       Number(installment.amount_rent) + Number(installment.amount_service) + Number(installment.amount_other_fees);
     const paid = Number(installment.amount_paid);
-    const balance = totalDue - paid;
+    // Jamais négatif : un règlement qui entame déjà la pénalité (payé > loyer + charges)
+    // laissait un solde négatif, donc une pénalité négative qui créditait le locataire.
+    const balance = Math.max(0, totalDue - paid);
     // Convert percentage to decimal (e.g., 10% becomes 0.10)
     penaltyAmount = balance * (rate / 100);
   }
+
+  // Franc CFA : à l'unité ; autre devise : au centime (jamais 3266,66 FCFA).
+  penaltyAmount = arrondirPenalite(penaltyAmount, installment.currency);
 
   // Apply cap if set
   if (capAmount && penaltyAmount > capAmount) {

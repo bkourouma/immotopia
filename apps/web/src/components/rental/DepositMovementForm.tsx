@@ -27,7 +27,13 @@ const RefundTreasuryAccountField: React.FC<{
   value?: string | null;
   onChange?: (id: string | null) => void;
 }> = ({ tenantId, value, onChange }) => (
-  <TreasuryAccountSelector tenantId={tenantId} paymentMethod="OTHER" value={value} onChange={id => onChange?.(id)} />
+  <TreasuryAccountSelector
+    tenantId={tenantId}
+    paymentMethod="OTHER"
+    direction="out"
+    value={value}
+    onChange={id => onChange?.(id)}
+  />
 );
 
 /** Montant d'un paiement encore libre : ni affecté à une échéance, ni versé au dépôt. */
@@ -158,8 +164,14 @@ export const DepositMovementForm: React.FC<DepositMovementFormProps> = ({
               optionFilterProp="children"
               onChange={value => {
                 setMovementType(value);
-                // Reset paymentId et treasuryAccountId quand le type change
-                form.setFieldsValue({ paymentId: undefined, treasuryAccountId: undefined });
+                // Reset paymentId et treasuryAccountId quand le type change. Le montant
+                // pré-rempli d'une collecte (le montant cible) ne doit pas rester sur
+                // un remboursement ou une confiscation : on le vide.
+                form.setFieldsValue({
+                  paymentId: undefined,
+                  treasuryAccountId: undefined,
+                  ...(value !== RentalDepositMovementType.COLLECT ? { amount: undefined } : {})
+                });
               }}
             >
               <Select.Option value={RentalDepositMovementType.COLLECT}>{t('Collecte')}</Select.Option>

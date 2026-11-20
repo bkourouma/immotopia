@@ -75,10 +75,12 @@ interface InstallmentsProps {
 }
 
 const STATUS_OPTIONS = localizedList(() => [
+  { value: 'DRAFT', label: t('Brouillon') },
   { value: 'DUE', label: t('À échoir') },
   { value: 'PARTIAL', label: t('Partiel') },
   { value: 'PAID', label: t('Payé') },
-  { value: 'OVERDUE', label: t('En retard') }
+  { value: 'OVERDUE', label: t('En retard') },
+  { value: 'CANCELED', label: t('Annulé') }
 ]);
 
 /** Montant dû : loyer, charges, autres frais et pénalités. */
@@ -91,8 +93,14 @@ function totalDu(echeance: RentalInstallment): number {
   );
 }
 
+/**
+ * Reste dû, au centime : 0,1 + 0,2 - 0,3 vaut 5,5e-17 en virgule flottante, ce
+ * qui affichait « Encaisser » sur une échéance réglée.
+ */
 function resteAPayer(echeance: RentalInstallment): number {
-  return totalDu(echeance) - Number(echeance.amount_paid || 0);
+  const reste = Math.round((totalDu(echeance) - Number(echeance.amount_paid || 0)) * 100) / 100;
+  // Une échéance annulée ne se règle pas (l'API refuse l'affectation) : rien à encaisser.
+  return String(echeance.status) === 'CANCELED' ? 0 : reste;
 }
 
 function periode(echeance: RentalInstallment): string {

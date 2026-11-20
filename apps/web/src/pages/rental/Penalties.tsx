@@ -25,6 +25,7 @@ import { PageHeader, StateBlock, MoneyValue, DataView, DataCard, useConfirmActio
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
+import { libellePeriodeEcheance } from '../../lib/rental-labels';
 const { Text } = Typography;
 
 /**
@@ -84,7 +85,9 @@ function justificatif(penalite: RentalPenalty): Justificatif | null {
  * calcul sinon).
  */
 function montantRetenu(penalite: RentalPenalty): number {
-  return penalite.adjusted_amount ?? penalite.amount;
+  // `amount` est une chaîne décimale (« 3200 ») dans la réponse de l'API : on la
+  // convertit, sinon `3200 !== '3200'` rendait toute pénalité « ajustée ».
+  return Number(penalite.adjusted_amount ?? penalite.amount);
 }
 
 /**
@@ -93,8 +96,8 @@ function montantRetenu(penalite: RentalPenalty): number {
  * sinon null (un ajustement ancien l'a perdu). `??` partout : 0 est une valeur.
  */
 function montantCalcule(penalite: RentalPenalty): number | null {
-  if (penalite.calculated_amount != null) return penalite.calculated_amount;
-  if (penalite.adjusted_amount == null) return penalite.amount;
+  if (penalite.calculated_amount != null) return Number(penalite.calculated_amount);
+  if (penalite.adjusted_amount == null) return Number(penalite.amount);
   return null;
 }
 
@@ -103,6 +106,15 @@ function estAjustee(penalite: RentalPenalty): boolean {
   if (penalite.adjusted_amount != null) return true;
   const calcule = montantCalcule(penalite);
   return calcule != null && calcule !== montantRetenu(penalite);
+}
+
+/** Période de l'échéance pénalisée (« 09/2026 »), quand l'API joint l'échéance. */
+function periodeEcheance(penalite: RentalPenalty): string | null {
+  const echeance = (penalite as RentalPenalty & { installment?: { period_month?: number; period_year?: number } })
+    .installment;
+  return echeance?.period_month && echeance?.period_year
+    ? libellePeriodeEcheance(echeance.period_month, echeance.period_year)
+    : null;
 }
 
 function dateCourte(iso: string): string {
@@ -270,6 +282,12 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
 
   const colonnes: ColumnsType<RentalPenalty> = [
     { title: t('Calculée le'), key: 'date', render: (_, p) => dateCourte(p.calculated_at) },
+    {
+      // Sans elle, deux pénalités de l'onglet d'un bail ne se distinguent que par leur date de calcul.
+      title: t('Échéance'),
+      key: 'echeance',
+      render: (_, p) => periodeEcheance(p) ?? '—'
+    },
     {
       title: t('Retard'),
       key: 'retard',
