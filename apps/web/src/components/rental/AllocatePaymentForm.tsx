@@ -262,7 +262,7 @@ export const AllocatePaymentForm: React.FC<AllocatePaymentFormProps> = ({
           </Button>
         )}
         <Button type="submit" disabled={isSubmitting || loading || installments.length === 0}>
-          {isSubmitting || loading ? 'Allocation...' : t('Allouer le paiement')}
+          {isSubmitting || loading ? t('Allocation...') : t('Allouer le paiement')}
         </Button>
       </div>
     </form>

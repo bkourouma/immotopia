@@ -209,7 +209,7 @@ export const LeaseDetailPage: React.FC = () => {
     return (
       <>
         <div style={{ textAlign: 'center', padding: '48px 0' }}>
-          <Spin size="large" tip="Chargement..." />
+          <Spin size="large" tip={translate('Chargement...')} />
         </div>
       </>
     );

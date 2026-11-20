@@ -57,7 +57,7 @@ export default function Documents() {
   const getDocumentTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
       LEASE_CONTRACT: t('Contrat de bail'),
-      LEASE_ADDENDUM: 'Avenant',
+      LEASE_ADDENDUM: t('Avenant'),
       RENT_RECEIPT: t('Quittance de loyer'),
       RENT_QUITTANCE: t('Quittance'),
       DEPOSIT_RECEIPT: t('Reçu de dépôt'),
