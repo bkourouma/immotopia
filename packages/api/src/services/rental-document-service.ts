@@ -92,7 +92,8 @@ export async function generateDocument(
         tenant_id: tenantId
       }
     });
-    if (!installment) {
+    // Une échéance d'un autre bail de l'agence ne se rattache pas à ce bail : même réponse qu'inconnue.
+    if (!installment || (leaseId && installment.lease_id !== leaseId)) {
       throw new NotFoundError(t('Échéance introuvable'));
     }
   }
@@ -104,7 +105,7 @@ export async function generateDocument(
         tenant_id: tenantId
       }
     });
-    if (!payment) {
+    if (!payment || (leaseId && payment.lease_id && payment.lease_id !== leaseId)) {
       throw new NotFoundError(t('Paiement introuvable'));
     }
   }

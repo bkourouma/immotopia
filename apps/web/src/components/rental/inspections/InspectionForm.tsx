@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, App, Button, Card, DatePicker, Divider, Input, InputNumber, Space, Switch, Typography } from 'antd';
 import { DeleteOutlined, SaveOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -158,8 +158,30 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
   // Sauvegarde locale à chaque modification, protégée par try/catch dans
   // `saveLocalDraft` : un réseau coupé pendant la visite ne doit pas perdre la
   // saisie en cours.
+  // Empreinte de la saisie telle que le serveur la détient : une copie locale identique n'est pas
+  // « non enregistrée » (sinon l'ouverture seule d'un brouillon en laisserait une, périmée dès qu'un
+  // autre poste l'enregistre, et proposée en restauration à la réouverture).
+  const draftSnapshot = () =>
+    JSON.stringify({
+      inspectionDate: inspectionDate.format('YYYY-MM-DD'),
+      rooms,
+      meters,
+      keysCount,
+      generalComment,
+      tenantPresent,
+      tenantSignatoryName,
+      agentSignatoryName,
+      deductions
+    });
+  const savedSnapshot = useRef<string | null>(null);
+  if (savedSnapshot.current === null) savedSnapshot.current = draftSnapshot();
+
   useEffect(() => {
     if (!draftResolved) return;
+    if (draftSnapshot() === savedSnapshot.current) {
+      clearLocalDraft(inspection.id);
+      return;
+    }
     saveLocalDraft(inspection.id, {
       inspectionDate: inspectionDate.format('YYYY-MM-DD'),
       rooms,
@@ -235,6 +257,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
     setSaving(true);
     try {
       const response = await updateInspection(tenantId, leaseId, inspection.id, buildPayload());
+      savedSnapshot.current = draftSnapshot();
       clearLocalDraft(inspection.id);
       message.success(t('État des lieux enregistré'));
       onSaved(response.data);
@@ -466,6 +489,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
             <InputNumber
               style={{ width: '100%' }}
               min={0}
+              max={999}
               value={keysCount ?? undefined}
               onChange={value => setKeysCount(value == null ? null : Number(value))}
             />

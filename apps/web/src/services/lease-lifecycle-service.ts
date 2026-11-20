@@ -43,6 +43,8 @@ export interface LeaseEvent {
 export interface LeaseLifecycleState {
   status: string;
   startDate: string;
+  /** Devise du bail (`FCFA`, `EUR`…) : tous les montants de l’état et de l’historique s’y expriment. */
+  currency?: string;
   endDate: string | null;
   rentAmount: number;
   serviceChargeAmount: number;

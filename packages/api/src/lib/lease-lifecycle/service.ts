@@ -105,8 +105,8 @@ async function loadLease(tenantId: string, leaseId: string) {
   return lease;
 }
 
-async function isTerminated(leaseId: string) {
-  return (await prisma.leaseEvent.count({ where: { leaseId, type: LeaseEventType.TERMINATION } })) > 0;
+async function isTerminated(tenantId: string, leaseId: string) {
+  return (await prisma.leaseEvent.count({ where: { tenantId, leaseId, type: LeaseEventType.TERMINATION } })) > 0;
 }
 
 type EventRow = Prisma.LeaseEventGetPayload<Record<string, never>>;
@@ -202,6 +202,7 @@ export async function getLeaseEvents(tenantId: string, leaseId: string) {
       status: lease.status,
       startDate: lease.start_date.toISOString(),
       endDate: iso(lease.end_date),
+      currency: lease.currency,
       rentAmount: Number(lease.rent_amount),
       serviceChargeAmount: Number(lease.service_charge_amount),
       moveOutDate: iso(lease.move_out_date),
@@ -369,7 +370,7 @@ export async function repriceUnstartedInstallmentsTx(
 export async function reviseRent(tenantId: string, leaseId: string, body: unknown, actorUserId?: string) {
   const input = parseInput(revisionSchema, body);
   const lease = await loadLease(tenantId, leaseId);
-  if (await isTerminated(leaseId)) throw conflict('Ce bail est résilié : son loyer ne se révise plus.');
+  if (await isTerminated(tenantId, leaseId)) throw conflict('Ce bail est résilié : son loyer ne se révise plus.');
   if (lease.status === RentalLeaseStatus.CANCELED) throw conflict('Ce bail est annulé.');
 
   const [year, monthNumber] = input.effectiveMonth.split('-').map(Number);
@@ -381,6 +382,7 @@ export async function reviseRent(tenantId: string, leaseId: string, body: unknow
   // Une échéance réglée, même en partie, ne se réécrit pas.
   const settled = await prisma.rentalInstallment.count({
     where: {
+      tenant_id: tenantId,
       lease_id: leaseId,
       status: { not: RentalInstallmentStatus.CANCELED },
       AND: [SETTLED, periodFrom(year, monthNumber)]
@@ -392,22 +394,36 @@ export async function reviseRent(tenantId: string, leaseId: string, body: unknow
     );
   }
 
-  const newCharges = input.newCharges ?? Number(lease.service_charge_amount);
   const effectiveDate = new Date(Date.UTC(year, monthNumber - 1, 1, 12));
   // Une révision a une date d'effet : le loyer du bail ne change que ce jour-là
   // (`applyDueRevisions`). Avant, la révision est « planifiée » et les
   // indicateurs gardent l'ancien loyer (BUG-2026-09-30-068).
   const planned = effectiveDate.getTime() > Date.now();
   const event = await prisma.$transaction(async tx => {
+    // Loyer et charges EFFECTIFS juste avant cette date d'effet : le « précédent »
+    // d'une révision n'est pas le loyer courant du bail, qui peut déjà porter une
+    // révision appliquée (datée plus tard) ou ignorer une révision planifiée
+    // (datée plus tôt).
+    const existing = await tx.leaseEvent.findMany({
+      where: { tenantId, leaseId, type: LeaseEventType.REVISION },
+      orderBy: [{ createdAt: 'asc' }],
+      select: { effectiveDate: true, newRent: true, newCharges: true, previousRent: true, previousCharges: true }
+    });
+    const before = effectiveRentAt(
+      { rent_amount: lease.rent_amount, service_charge_amount: lease.service_charge_amount },
+      existing,
+      effectiveDate
+    );
+    const newCharges = input.newCharges ?? before.charges;
     const created = await tx.leaseEvent.create({
       data: {
         tenantId,
         leaseId,
         type: LeaseEventType.REVISION,
         effectiveDate,
-        previousRent: lease.rent_amount,
+        previousRent: new Prisma.Decimal(before.rent),
         newRent: new Prisma.Decimal(input.newRent),
-        previousCharges: lease.service_charge_amount,
+        previousCharges: new Prisma.Decimal(before.charges),
         newCharges: new Prisma.Decimal(newCharges),
         details: { planned },
         revisionRate:
@@ -473,7 +489,7 @@ const renewalSchema = z.object({
 export async function renewLease(tenantId: string, leaseId: string, body: unknown, actorUserId?: string) {
   const input = parseInput(renewalSchema, body);
   const lease = await loadLease(tenantId, leaseId);
-  if (await isTerminated(leaseId)) throw conflict('Ce bail est résilié : il ne se renouvelle plus.');
+  if (await isTerminated(tenantId, leaseId)) throw conflict('Ce bail est résilié : il ne se renouvelle plus.');
   if (lease.status === RentalLeaseStatus.CANCELED) throw conflict('Ce bail est annulé.');
   if (!lease.end_date) {
     throw badRequest('Ce bail est à durée indéterminée : il n’a pas de fin à repousser.');
@@ -533,7 +549,17 @@ export async function renewLease(tenantId: string, leaseId: string, body: unknow
 
     // Échéances de la nouvelle période, au loyer en vigueur, sans doublon.
     let created = 0;
-    let cursor = { ...firstNew };
+    // Un bail qui finit un 1er du mois (hors mois de début) n'a jamais facturé ce
+    // mois-là : le générateur retire une période réduite au seul dernier jour. Le
+    // renouvellement la facture, sinon un mois de loyer manquerait entre les deux
+    // périodes. `exists` écarte toute échéance déjà présente.
+    const startsInOldEndMonth =
+      oldEnd.getUTCDate() === 1 &&
+      periodIndex(oldEnd.getUTCFullYear(), oldEnd.getUTCMonth() + 1) >
+        periodIndex(lease.start_date.getUTCFullYear(), lease.start_date.getUTCMonth() + 1);
+    let cursor = startsInOldEndMonth
+      ? { year: oldEnd.getUTCFullYear(), month: oldEnd.getUTCMonth() + 1 }
+      : { ...firstNew };
     const last = periodIndex(newEnd.getUTCFullYear(), newEnd.getUTCMonth() + 1);
     // Chaque période prend le loyer EFFECTIF à sa date : les révisions déjà
     // planifiées comptent, et le nouveau prix du renouvellement (inscrit plus
@@ -543,6 +569,14 @@ export async function renewLease(tenantId: string, leaseId: string, body: unknow
       orderBy: { createdAt: 'asc' },
       select: { effectiveDate: true, newRent: true, newCharges: true, previousRent: true, previousCharges: true }
     });
+    // Loyer et charges EFFECTIFS à la date du renouvellement : le « précédent » des
+    // événements n'est pas le loyer courant du bail (révision déjà appliquée plus
+    // tard ou révision planifiée ignorée).
+    const beforeRenewal = effectiveRentAt(
+      { rent_amount: Number(lease.rent_amount), service_charge_amount: Number(lease.service_charge_amount) },
+      plannedRevisions,
+      renewalEffective
+    );
     const revisionsForPeriods = priceChanges
       ? [...plannedRevisions, { effectiveDate: renewalEffective, newRent: rent, newCharges: charges }]
       : plannedRevisions;
@@ -589,9 +623,9 @@ export async function renewLease(tenantId: string, leaseId: string, body: unknow
         effectiveDate: new Date(Date.UTC(firstNew.year, firstNew.month - 1, 1, 12)),
         previousEndDate: oldEnd,
         newEndDate: newEnd,
-        previousRent: lease.rent_amount,
+        previousRent: new Prisma.Decimal(beforeRenewal.rent),
         newRent: new Prisma.Decimal(rent),
-        previousCharges: lease.service_charge_amount,
+        previousCharges: new Prisma.Decimal(beforeRenewal.charges),
         newCharges: new Prisma.Decimal(charges),
         summary: input.summary,
         details: { installmentsCreated: created },
@@ -608,9 +642,9 @@ export async function renewLease(tenantId: string, leaseId: string, body: unknow
             leaseId,
             type: LeaseEventType.REVISION,
             effectiveDate: new Date(Date.UTC(firstNew.year, firstNew.month - 1, 1, 12)),
-            previousRent: lease.rent_amount,
+            previousRent: new Prisma.Decimal(beforeRenewal.rent),
             newRent: new Prisma.Decimal(rent),
-            previousCharges: lease.service_charge_amount,
+            previousCharges: new Prisma.Decimal(beforeRenewal.charges),
             newCharges: new Prisma.Decimal(charges),
             summary: 'Nouveau loyer au renouvellement',
             details: { installmentsUpdated: 0, planned: plannedPrice },
@@ -673,7 +707,7 @@ const terminationSchema = z.object({
 export async function terminateLease(tenantId: string, leaseId: string, body: unknown, actorUserId?: string) {
   const input = parseInput(terminationSchema, body);
   const lease = await loadLease(tenantId, leaseId);
-  if (await isTerminated(leaseId)) throw conflict('Ce bail est déjà résilié.');
+  if (await isTerminated(tenantId, leaseId)) throw conflict('Ce bail est déjà résilié.');
   if (lease.status === RentalLeaseStatus.CANCELED) throw conflict('Ce bail est annulé.');
 
   const notice = parseDay(input.noticeDate, 'La date de préavis');
@@ -695,6 +729,7 @@ export async function terminateLease(tenantId: string, leaseId: string, body: un
     // locataire (ajustements de révision compris, voir `soldePieceTx`).
     const toCancel = await tx.rentalInstallment.findMany({
       where: {
+        tenant_id: tenantId,
         lease_id: leaseId,
         status: { in: UNPAID_STATUSES },
         amount_paid: 0,
@@ -718,7 +753,7 @@ export async function terminateLease(tenantId: string, leaseId: string, body: un
     }
     if (toCancel.length) {
       await tx.rentalInstallment.updateMany({
-        where: { id: { in: toCancel.map(inst => inst.id) } },
+        where: { tenant_id: tenantId, id: { in: toCancel.map(inst => inst.id) } },
         data: { status: RentalInstallmentStatus.CANCELED }
       });
     }
@@ -727,6 +762,7 @@ export async function terminateLease(tenantId: string, leaseId: string, body: un
     // Réglées, même en partie, après la fin : un avoir à faire à la main.
     const billedAfterEnd = await tx.rentalInstallment.count({
       where: {
+        tenant_id: tenantId,
         lease_id: leaseId,
         status: { not: RentalInstallmentStatus.CANCELED },
         AND: [SETTLED, periodFrom(after.year, after.month)]

@@ -17,7 +17,7 @@ import {
   reviseLease,
   terminateLease
 } from '../../services/lease-lifecycle-service';
-import { MoneyValue } from '../primitives';
+import { formatMontantLocatif } from '../../lib/rental-labels';
 import { LeaseEventTimeline } from './lifecycle/LeaseEventTimeline';
 import { RevisionModal } from './lifecycle/RevisionModal';
 import { RenewalModal } from './lifecycle/RenewalModal';
@@ -185,6 +185,9 @@ export const LeaseLifecyclePanel: React.FC<LeaseLifecyclePanelProps> = ({
     );
   }
 
+  // Un bail résilié ou annulé ne se révise, ne se renouvelle et ne se résilie plus (l’API répond 409).
+  const leaseClosed = lease.terminated || lease.status === 'CANCELED';
+
   return (
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
       <Card title={<HelpSectionTitle title={t('Vie du bail')} helpId="locatif.baux.fiche.vie" />}>
@@ -209,31 +212,26 @@ export const LeaseLifecyclePanel: React.FC<LeaseLifecyclePanelProps> = ({
 
           <Descriptions column={{ xs: 1, sm: 2, md: 3 }} size="small" bordered>
             <Descriptions.Item label={t('Loyer en vigueur')}>
-              <MoneyValue value={lease.rentAmount} />
+              {formatMontantLocatif(lease.rentAmount, lease.currency)}
             </Descriptions.Item>
             <Descriptions.Item label={t('Charges en vigueur')}>
-              <MoneyValue value={lease.serviceChargeAmount} />
+              {formatMontantLocatif(lease.serviceChargeAmount, lease.currency)}
             </Descriptions.Item>
             <Descriptions.Item label={t('Date de fin')}>{formatDate(lease.endDate)}</Descriptions.Item>
           </Descriptions>
 
           {canEdit && (
             <Space wrap>
-              <Button icon={<EditOutlined />} disabled={lease.terminated} onClick={() => setRevisionOpen(true)}>
+              <Button icon={<EditOutlined />} disabled={leaseClosed} onClick={() => setRevisionOpen(true)}>
                 {t('Réviser le loyer')}
               </Button>
-              <Button icon={<SyncOutlined />} disabled={lease.terminated} onClick={() => setRenewalOpen(true)}>
+              <Button icon={<SyncOutlined />} disabled={leaseClosed} onClick={() => setRenewalOpen(true)}>
                 {t('Renouveler')}
               </Button>
               <Button icon={<FileTextOutlined />} onClick={() => setAmendmentOpen(true)}>
                 {t('Enregistrer un avenant')}
               </Button>
-              <Button
-                icon={<StopOutlined />}
-                danger
-                disabled={lease.terminated}
-                onClick={() => setTerminationOpen(true)}
-              >
+              <Button icon={<StopOutlined />} danger disabled={leaseClosed} onClick={() => setTerminationOpen(true)}>
                 {t('Résilier le bail')}
               </Button>
             </Space>
@@ -247,18 +245,21 @@ export const LeaseLifecyclePanel: React.FC<LeaseLifecyclePanelProps> = ({
               helpId="locatif.baux.fiche.vie.historique"
             />
             <div style={{ marginTop: 12 }}>
-              <LeaseEventTimeline events={events} />
+              <LeaseEventTimeline events={events} currency={lease.currency} />
             </div>
           </div>
         </Space>
       </Card>
 
-      {lease.terminated && <FinalSettlementCard settlement={settlement} loading={settlementLoading} />}
+      {lease.terminated && (
+        <FinalSettlementCard settlement={settlement} loading={settlementLoading} currency={lease.currency} />
+      )}
 
       <RevisionModal
         open={canEdit && revisionOpen}
         currentRent={lease.rentAmount}
         currentCharges={lease.serviceChargeAmount}
+        currency={lease.currency}
         onCancel={() => setRevisionOpen(false)}
         onSubmit={handleRevision}
       />

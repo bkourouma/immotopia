@@ -260,6 +260,44 @@ describe('États des lieux', () => {
     });
   });
 
+  describe('bornes des champs numériques (revue 2026-11-20)', () => {
+    async function draftId(): Promise<{ id: string; rooms: any[] }> {
+      const createRes = await request(app)
+        .post('/api/tenants/tenant-1/rental/leases/lease-1/inspections')
+        .send({ type: 'EXIT', inspectionDate: '2026-09-01' });
+      return { id: createRes.body.data.id, rooms: createRes.body.data.rooms };
+    }
+    const put = (id: string, body: unknown) =>
+      request(app)
+        .put(`/api/tenants/tenant-1/rental/leases/lease-1/inspections/${id}`)
+        .send(body as object);
+
+    it('refuse un nombre de clés qui dépasse la colonne entière (400, pas 500)', async () => {
+      const { id, rooms } = await draftId();
+      const res = await put(id, { ...putBody(rooms), keysCount: 3_000_000_000 });
+      expect(res.status).toBe(400);
+    });
+
+    it('refuse une retenue d’un montant démesuré (400)', async () => {
+      const { id, rooms } = await draftId();
+      const res = await put(id, {
+        ...putBody(rooms),
+        deductions: [{ id: 'd-1', label: 'Peinture', amount: 1e30 }]
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it('accepte une retenue fractionnaire et la renvoie telle quelle', async () => {
+      const { id, rooms } = await draftId();
+      const res = await put(id, {
+        ...putBody(rooms),
+        deductions: [{ id: 'd-1', label: 'Peinture', amount: 1500.5 }]
+      });
+      expect(res.status).toBe(200);
+      expect(res.body.data.deductions[0].amount).toBe(1500.5);
+    });
+  });
+
   describe('finalisation', () => {
     it('refuse de finaliser sans signataire agence (400)', async () => {
       const createRes = await request(app)
