@@ -81,12 +81,10 @@ interface TicketDetails {
       changedByUser: PortalPerson | null;
     }>;
     assignedVendor: {
-      id: string;
       name: string;
       phone: string | null;
-      email: string | null;
     } | null;
-    assignedToUser: (PortalPerson & { id: string }) | null;
+    assignedToUser: PortalPerson | null;
   };
 }
 

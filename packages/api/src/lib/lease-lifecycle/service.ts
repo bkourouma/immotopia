@@ -249,6 +249,12 @@ const SETTLED: Prisma.RentalInstallmentWhereInput = {
   OR: [{ amount_paid: { gt: 0 } }, { status: { in: [RentalInstallmentStatus.PAID, RentalInstallmentStatus.PARTIAL] } }]
 };
 
+/** Bail nécessaire au calcul d'une échéance (dates, cycle, devise) : le prorata (H5) en dépend. */
+type PricedLease = Pick<
+  Prisma.RentalLeaseGetPayload<Record<string, never>>,
+  'id' | 'tenant_id' | 'start_date' | 'end_date' | 'billing_frequency' | 'due_day_of_month' | 'currency'
+>;
+
 /**
  * Recalcule les échéances non réglées d'un bail à partir d'un mois, dans la
  * transaction de l'appelant. Une échéance déjà facturée voit son écart inscrit
@@ -263,9 +269,10 @@ async function reprice(
     from: { year: number; month: number };
     rent: number;
     charges: number;
+    lease: PricedLease;
   }
 ) {
-  const { tenantId, leaseId, eventId, from, rent, charges } = params;
+  const { tenantId, leaseId, eventId, from, rent, charges, lease } = params;
   const targets = await tx.rentalInstallment.findMany({
     where: {
       tenant_id: tenantId,
@@ -305,8 +312,20 @@ async function reprice(
       revisions,
       new Date(Date.UTC(inst.period_year, inst.period_month - 1, 1, 12))
     );
-    const periodRent = effective.rent;
-    const periodCharges = effective.charges;
+    // Le montant passe par le même calcul que la génération (prorata au jour, H5) :
+    // la première et la dernière période restent au prorata, arrondies par devise.
+    const built = buildInstallmentForPeriod(
+      {
+        ...lease,
+        rent_amount: new Prisma.Decimal(effective.rent),
+        service_charge_amount: new Prisma.Decimal(effective.charges)
+      },
+      inst.period_year,
+      inst.period_month
+    );
+    if (!built.included) continue;
+    const periodRent = Number(built.data.amount_rent);
+    const periodCharges = Number(built.data.amount_service);
     // Une échéance dont le loyer EFFECTIF ne change pas (une révision existante
     // l'emporte sur le loyer de base de la fiche) n'est ni écrite ni comptée :
     // annoncer « N échéances recalculées » pour rien trompait l'utilisateur.
@@ -473,11 +492,15 @@ function lastPeriodUntil(
  */
 export async function repriceUnstartedInstallmentsTx(
   tx: PrismaTransactionClient,
-  params: { tenantId: string; leaseId: string; rent: number; charges: number; now?: Date }
+  params: { tenantId: string; leaseId: string; rent: number; charges: number; now?: Date; lease?: PricedLease }
 ) {
   const now = params.now ?? new Date();
   const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  const lease =
+    params.lease ?? (await tx.rentalLease.findFirst({ where: { id: params.leaseId, tenant_id: params.tenantId } }));
+  if (!lease) throw notFound('Bail introuvable');
   return reprice(tx, {
+    lease,
     tenantId: params.tenantId,
     leaseId: params.leaseId,
     eventId: `EDIT-${now.getTime()}`,
@@ -584,7 +607,8 @@ export async function reviseRent(tenantId: string, leaseId: string, body: unknow
       eventId: created.id,
       from: { year, month: monthNumber },
       rent: input.newRent,
-      charges: newCharges
+      charges: newCharges,
+      lease
     });
     return tx.leaseEvent.update({
       where: { id: created.id, tenantId },

@@ -1050,7 +1050,8 @@ export async function updateLease(
           tenantId,
           leaseId,
           rent: Number(data.rentAmount ?? existingLease.rent_amount),
-          charges: Number(data.serviceChargeAmount ?? existingLease.service_charge_amount)
+          charges: Number(data.serviceChargeAmount ?? existingLease.service_charge_amount),
+          lease
         })
       : 0;
     return { lease, installmentsRepriced };

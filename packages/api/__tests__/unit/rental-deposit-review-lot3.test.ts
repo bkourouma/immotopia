@@ -115,7 +115,7 @@ describe('solde : arrondi au centime', () => {
   });
 
   it('on peut rembourser le dernier centime restant', async () => {
-    seed({ collected_amount: 100.1, refunded_amount: 100, target_amount: 100.1 });
+    seed({ collected_amount: 100.1, refunded_amount: 100, target_amount: 100.1, currency: 'EUR' });
     await createDepositMovement(TENANT, 'dep-1', T.REFUND, 0.1);
     expect(store.movements).toHaveLength(1);
   });
@@ -128,9 +128,23 @@ describe('montants aberrants', () => {
     expect(Number(store.deposit!.refunded_amount)).toBe(0);
   });
 
-  it('accepte deux décimales', async () => {
+  it('accepte deux décimales dans une devise à sous-unité', async () => {
+    seed({ currency: 'EUR' });
     await createDepositMovement(TENANT, 'dep-1', T.REFUND, 1000.25);
     expect(Number(store.deposit!.refunded_amount)).toBe(1000.25);
+  });
+
+  it('FCFA (devise du bail) : refuse les décimales sans rien écrire (décision H3)', async () => {
+    await expect(createDepositMovement(TENANT, 'dep-1', T.REFUND, 1000.25)).rejects.toThrow(
+      'Le montant doit être un nombre entier en FCFA.'
+    );
+    expect(store.movements).toHaveLength(0);
+    expect(Number(store.deposit!.refunded_amount)).toBe(0);
+  });
+
+  it('FCFA : un montant entier reste accepté', async () => {
+    await createDepositMovement(TENANT, 'dep-1', T.REFUND, 1000);
+    expect(Number(store.deposit!.refunded_amount)).toBe(1000);
   });
 });
 

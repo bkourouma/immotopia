@@ -42,6 +42,7 @@ import { BadRequestError, NotFoundError } from '../middleware/error-middleware';
 import { isUuid } from '../lib/signature/sources/guards';
 import { detectDocumentKind, detectImageKind, extensionForKind } from '../utils/file-signature';
 import { PORTAL_RENTAL_DOCUMENT_SELECT, toPortalAttachment, toPortalRentalDocument } from '../lib/files/portal-files';
+import { contactNameOnly, staffNameOnly, type ContactRef, type StaffRef } from '../lib/maintenance/portal-people';
 import {
   buildTenantDeclarationsFilters,
   buildTenantInstallmentsSearch,
@@ -119,21 +120,24 @@ function installmentDisplay(
  * apparaît que par son nom (jamais son e-mail ni son identifiant de compte),
  * et l'historique de statuts ne dit pas qui a changé quoi.
  */
-type StaffRef = { id?: string; email?: string; fullName?: string | null } | null | undefined;
-function staffNameOnly(user: StaffRef): { fullName: string } | null {
-  return user?.fullName ? { fullName: user.fullName } : null;
-}
 function toPortalTicketDetails<
   T extends {
     assignedToUser?: StaffRef;
-    comments?: Array<{ authorUser?: StaffRef }>;
+    assignedVendor?: { name?: string } | null;
+    comments?: Array<{ authorUser?: StaffRef; authorContact?: ContactRef }>;
     statusHistory?: Array<{ changedByUser?: StaffRef }>;
   }
 >(details: T): T {
   return {
     ...details,
     assignedToUser: staffNameOnly(details.assignedToUser),
-    comments: (details.comments ?? []).map(comment => ({ ...comment, authorUser: staffNameOnly(comment.authorUser) })),
+    // Prestataire : son nom seulement (ni téléphone, ni e-mail, ni spécialités).
+    assignedVendor: details.assignedVendor?.name ? { name: details.assignedVendor.name } : null,
+    comments: (details.comments ?? []).map(comment => ({
+      ...comment,
+      authorUser: staffNameOnly(comment.authorUser),
+      authorContact: contactNameOnly(comment.authorContact)
+    })),
     statusHistory: (details.statusHistory ?? []).map(entry => ({ ...entry, changedByUser: null }))
   };
 }
@@ -1871,7 +1875,11 @@ export class TenantPortalService {
       });
 
       // Un commentaire de locataire : son auteur est lui-même ; aucun e-mail de personnel.
-      return { ...createdComment, authorUser: staffNameOnly(createdComment.authorUser) };
+      return {
+        ...createdComment,
+        authorUser: staffNameOnly(createdComment.authorUser),
+        authorContact: contactNameOnly(createdComment.authorContact)
+      };
     } catch (error) {
       logger.error('Error adding maintenance comment', {
         error,

@@ -4,7 +4,7 @@ import { logger } from '../utils/logger';
 import { logAuditEvent, recordAuditEvent } from './audit-service';
 import { diffForAudit } from '../lib/audit/changes';
 import { Prisma, RentalPenaltyMode } from '@prisma/client';
-import { roundMoney, roundMoneyXof } from '../lib/finance/money';
+import { roundForCurrency } from '../lib/finance/currency-rounding';
 import { hasForbiddenDecimals } from '../lib/rental/payment-schemas';
 import {
   compteLocataireTx,
@@ -71,16 +71,6 @@ async function inscrirePenaliteTx(
     leaseId: params.leaseId,
     movementDate: params.movementDate
   });
-}
-
-/** Francs CFA : pas de subdivision, une pénalité se facture à l'unité. */
-const DEVISES_SANS_DECIMALES = new Set(['FCFA', 'XOF', 'XAF', 'CFA']);
-
-/** Arrondit une pénalité calculée : à l'unité en franc CFA, au centime sinon. */
-export function arrondirPenalite(montant: number, currency?: string | null): number {
-  return DEVISES_SANS_DECIMALES.has(String(currency ?? 'FCFA').toUpperCase())
-    ? roundMoneyXof(montant)
-    : roundMoney(montant);
 }
 
 /**
@@ -213,7 +203,7 @@ export async function calculatePenalty(tenantId: string, installmentId: string, 
   }
 
   // Franc CFA : à l'unité ; autre devise : au centime (jamais 3266,66 FCFA).
-  penaltyAmount = arrondirPenalite(penaltyAmount, installment.currency);
+  penaltyAmount = roundForCurrency(penaltyAmount, installment.currency);
 
   // Apply cap if set
   if (capAmount && penaltyAmount > capAmount) {

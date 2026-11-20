@@ -172,7 +172,41 @@ describe('détail de ticket : pas de données internes du personnel', () => {
     const out = await service.addTicketComment('c', 'l', 't', TICKET, 'Merci', ['l']);
 
     expect(out.authorUser).toBeNull();
-    expect(out.authorContact.firstName).toBe('Moi');
+    expect(out.authorContact).toEqual({ firstName: 'Moi', lastName: 'Locataire' });
+    expect(JSON.stringify(out)).not.toContain('exemple.test');
+  });
+
+  it('réduit l’auteur contact des commentaires à son nom et le prestataire à son nom', async () => {
+    findTenantPortalTicket.mockResolvedValue({ id: TICKET });
+    getTicketById.mockResolvedValue({
+      id: TICKET,
+      assignedVendor: {
+        id: 'v-1',
+        name: 'Plomberie Express',
+        phone: '0700000000',
+        email: 'contact@plomberie.test',
+        specialties: ['PLUMBING']
+      },
+      comments: [
+        {
+          id: 'c1',
+          author_type: 'TENANT',
+          content: 'Fuite',
+          authorUser: null,
+          authorContact: { id: 'ct-1', firstName: 'Moi', lastName: 'Locataire', email: 'moi@exemple.test' }
+        }
+      ],
+      statusHistory: [],
+      attachments: []
+    });
+
+    const out = await service.getMaintenanceTicketDetails('c', 'l', 't', TICKET, ['l']);
+
+    expect(out.comments[0].authorContact).toEqual({ firstName: 'Moi', lastName: 'Locataire' });
+    expect(out.assignedVendor).toEqual({ name: 'Plomberie Express' });
+    expect(JSON.stringify(out)).not.toContain('exemple.test');
+    expect(JSON.stringify(out)).not.toContain('plomberie.test');
+    expect(JSON.stringify(out)).not.toContain('ct-1');
   });
 });
 

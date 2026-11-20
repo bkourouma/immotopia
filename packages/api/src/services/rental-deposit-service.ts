@@ -13,6 +13,7 @@ import { syncDirectDepositMovementEntryTx, syncDirectRentPaymentEntryTx } from '
 import { annulerPieceTx, compteLocataireDuBailTx, compteLocataireTx } from './rental-installment-service';
 import { NotFoundError, ConflictError, BadRequestError } from '../middleware/error-middleware';
 import { montantDisponibleTx } from './rental-payment-service';
+import { hasForbiddenDecimals } from '../lib/rental/payment-schemas';
 import { env } from '../config/env';
 
 /**
@@ -554,6 +555,12 @@ export async function createDepositMovement(
 
   if (!deposit) {
     throw new NotFoundError(t('Dépôt de garantie introuvable'));
+  }
+
+  // Devise entière (décision H3) : la devise du dépôt est celle du bail ; en
+  // FCFA, un montant avec décimales est refusé, jamais arrondi en silence.
+  if (hasForbiddenDecimals(amount, deposit.currency)) {
+    throw new BadRequestError(t('Le montant doit être un nombre entier en FCFA.'));
   }
 
   // Validate that the referenced payment and installment, when provided,

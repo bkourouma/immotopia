@@ -7,7 +7,7 @@ import { roundMoney, roundMoneyXof } from './money';
  * sont entiers de bout en bout. Les autres devises gardent deux décimales. Une
  * devise absente est le FCFA, devise par défaut de la plateforme.
  */
-const WHOLE_UNIT_CURRENCIES = new Set(['FCFA', 'XOF', 'XAF', 'CFA']);
+const WHOLE_UNIT_CURRENCIES = new Set(['FCFA', 'XOF', 'XAF', 'CFA', 'XPF', 'GNF', 'KMF', 'DJF', 'BIF', 'RWF']);
 
 export function isWholeUnitCurrency(currency?: string | null): boolean {
   if (!currency) return true;

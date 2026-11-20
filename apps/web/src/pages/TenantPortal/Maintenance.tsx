@@ -113,12 +113,10 @@ interface TicketDetails {
     created_at: string;
     authorUser: {
       fullName: string | null;
-      email: string;
     } | null;
     authorContact: {
       firstName: string | null;
       lastName: string | null;
-      email: string;
     } | null;
   }>;
 }
@@ -552,10 +550,10 @@ export default function TenantMaintenance() {
                           comment.author_type === 'TENANT'
                             ? comment.authorContact
                               ? `${comment.authorContact.firstName || ''} ${comment.authorContact.lastName || ''}`.trim() ||
-                                comment.authorContact.email
+                                t('Locataire')
                               : t('Locataire')
                             : comment.authorUser
-                              ? comment.authorUser.fullName || comment.authorUser.email
+                              ? comment.authorUser.fullName || t('Gestionnaire')
                               : t('Gestionnaire')
                         }
                         description={

@@ -55,7 +55,8 @@ jest.mock('../../src/services/rental-installment-service', () => ({
   updateInstallmentStatus: jest.fn(async () => undefined)
 }));
 
-import { arrondirPenalite, calculatePenalty } from '../../src/services/rental-penalty-service';
+import { calculatePenalty } from '../../src/services/rental-penalty-service';
+import { isWholeUnitCurrency, roundForCurrency } from '../../src/lib/finance/currency-rounding';
 
 const TENANT = 'tenant-A';
 
@@ -139,9 +140,13 @@ describe('calculatePenalty : arrondi par devise', () => {
     expect(pen.amount).toBe(24.69);
   });
 
-  it('arrondirPenalite : demie vers le haut en FCFA, devise absente = FCFA', () => {
-    expect(arrondirPenalite(10.5, 'FCFA')).toBe(11);
-    expect(arrondirPenalite(10.4, undefined)).toBe(10);
-    expect(arrondirPenalite(10.456, 'USD')).toBe(10.46);
+  it('roundForCurrency : demie vers le haut en FCFA, devise absente = FCFA, 10 devises entières', () => {
+    expect(roundForCurrency(10.5, 'FCFA')).toBe(11);
+    expect(roundForCurrency(10.4, undefined)).toBe(10);
+    expect(roundForCurrency(10.456, 'USD')).toBe(10.46);
+    for (const currency of ['XOF', 'XAF', 'FCFA', 'CFA', 'XPF', 'GNF', 'KMF', 'DJF', 'BIF', 'RWF']) {
+      expect(isWholeUnitCurrency(currency)).toBe(true);
+      expect(roundForCurrency(10.5, currency)).toBe(11);
+    }
   });
 });

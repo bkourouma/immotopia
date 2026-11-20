@@ -530,7 +530,6 @@ async function createRunTx(
           dueDate,
           batchType: 'REGULAR',
           budgetId: plan.budgetId,
-          totalAmount: plan.totalAmount,
           currency: plan.currency,
           allocationMethod: plan.allocationMethod,
           lots: plan.lots

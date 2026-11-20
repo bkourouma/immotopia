@@ -5427,11 +5427,6 @@ export async function createChargeCallBatchWithCallsTx(
     dueDate: Date;
     batchType: 'REGULAR' | 'EXCEPTIONAL';
     budgetId?: string | null;
-    /**
-     * Ignore (conserve pour compatibilite des appelants) : le total du lot
-     * d'appels est la somme des montants des appels reellement crees.
-     */
-    totalAmount?: number;
     currency: string;
     lots: LotCallAmount[];
     /** Mode de repartition ecrit sur le lot d'appels (defaut SHARES). */

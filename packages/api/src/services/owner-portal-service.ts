@@ -78,6 +78,7 @@ import { currentLanguage, t } from '../i18n';
 import { NotFoundError } from '../middleware/error-middleware';
 import { isUuid } from '../lib/signature/sources/guards';
 import { ownerPortalTicketWhere } from '../lib/maintenance/portal-visibility';
+import { contactNameOnly, staffNameOnly } from '../lib/maintenance/portal-people';
 import {
   PORTAL_ATTACHMENT_SELECT,
   PORTAL_PROPERTY_DOCUMENT_SELECT,
@@ -196,7 +197,7 @@ function restrictToOwnerScope(propertyIds: string[], requestedPropertyId: string
  */
 function assertKnownId(id: string | undefined, message: string): string {
   if (!id || !isUuid(id)) {
-    throw new Error(message);
+    throw new NotFoundError(message);
   }
   return id;
 }
@@ -2371,19 +2372,8 @@ export class OwnerPortalService {
               content: true,
               author_type: true,
               created_at: true,
-              authorUser: {
-                select: {
-                  fullName: true,
-                  email: true
-                }
-              },
-              authorContact: {
-                select: {
-                  firstName: true,
-                  lastName: true,
-                  email: true
-                }
-              }
+              authorUser: { select: { fullName: true } },
+              authorContact: { select: { firstName: true, lastName: true } }
             },
             orderBy: {
               created_at: 'asc'
@@ -2396,32 +2386,15 @@ export class OwnerPortalService {
               to_status: true,
               note: true,
               changed_at: true,
-              changedByUser: {
-                select: {
-                  fullName: true,
-                  email: true
-                }
-              }
+              changedByUser: { select: { fullName: true } }
             },
             orderBy: {
               changed_at: 'asc'
             }
           },
-          assignedVendor: {
-            select: {
-              id: true,
-              name: true,
-              phone: true,
-              email: true
-            }
-          },
-          assignedToUser: {
-            select: {
-              id: true,
-              fullName: true,
-              email: true
-            }
-          }
+          // Prestataire : nom et téléphone (affichés par l'écran), ni e-mail ni identifiant.
+          assignedVendor: { select: { name: true, phone: true } },
+          assignedToUser: { select: { fullName: true } }
         }
       });
 
@@ -2432,6 +2405,20 @@ export class OwnerPortalService {
       return {
         ticket: {
           ...ticket,
+          // Même réducteur que côté locataire : un nom, jamais d'identifiant ni d'e-mail.
+          comments: (ticket.comments ?? []).map(comment => ({
+            ...comment,
+            authorUser: staffNameOnly(comment.authorUser),
+            authorContact: contactNameOnly(comment.authorContact)
+          })),
+          statusHistory: (ticket.statusHistory ?? []).map(entry => ({
+            ...entry,
+            changedByUser: staffNameOnly(entry.changedByUser)
+          })),
+          assignedToUser: staffNameOnly(ticket.assignedToUser),
+          assignedVendor: ticket.assignedVendor
+            ? { name: ticket.assignedVendor.name, phone: ticket.assignedVendor.phone ?? null }
+            : null,
           attachments: (ticket.attachments ?? []).map(attachment => toPortalAttachment(attachment, ticket.id, 'owner'))
         } as any
       };

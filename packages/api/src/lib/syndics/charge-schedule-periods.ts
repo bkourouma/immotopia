@@ -213,7 +213,7 @@ export function annualShareForPeriod(
   if (!Number.isInteger(periodIndex) || periodIndex < 1 || periodIndex > periodsPerYear) {
     throw new RangeError('periodIndex invalide');
   }
-  if (isWholeUnitCurrency(currency)) {
+  if (isWholeUnitCurrencyStrict(currency)) {
     const annualUnits = Math.round(annualAmount);
     const baseUnits = Math.floor(annualUnits / periodsPerYear);
     return periodIndex === periodsPerYear ? annualUnits - baseUnits * (periodsPerYear - 1) : baseUnits;
@@ -224,8 +224,12 @@ export function annualShareForPeriod(
   return fromCents(cents);
 }
 
-/** Vrai pour une devise connue sans sous-unité ; une devise absente garde le centime. */
-function isWholeUnitCurrency(currency: string | null | undefined): boolean {
+/**
+ * Vrai pour une devise CONNUE sans sous-unité ; une devise absente garde le
+ * centime. Sémantique inverse de `isWholeUnitCurrency` (lib/finance/currency-rounding),
+ * pour qui une devise absente est le FCFA : ne pas les confondre.
+ */
+function isWholeUnitCurrencyStrict(currency: string | null | undefined): boolean {
   return Boolean(currency) && allocationPrecisionFor(currency) === 'UNIT';
 }
 
@@ -251,7 +255,7 @@ export function distributeFixedAmount(
   lots: ShareLot[],
   currency?: string | null
 ): Array<{ lotId: string; amount: number }> {
-  const whole = isWholeUnitCurrency(currency);
+  const whole = isWholeUnitCurrencyStrict(currency);
   const main = lots.filter(lot => MAIN_LOT_TYPES.has(lot.lotType));
   const targets = [...(main.length > 0 ? main : lots)].sort((a, b) =>
     a.lotNumber.localeCompare(b.lotNumber, 'fr', { numeric: true })

@@ -121,6 +121,41 @@ describe("détail d'un ticket : réponse restreinte", () => {
     expect(args.where.property_id).toEqual({ in: [OWN] });
     expect(args.where.tenant_id).toBe(TENANT);
   });
+
+  it('ne demande ni e-mail ni identifiant des personnes, et réduit la réponse à des noms', async () => {
+    const staff = { id: 'u-1', email: 'agent@agence.test', fullName: 'Awa Agent' };
+    mockDb.maintenanceTicket.findFirst.mockResolvedValue({
+      id: UUID,
+      attachments: [],
+      comments: [
+        { id: 'c1', authorUser: staff, authorContact: null },
+        {
+          id: 'c2',
+          authorUser: null,
+          authorContact: { id: 'ct', firstName: 'Moi', lastName: 'Locataire', email: 'moi@exemple.test' }
+        }
+      ],
+      statusHistory: [{ id: 'h1', changedByUser: staff }],
+      assignedToUser: staff,
+      assignedVendor: { id: 'v1', name: 'Plomberie', phone: '0700000000', email: 'v@plomberie.test' }
+    });
+
+    const out = (await service.getMaintenanceTicketDetails(UUID, [OWN], TENANT)).ticket;
+
+    const args = mockDb.maintenanceTicket.findFirst.mock.calls[0][0];
+    const keys = selectedKeys(args.select);
+    expect(keys).not.toContain('email');
+    expect(args.select.assignedToUser).toEqual({ select: { fullName: true } });
+    expect(out.assignedToUser).toEqual({ fullName: 'Awa Agent' });
+    expect(out.comments[0].authorUser).toEqual({ fullName: 'Awa Agent' });
+    expect(out.comments[1].authorContact).toEqual({ firstName: 'Moi', lastName: 'Locataire' });
+    expect(out.statusHistory[0].changedByUser).toEqual({ fullName: 'Awa Agent' });
+    expect(out.assignedVendor).toEqual({ name: 'Plomberie', phone: '0700000000' });
+    const json = JSON.stringify(out);
+    for (const leaked of ['agence.test', 'exemple.test', 'plomberie.test', 'u-1', '"ct"', '"v1"']) {
+      expect(json).not.toContain(leaked);
+    }
+  });
 });
 
 describe('identifiant mal formé : 404, jamais une erreur de base', () => {
