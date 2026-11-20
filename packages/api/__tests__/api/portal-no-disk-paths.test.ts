@@ -157,7 +157,7 @@ function seed() {
     tenant_id: TENANT_A,
     lease_id: LEASE,
     type: 'RENT_RECEIPT',
-    status: 'ISSUED',
+    status: 'FINAL',
     document_number: 'Q-2026-001',
     title: 'Quittance avril',
     mime_type: 'application/pdf',

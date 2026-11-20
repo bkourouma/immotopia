@@ -9,6 +9,9 @@ import { syncWorkProgramCostTx } from '../finance/cost-allocation';
 import { logger } from '../../utils/logger';
 import { materializeManagementFees } from '../rental-fees/materialize';
 import { ownerSharesByProperty } from '../ownership/service';
+import type { Share } from '../ownership/split';
+import { agencyPartOfAllocation } from '../owner-account/agency-parts';
+import { getAgencyFinanceSettings } from '../settings/finance-settings';
 import { VALUATION_ORDER_BY, compareValuationsDesc } from './valuation-order';
 import { computeOwnerStatement, OWNER_STATEMENT_COMPUTATION_VERSION } from './owner-statement-computation';
 import { assertTreasuryAccountUsableTx } from '../treasury/accounts';
@@ -1311,12 +1314,33 @@ export async function generateOwnerStatement(
     select: { id: true }
   });
   const shareByProperty = ownerClient ? await ownerSharesByProperty(tenantId, ownerClient.id, propertyIds) : undefined;
+  // Indivision pièce par pièce (v4) : toutes les quotes-parts des biens où ce
+  // propriétaire est indivisaire, pour répartir comme le compte (`splitAmount`).
+  const indivision = new Map<string, { ownerClientId: string; shares: Share[] }>();
+  if (ownerClient && shareByProperty && shareByProperty.size > 0) {
+    const shareRows = await prisma.propertyOwnershipShare.findMany({
+      where: { tenantId, propertyId: { in: Array.from(shareByProperty.keys()) } },
+      select: { propertyId: true, ownerClientId: true, sharePercent: true }
+    });
+    const sharesByProperty = new Map<string, Share[]>();
+    for (const row of shareRows) {
+      const list = sharesByProperty.get(row.propertyId) ?? [];
+      list.push({ ownerClientId: row.ownerClientId, sharePercent: Number(row.sharePercent) });
+      sharesByProperty.set(row.propertyId, list);
+    }
+    for (const [propertyId, shares] of sharesByProperty) {
+      // Comme le compte : seul un bien où le propriétaire détient une part est réparti.
+      if (shares.some(share => share.ownerClientId === ownerClient.id)) {
+        indivision.set(propertyId, { ownerClientId: ownerClient.id, shares });
+      }
+    }
+  }
 
   // Les honoraires des encaissements du mois, figés s'ils ne l'étaient pas
   // encore : le relevé et l'état des commissions lisent les mêmes chiffres.
   await materializeManagementFees(tenantId, { from: periodStart, to: periodEnd, propertyIds });
 
-  const [installments, expenses, fees, withholdings, depositMovements] = await Promise.all([
+  const [installments, expenses, fees, withholdings, depositMovements, financeSettings] = await Promise.all([
     leaseIds.length === 0
       ? Promise.resolve([])
       : prisma.rentalInstallment.findMany({
@@ -1333,6 +1357,8 @@ export async function generateOwnerStatement(
             amount_service: true,
             amount_other_fees: true,
             penalty_amount: true,
+            // Frais de rejet de prélèvement refacturés : part de l'agence, retirée de l'encaissé (comme le compte).
+            items: { where: { charge_type: 'OTHER' }, select: { amount: true, metadata: true } },
             lease: { select: { property_id: true } },
             payments: {
               where: { payment: { status: 'SUCCESS' } },
@@ -1392,8 +1418,12 @@ export async function generateOwnerStatement(
             lease: { select: { property_id: true } }
           }
         })
-      : Promise.resolve([])
+      : Promise.resolve([]),
+    getAgencyFinanceSettings(tenantId)
   ]);
+  // Pénalités à l'agence : même condition que le compte propriétaire (sync.ts).
+  const penaltyToAgency =
+    financeSettings.penaltyBeneficiary === 'AGENCY' && Boolean(financeSettings.penaltyIncomeAccountNumber);
 
   const withholdingsByProperty = withholdings
     .filter(w => propertyIds.includes(w.propertyId))
@@ -1427,7 +1457,8 @@ export async function generateOwnerStatement(
       penaltyAmount: Number(inst.penalty_amount),
       allocations: inst.payments.map(allocation => ({
         amount: Number(allocation.amount),
-        paidAt: allocation.payment.succeeded_at ?? allocation.payment.initiated_at
+        paidAt: allocation.payment.succeeded_at ?? allocation.payment.initiated_at,
+        agencyPart: agencyPartOfAllocation(Number(allocation.amount), inst, penaltyToAgency)
       }))
     })),
     expenses: expenses.map(expense => ({
@@ -1445,7 +1476,8 @@ export async function generateOwnerStatement(
       feeBase: fee.feeBase,
       vatRate: fee.vatRate === null ? null : Number(fee.vatRate)
     })),
-    shareByProperty
+    shareByProperty,
+    indivision
   });
 
   const decimal = (value: number) => new Prisma.Decimal(value);

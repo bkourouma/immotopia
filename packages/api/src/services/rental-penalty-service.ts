@@ -5,6 +5,7 @@ import { logAuditEvent, recordAuditEvent } from './audit-service';
 import { diffForAudit } from '../lib/audit/changes';
 import { Prisma, RentalPenaltyMode } from '@prisma/client';
 import { roundMoney, roundMoneyXof } from '../lib/finance/money';
+import { hasForbiddenDecimals } from '../lib/rental/payment-schemas';
 import {
   compteLocataireTx,
   libellePeriodeEcheance,
@@ -584,6 +585,11 @@ export async function updatePenalty(
 
   if (!penalty) {
     throw new NotFoundError(t('Pénalité introuvable'));
+  }
+
+  // Franc CFA : montant entier, refusé (400) et non arrondi, comme ailleurs.
+  if (hasForbiddenDecimals(amount, penalty.installment?.currency)) {
+    throw new BadRequestError(t('Le montant doit être un nombre entier en FCFA.'));
   }
 
   // Le JSON peut déjà porter un justificatif joint avant tout ajustement : on le

@@ -47,6 +47,7 @@ import {
   MaintenanceTicketCategory,
   MaintenanceTicketPriority,
   RentalDocumentType,
+  RentalDocumentStatus,
   PropertyType,
   PropertyTransactionMode
 } from '@prisma/client';
@@ -2463,9 +2464,8 @@ export class OwnerPortalService {
 
       const where: any = {
         tenant_id: tenantId,
-        status: {
-          not: 'VOID'
-        },
+        // Documents finaux seuls : ni brouillon, ni remplacé, ni annulé (H4).
+        status: RentalDocumentStatus.FINAL,
         OR: [
           {
             lease: {
@@ -2574,9 +2574,7 @@ export class OwnerPortalService {
         where: {
           id: documentId,
           tenant_id: tenantId,
-          status: {
-            not: 'VOID'
-          },
+          status: RentalDocumentStatus.FINAL,
           OR: [
             {
               lease: {

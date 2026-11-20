@@ -11,7 +11,11 @@ import { RentalBillingFrequency } from '@prisma/client';
  * - une échéance par période COMMENÇANT à l'intérieur du bail ; une période
  *   suivante réduite au seul dernier jour du bail (début == fin) n'est pas
  *   facturée (un bail du 01/07/2026 au 01/07/2027 a 12 échéances mensuelles) ;
- * - sans date de fin, l'horizon est un an : jusqu'à la veille de l'anniversaire.
+ * - sans date de fin, l'horizon est un an : jusqu'à la veille de l'anniversaire ;
+ * - `end` est la fin EFFECTIVE de la période (plafonnée par la fin du bail ou
+ *   l'horizon) : le builder d'échéances en déduit le prorata au jour (décision
+ *   H5, `lib/finance/installment-builder.ts`) pour la première et la dernière
+ *   période.
  */
 
 const CYCLE_MONTHS: Record<RentalBillingFrequency, number> = {

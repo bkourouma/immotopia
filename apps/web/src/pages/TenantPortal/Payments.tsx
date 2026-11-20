@@ -22,6 +22,7 @@ import { useQuery } from '@tanstack/react-query';
 import { tenantPortalService } from '../../services/tenantPortalService';
 import InstallmentDetails from '../../components/TenantPortal/InstallmentDetails';
 import { TenantPaymentAccountsSection } from '../../components/TenantPortal/TenantPaymentAccountsSection';
+import { ReadOnlyBanner, isReadOnlyLeases } from './readOnly';
 import PaymentDeclarationModal from '../../components/TenantPortal/PaymentDeclarationModal';
 import MyDeclarationsList from '../../components/TenantPortal/declared-payment/MyDeclarationsList';
 import type { PendingDeclarationSummary } from '../../types/rental-declared-payment';
@@ -461,12 +462,14 @@ export default function TenantPayments() {
     queryKey: ['tenant-portal-leases'],
     queryFn: async () => {
       const response = await tenantPortalService.getLeases();
-      return (response.data?.data ?? []) as Array<{ id: string; leaseNumber: string }>;
+      return (response.data?.data ?? []) as Array<{ id: string; leaseNumber: string; status?: string }>;
     },
     staleTime: 60_000,
     retry: false
   });
   const hasSeveralLeases = (leases?.length ?? 0) > 1;
+  // H4 : bail terminé ou suspendu => aucune action d'écriture (payer, déclarer).
+  const readOnly = isReadOnlyLeases(leases);
 
   // Motif à recopier : la plus ancienne échéance non soldée de TOUTES les échéances, pas
   // seulement de la page affichée (filtrée, paginée). Requête légère dédiée, revue quand
@@ -766,7 +769,7 @@ export default function TenantPayments() {
       width: 190,
       render: (_: any, record: InstallmentItem) => (
         <Space>
-          {isPayable(record) && (
+          {!readOnly && isPayable(record) && (
             <Button
               type="primary"
               size="small"
@@ -841,26 +844,32 @@ export default function TenantPayments() {
           </Title>
           <Text type="secondary">{t("Suivez vos échéances et l'historique de vos paiements")}</Text>
         </div>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => {
+        {readOnly ? null : (
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              setDeclarationFor(null);
+              setDeclarationModalVisible(true);
+            }}
+            {...helpAnchor('paiements-declarer')}
+          >
+            {t('Déclarer un paiement')}
+          </Button>
+        )}
+      </div>
+
+      {readOnly ? <ReadOnlyBanner /> : null}
+
+      {readOnly ? null : (
+        <TenantPaymentAccountsSection
+          suggestedReason={suggestedReason}
+          onDeclare={() => {
             setDeclarationFor(null);
             setDeclarationModalVisible(true);
           }}
-          {...helpAnchor('paiements-declarer')}
-        >
-          {t('Déclarer un paiement')}
-        </Button>
-      </div>
-
-      <TenantPaymentAccountsSection
-        suggestedReason={suggestedReason}
-        onDeclare={() => {
-          setDeclarationFor(null);
-          setDeclarationModalVisible(true);
-        }}
-      />
+        />
+      )}
 
       {/* Summary Cards (T054) */}
       {ongletActif === 'echeances' && data?.summary && (
@@ -962,7 +971,7 @@ export default function TenantPayments() {
                     style={{ marginBottom: 16 }}
                   />
                 ) : null}
-                {availability?.available ? (
+                {availability?.available && !readOnly ? (
                   <Space direction="vertical" size="small" style={{ width: '100%', marginBottom: 16 }}>
                     {availability.mode === 'SIMULATOR' ? (
                       <Alert type="info" showIcon message={t('Mode démonstration')} />
@@ -1032,7 +1041,7 @@ export default function TenantPayments() {
                       size="middle"
                       scroll={{ x: 1000 }}
                       rowSelection={
-                        availability?.available
+                        availability?.available && !readOnly
                           ? {
                               selectedRowKeys: selectedInstallmentIds,
                               onChange: keys => {

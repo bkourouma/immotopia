@@ -29,6 +29,12 @@ const prismaMock: any = {
   rentalPaymentAllocation: {
     findMany: jest.fn(async ({ where, take }: any) => {
       if (failingTenantId && where.tenant_id === failingTenantId) throw new Error('base indisponible');
+      // Affectations voisines d'une même échéance (arrondi cumulé) : chaque encaissement a la sienne.
+      if (where.installment_id) {
+        return allocations
+          .filter(a => a.tenant_id === where.tenant_id && where.installment_id.in.includes(`inst-${a.id}`))
+          .map(a => ({ id: a.id, installment_id: `inst-${a.id}`, amount: a.amount, created_at: a.created_at }));
+      }
       const taken = new Set(fees.map(f => f.allocationId));
       const rows = allocations
         .filter(a => a.tenant_id === where.tenant_id)
@@ -40,6 +46,7 @@ const prismaMock: any = {
         id: a.id,
         amount: a.amount,
         created_at: a.created_at,
+        installment_id: `inst-${a.id}`,
         payment_id: a.payment_id,
         payment: { succeeded_at: new Date('2026-09-01T10:00:00Z'), initiated_at: new Date('2026-09-01T09:00:00Z') },
         installment: {

@@ -99,6 +99,12 @@ export const feeTermsSchema = z
 export interface AllocationFeeInput {
   /** Montant affecté à l'échéance par ce règlement. */
   amount: number;
+  /**
+   * Somme des montants déjà affectés à la même échéance par les affectations
+   * précédentes (règlements réussis, dans l'ordre de création). Absent : 0.
+   * Sert à l'arrondi cumulé : voir `computeAllocationFee`.
+   */
+  priorAmount?: number;
   installment: { amountRent: number; total: number };
   terms: FeeTerms;
   vat: { registered: boolean; rate: number };
@@ -124,30 +130,50 @@ export interface AllocationFee {
  * - Forfait : le forfait de l'échéance, au prorata de ce qui en est payé. Une
  *   échéance réglée en deux fois porte le forfait une seule fois au total.
  *
- * Arrondi au franc à chaque affectation : c'est la somme qui sera due.
+ * Arrondi CUMULÉ (FCFA : jamais de décimales, décision H3) : la part d'une
+ * affectation est arrondi(F(cumul après)) - arrondi(F(cumul avant)), le cumul
+ * étant plafonné au total de l'échéance. La somme des parts d'une échéance
+ * soldée vaut donc exactement le forfait (ou le pourcentage) arrondi une seule
+ * fois ; le reste d'arrondi tombe sur la dernière affectation. Même principe
+ * pour la TVA sur honoraires et la part de l'agent, calculées sur les honoraires
+ * cumulés. Sans `priorAmount`, une affectation unique donne le même résultat
+ * qu'un arrondi direct.
  */
 export function computeAllocationFee(input: AllocationFeeInput): AllocationFee {
   const { amount, installment, terms } = input;
-  const share = installment.total > 0 ? amount / installment.total : 0;
+  const total = installment.total;
+  const cumBefore = total > 0 ? Math.min(Math.max(input.priorAmount ?? 0, 0), total) : 0;
+  const cumAfter = total > 0 ? Math.min(cumBefore + amount, total) : 0;
+  // Cumul avant plafonné au total : au-delà, plus rien à facturer (parts nulles).
+  const isFixed = terms.managementFeeMode === ManagementFeeMode.FIXED;
+  const allCollected = terms.managementFeeBase === ManagementFeeBase.ALL_COLLECTED;
+
+  /** Honoraires HT cumulés, arrondis, une fois `cumul` payé sur l'échéance. */
+  const cumulativeFee = (cumul: number): number => {
+    if (total <= 0 || cumul <= 0) return 0;
+    if (isFixed) return roundMoneyXof(((terms.managementFeeFixedAmount ?? 0) * cumul) / total);
+    const base = allCollected ? cumul : (cumul * installment.amountRent) / total;
+    return roundMoneyXof((base * (terms.managementFeeRate ?? 0)) / 100);
+  };
 
   let baseAmount: number;
-  let feeAmount: number;
-  if (terms.managementFeeMode === ManagementFeeMode.FIXED) {
+  if (isFixed || allCollected) {
     baseAmount = amount;
-    feeAmount = roundMoneyXof((terms.managementFeeFixedAmount ?? 0) * share);
   } else {
-    if (terms.managementFeeBase === ManagementFeeBase.ALL_COLLECTED) {
-      baseAmount = amount;
-    } else {
-      baseAmount = installment.total > 0 ? (amount * installment.amountRent) / installment.total : 0;
-    }
-    feeAmount = roundMoneyXof((baseAmount * (terms.managementFeeRate ?? 0)) / 100);
+    baseAmount = total > 0 ? (amount * installment.amountRent) / total : 0;
   }
 
+  const feeBefore = cumulativeFee(cumBefore);
+  const feeAfter = cumulativeFee(cumAfter);
+  const feeAmount = feeAfter - feeBefore;
+
   const vatRate = input.vat.registered ? input.vat.rate : null;
-  const vatAmount = vatRate === null ? 0 : roundMoneyXof((feeAmount * vatRate) / 100);
-  const agentShareAmount =
-    input.agentSharePercent === null ? 0 : roundMoneyXof((feeAmount * input.agentSharePercent) / 100);
+  const cumulativeVat = (fee: number): number => (vatRate === null ? 0 : roundMoneyXof((fee * vatRate) / 100));
+  const vatAmount = cumulativeVat(feeAfter) - cumulativeVat(feeBefore);
+
+  const cumulativeShare = (fee: number): number =>
+    input.agentSharePercent === null ? 0 : roundMoneyXof((fee * input.agentSharePercent) / 100);
+  const agentShareAmount = cumulativeShare(feeAfter) - cumulativeShare(feeBefore);
 
   return { baseAmount: roundMoney(baseAmount), feeAmount, vatRate, vatAmount, agentShareAmount };
 }

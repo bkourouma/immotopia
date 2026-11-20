@@ -1,5 +1,6 @@
 import { ExpenseCategory, ManagementFeeBase, ManagementFeeMode } from '@prisma/client';
 import { roundMoney, roundMoneyXof } from '../finance/money';
+import { Share, splitAmount } from '../ownership/split';
 
 /**
  * Calcul d'un relevé de gérance, sans accès à la base.
@@ -29,9 +30,20 @@ import { roundMoney, roundMoneyXof } from '../finance/money';
  *
  * Net à reverser = encaissé − honoraires − TVA − dépenses − retenue à la
  * source + dépôts de garantie conservés.
+ *
+ * **Version 4 (revue locative, H1).** Le relevé s'aligne sur le compte
+ * propriétaire (`owner-account/sync.ts`) :
+ *
+ * - l'encaissé retire, par affectation, la part qui revient à l'agence (pénalités
+ *   si elles lui sont attribuées, frais de rejet de prélèvement) : le net ne
+ *   dépasse plus le solde du compte ;
+ * - en indivision, la part du propriétaire se calcule PIÈCE PAR PIÈCE
+ *   (`splitAmount` : affectation, ligne d'honoraires, ligne de TVA, dépense), avec
+ *   le reste d'arrondi au dernier indivisaire, exactement comme le compte, et non
+ *   plus sur la somme par bien (écart possible de 1 FCFA).
  */
 
-export const OWNER_STATEMENT_COMPUTATION_VERSION = 3;
+export const OWNER_STATEMENT_COMPUTATION_VERSION = 4;
 
 export interface StatementInstallmentInput {
   propertyId: string;
@@ -42,8 +54,12 @@ export interface StatementInstallmentInput {
   amountService: number;
   amountOtherFees: number;
   penaltyAmount: number;
-  /** Affectations de règlements au statut SUCCESS uniquement. */
-  allocations: Array<{ amount: number; paidAt: Date }>;
+  /**
+   * Affectations de règlements au statut SUCCESS uniquement. `agencyPart` : part
+   * du montant affecté qui revient à l'agence (pénalités, frais de rejet de
+   * prélèvement) ; elle n'entre ni dans l'encaissé ni dans le net du propriétaire.
+   */
+  allocations: Array<{ amount: number; paidAt: Date; agencyPart?: number }>;
 }
 
 export interface StatementExpenseInput {
@@ -95,6 +111,12 @@ export interface StatementComputationInput {
    * propriétaire du relevé.
    */
   shareByProperty?: Map<string, number>;
+  /**
+   * Indivision, pièce par pièce (v4) : pour chaque bien en indivision, le
+   * propriétaire du relevé et TOUTES les quotes-parts du bien. Prioritaire sur
+   * `shareByProperty`.
+   */
+  indivision?: Map<string, { ownerClientId: string; shares: Share[] }>;
 }
 
 export type ComputedItemType =
@@ -170,7 +192,14 @@ export function computeOwnerStatement(input: StatementComputationInput): Stateme
 
     let rentDue = 0;
     let collected = 0;
+    // Encaissé du propriétaire, calculé pièce par pièce (indivision, v4).
+    let collectedOwn = 0;
     let arrears = 0;
+
+    const indiv = input.indivision?.get(propertyId);
+    /** Part du propriétaire dans UNE pièce : `splitAmount` en indivision, le tout sinon. */
+    const piece = (value: number) =>
+      indiv ? (splitAmount(roundMoney(value), indiv.shares).get(indiv.ownerClientId) ?? 0) : roundMoney(value);
 
     for (const inst of installments) {
       const total = installmentTotal(inst);
@@ -185,7 +214,9 @@ export function computeOwnerStatement(input: StatementComputationInput): Stateme
           paidByPeriodEnd += allocation.amount;
         }
         if (within(allocation.paidAt, periodStart, periodEnd)) {
-          collected += allocation.amount;
+          const ownerAmount = roundMoney(allocation.amount - (allocation.agencyPart ?? 0));
+          collected += ownerAmount;
+          collectedOwn += piece(ownerAmount);
         }
       }
 
@@ -196,17 +227,23 @@ export function computeOwnerStatement(input: StatementComputationInput): Stateme
 
     // Quote-part de l'indivisaire : tout ce que le bien produit ou coûte ce
     // mois-ci se lit à sa part.
-    const sharePercent = input.shareByProperty?.get(propertyId);
+    const sharePercent = indiv
+      ? (indiv.shares.find(s => s.ownerClientId === indiv.ownerClientId)?.sharePercent ?? 0)
+      : input.shareByProperty?.get(propertyId);
     const factor = sharePercent === undefined ? 1 : sharePercent / 100;
     const part = (value: number) => (factor === 1 ? roundMoney(value) : roundMoneyXof(value * factor));
     const suffix = sharePercent === undefined ? '' : ` (quote-part ${formatRate(Number(sharePercent.toFixed(4)))})`;
 
-    collected = part(collected);
+    collected = indiv ? roundMoney(collectedOwn) : part(collected);
     rentDue = part(rentDue);
     arrears = part(arrears);
     const propertyFees = input.fees.filter(f => f.propertyId === propertyId);
-    const fee = part(propertyFees.reduce((sum, f) => sum + f.feeAmount, 0));
-    const vat = part(propertyFees.reduce((sum, f) => sum + f.vatAmount, 0));
+    const fee = indiv
+      ? roundMoney(propertyFees.reduce((sum, f) => sum + piece(f.feeAmount), 0))
+      : part(propertyFees.reduce((sum, f) => sum + f.feeAmount, 0));
+    const vat = indiv
+      ? roundMoney(propertyFees.reduce((sum, f) => sum + piece(f.vatAmount), 0))
+      : part(propertyFees.reduce((sum, f) => sum + f.vatAmount, 0));
     const vatRate = uniform(propertyFees.filter(f => f.vatAmount > 0).map(f => f.vatRate));
 
     if (collected > 0) {
@@ -235,7 +272,7 @@ export function computeOwnerStatement(input: StatementComputationInput): Stateme
       // emploi avec les honoraires calculés : elle n'est reprise que si le bien
       // n'en porte aucun ce mois-ci.
       if (fee > 0 && expense.category === ExpenseCategory.MANAGEMENT_FEES) continue;
-      const amount = part(expense.amount);
+      const amount = indiv ? piece(expense.amount) : part(expense.amount);
       if (amount <= 0) continue;
       items.push({ propertyId, label: `${expense.label}${suffix}`, type: 'EXPENSE_DEDUCTED', amount });
       totalExpenses += amount;

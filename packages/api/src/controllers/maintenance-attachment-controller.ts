@@ -56,9 +56,10 @@ export const downloadTenantPortalAttachmentHandler = asyncHandler(async (req: Re
   if (!req.tenantPortal) {
     throw new ForbiddenError('Accès portail locataire refusé.');
   }
-  const { tenantId, tenantClientId, leaseId } = req.tenantPortal;
-  // Un ticket de n'importe quel bail actif du locataire (H29), jamais d'un autre.
-  const leaseIds = await listPortalLeaseIds(tenantId, tenantClientId);
+  const { tenantId, tenantClientId, leaseId, readOnly } = req.tenantPortal;
+  // Un ticket de n'importe quel bail actif du locataire (H29), jamais d'un autre ; en lecture
+  // seule, les baux terminés restent consultables.
+  const leaseIds = await listPortalLeaseIds(tenantId, tenantClientId, readOnly);
   const file = await getMaintenanceAttachmentFileForTenantPortal(
     { tenantId, tenantClientId, leaseId, leaseIds },
     req.params.id,
