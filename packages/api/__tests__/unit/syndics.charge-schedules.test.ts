@@ -350,9 +350,9 @@ describe('execution et idempotence', () => {
       budgetId: BUD1,
       batchType: 'REGULAR'
     });
-    expect(Number(batches()[0].totalAmount)).toBe(1666.67);
-    // Parking hors budget ; septembre n'est pas la derniere periode : 8000,05 / 12 arrondi au centime inferieur.
-    expect(amountsByLot(calls())).toEqual({ [L1]: 1000, [L2]: 666.67 });
+    expect(Number(batches()[0].totalAmount)).toBe(1666);
+    // Parking hors budget ; septembre n'est pas la derniere periode : 8000,05 arrondi a 8000 FCFA puis / 12 en francs entiers (666).
+    expect(amountsByLot(calls())).toEqual({ [L1]: 1000, [L2]: 666 });
     expect(calls()[0]).toMatchObject({
       periodStart: d('2026-09-01'),
       periodEnd: d('2026-09-30'),
@@ -394,7 +394,7 @@ describe('execution et idempotence', () => {
     expect((await runDueChargeSchedules(d('2026-09-30T06:00:00.000Z'))).schedules).toBe(0);
     const report = await runSyndicChargeCallScheduler(d('2026-10-01T06:00:00.000Z'));
     expect(report).toMatchObject({ schedules: 1, success: 1, skipped: 0, failed: 0 });
-    expect(amountsByLot(calls())).toEqual({ [L1]: 3000, [L2]: 2000.02 });
+    expect(amountsByLot(calls())).toEqual({ [L1]: 3000, [L2]: 2000 });
     expect(calls()[0]).toMatchObject({ period: 'T4 2026', dueDate: d('2026-10-31') });
     expect(scheduleRow(schedule.id).nextRunAt).toEqual(d('2027-01-01'));
     expect(scheduleRow(schedule.id).lastRunAt).toEqual(d('2026-10-01T06:00:00.000Z'));
@@ -672,15 +672,15 @@ describe('gestion des programmations', () => {
     const preview = await previewChargeSchedule(TENANT_A, S1, schedule.id, NOW);
     expect(preview.periods.map(period => [period.label, period.issueDate, period.dueDate, period.totalAmount])).toEqual(
       [
-        ['T4 2026', '2026-10-01', '2026-10-11', 5000.02],
-        // Budget designe : reconduit tant qu'on ne le change pas (T1 : 2000,01 pour L2, sans l'arrondi de fin d'annee).
-        ['T1 2027', '2027-01-01', '2027-01-11', 5000.01],
-        ['T2 2027', '2027-04-01', '2027-04-11', 5000.01]
+        ['T4 2026', '2026-10-01', '2026-10-11', 5000],
+        // Budget designe : reconduit tant qu'on ne le change pas (T1 : 2000 pour L2, FCFA en francs entiers).
+        ['T1 2027', '2027-01-01', '2027-01-11', 5000],
+        ['T2 2027', '2027-04-01', '2027-04-11', 5000]
       ]
     );
     expect(preview.periods[0].lots).toEqual([
       { lotId: L1, lotNumber: 'A-01', amount: 3000 },
-      { lotId: L2, lotNumber: 'A-02', amount: 2000.02 }
+      { lotId: L2, lotNumber: 'A-02', amount: 2000 }
     ]);
     expect(mockPrisma.chargeCall.rows).toHaveLength(0);
 
@@ -774,18 +774,18 @@ describe('generation manuelle depuis le budget (correctif periodsPerYear)', () =
 
   it('par defaut : quote-part annuelle entiere (comportement historique)', async () => {
     await generateChargeCallsFromBudget(TENANT_A, S1, BUD1, base);
-    expect(amountsByLot(calls())).toEqual({ [L1]: 12000, [L2]: 8000.05 });
-    expect(Number(batches()[0].totalAmount)).toBe(20000.05);
+    expect(amountsByLot(calls())).toEqual({ [L1]: 12000, [L2]: 8000 });
+    expect(Number(batches()[0].totalAmount)).toBe(20000);
   });
 
   it('periodsPerYear 4 : quart de la quote-part, derniere periode avec l arrondi', async () => {
     await generateChargeCallsFromBudget(TENANT_A, S1, BUD1, { ...base, periodsPerYear: 4, periodIndex: 1 });
-    expect(amountsByLot(calls())).toEqual({ [L1]: 3000, [L2]: 2000.01 });
+    expect(amountsByLot(calls())).toEqual({ [L1]: 3000, [L2]: 2000 });
     mockPrisma.chargeCall.rows = [];
     mockPrisma.chargeCallBatch.rows = [];
     await generateChargeCallsFromBudget(TENANT_A, S1, BUD1, { ...base, periodsPerYear: 4, periodIndex: 4 });
-    expect(amountsByLot(calls())).toEqual({ [L1]: 3000, [L2]: 2000.02 });
-    expect(Number(batches()[0].totalAmount)).toBe(5000.02);
+    expect(amountsByLot(calls())).toEqual({ [L1]: 3000, [L2]: 2000 });
+    expect(Number(batches()[0].totalAmount)).toBe(5000);
   });
 });
 

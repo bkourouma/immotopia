@@ -1,3 +1,4 @@
+import { allocationPrecisionFor } from './charge-allocation-methods';
 import { fromCents, toCents } from './charge-allocation-plan';
 import { lastDayOfMonth, utcDay } from './period';
 
@@ -197,16 +198,35 @@ export function firstPeriodIssuedOnOrAfter(
  * Part d'un montant annuel pour la période `periodIndex` (1 à `periodsPerYear`) :
  * un N-ième arrondi au centime inférieur, la DERNIÈRE période de l'année
  * absorbant le reste — la somme des N parts vaut exactement le montant annuel.
+ *
+ * Devise sans sous-unité (FCFA…) : le montant annuel est d'abord arrondi au
+ * franc, puis réparti en francs ENTIERS (la dernière période absorbe le reste).
+ * `currency` absente : comportement historique au centime.
  */
-export function annualShareForPeriod(annualAmount: number, periodsPerYear: number, periodIndex: number): number {
+export function annualShareForPeriod(
+  annualAmount: number,
+  periodsPerYear: number,
+  periodIndex: number,
+  currency?: string | null
+): number {
   if (!Number.isInteger(periodsPerYear) || periodsPerYear < 1) throw new RangeError('periodsPerYear invalide');
   if (!Number.isInteger(periodIndex) || periodIndex < 1 || periodIndex > periodsPerYear) {
     throw new RangeError('periodIndex invalide');
+  }
+  if (isWholeUnitCurrency(currency)) {
+    const annualUnits = Math.round(annualAmount);
+    const baseUnits = Math.floor(annualUnits / periodsPerYear);
+    return periodIndex === periodsPerYear ? annualUnits - baseUnits * (periodsPerYear - 1) : baseUnits;
   }
   const annualCents = toCents(annualAmount);
   const base = Math.floor(annualCents / periodsPerYear);
   const cents = periodIndex === periodsPerYear ? annualCents - base * (periodsPerYear - 1) : base;
   return fromCents(cents);
+}
+
+/** Vrai pour une devise connue sans sous-unité ; une devise absente garde le centime. */
+function isWholeUnitCurrency(currency: string | null | undefined): boolean {
+  return Boolean(currency) && allocationPrecisionFor(currency) === 'UNIT';
 }
 
 export interface ShareLot {
@@ -223,15 +243,22 @@ export const MAIN_LOT_TYPES = new Set(['APARTMENT', 'OFFICE', 'COMMERCIAL']);
  * Répartit un montant fixe par tantièmes généraux entre les lots principaux
  * (appartements, bureaux, locaux commerciaux). Sans lot principal, tous les
  * lots ; sans tantième, parts égales. Calcul en centimes, le dernier lot (par
- * numéro) absorbe l'arrondi : la somme vaut exactement le montant.
+ * numéro) absorbe l'arrondi : la somme vaut exactement le montant. Devise sans
+ * sous-unité : parts en francs entiers (montant arrondi au franc).
  */
-export function distributeFixedAmount(amount: number, lots: ShareLot[]): Array<{ lotId: string; amount: number }> {
+export function distributeFixedAmount(
+  amount: number,
+  lots: ShareLot[],
+  currency?: string | null
+): Array<{ lotId: string; amount: number }> {
+  const whole = isWholeUnitCurrency(currency);
   const main = lots.filter(lot => MAIN_LOT_TYPES.has(lot.lotType));
   const targets = [...(main.length > 0 ? main : lots)].sort((a, b) =>
     a.lotNumber.localeCompare(b.lotNumber, 'fr', { numeric: true })
   );
   if (targets.length === 0) return [];
-  const totalCents = toCents(amount);
+  // En devise entière, on calcule en francs (échelle 1) au lieu des centimes.
+  const totalCents = whole ? Math.round(amount) : toCents(amount);
   const totalShares = targets.reduce((sum, lot) => sum + Math.max(0, Number(lot.generalShares) || 0), 0);
   const weightOf = (lot: ShareLot) => (totalShares > 0 ? Math.max(0, Number(lot.generalShares) || 0) : 1);
   const totalWeight = totalShares > 0 ? totalShares : targets.length;
@@ -241,6 +268,6 @@ export function distributeFixedAmount(amount: number, lots: ShareLot[]): Array<{
     const cents =
       index === targets.length - 1 ? totalCents - distributed : Math.floor((totalCents * weightOf(lot)) / totalWeight);
     distributed += cents;
-    return { lotId: lot.id, amount: fromCents(cents) };
+    return { lotId: lot.id, amount: whole ? cents : fromCents(cents) };
   });
 }

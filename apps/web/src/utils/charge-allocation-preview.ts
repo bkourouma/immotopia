@@ -1,6 +1,7 @@
 import type { ChargeAllocationMethod, LotType } from '../types/syndic-types';
 import { t } from '../i18n/t';
 import { getLotTypeLabel } from './syndic-lot-label';
+import { isZeroDecimalCurrency } from './zero-decimal-currencies';
 
 /**
  * Aperçu côté client de la répartition d'un appel de charges (menu lot 2).
@@ -60,11 +61,9 @@ export const ALLOCATION_LOT_TYPES: readonly LotType[] = [
   'OTHER'
 ];
 
-const ZERO_DECIMAL_CURRENCIES = new Set(['XOF', 'XAF', 'XPF', 'GNF', 'KMF', 'DJF', 'BIF', 'RWF']);
-
 /** Précision de l'arrondi : 1 franc (devises sans décimale comme le FCFA) ou 1 centime. */
 export function allocationPrecisionFor(currency: string | null | undefined): AllocationPrecision {
-  return ZERO_DECIMAL_CURRENCIES.has(String(currency ?? '').toUpperCase()) ? 'UNIT' : 'CENT';
+  return isZeroDecimalCurrency(currency) ? 'UNIT' : 'CENT';
 }
 
 class AllocationError extends Error {

@@ -180,6 +180,27 @@ describe('succès : un seul encaissement', () => {
     expect(db.engine.issueReceiptsForPaymentTx).not.toHaveBeenCalled();
   });
 
+  it('reste fractionnaire historique (50000,60) : montant envoyé 50001, règlement accepté (tolérance < 1 franc)', async () => {
+    db.store.calls.find(c => c.id === IDS.C1)!.amount = 30000.6;
+    const checkout = db.addCheckout({ amount: 50001 });
+    db.engine.client.getStatus.mockResolvedValue(status({ amount: 50001 }));
+
+    const { checkout: result } = await reconcileSyndicCheckout(IDS.T1, checkout.id);
+
+    expect(result).toMatchObject({ status: 'SUCCESS' });
+    expect(payments()).toHaveLength(1);
+  });
+
+  it('un reste réellement soldé (écart d’un franc entier) reste refusé -> CALLS_UNAVAILABLE', async () => {
+    const checkout = db.addCheckout({ amount: 50001 });
+    db.engine.client.getStatus.mockResolvedValue(status({ amount: 50001 }));
+
+    const { checkout: result } = await reconcileSyndicCheckout(IDS.T1, checkout.id);
+
+    expect(result).toMatchObject({ status: 'REVIEW', reviewKind: 'CALLS_UNAVAILABLE' });
+    expect(payments()).toHaveLength(0);
+  });
+
   it('un appel soldé entre-temps par un paiement manuel : le reste dû ne couvre plus le paiement -> REVIEW (l’ACCEPT garde l’avance)', async () => {
     const checkout = db.addCheckout();
     db.store.allocations.push({ id: 'manual', paymentId: 'p0', chargeCallId: IDS.C1, amount: 30000 });

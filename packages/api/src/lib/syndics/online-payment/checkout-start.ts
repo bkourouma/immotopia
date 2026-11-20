@@ -14,6 +14,7 @@ import { sumAllocationsByCall } from '../charge-allocation';
 import { toCents } from '../charge-allocation-plan';
 import { pendingDeclarationsByCall } from '../declared-payment/declaration-queries';
 import { lockLotPayment } from '../lot-payment-lock';
+import { onlineAmountDue } from './online-amount';
 import { assertSyndicOnlinePaymentAllowed } from './feature-gate';
 import { assertSyndicConfigUsable, loadSyndicGatewayConfig, syndicCredentialsFrom } from './gateway-config';
 import { isSupportedCurrency } from './types';
@@ -106,7 +107,7 @@ async function prepareCalls(tx: TxClient, params: StartSyndicCheckoutParams, ids
     outstandingTotal += outstanding;
   }
   // PaySecureHub attend un montant entier (FCFA) : l'écart (< 1 FCFA) est absorbé par l'affectation.
-  const amount = Math.round(outstandingTotal / 100);
+  const amount = onlineAmountDue(outstandingTotal);
   if (amount <= 0) {
     throw new AppError(
       t("Aucun appel de charges sélectionné n'a de reste dû."),
