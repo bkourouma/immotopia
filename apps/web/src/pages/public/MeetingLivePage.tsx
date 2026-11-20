@@ -239,8 +239,19 @@ const ResolutionCard: React.FC<ResolutionCardProps> = ({ view, resolution, busy,
   const voteByLot = new Map(resolution.myVotes.map(vote => [vote.lotId, vote]));
   // Un lot dont le vote a été saisi par le syndic ne peut plus être modifié par le copropriétaire.
   const lockedLotIds = new Set(resolution.myVotes.filter(vote => vote.source === 'MANAGER').map(vote => vote.lotId));
+  // Un lot détenu par pouvoir dont le copropriétaire a voté lui-même est refusé par le serveur (409) : il est
+  // écarté de « Pour tous mes lots » (sinon tout le lot de votes échoue) et son vote lot par lot est désactivé.
+  const ownerVotedProxyLotIds = new Set(
+    view.myLots
+      .filter(lot => lot.role === 'PROXY')
+      .filter(lot => resolution.myVotes.some(vote => vote.lotId === lot.lotId && vote.source === 'CO_OWNER'))
+      .map(lot => lot.lotId)
+  );
   const lockedLots = view.myLots.filter(lot => lockedLotIds.has(lot.lotId));
-  const allLotIds = view.myLots.filter(lot => !lockedLotIds.has(lot.lotId)).map(lot => lot.lotId);
+  const ownerVotedLots = view.myLots.filter(lot => ownerVotedProxyLotIds.has(lot.lotId));
+  const allLotIds = view.myLots
+    .filter(lot => !lockedLotIds.has(lot.lotId) && !ownerVotedProxyLotIds.has(lot.lotId))
+    .map(lot => lot.lotId);
   const result = resolution.result;
   const votingAllowed = open && view.canVote;
   const rule = normalizeMajorityRule(resolution.majorityRule);
@@ -325,6 +336,17 @@ const ResolutionCard: React.FC<ResolutionCardProps> = ({ view, resolution, busy,
           />
         ) : null}
 
+        {open && ownerVotedLots.length > 0 ? (
+          <Alert
+            type="info"
+            showIcon
+            message={t(
+              'Le copropriétaire du lot {{lots}} a déjà voté lui-même : son vote ne peut pas être remplacé par son mandataire.',
+              { lots: ownerVotedLots.map(lot => lot.lotNumber).join(', ') }
+            )}
+          />
+        ) : null}
+
         {open && !votingAllowed && !view.me.joined ? (
           <Alert type="info" showIcon message={t("Rejoignez l'assemblée pour voter.")} />
         ) : null}
@@ -362,7 +384,7 @@ const ResolutionCard: React.FC<ResolutionCardProps> = ({ view, resolution, busy,
                             key={choice}
                             size="small"
                             type={current?.vote === choice ? 'primary' : 'default'}
-                            disabled={busy || lockedLotIds.has(lot.lotId)}
+                            disabled={busy || lockedLotIds.has(lot.lotId) || ownerVotedProxyLotIds.has(lot.lotId)}
                             aria-label={t('Lot {{lotNumber}} : {{vote}}', {
                               lotNumber: lot.lotNumber,
                               vote: voteChoiceLabel(choice)

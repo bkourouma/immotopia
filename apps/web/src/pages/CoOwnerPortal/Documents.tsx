@@ -22,10 +22,10 @@ const TEXTE_RECHERCHE = [(doc: CoOwnerDocument) => doc.title, (doc: CoOwnerDocum
 const ACCESSEURS = { type: (doc: CoOwnerDocument) => doc.type };
 
 /**
- * Documents de copropriété : le règlement et les procès-verbaux d'assemblée
- * générale des copropriétés où le copropriétaire a un lot. Les autres types
- * (diagnostics, assurances, budgets...) restent réservés à la gestion — voir
- * `listCoOwnerDocuments` côté API.
+ * Documents de copropriété que l'agence a rendus visibles aux copropriétaires
+ * (règlement et procès-verbaux par défaut ; diagnostics, assurances, budgets...
+ * seulement si l'agence les ouvre) dans les copropriétés où le copropriétaire a
+ * un lot — voir `listCoOwnerDocuments` côté API.
  */
 export default function CoOwnerDocuments() {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -50,7 +50,11 @@ export default function CoOwnerDocuments() {
       primary: true,
       options: [
         { value: 'REGULATION', label: documentTypeLabel('REGULATION') },
-        { value: 'GENERAL_MEETING_MINUTES', label: documentTypeLabel('GENERAL_MEETING_MINUTES') }
+        { value: 'GENERAL_MEETING_MINUTES', label: documentTypeLabel('GENERAL_MEETING_MINUTES') },
+        { value: 'DIAGNOSTIC', label: documentTypeLabel('DIAGNOSTIC') },
+        { value: 'INSURANCE', label: documentTypeLabel('INSURANCE') },
+        { value: 'BUDGET', label: documentTypeLabel('BUDGET') },
+        { value: 'OTHER', label: documentTypeLabel('OTHER') }
       ]
     }
   ];

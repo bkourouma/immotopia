@@ -614,6 +614,23 @@ describe('AG en direct (spec 043) - ecritures du gestionnaire', () => {
     expect(mockWorld.attendances[0]).toMatchObject({ lotId: 'A1', status: 'REPRESENTED' });
   });
 
+  it('refuse une heure de debut posterieure a l heure de fin (422), sans rien ecrire', async () => {
+    await expectStatus(
+      updateMeetingByTenant(T1, S1, 'M1', {
+        startTime: new Date('2026-03-01T11:00:00Z'),
+        endTime: new Date('2026-03-01T10:00:00Z')
+      }),
+      422,
+      /heure de debut/
+    );
+    expect(mockWorld.meetings[0].startTime).toBeNull();
+    // Une seule borne est aussi comparee a celle deja enregistree.
+    mockWorld.meetings[0].startTime = new Date('2026-03-01T09:00:00Z');
+    await expectStatus(updateMeetingByTenant(T1, S1, 'M1', { endTime: new Date('2026-03-01T08:00:00Z') }), 422);
+    const ok = await updateMeetingByTenant(T1, S1, 'M1', { endTime: new Date('2026-03-01T12:00:00Z') });
+    expect(ok.endTime).toEqual(new Date('2026-03-01T12:00:00Z'));
+  });
+
   it('enregistre l URL de visioconference', async () => {
     const updated = await updateMeetingByTenant(T1, S1, 'M1', { videoConferenceUrl: 'https://visio.example.test/x' });
     expect(updated.videoConferenceUrl).toBe('https://visio.example.test/x');

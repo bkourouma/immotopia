@@ -142,6 +142,8 @@ export function computeResolutionTally(
     // Un vote dont le lot n'appartient plus a la copropriete ne compte pas.
     if (!lot || absentLotIds.has(vote.lotId)) continue;
     const shares = lot.generalShares || 0;
+    // Un lot desactive (0 tantieme) ne vote pas : il ne compte ni en lots ni en coproprietaires.
+    if (shares <= 0) continue;
     if (vote.vote === 'FOR') {
       votesFor += 1;
       sharesFor += shares;
@@ -157,8 +159,11 @@ export function computeResolutionTally(
   }
 
   const totalShares = lots.reduce((sum, lot) => sum + (lot.generalShares || 0), 0);
-  const totalLots = lots.length;
-  const totalOwners = new Set(lots.map(ownerKeyOf)).size;
+  // Lots votants : un lot a 0 tantieme (desactive) n'est pas convoque et ne vote pas, il ne doit
+  // donc ni empecher l'unanimite ni gonfler le nombre de coproprietaires de l'article 26.
+  const votingLots = lots.filter(lot => (lot.generalShares || 0) > 0);
+  const totalLots = votingLots.length;
+  const totalOwners = new Set(votingLots.map(ownerKeyOf)).size;
   const ownersFor = ownersForSet.size;
   const hasVotes = votesFor + votesAgainst + votesAbstain > 0;
 
@@ -215,10 +220,12 @@ export function computeResolutionTally(
  * n'est bloquante.
  */
 export function computeMeetingAttendance(
-  lots: MajorityLot[],
+  allLots: MajorityLot[],
   votes: Array<{ lotId: string }>,
   attendances: MajorityAttendance[] = []
 ): MeetingAttendance {
+  // Un lot desactive (0 tantieme) ne compte pas, comme dans computeResolutionTally.
+  const lots = allLots.filter(lot => (lot.generalShares || 0) > 0);
   const lotsById = new Map(lots.map(lot => [lot.id, lot]));
   const votedIds = new Set(votes.map(vote => vote.lotId).filter(lotId => lotsById.has(lotId)));
   const attendanceByLot = new Map(attendances.filter(a => lotsById.has(a.lotId)).map(a => [a.lotId, a]));

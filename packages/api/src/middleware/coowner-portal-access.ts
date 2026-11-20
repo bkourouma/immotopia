@@ -109,22 +109,33 @@ export const requireCoOwnerPortalAccess = async (req: Request, _res: Response, n
       }
     }
 
-    const chosen = selected;
+    // Agence demandée par l'en-tête : la seule essayée. Sans en-tête : la plus ancienne non
+    // suspendue qui ouvre au moins un lot — un compte dont les lots d'une agence sont vendus ou
+    // révoqués ne doit pas être refusé alors qu'il est copropriétaire dans une autre.
+    const attempts = headerTenantId ? [selected] : candidates.filter(client => !isSuspended(client.tenantId));
     // Les événements d'audit de cette requête sont ceux d'un portail, pas d'un collaborateur.
     setAuditActor({ type: 'PORTAL' });
-    await runWithTenantContext({ tenantId: chosen.tenantId, userId, isSuperAdmin: false }, async () => {
-      const scope = await resolveCoOwnerScope(chosen.tenantId, chosen.contactIds);
-      if (scope.lotIds.length === 0) {
-        next(new ForbiddenError("Aucun lot de copropriété n'est ouvert à votre compte."));
-        return;
-      }
-      req.coOwnerPortal = {
-        tenantClientId: chosen.id,
-        availableTenantIds: candidates.map(client => client.tenantId),
-        scope
-      };
-      next();
-    });
+    for (const [index, chosen] of attempts.entries()) {
+      const isLastAttempt = index === attempts.length - 1;
+      let answered = false;
+      await runWithTenantContext({ tenantId: chosen.tenantId, userId, isSuperAdmin: false }, async () => {
+        const scope = await resolveCoOwnerScope(chosen.tenantId, chosen.contactIds);
+        if (scope.lotIds.length === 0) {
+          if (!isLastAttempt) return;
+          answered = true;
+          next(new ForbiddenError("Aucun lot de copropriété n'est ouvert à votre compte."));
+          return;
+        }
+        answered = true;
+        req.coOwnerPortal = {
+          tenantClientId: chosen.id,
+          availableTenantIds: candidates.map(client => client.tenantId),
+          scope
+        };
+        next();
+      });
+      if (answered) return;
+    }
   } catch (error) {
     next(error);
   }
