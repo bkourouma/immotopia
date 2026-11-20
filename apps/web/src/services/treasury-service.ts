@@ -110,7 +110,7 @@ export interface TreasuryTransferDto {
   status: TreasuryDocumentStatus;
   voidReason: string | null;
   voidedAt: string | null;
-  createdByName: string;
+  createdByName: string | null;
 }
 
 export interface CreateTreasuryTransferInput {
@@ -147,7 +147,7 @@ export interface TaxRemittanceDto {
   status: TreasuryDocumentStatus;
   voidReason: string | null;
   voidedAt: string | null;
-  createdByName: string;
+  createdByName: string | null;
 }
 
 export interface CreateTaxRemittanceInput {

@@ -51,6 +51,7 @@ import {
   PropertyTransactionMode
 } from '@prisma/client';
 import {
+  startOfDay,
   startOfMonth,
   endOfMonth,
   startOfYear,
@@ -74,6 +75,7 @@ import { ownerPortalPropertyWhere } from '../lib/owner-portal-scope';
 import { depositCurrentBalance } from './rental-deposit-balance';
 import { currentLanguage, t } from '../i18n';
 import { NotFoundError } from '../middleware/error-middleware';
+import { isUuid } from '../lib/signature/sources/guards';
 import { ownerPortalTicketWhere } from '../lib/maintenance/portal-visibility';
 import {
   PORTAL_ATTACHMENT_SELECT,
@@ -97,6 +99,30 @@ import {
   type OwnerPortalListOptions,
   type WithOwnerPagination
 } from './portal-list-filters/owner-portal-list-filters';
+
+/** Fiche locataire pour le portail : identité et e-mail, jamais le JSON `details`. */
+const PORTAL_RENTER_SELECT = {
+  select: {
+    id: true,
+    user: { select: { fullName: true, email: true } }
+  }
+} as const;
+
+/** Colonnes d'un bail montrées dans une réponse de portail (voir `getLeaseDetails`). */
+const PORTAL_LEASE_SUMMARY_SELECT = {
+  id: true,
+  property_id: true,
+  lease_number: true,
+  status: true,
+  start_date: true,
+  end_date: true,
+  currency: true,
+  rent_amount: true,
+  service_charge_amount: true,
+  security_deposit_amount: true,
+  billing_frequency: true,
+  due_day_of_month: true
+} as const;
 
 const INTL_LOCALES = { fr: 'fr-FR', en: 'en-US', ar: 'ar' } as const;
 
@@ -160,6 +186,18 @@ function summarizePortfolio(properties: Array<{ status: PropertyStatus; rentalLe
  */
 function restrictToOwnerScope(propertyIds: string[], requestedPropertyId: string): string[] {
   return propertyIds.filter(id => id === requestedPropertyId);
+}
+
+/**
+ * Un identifiant qui n'a pas la forme d'un UUID ne désigne rien : même réponse
+ * qu'un objet hors périmètre (404 via le message), jamais une erreur de base
+ * (colonnes `@db.Uuid` : Prisma lève P2023, soit un 500).
+ */
+function assertKnownId(id: string | undefined, message: string): string {
+  if (!id || !isUuid(id)) {
+    throw new Error(message);
+  }
+  return id;
 }
 
 export class OwnerPortalService {
@@ -365,7 +403,8 @@ export class OwnerPortalService {
       where: {
         tenant_id: tenantId,
         status: RentalInstallmentStatus.DUE,
-        due_date: { gte: new Date() },
+        // Une échéance du jour, non payée, reste « à venir » : borne au début de journée.
+        due_date: { gte: startOfDay(new Date()) },
         lease: {
           property_id: { in: propertyIds }
         }
@@ -633,9 +672,26 @@ export class OwnerPortalService {
           id: propertyId,
           OR: [{ tenantId }, { tenantId: null }]
         },
-        // Jamais de `filePath` (chemin disque) ni d'URL de stockage privée
-        // dans une réponse de portail : voir lib/files/portal-files.ts.
-        include: {
+        // Select explicite : ni `ownerUserId`, ni référence interne, ni score
+        // qualité, ni `typeSpecificData`, ni `version` dans une réponse de portail.
+        // Jamais de `filePath` (chemin disque) ni d'URL de stockage privée :
+        // voir lib/files/portal-files.ts.
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          address: true,
+          locationZone: true,
+          propertyType: true,
+          status: true,
+          transactionModes: true,
+          currency: true,
+          surfaceArea: true,
+          rooms: true,
+          bedrooms: true,
+          bathrooms: true,
+          furnishingStatus: true,
+          createdAt: true,
           media: {
             select: PORTAL_PROPERTY_MEDIA_SELECT,
             orderBy: {
@@ -656,35 +712,20 @@ export class OwnerPortalService {
       }
 
       // T038: Fetch current active lease
+      // Select explicite : ni `notes` internes, ni `terms_json`, ni pénalités,
+      // ni `created_by_user_id`, ni le JSON `details` des fiches client.
       const currentLease = await prisma.rentalLease.findFirst({
         where: {
           property_id: propertyId,
           tenant_id: tenantId,
           status: RentalLeaseStatus.ACTIVE
         },
-        include: {
-          primaryRenter: {
-            include: {
-              user: {
-                select: {
-                  fullName: true,
-                  email: true
-                }
-              }
-            }
-          },
+        select: {
+          ...PORTAL_LEASE_SUMMARY_SELECT,
+          primaryRenter: PORTAL_RENTER_SELECT,
           coRenters: {
-            include: {
-              renterClient: {
-                include: {
-                  user: {
-                    select: {
-                      fullName: true,
-                      email: true
-                    }
-                  }
-                }
-              }
+            select: {
+              renterClient: PORTAL_RENTER_SELECT
             }
           }
         }
@@ -697,17 +738,9 @@ export class OwnerPortalService {
           tenant_id: tenantId,
           status: RentalLeaseStatus.ENDED
         },
-        include: {
-          primaryRenter: {
-            include: {
-              user: {
-                select: {
-                  fullName: true,
-                  email: true
-                }
-              }
-            }
-          }
+        select: {
+          ...PORTAL_LEASE_SUMMARY_SELECT,
+          primaryRenter: PORTAL_RENTER_SELECT
         },
         orderBy: {
           end_date: 'desc'
@@ -924,6 +957,7 @@ export class OwnerPortalService {
    */
   async getLeaseDetails(leaseId: string, propertyIds: string[], tenantId: string): Promise<LeaseDetailsData> {
     try {
+      assertKnownId(leaseId, 'Bail non trouvé ou accès non autorisé');
       // Get lease and validate property ownership
       const lease = await prisma.rentalLease.findFirst({
         where: {
@@ -1714,7 +1748,11 @@ export class OwnerPortalService {
       ).length;
       const paid = installmentList.filter(inst => inst.status === RentalInstallmentStatus.PAID).length;
 
-      const totalAmount = installmentList.reduce((sum, inst) => sum + Number(inst.amount || 0), 0);
+      // Une échéance annulée n'est pas due : elle reste listée mais hors du total
+      // (même règle que le solde du détail d'un bail).
+      const totalAmount = installmentList
+        .filter(inst => inst.status !== RentalInstallmentStatus.CANCELED)
+        .reduce((sum, inst) => sum + Number(inst.amount || 0), 0);
 
       const dueAmount = installmentList
         .filter(
@@ -1912,6 +1950,7 @@ export class OwnerPortalService {
    */
   async getPaymentDetails(paymentId: string, propertyIds: string[], tenantId: string): Promise<PaymentDetailsData> {
     try {
+      assertKnownId(paymentId, 'Paiement non trouvé ou accès non autorisé');
       // Get payment with all relations
       const payment = await prisma.rentalPayment.findFirst({
         where: {
@@ -2102,6 +2141,7 @@ export class OwnerPortalService {
    */
   async getDepositMovements(depositId: string, propertyIds: string[], tenantId: string): Promise<DepositMovementsData> {
     try {
+      assertKnownId(depositId, 'Dépôt de garantie non trouvé ou accès non autorisé');
       // First verify the deposit belongs to owner's properties
       const deposit = await prisma.rentalSecurityDeposit.findFirst({
         where: {
@@ -2295,6 +2335,7 @@ export class OwnerPortalService {
     tenantId: string
   ): Promise<MaintenanceTicketDetailsData> {
     try {
+      assertKnownId(ticketId, 'Ticket de maintenance non trouvé ou accès non autorisé');
       // Get ticket with all relations
       // Même règle que les pièces jointes du portail
       // (lib/maintenance/portal-visibility.ts) : une seule source.
@@ -2303,18 +2344,20 @@ export class OwnerPortalService {
           ...ownerPortalTicketWhere({ tenantId, propertyIds }),
           id: ticketId
         },
-        include: {
-          property: true,
-          lease: {
-            include: {
-              primaryRenter: {
-                include: {
-                  // Jamais `user: true` : la ligne complète porte `passwordHash`.
-                  user: { select: { id: true, fullName: true, email: true } }
-                }
-              }
-            }
-          },
+        // Select explicite : ni la ligne complète du bien, ni le bail (notes
+        // internes, `terms_json`), ni la fiche locataire (JSON `details`), ni
+        // les notes de résolution internes, ni les identifiants de contacts CRM.
+        select: {
+          id: true,
+          title: true,
+          category: true,
+          priority: true,
+          status: true,
+          description: true,
+          location_details: true,
+          created_at: true,
+          resolved_at: true,
+          property: { select: { id: true, address: true, title: true } },
           attachments: {
             select: PORTAL_ATTACHMENT_SELECT,
             orderBy: {
@@ -2322,7 +2365,11 @@ export class OwnerPortalService {
             }
           },
           comments: {
-            include: {
+            select: {
+              id: true,
+              content: true,
+              author_type: true,
+              created_at: true,
               authorUser: {
                 select: {
                   fullName: true,
@@ -2342,7 +2389,12 @@ export class OwnerPortalService {
             }
           },
           statusHistory: {
-            include: {
+            select: {
+              id: true,
+              from_status: true,
+              to_status: true,
+              note: true,
+              changed_at: true,
               changedByUser: {
                 select: {
                   fullName: true,
@@ -2516,6 +2568,7 @@ export class OwnerPortalService {
     tenantId: string
   ): Promise<{ buffer: Buffer; fileName: string; mimeType: string }> {
     try {
+      assertKnownId(documentId, 'Document non trouvé ou accès non autorisé');
       // Verify document belongs to owner's properties
       const document = await prisma.rentalDocument.findFirst({
         where: {
@@ -2587,7 +2640,7 @@ export class OwnerPortalService {
   ): Promise<Buffer> {
     try {
       if (propertyIds.length === 0) {
-        throw new Error('Aucune propriété trouvée');
+        throw new NotFoundError('Bien introuvable.');
       }
 
       // Get revenue data
@@ -2706,7 +2759,7 @@ export class OwnerPortalService {
   ): Promise<Buffer> {
     try {
       if (propertyIds.length === 0) {
-        throw new Error('Aucune propriété trouvée');
+        throw new NotFoundError('Bien introuvable.');
       }
 
       // Get properties
@@ -2715,6 +2768,8 @@ export class OwnerPortalService {
         include: {
           rentalLeases: {
             where: {
+              // Jamais un bail d'une autre agence (bien CLIENT sous mandat de plusieurs agences).
+              tenant_id: tenantId,
               // Un bail terminé depuis couvrait bien la date passée demandée.
               status: { in: [RentalLeaseStatus.ACTIVE, RentalLeaseStatus.ENDED] },
               start_date: { lte: params.asOfDate },
@@ -2798,7 +2853,7 @@ export class OwnerPortalService {
   ): Promise<Buffer> {
     try {
       if (propertyIds.length === 0) {
-        throw new Error('Aucune propriété trouvée');
+        throw new NotFoundError('Bien introuvable.');
       }
 
       return await exportDataFunction(
@@ -2806,8 +2861,10 @@ export class OwnerPortalService {
         propertyIds,
         tenantId,
         {
-          startDate: params.startDate,
-          endDate: params.endDate,
+          // `report-generator` n'applique la période que si les DEUX bornes sont
+          // présentes : une seule borne était ignorée en silence (export complet).
+          startDate: params.startDate ?? (params.endDate ? new Date(0) : undefined),
+          endDate: params.endDate ?? (params.startDate ? new Date('9999-12-31T23:59:59.999Z') : undefined),
           propertyId: params.propertyId
         },
         params.format

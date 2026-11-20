@@ -1561,7 +1561,10 @@ export async function updateOwnerStatement(
   return prisma.ownerStatement.update({
     where: { id: statementId, tenantId },
     data: {
-      status: data.status
+      status: data.status,
+      // Passer à « Envoyé » à la main pose la date d'envoi si elle manque :
+      // annuler un reversement remet ensuite le relevé à SENT, pas à DRAFT.
+      ...(data.status === StatementStatus.SENT && !existing.sentAt ? { sentAt: new Date() } : {})
     },
     include: {
       owner: true,

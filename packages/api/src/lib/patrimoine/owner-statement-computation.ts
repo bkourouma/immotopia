@@ -85,9 +85,9 @@ export interface StatementComputationInput {
   expenses: StatementExpenseInput[];
   /** Honoraires des encaissements du mois, sur les biens du relevé. */
   fees: StatementFeeInput[];
-  /** Retenue à la source (lot 10) du propriétaire, sur les biens du relevé, dans le mois. */
+  /** Retenue à la source (lot 10) du propriétaire, sur les biens du relevé, dans le mois. Déjà à sa quote-part. */
   withholdings?: StatementWithholdingInput[];
-  /** Dépôts de garantie conservés (lot 10) du propriétaire, dans le mois. */
+  /** Dépôts de garantie conservés (lot 10) du propriétaire, dans le mois. Déjà à sa quote-part. */
   depositsRetained?: StatementDepositRetainedInput[];
   /**
    * Indivision (lot 4) : quote-part du propriétaire, en pourcentage, pour
@@ -242,8 +242,12 @@ export function computeOwnerStatement(input: StatementComputationInput): Stateme
     }
 
     // Lot 10 : retenue à la source et dépôts de garantie conservés, agrégés
-    // par bien en amont (queries.ts), avant application de la quote-part.
-    const withholding = part(
+    // par bien en amont (queries.ts). Ces lignes sont DÉJÀ celles de CE
+    // propriétaire (la retenue est calculée sur sa quote-part du loyer, le dépôt
+    // conservé est un mouvement de son compte) : ne pas leur réappliquer la
+    // quote-part, ce qui la compterait deux fois.
+    const ownShare = (value: number) => roundMoney(value);
+    const withholding = ownShare(
       (input.withholdings ?? []).filter(w => w.propertyId === propertyId).reduce((sum, w) => sum + w.amount, 0)
     );
     if (withholding > 0) {
@@ -251,7 +255,7 @@ export function computeOwnerStatement(input: StatementComputationInput): Stateme
       totalWithholdingTax += withholding;
     }
 
-    const depositRetained = part(
+    const depositRetained = ownShare(
       (input.depositsRetained ?? []).filter(d => d.propertyId === propertyId).reduce((sum, d) => sum + d.amount, 0)
     );
     if (depositRetained > 0) {

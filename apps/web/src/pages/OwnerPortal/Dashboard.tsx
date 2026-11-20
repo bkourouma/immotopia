@@ -104,8 +104,8 @@ export default function OwnerDashboard() {
       CHECK: t('Chèque'),
       MOBILE_MONEY: t('Mobile Money'),
       DIRECT_DEBIT: t('Prélèvement bancaire'),
-      CARD: 'Carte',
-      OTHER: 'Autre'
+      CARD: t('Carte'),
+      OTHER: t('Autre')
     };
     return methods[method] || method;
   };

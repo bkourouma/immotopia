@@ -515,7 +515,7 @@ export async function getTicketById(tenantId: string, ticketId: string, tenantCo
   });
 
   if (!ticket) {
-    throw new Error('Ticket introuvable');
+    throw notFound('Ticket introuvable');
   }
 
   return ticket;
@@ -541,16 +541,16 @@ export async function cancelTicket(tenantId: string, ticketId: string, tenantCon
   });
 
   if (!existingTicket) {
-    throw new Error('Ticket introuvable');
+    throw notFound('Ticket introuvable');
   }
 
   // Validate status can be canceled
   if (existingTicket.status === MaintenanceTicketStatus.CANCELED) {
-    throw new Error('Ce ticket est déjà annulé');
+    throw badRequest('Ce ticket est déjà annulé');
   }
 
   if (existingTicket.status === MaintenanceTicketStatus.RESOLVED) {
-    throw new Error("Impossible d'annuler un ticket résolu");
+    throw badRequest("Impossible d'annuler un ticket résolu");
   }
 
   // Validate status transition
@@ -606,6 +606,18 @@ export async function cancelTicket(tenantId: string, ticketId: string, tenantCon
     previousStatus: existingTicket.status
   });
 
+  // Même avertissement (locataire, propriétaire) que pour tout autre changement
+  // de statut : l'annulation par cette route n'en envoyait aucun.
+  sendStatusChangeNotification(tenantId, ticketId, existingTicket.status, MaintenanceTicketStatus.CANCELED).catch(
+    err => {
+      logger.error('Failed to send status change notification', {
+        ticketId,
+        tenantId,
+        error: err instanceof Error ? err.message : String(err)
+      });
+    }
+  );
+
   return ticket;
 }
 
@@ -637,7 +649,7 @@ export async function deleteTicket(
   });
 
   if (!existingTicket) {
-    throw new Error('Ticket introuvable');
+    throw notFound('Ticket introuvable');
   }
 
   // Only allow deletion if ticket is DECLARED or CANCELED
@@ -645,7 +657,7 @@ export async function deleteTicket(
     existingTicket.status !== MaintenanceTicketStatus.DECLARED &&
     existingTicket.status !== MaintenanceTicketStatus.CANCELED
   ) {
-    throw new Error('Seuls les tickets avec le statut "Déclaré" ou "Annulé" peuvent être supprimés définitivement');
+    throw badRequest('Seuls les tickets avec le statut "Déclaré" ou "Annulé" peuvent être supprimés définitivement');
   }
 
   // Log before deletion for audit
@@ -750,12 +762,12 @@ export async function updateTenantTicket(
   });
 
   if (!existingTicket) {
-    throw new Error('Ticket introuvable');
+    throw notFound('Ticket introuvable');
   }
 
   // Only allow updates if ticket is in DECLARED status
   if (existingTicket.status !== MaintenanceTicketStatus.DECLARED) {
-    throw new Error('Seuls les tickets avec le statut "Déclaré" peuvent être modifiés');
+    throw badRequest('Seuls les tickets avec le statut "Déclaré" peuvent être modifiés');
   }
 
   // Prepare update data
@@ -783,7 +795,7 @@ export async function updateTenantTicket(
 
   // Check if there are any fields to update
   if (Object.keys(updateData).length === 0) {
-    throw new Error('Aucune modification à apporter');
+    throw badRequest('Aucune modification à apporter');
   }
 
   // Update ticket
@@ -975,7 +987,7 @@ export async function updateTicketStatus(
   });
 
   if (!existingTicket) {
-    throw new Error('Ticket introuvable');
+    throw notFound('Ticket introuvable');
   }
 
   // Validate status transition
@@ -1006,6 +1018,10 @@ export async function updateTicketStatus(
 
   if (newStatus === MaintenanceTicketStatus.RESOLVED && !existingTicket.resolved_at) {
     updateData.resolved_at = new Date();
+  }
+
+  if (newStatus === MaintenanceTicketStatus.CANCELED && !existingTicket.canceled_at) {
+    updateData.canceled_at = new Date();
   }
 
   // Status change and its history entry must commit together.
@@ -1083,10 +1099,10 @@ export async function assignVendor(tenantId: string, ticketId: string, vendorId:
   // Verify shared provider exists and keep maintenance mirror in sync.
   const vendorBundle = await ensureMaintenanceVendorMirrorFromServiceProvider(tenantId, vendorId);
   if (!vendorBundle) {
-    throw new Error('Prestataire introuvable ou inactif');
+    throw notFound('Prestataire introuvable ou inactif');
   }
   if (vendorBundle.mirror.is_active === false) {
-    throw new Error('Prestataire introuvable ou inactif');
+    throw notFound('Prestataire introuvable ou inactif');
   }
 
   // Get existing ticket
@@ -1098,7 +1114,7 @@ export async function assignVendor(tenantId: string, ticketId: string, vendorId:
   });
 
   if (!existingTicket) {
-    throw new Error('Ticket introuvable');
+    throw notFound('Ticket introuvable');
   }
 
   // Update ticket with vendor assignment
@@ -1164,7 +1180,7 @@ export async function updateTicket(tenantId: string, ticketId: string, data: Upd
   });
 
   if (!existingTicket) {
-    throw new Error('Ticket introuvable');
+    throw notFound('Ticket introuvable');
   }
 
   // Prepare update data
@@ -1187,10 +1203,10 @@ export async function updateTicket(tenantId: string, ticketId: string, data: Upd
       // Validate shared provider exists and keep maintenance mirror in sync.
       const vendorBundle = await ensureMaintenanceVendorMirrorFromServiceProvider(tenantId, data.assignedVendorId);
       if (!vendorBundle) {
-        throw new Error('Prestataire introuvable ou inactif');
+        throw notFound('Prestataire introuvable ou inactif');
       }
       if (vendorBundle.mirror.is_active === false) {
-        throw new Error('Prestataire introuvable ou inactif');
+        throw notFound('Prestataire introuvable ou inactif');
       }
 
       updateData.assigned_vendor_id = data.assignedVendorId;
@@ -1213,7 +1229,7 @@ export async function updateTicket(tenantId: string, ticketId: string, data: Upd
         }
       });
       if (!membership) {
-        throw new Error('Utilisateur introuvable ou non membre actif de cette agence');
+        throw notFound('Utilisateur introuvable ou non membre actif de cette agence');
       }
     }
     updateData.assigned_to_user_id = data.assignedToUserId || null;
@@ -1250,6 +1266,11 @@ export async function updateTicket(tenantId: string, ticketId: string, data: Upd
     }
     if (data.status === MaintenanceTicketStatus.RESOLVED && !existingTicket.resolved_at) {
       updateData.resolved_at = new Date();
+    }
+    // Annulation par l'agence : la date d'annulation était seulement posée par
+    // l'annulation côté « locataire » ; un ticket annulé ici restait sans date.
+    if (data.status === MaintenanceTicketStatus.CANCELED && !existingTicket.canceled_at) {
+      updateData.canceled_at = new Date();
     }
   }
 
@@ -1353,7 +1374,7 @@ export async function getStatusHistory(tenantId: string, ticketId: string) {
   });
 
   if (!ticket) {
-    throw new Error('Ticket introuvable');
+    throw notFound('Ticket introuvable');
   }
 
   // Get all status history entries
@@ -1403,7 +1424,7 @@ export async function getPropertyMaintenanceHistory(
   });
 
   if (!property) {
-    throw new Error('Propriété introuvable');
+    throw notFound('Propriété introuvable');
   }
 
   const where: any = {

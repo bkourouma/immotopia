@@ -153,11 +153,11 @@ export const validatePaymentProofFile = (file: Express.Multer.File | undefined):
 
 // Maintenance Ticket Creation Validation
 export const createMaintenanceTicketSchema = z.object({
-  category: z
-    .string({
-      required_error: 'La catégorie est requise.'
-    })
-    .min(1, 'La catégorie est requise.'),
+  // Les catégories de l'enum Prisma : une autre valeur est un 400, pas une erreur de base (500).
+  category: z.enum(['PLUMBING', 'ELECTRICITY', 'AC', 'OTHER'], {
+    required_error: 'La catégorie est requise.',
+    invalid_type_error: 'Catégorie invalide. Valeurs autorisées: PLUMBING, ELECTRICITY, AC, OTHER.'
+  }),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT'], {
     required_error: 'La priorité est requise.',
     invalid_type_error: 'Priorité invalide. Valeurs autorisées: LOW, MEDIUM, HIGH, URGENT.'

@@ -87,6 +87,7 @@ jest.mock('../../src/lib/finance/statement-pdf', () => ({
 const rentBillingRunFindMany = jest.fn();
 const rentBillingRunFindFirst = jest.fn();
 const thirdPartyAccountFindFirst = jest.fn();
+const tenantClientFindFirst = jest.fn();
 
 jest.mock('../../src/utils/database', () => ({
   prisma: {
@@ -96,6 +97,9 @@ jest.mock('../../src/utils/database', () => ({
     },
     thirdPartyAccount: {
       findFirst: (...args: any[]) => thirdPartyAccountFindFirst(...args)
+    },
+    tenantClient: {
+      findFirst: (...args: any[]) => tenantClientFindFirst(...args)
     }
   }
 }));
@@ -618,12 +622,25 @@ describe('GET /portal/tenant/finance/statement', () => {
     expect(secondLocataire.body.data.accountId).toBe('compte-locataire-2');
   });
 
-  it('renvoie 404 quand le locataire connecté ne porte encore aucun compte de tiers', async () => {
+  it('renvoie un relevé vide (200) quand le locataire connecté ne porte encore aucun compte de tiers', async () => {
     thirdPartyAccountFindFirst.mockResolvedValue(null);
+    tenantClientFindFirst.mockResolvedValue({ user: { fullName: 'Awa Locataire', email: 'awa@exemple.test' } });
 
     const response = await request(app).get('/api/portal/tenant/finance/statement');
 
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(200);
+    expect(tenantClientFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'client-1', tenantId: 'tenant-A' } })
+    );
+    expect(response.body.data).toMatchObject({
+      accountId: '',
+      label: 'Awa Locataire',
+      kind: 'TENANT',
+      openingBalance: 0,
+      closingBalance: 0,
+      movements: [],
+      total: 0
+    });
     expect(getAccountStatement).not.toHaveBeenCalled();
   });
 

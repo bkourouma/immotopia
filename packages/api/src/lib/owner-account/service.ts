@@ -430,6 +430,11 @@ export async function createOwnerPayout(
     }
 
     const year = paidAt.getUTCFullYear();
+    // Le verrou du compte ne sérialise que les reversements d'UN propriétaire :
+    // deux reversements de propriétaires différents liraient le même dernier
+    // numéro et violeraient l'unicité (agence, année, numéro) : 409 « existe déjà ».
+    // Verrou consultatif par agence, posé après celui du compte (même ordre partout).
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`owner-payout-seq:${tenantId}`}))`;
     const last = await tx.ownerPayout.findFirst({
       where: { tenantId, year },
       orderBy: { sequence: 'desc' },
@@ -585,14 +590,16 @@ export async function voidOwnerPayout(
     if (existing.statementId) {
       const statement = await tx.ownerStatement.findFirst({
         where: { id: existing.statementId, tenantId },
-        select: { netAmount: true, status: true }
+        select: { netAmount: true, status: true, sentAt: true }
       });
       if (statement?.status === 'PAID') {
         const covered = await statementCoveredTx(tx, tenantId, existing.statementId);
         if (covered < roundMoney(amount(statement.netAmount))) {
+          // « Envoyé » seulement si le relevé l'a réellement été : un relevé réglé
+          // sans jamais avoir été envoyé redevient un brouillon, pas un envoi fictif.
           await tx.ownerStatement.updateMany({
             where: { id: existing.statementId, tenantId, status: 'PAID' },
-            data: { status: 'SENT', paidAt: null }
+            data: { status: statement.sentAt ? 'SENT' : 'DRAFT', paidAt: null }
           });
         }
       }

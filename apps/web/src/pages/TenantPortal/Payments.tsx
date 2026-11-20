@@ -83,6 +83,30 @@ interface InstallmentsData {
   };
 }
 
+/** Lignes demandées par page : le maximum accepté par le serveur. */
+const RELEVE_TAILLE_PAGE = 200;
+/** Garde-fou : au-delà (10 000 lignes), on s'arrête plutôt que de boucler. */
+const RELEVE_PAGES_MAX = 50;
+
+/**
+ * Relevé COMPLET du locataire. Le serveur répond 50 lignes par défaut : lire une
+ * seule page coupait le relevé d'un bail ancien (le solde de clôture annoncé ne
+ * correspondait plus aux lignes, et l'export sortait tronqué). La première page
+ * est demandée sans paramètre ; les suivantes, tant qu'il en reste, par `skip`/`take`
+ * (le « Solde après » est recalculé côté serveur à partir des lignes sautées).
+ */
+async function lireReleveComplet() {
+  const premier = await getMyStatement();
+  const mouvements = [...(premier.movements ?? [])];
+  const total = premier.total ?? mouvements.length;
+  for (let page = 0; page < RELEVE_PAGES_MAX && mouvements.length < total; page += 1) {
+    const suite = await getMyStatement({ skip: mouvements.length, take: RELEVE_TAILLE_PAGE });
+    if (!suite.movements?.length) break;
+    mouvements.push(...suite.movements);
+  }
+  return { ...premier, movements: mouvements };
+}
+
 /**
  * Onglet « Mon relevé » — Récit 6 du spec, tâche 1.15 du plan.
  *
@@ -113,7 +137,7 @@ function MonReleve() {
     refetch
   } = useQuery({
     queryKey: ['account-statement', 'portail', tenantId],
-    queryFn: () => getMyStatement(),
+    queryFn: lireReleveComplet,
     enabled: Boolean(tenantId)
   });
   const local = useReleveSearch(releve?.movements);

@@ -139,7 +139,19 @@ export default function Revenues() {
   }
 
   if (error) {
-    return <Alert message={t('Erreur')} description={error} type="error" showIcon />;
+    return (
+      <Alert
+        message={t('Erreur')}
+        description={error}
+        type="error"
+        showIcon
+        action={
+          <Button size="small" icon={<SyncOutlined />} onClick={loadRevenueData}>
+            {t('Actualiser')}
+          </Button>
+        }
+      />
+    );
   }
 
   return (
@@ -206,7 +218,9 @@ export default function Revenues() {
             <Text strong>{t('Période')}</Text>
             <RangePicker
               value={dateRange}
-              onChange={dates => setDateRange(dates as [dayjs.Dayjs | null, dayjs.Dayjs | null])}
+              onChange={dates =>
+                setDateRange((dates as [dayjs.Dayjs | null, dayjs.Dayjs | null] | null) ?? [null, null])
+              }
               format="DD/MM/YYYY"
             />
           </div>
