@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Alert,
   App,
@@ -186,9 +187,12 @@ export const SyndicDetail: React.FC = () => {
   const { message } = App.useApp();
   const fm = useFormFieldModes('syndic.copropriete');
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
+  const navigate = useNavigate();
   // Même logique que SyndicCharges : l'API reste l'autorité (SYNDIC_EDIT pour modifier le barème).
   const { permissions, ready: permissionsReady } = useMyMenuAccess(effectiveTenantId);
   const canEditSyndic = permissionsReady && (permissions === null || permissions.has('SYNDIC_EDIT'));
+  // Bouton grisé seulement quand l'absence du droit est connue (pas pendant le chargement des droits).
+  const editDenied = permissionsReady && permissions !== null && !permissions.has('SYNDIC_EDIT');
 
   const [syndicate, setSyndicate] = useState<SyndicateWithProperty | null>(null);
   // Total des appels de charges (une page d'une ligne suffit) : le détail ne se charge que dans son onglet.
@@ -300,7 +304,8 @@ export const SyndicDetail: React.FC = () => {
       const payload: UpdateSyndicateRequest = {
         name: values.name,
         address: values.address,
-        fiscalYear: values.fiscalYear,
+        // Champ vidé = `null` côté formulaire : l'API n'accepte qu'un entier ou rien (400 sinon).
+        fiscalYear: values.fiscalYear ?? undefined,
         status: values.status
       };
       if (fm.isVisible('registrationNo')) payload.registrationNo = values.registrationNo || null;
@@ -311,6 +316,12 @@ export const SyndicDetail: React.FC = () => {
       await updateSyndicate(effectiveTenantId, syndicId, payload);
       message.success(t('Copropriété mise à jour'));
       closeEditModal();
+      if (payload.status === 'IN_LIQUIDATION' && syndicate?.status !== 'IN_LIQUIDATION') {
+        // La copropriété en liquidation est retirée de la gestion courante : l'API ne la renvoie plus
+        // (404), recharger la fiche afficherait une erreur. On revient à la liste.
+        navigate(`/tenant/${effectiveTenantId}/syndics`);
+        return;
+      }
       await loadAll();
     } catch (err: any) {
       // Même mécanisme que `<SyndicLots>` : une erreur de validation (400)
@@ -423,7 +434,7 @@ export const SyndicDetail: React.FC = () => {
       <Card
         title={<HelpSectionTitle title={t('Informations générales')} helpId="syndic.copropriete.fiche.informations" />}
         extra={
-          <Button icon={<EditOutlined />} onClick={openEditModal}>
+          <Button icon={<EditOutlined />} onClick={openEditModal} disabled={editDenied}>
             {t('Modifier')}
           </Button>
         }

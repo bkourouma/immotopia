@@ -469,6 +469,15 @@ describe('syndic / copropriétaires d un lot', () => {
     });
   });
 
+  it('un contact sans nom reste sélectionnable : libellé de repli, jamais null', async () => {
+    state.contacts.push({ id: 'ct-7', tenantId: TENANT, firstName: null, lastName: null, email: 'z@example.ci' });
+    state.lots[0].ownerProfiles.push({ contactId: 'ct-7', isActive: true, ownedUntil: null });
+    const debtors = await listLotDebtors(TENANT, SYN, LOT1, NOW);
+    const unnamed = debtors.find(entry => entry.contactId === 'ct-7');
+    expect(typeof unnamed?.displayName).toBe('string');
+    expect(unnamed?.displayName).not.toBe('');
+  });
+
   it('un lot d un autre syndicat ou une copropriété d une autre agence est introuvable', async () => {
     await expect(listLotDebtors(TENANT, SYN, LOT_OTHER_SYNDIC, NOW)).rejects.toBeInstanceOf(NotFoundError);
     await expect(listLotDebtors(TENANT, SYN_X, LOT1, NOW)).rejects.toBeInstanceOf(NotFoundError);

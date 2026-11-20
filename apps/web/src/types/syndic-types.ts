@@ -271,6 +271,8 @@ export interface ImportLotsFromPropertiesResult {
     skipped: number;
   };
   message?: string;
+  /** Avertissements non bloquants (somme des tantièmes ≠ total de référence), comme à la création d'un lot. */
+  warnings?: string[];
 }
 
 /** Répartition du montant d'un appel entre les lots (menu lot 2). */
@@ -683,6 +685,8 @@ export interface PaymentReminder {
   /** Cause de l'échec d'envoi (statut Échec) : code technique et message brut. */
   failureCode?: string | null;
   failureMessage?: string | null;
+  /** Spec 047 (R14) : paiement mobile money déclaré, en attente de vérification pour cet appel. */
+  pendingDeclaration?: { declarationId: string; createdAt: string } | null;
   createdAt: string;
   updatedAt: string;
   chargeCall?: ChargeCall;

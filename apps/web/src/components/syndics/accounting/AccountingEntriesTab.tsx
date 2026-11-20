@@ -22,6 +22,8 @@ import {
 interface AccountingEntriesTabProps extends AccountingTabProps {
   journals: AccountingJournal[];
   submitting: boolean;
+  /** Droit `SYNDIC_EDIT` : sans lui, « Verrouiller » est grisé (l'API répondrait 403). Vrai par défaut. */
+  canLock?: boolean;
   onLock: (entryId: string) => void;
 }
 
@@ -55,6 +57,7 @@ export const AccountingEntriesTab: React.FC<AccountingEntriesTabProps> = ({
   syndicId,
   journals,
   submitting,
+  canLock = true,
   onLock
 }) => {
   const queryClient = useQueryClient();
@@ -141,13 +144,19 @@ export const AccountingEntriesTab: React.FC<AccountingEntriesTabProps> = ({
           entry.isLocked ? (
             <Tag>{t('Verrouillée')}</Tag>
           ) : (
-            <Button size="small" icon={<LockOutlined />} loading={submitting} onClick={() => onLock(entry.id)}>
+            <Button
+              size="small"
+              icon={<LockOutlined />}
+              loading={submitting}
+              disabled={!canLock}
+              onClick={() => onLock(entry.id)}
+            >
               {t('Verrouiller')}
             </Button>
           )
       }
     ],
-    [submitting, onLock]
+    [submitting, canLock, onLock]
   );
 
   return (

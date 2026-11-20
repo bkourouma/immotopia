@@ -121,6 +121,7 @@ function createDb() {
     db[name] = model;
   }
   db.$queryRaw = jest.fn(async () => []);
+  db.$executeRaw = jest.fn(async () => 0);
   // Transaction : les lignes sont restaurees si la fonction echoue.
   db.$transaction = jest.fn(async (fn: any) => {
     const snapshot = MODELS.map(name => db[name].rows.map((row: Row) => ({ ...row })));
@@ -328,6 +329,17 @@ describe('enregistrement d une facture', () => {
     await expect(createProviderInvoice(TENANT, SYND, invoiceInput({ amountTTC: 60000 }))).rejects.toMatchObject({
       status: 422
     });
+  });
+
+  it('relit le doublon sous verrou : un double envoi simultane ne cree pas deux factures', async () => {
+    await createProviderInvoice(TENANT, SYND, invoiceInput());
+    const countBefore = mockDb.syndicProviderInvoice.rows.length;
+    // Le controle hors transaction a ete passe par la requete concurrente : il ne voit rien.
+    mockDb.syndicProviderInvoice.findFirst.mockImplementationOnce(async () => null);
+    mockDb.$executeRaw.mockClear();
+    await expect(createProviderInvoice(TENANT, SYND, invoiceInput())).rejects.toMatchObject({ statusCode: 409 });
+    expect(mockDb.$executeRaw).toHaveBeenCalled();
+    expect(mockDb.syndicProviderInvoice.rows.length).toBe(countBefore);
   });
 
   it('refuse un numero deja pris pour ce prestataire (409), accepte apres annulation', async () => {

@@ -111,11 +111,13 @@ export const RemindersTab: React.FC<TabProps> = ({ tenantId, syndicId }) => {
  * Pénalités de retard — paginées et filtrées par le serveur (préfixe d'URL
  * « pe ») : champ libre, active / remise, lot.
  */
-export const PenaltiesTab: React.FC<TabProps & { onWaive: (penalty: LatePaymentPenalty) => void }> = ({
-  tenantId,
-  syndicId,
-  onWaive
-}) => {
+export const PenaltiesTab: React.FC<
+  TabProps & {
+    onWaive: (penalty: LatePaymentPenalty) => void;
+    /** Droit `SYNDIC_EDIT` : sans lui, la remise est grisée (l'API répondrait 403). Vrai par défaut. */
+    canWaive?: boolean;
+  }
+> = ({ tenantId, syndicId, onWaive, canWaive = true }) => {
   const lotOptions = useSyndicLotOptions(tenantId, syndicId);
   const criteria: SearchCriterion[] = [
     { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Lot, propriétaire…') },
@@ -167,7 +169,7 @@ export const PenaltiesTab: React.FC<TabProps & { onWaive: (penalty: LatePaymentP
         item.waived ? (
           <Text type="secondary">-</Text>
         ) : (
-          <Button size="small" onClick={() => onWaive(item)}>
+          <Button size="small" disabled={!canWaive} onClick={() => onWaive(item)}>
             {t('Remise')}
           </Button>
         )

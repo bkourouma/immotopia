@@ -59,6 +59,8 @@ jest.mock('@prisma/client', () => {
     },
     chargeCallBatch: {
       findMany: jest.fn(),
+      // Garde « un seul lot d'appels ordinaire par periode » : aucun doublon dans ces scenarios.
+      findFirst: jest.fn(async () => null),
       create: jest.fn()
     },
     chargeCall: {

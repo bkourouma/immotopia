@@ -16,8 +16,8 @@ interface OwnerRow extends LotOwnerProfile {
   lotLabel: string;
   lotNumber: string;
   contactName: string;
-  /** `current` : profil actif et non clos ; `former` : clos ou désactivé. */
-  situation: 'current' | 'former';
+  /** `current` : profil actif et non clos ; `upcoming` : actif mais pas encore commencé ; `former` : clos ou désactivé. */
+  situation: 'current' | 'upcoming' | 'former';
   incompleteShare: boolean;
 }
 
@@ -53,10 +53,14 @@ interface OwnerProfilesTabProps {
   onRevoke: (profile: LotOwnerProfile) => void;
 }
 
-/** Un profil propriétaire est « actuel » s'il est actif et que sa fin est vide ou à venir. */
-function isOwnerCurrent(profile: LotOwnerProfile): boolean {
-  if (profile.isActive === false) return false;
-  return !profile.ownedUntil || dayjs(profile.ownedUntil).isAfter(dayjs());
+/**
+ * Un profil propriétaire est « actuel » s'il est actif, commencé, et que sa fin est vide ou à venir (même règle que
+ * l'API : un profil futur — vente en cours — ne compte pas encore, ni dans les parts ni dans le propriétaire du lot).
+ */
+function ownerSituation(profile: LotOwnerProfile): OwnerRow['situation'] {
+  if (profile.isActive === false) return 'former';
+  if (profile.ownedUntil && !dayjs(profile.ownedUntil).isAfter(dayjs())) return 'former';
+  return dayjs(profile.ownedSince).isAfter(dayjs()) ? 'upcoming' : 'current';
 }
 
 /**
@@ -89,7 +93,7 @@ export const OwnerProfilesTab: React.FC<OwnerProfilesTabProps> = ({
         lotLabel: getLotDisplayName(lot, propertyByReference),
         lotNumber: lot?.lotNumber || '',
         contactName: profileContactName(profile.contact, profile.contactId),
-        situation: isOwnerCurrent(profile) ? 'current' : 'former',
+        situation: ownerSituation(profile),
         incompleteShare: incompleteLotIds.has(profile.lotId)
       };
     });
@@ -115,6 +119,7 @@ export const OwnerProfilesTab: React.FC<OwnerProfilesTabProps> = ({
       primary: true,
       options: [
         { value: 'current', label: t('Actuel') },
+        { value: 'upcoming', label: t('À venir') },
         { value: 'former', label: t('Ancien') }
       ]
     },
@@ -151,7 +156,13 @@ export const OwnerProfilesTab: React.FC<OwnerProfilesTabProps> = ({
       title: t('Statut'),
       key: 'situation',
       render: (_, row) =>
-        row.situation === 'current' ? <Tag color="green">{t('Actuel')}</Tag> : <Tag>{t('Ancien')}</Tag>
+        row.situation === 'current' ? (
+          <Tag color="green">{t('Actuel')}</Tag>
+        ) : row.situation === 'upcoming' ? (
+          <Tag color="blue">{t('À venir')}</Tag>
+        ) : (
+          <Tag>{t('Ancien')}</Tag>
+        )
     },
     {
       title: t('Portail'),

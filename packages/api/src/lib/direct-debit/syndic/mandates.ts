@@ -44,7 +44,7 @@ function uniqueViolationTarget(error: unknown): string | null {
 
 export interface LotDebtorDto {
   contactId: string;
-  displayName: string | null;
+  displayName: string;
   hasEmail: boolean;
 }
 
@@ -100,10 +100,10 @@ export async function listLotDebtors(
   return contacts
     .map(contact => ({
       contactId: contact.id,
-      displayName: contactDisplayName(contact),
+      displayName: contactDisplayName(contact) ?? t('Contact sans nom'),
       hasEmail: Boolean(contact.email?.trim())
     }))
-    .sort((a, b) => (a.displayName ?? '').localeCompare(b.displayName ?? '', 'fr'));
+    .sort((a, b) => a.displayName.localeCompare(b.displayName, 'fr'));
 }
 
 export async function listSyndicMandates(

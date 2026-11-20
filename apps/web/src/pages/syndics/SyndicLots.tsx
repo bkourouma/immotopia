@@ -24,6 +24,7 @@ import { LotTable } from '../../components/syndics/LotTable';
 import { useFormFieldModes } from '../../hooks/useFormFieldModes';
 import { listSyndicDeclarations } from '../../services/syndic-declared-payment-service';
 import { StatCard } from '../../components/primitives';
+import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { getLotTypeRates, type LotTypeRates } from '../../services/syndic-lot-type-rates-service';
 import { listContacts } from '../../services/crm-service';
 import { listProperties } from '../../services/property-service';
@@ -161,6 +162,13 @@ export const SyndicLots: React.FC = () => {
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  // Créer / importer exigent SYNDIC_CREATE, modifier / désactiver / supprimer / affecter un locataire SYNDIC_EDIT :
+  // l'API répondrait 403. L'API reste l'autorité : on ne retire l'action que lorsque l'absence du droit est connue
+  // (chargement ou échec réseau : pas de filtre).
+  const { permissions, ready: permissionsReady } = useMyMenuAccess(effectiveTenantId);
+  const hasPermission = (key: string) => !(permissionsReady && permissions !== null && !permissions.has(key));
+  const canCreate = hasPermission('SYNDIC_CREATE');
+  const canEdit = hasPermission('SYNDIC_EDIT');
 
   const [syndicate, setSyndicate] = useState<Syndicate | null>(null);
   const [lots, setLots] = useState<SyndicateLot[]>([]);
@@ -607,6 +615,7 @@ export const SyndicLots: React.FC = () => {
         );
       }
 
+      showLotWarnings(result.warnings);
       setImportOpen(false);
       importForm.resetFields();
       await loadData();
@@ -659,10 +668,16 @@ export const SyndicLots: React.FC = () => {
             </Paragraph>
           </Space>
 
-          <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal} {...helpAnchor('lots-nouveau')}>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={openCreateModal}
+            disabled={!canCreate}
+            {...helpAnchor('lots-nouveau')}
+          >
             {t('Nouveau lot')}
           </Button>
-          <Button onClick={openImportModal} {...helpAnchor('lots-importer')}>
+          <Button onClick={openImportModal} disabled={!canCreate} {...helpAnchor('lots-importer')}>
             {t('Importer des biens')}
           </Button>
         </div>
@@ -735,12 +750,14 @@ export const SyndicLots: React.FC = () => {
                 propertyLabelById={propertyLabelById}
                 ownerLabelById={ownerLabelById}
                 ownerLabelByEmail={ownerLabelByEmail}
-                onEdit={openEditModal}
-                onDelete={lot => void handleDeleteLot(lot)}
-                onAssignTenant={openTenantModal}
-                onDeactivate={lot => void handleDeactivateLot(lot)}
-                onReactivate={handleReactivateLot}
-                onEndTenantAssignment={(lot, assignment) => void handleEndTenantAssignment(lot, assignment)}
+                onEdit={canEdit ? openEditModal : undefined}
+                onDelete={canEdit ? lot => void handleDeleteLot(lot) : undefined}
+                onAssignTenant={canEdit ? openTenantModal : undefined}
+                onDeactivate={canEdit ? lot => void handleDeactivateLot(lot) : undefined}
+                onReactivate={canEdit ? handleReactivateLot : undefined}
+                onEndTenantAssignment={
+                  canEdit ? (lot, assignment) => void handleEndTenantAssignment(lot, assignment) : undefined
+                }
                 onViewAccount={lot =>
                   navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}/lots/${lot.id}/compte`)
                 }

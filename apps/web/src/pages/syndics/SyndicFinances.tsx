@@ -21,6 +21,7 @@ import {
 } from '../../services/syndic-service';
 import { FinanceSummary, OverdueDashboard } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
+import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { t } from '../../i18n/t';
 import { displayCurrency } from '../../utils/syndic-currency';
 import { HelpSectionTitle } from '../../help';
@@ -62,6 +63,11 @@ export const SyndicFinances: React.FC = () => {
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
   const [activeTab, setActiveTab] = useTabParam<FinanceTab>(FINANCE_TABS, 'fonds');
 
+  // Créer, renommer et ajuster un fonds exigent SYNDIC_EDIT (l'API répondrait 403). L'API reste l'autorité :
+  // on ne grise que lorsque l'absence du droit est connue (lecture, échec réseau : pas de filtre).
+  const { permissions, ready: permissionsReady } = useMyMenuAccess(effectiveTenantId);
+  const canEdit = !(permissionsReady && permissions !== null && !permissions.has('SYNDIC_EDIT'));
+
   const ready = Boolean(effectiveTenantId && syndicId);
   const tenantKey = effectiveTenantId ?? '';
   const syndicKey = syndicId ?? '';
@@ -99,7 +105,12 @@ export const SyndicFinances: React.FC = () => {
 
   const handleCreateFund = async () => {
     if (!effectiveTenantId || !syndicId) return;
-    const values = await fundForm.validateFields();
+    let values;
+    try {
+      values = await fundForm.validateFields();
+    } catch {
+      return;
+    }
     setFundSubmitting(true);
     try {
       await createSyndicateFund(effectiveTenantId, syndicId, {
@@ -120,7 +131,12 @@ export const SyndicFinances: React.FC = () => {
 
   const handleRenameFund = async () => {
     if (!effectiveTenantId || !syndicId || !renameTarget) return;
-    const values = await renameForm.validateFields();
+    let values;
+    try {
+      values = await renameForm.validateFields();
+    } catch {
+      return;
+    }
     setRenameSubmitting(true);
     try {
       await renameSyndicateFund(effectiveTenantId, syndicId, renameTarget.id, { name: values.name });
@@ -136,7 +152,12 @@ export const SyndicFinances: React.FC = () => {
 
   const handleAdjustFund = async () => {
     if (!effectiveTenantId || !syndicId || !adjustTarget) return;
-    const values = await adjustForm.validateFields();
+    let values;
+    try {
+      values = await adjustForm.validateFields();
+    } catch {
+      return;
+    }
     setAdjustSubmitting(true);
     try {
       const isExpense = values.kind === 'EXPENSE';
@@ -182,6 +203,7 @@ export const SyndicFinances: React.FC = () => {
         <Space size={8}>
           <Button
             size="small"
+            disabled={!canEdit}
             onClick={() => {
               setRenameTarget(row);
               renameForm.setFieldsValue({ name: row.name });
@@ -191,6 +213,7 @@ export const SyndicFinances: React.FC = () => {
           </Button>
           <Button
             size="small"
+            disabled={!canEdit}
             onClick={() => {
               setAdjustTarget(row);
               adjustForm.resetFields();
@@ -236,14 +259,18 @@ export const SyndicFinances: React.FC = () => {
               title={row.name}
               aria-label={row.name}
               highlight={<MoneyValue value={row.balance} />}
-              primaryAction={{
-                label: t('Ajuster le solde'),
-                onClick: () => {
-                  setAdjustTarget(row);
-                  adjustForm.resetFields();
-                  adjustForm.setFieldsValue({ kind: 'ADJUSTMENT', direction: 'CREDIT' });
-                }
-              }}
+              primaryAction={
+                canEdit
+                  ? {
+                      label: t('Ajuster le solde'),
+                      onClick: () => {
+                        setAdjustTarget(row);
+                        adjustForm.resetFields();
+                        adjustForm.setFieldsValue({ kind: 'ADJUSTMENT', direction: 'CREDIT' });
+                      }
+                    }
+                  : undefined
+              }
               secondaryActions={[
                 {
                   key: 'mouvements',
@@ -256,6 +283,7 @@ export const SyndicFinances: React.FC = () => {
           <Button
             type="link"
             size="small"
+            disabled={!canEdit}
             onClick={() => {
               setRenameTarget(row);
               renameForm.setFieldsValue({ name: row.name });
@@ -310,7 +338,7 @@ export const SyndicFinances: React.FC = () => {
             </Paragraph>
           </Space>
 
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setFundModalOpen(true)}>
+          <Button type="primary" icon={<PlusOutlined />} disabled={!canEdit} onClick={() => setFundModalOpen(true)}>
             {t('Nouveau fonds')}
           </Button>
         </div>
