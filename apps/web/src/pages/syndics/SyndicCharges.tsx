@@ -31,6 +31,7 @@ import { LotPaymentModal } from '../../components/syndics/LotPaymentModal';
 import { ChargeCallPaymentLinkModal } from '../../components/syndics/online-payment/ChargeCallPaymentLinkModal';
 import { useSyndicOnlinePaymentUsable } from '../../components/syndics/online-payment/useOnlinePaymentUsable';
 import { MoneyValue, StatCard, formatMoney } from '../../components/primitives';
+import { currencyFractionDigits } from '../../components/syndics/budget-money';
 import {
   assignChargeCallFund,
   createChargeCall,
@@ -680,7 +681,11 @@ export const SyndicCharges: React.FC = () => {
                   name="amount"
                   rules={[{ required: true, message: t('Le montant est obligatoire') }]}
                 >
-                  <InputNumber min={1} style={{ width: '100%' }} />
+                  <InputNumber
+                    min={1}
+                    precision={currencyFractionDigits(currencyValue || 'XOF')}
+                    style={{ width: '100%' }}
+                  />
                 </Form.Item>
               </Col>
             )}

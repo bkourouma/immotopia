@@ -3,6 +3,7 @@ import { prisma, type PrismaTransactionClient } from '../../utils/database';
 import { NotFoundError } from '../../middleware/error-middleware';
 import { unprocessableEntity } from '../errors';
 import { roundMoney } from './finance-utils';
+import { allocationPrecisionFor } from './charge-allocation-methods';
 import { fromCents } from './charge-allocation-plan';
 import { logger } from '../../utils/logger';
 
@@ -240,8 +241,13 @@ function creditLabel(call: CallForShares, source: FundCreditItem['source']) {
  * plus grands restes. Le total vaut l'arrondi de `amountCents x somme des
  * parts`, jamais plus que `amountCents`.
  */
-export function splitCents(amountCents: number, shares: FundShare[]): number[] {
+export function splitCents(amountCents: number, shares: FundShare[], currency?: string | null): number[] {
   if (amountCents <= 0 || shares.length === 0) return shares.map(() => 0);
+  // Devise sans sous-unité (FCFA) : répartition en francs entiers, par pas de 100 centimes.
+  if (currency && allocationPrecisionFor(currency) === 'UNIT') {
+    const units = Math.round(amountCents / 100);
+    return splitCents(units, shares).map(part => part * 100);
+  }
   const exact = shares.map(share => amountCents * Math.max(0, share.ratio));
   const floors = exact.map(value => Math.floor(value + 1e-9));
   const totalRatio = Math.min(
@@ -294,7 +300,7 @@ async function planFundCreditsTx(tx: Tx, items: FundCreditItem[], calls: Map<str
     if (!call || item.amountCents <= 0) continue;
     if (!shareCache.has(call.id)) shareCache.set(call.id, await validSharesTx(tx, call));
     const shares = shareCache.get(call.id) ?? [];
-    const cents = splitCents(item.amountCents, shares);
+    const cents = splitCents(item.amountCents, shares, call.currency);
     shares.forEach((share, index) => {
       if (cents[index] <= 0) return;
       planned.push({

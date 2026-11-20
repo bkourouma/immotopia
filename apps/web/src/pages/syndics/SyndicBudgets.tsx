@@ -11,6 +11,12 @@ import {
 import dayjs from 'dayjs';
 import { formatMoney, MoneyValue, Table } from '../../components/primitives';
 import {
+  budgetDisplayTotal,
+  currencyFractionDigits,
+  roundToCurrency,
+  sumAmounts
+} from '../../components/syndics/budget-money';
+import {
   assignBudgetLineFund,
   createBudget,
   createChargeCallBatch,
@@ -134,13 +140,12 @@ interface BudgetLineFormValue {
   fundId?: string | null;
 }
 
-/** Somme des montants prévus saisis (arrondie au centime pour éviter les dérives de flottants). */
-function sumFormLines(lines: BudgetLineFormValue[] | undefined): number {
-  const total = (lines || []).reduce((acc, line) => {
-    const amount = Number(line?.amountForecast);
-    return acc + (Number.isFinite(amount) ? amount : 0);
-  }, 0);
-  return Math.round(total * 100) / 100;
+/** Somme des montants prévus saisis (arrondie à la précision de la devise : entier en FCFA). */
+function sumFormLines(lines: BudgetLineFormValue[] | undefined, currency?: string | null): number {
+  return sumAmounts(
+    (lines || []).map(line => line?.amountForecast),
+    currency
+  );
 }
 
 /**
@@ -225,10 +230,13 @@ export const SyndicBudgets: React.FC = () => {
   const fm = useFormFieldModes('syndic.budget');
   const [budgetForm] = Form.useForm();
   const watchedBudgetLines = Form.useWatch('lines', budgetForm) as BudgetLineFormValue[] | undefined;
-  const budgetFormTotal = sumFormLines(watchedBudgetLines);
+  const watchedBudgetCurrency = Form.useWatch('currency', budgetForm) as string | undefined;
+  const budgetFormTotal = sumFormLines(watchedBudgetLines, watchedBudgetCurrency);
+  const budgetLineDigits = currencyFractionDigits(watchedBudgetCurrency);
   const [generateForm] = Form.useForm();
   const periodTouched = useRef(false);
   const [batchForm] = Form.useForm();
+  const watchedBatchCurrency = Form.useWatch('currency', batchForm) as string | undefined;
 
   // Chaque onglet ne charge que ses données (et les recharge à chaque entrée dans l'onglet) :
   // budgets (+ fonds) ; lots pour la répartition ; campagnes d'appels.
@@ -428,12 +436,12 @@ export const SyndicBudgets: React.FC = () => {
       const created = await createBudget(effectiveTenantId, syndicId, {
         fiscalYear: values.fiscalYear,
         label: values.label,
-        totalAmount: sumFormLines(formLines),
+        totalAmount: sumFormLines(formLines, values.currency || 'XOF'),
         currency: values.currency || 'XOF',
         lines: formLines.map(line => ({
           category: String(line.category),
           description: String(line.description),
-          amountForecast: Number(line.amountForecast),
+          amountForecast: roundToCurrency(Number(line.amountForecast), values.currency || 'XOF'),
           distributionKey: values.distributionKey,
           ...(fm.isVisible('lines[].fundId') ? { fundId: line.fundId || undefined } : {})
         }))
@@ -480,7 +488,7 @@ export const SyndicBudgets: React.FC = () => {
     handleChangeBudgetStatus(budgetId, 'REVISED', t('Budget repassé en révision'), t('Révision impossible'));
 
   const handleCloseBudget = (budget: SyndicateBudget) => {
-    const budgeted = Number(budget.totalAmount || 0);
+    const budgeted = budgetDisplayTotal(budget);
     const actual = budgetActualTotal(budget);
     const gap = budgeted - actual;
     Modal.confirm({
@@ -592,7 +600,7 @@ export const SyndicBudgets: React.FC = () => {
         batchType: values.batchType,
         // Rattachée au budget affiché, sinon elle disparaîtrait du tableau filtré.
         budgetId: filterBudget?.id,
-        totalAmount: values.totalAmount,
+        totalAmount: roundToCurrency(Number(values.totalAmount), values.currency || 'XOF'),
         currency: values.currency || 'XOF'
       });
       message.success(t('Campagne créée'));
@@ -659,7 +667,13 @@ export const SyndicBudgets: React.FC = () => {
                         title: t('Montant'),
                         dataIndex: 'totalAmount',
                         align: 'end',
-                        render: (value: number | string) => <MoneyValue value={value} />
+                        render: (_: unknown, budget: SyndicateBudget) => (
+                          <MoneyValue
+                            value={budgetDisplayTotal(budget)}
+                            currency={budget.currency}
+                            fractionDigits={currencyFractionDigits(budget.currency)}
+                          />
+                        )
                       },
                       { title: t('Allocations'), render: (_, budget) => budget.allocations?.length || 0 },
                       {
@@ -833,7 +847,13 @@ export const SyndicBudgets: React.FC = () => {
                         title: t('Montant'),
                         dataIndex: 'totalAmount',
                         align: 'end',
-                        render: (value: number | string) => <MoneyValue value={value} />
+                        render: (_: unknown, batch: ChargeCallBatch) => (
+                          <MoneyValue
+                            value={batch.totalAmount}
+                            currency={batch.currency}
+                            fractionDigits={currencyFractionDigits(batch.currency)}
+                          />
+                        )
                       },
                       { title: t('Charges'), render: (_, batch) => batch.chargeCalls?.length || 0 },
                       {
@@ -922,7 +942,7 @@ export const SyndicBudgets: React.FC = () => {
                         }
                       ]}
                     >
-                      <InputNumber style={{ width: '100%' }} />
+                      <InputNumber precision={budgetLineDigits} style={{ width: '100%' }} />
                     </Form.Item>
                     {fm.isVisible('lines[].fundId') && (funds.length > 0 || fm.isRequired('lines[].fundId', false)) ? (
                       <Form.Item
@@ -959,7 +979,11 @@ export const SyndicBudgets: React.FC = () => {
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 12 }}>
             <Typography.Text strong>{t('Total du budget')}</Typography.Text>
             <Typography.Text strong>
-              <MoneyValue value={budgetFormTotal} />
+              <MoneyValue
+                value={budgetFormTotal}
+                currency={watchedBudgetCurrency || 'XOF'}
+                fractionDigits={budgetLineDigits}
+              />
             </Typography.Text>
           </div>
         </Form>
@@ -1204,8 +1228,17 @@ export const SyndicBudgets: React.FC = () => {
           <Form.Item label={t('Date échéance')} name="dueDate" rules={[{ required: true }]}>
             <Input type="date" />
           </Form.Item>
-          <Form.Item label={t('Montant total')} name="totalAmount" rules={[{ required: true }]}>
-            <InputNumber min={1} style={{ width: '100%' }} />
+          <Form.Item
+            label={t('Montant total')}
+            name="totalAmount"
+            rules={[{ required: true }]}
+            extra={t("Le total d'une campagne est la somme de ses appels une fois ceux-ci émis.")}
+          >
+            <InputNumber
+              min={1}
+              precision={currencyFractionDigits(watchedBatchCurrency || 'XOF')}
+              style={{ width: '100%' }}
+            />
           </Form.Item>
           <Form.Item label={t('Type de campagne')} name="batchType" rules={[{ required: true }]}>
             <Select

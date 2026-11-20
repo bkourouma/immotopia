@@ -1082,7 +1082,8 @@ export interface ChargeCallBatch {
 export interface CreateBudgetRequest {
   fiscalYear: number;
   label: string;
-  totalAmount: number;
+  /** Optionnel : calculé par le serveur (somme des postes) ; s'il est fourni, il doit lui être égal. */
+  totalAmount?: number;
   currency?: string;
   lines: Array<{
     category: string;

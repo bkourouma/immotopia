@@ -107,7 +107,7 @@ describe('programmation par tantièmes : lots annexes', () => {
     seed(RECIPE);
     const { schedule, byLot, total } = await previewAmounts({ includeAnnexLots: false });
     expect(schedule.includeAnnexLots).toBe(false);
-    expect(byLot).toEqual({ A1: 166_666.66, A2: 333_333.33, C1: 500_000.01 });
+    expect(byLot).toEqual({ A1: 166_666, A2: 333_333, C1: 500_001 });
     expect(Math.round(total * 100) / 100).toBe(1_000_000);
   });
 

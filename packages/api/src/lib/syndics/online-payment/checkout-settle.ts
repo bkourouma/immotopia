@@ -10,6 +10,7 @@ import { recordLotPaymentTx, sumAllocationsByCall } from '../charge-allocation';
 import { issueReceiptsForPaymentTx, toDocumentRefs } from '../charge-receipts';
 import type { IssuedChargeDocument } from '../charge-receipts';
 import { assertFiscalYearOpenTx } from '../provider-invoice-accounting';
+import { outstandingCoversPayment } from './online-amount';
 import type { DocumentRef, ReviewKind } from './types';
 
 /**
@@ -173,7 +174,7 @@ export async function settleSyndicCheckoutTx(
     for (const call of present) {
       outstandingCents += Math.max(0, Math.round(Number(call.amount) * 100) - (paid.get(call.id) ?? 0));
     }
-    if (outstandingCents < Math.round(params.amount * 100)) {
+    if (!outstandingCoversPayment(outstandingCents, Math.round(params.amount * 100))) {
       throw new SyndicSettleBusinessError(
         'CALLS_UNAVAILABLE',
         t('Les appels de charges visés sont déjà soldés ou ne couvrent plus ce paiement.')

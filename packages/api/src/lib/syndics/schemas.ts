@@ -462,7 +462,8 @@ export const createBudgetSchema = z.object({
   syndicateId: uuidSchema,
   fiscalYear: z.number().int().min(2000),
   label: z.string().min(1),
-  totalAmount: z.number().positive(),
+  // Optionnel : le total est la somme des lignes ; un total fourni doit lui etre egal (422 sinon).
+  totalAmount: z.number().positive().optional(),
   currency: z.string().default('XOF'),
   lines: z
     .array(
