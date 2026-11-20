@@ -378,82 +378,87 @@ export async function generateInstallments(tenantId: string, leaseId: string, ac
     throw new ConflictError(t('Impossible de générer des échéances pour un bail annulé ou terminé'));
   }
 
-  // Check if installments already exist
-  const existingCount = await prisma.rentalInstallment.count({
-    where: {
-      tenant_id: tenantId,
-      lease_id: leaseId
-    }
-  });
-
-  if (existingCount > 0) {
-    throw new ConflictError(
-      t("Des échéances existent déjà pour ce bail. Supprimez-les d'abord si vous souhaitez les régénérer.")
-    );
-  }
-
-  const periods = listBillingPeriods(
-    new Date(lease.start_date),
-    lease.end_date ? new Date(lease.end_date) : null,
-    lease.billing_frequency
-  );
-
-  if (periods.length === 0) {
-    throw new BadRequestError(t('La durée du bail est invalide'));
-  }
-
-  const installments = [];
-  for (const { start: currentPeriodStart } of periods) {
-    // Extract period year and month from the period start date
-    // This represents which month/year the installment covers (the billing period)
-    const periodYear = currentPeriodStart.getFullYear();
-    const periodMonth = currentPeriodStart.getMonth() + 1; // JavaScript months are 0-indexed
-
-    // Délègue le calcul de l'échéance (montants, date d'échéance) à la fonction
-    // pure partagée avec la campagne de facturation (lot 1). L'avancement de
-    // currentPeriodStart ci-dessus garantit que periodYear/periodMonth tombe
-    // toujours dans le cycle de facturation du bail : le cas « non inclus » ne
-    // devrait jamais se produire ici, mais on le traite comme une période à
-    // ignorer plutôt que de dupliquer le calcul.
-    // Loyer effectif à la période : une révision future ne réécrit pas le passé.
-    const built = buildInstallmentForPeriod(
-      withEffectiveAmounts(lease, revisions, new Date(Date.UTC(periodYear, periodMonth - 1, 1, 12))),
-      periodYear,
-      periodMonth
-    );
-
-    if (!built.included) {
-      continue;
-    }
-
-    // Check for duplicate (should not happen, but safety check)
-    const existing = await prisma.rentalInstallment.findUnique({
-      where: {
-        lease_id_period_year_period_month: {
-          lease_id: leaseId,
-          period_year: periodYear,
-          period_month: periodMonth
+  // Tout ou rien : le contrôle « des échéances existent déjà » et chaque création
+  // vivent dans UNE transaction. Un échec en cours de route, ou un second appel
+  // concurrent (la contrainte d'unicité bail/période le fait échouer), ne laisse
+  // jamais un bail à moitié généré. Le délai est élargi : un bail de plusieurs
+  // années crée plusieurs dizaines d'échéances.
+  const installments = await prisma.$transaction(
+    async tx => {
+      const existingCount = await tx.rentalInstallment.count({
+        where: {
+          tenant_id: tenantId,
+          lease_id: leaseId
         }
-      }
-    });
-
-    if (existing) {
-      logger.warn('Duplicate installment skipped', {
-        leaseId,
-        periodYear,
-        periodMonth
       });
-      // Move to next period
-      continue;
-    }
 
-    // Create installment
-    const installment = await prisma.rentalInstallment.create({
-      data: built.data
-    });
+      if (existingCount > 0) {
+        throw new ConflictError(
+          t("Des échéances existent déjà pour ce bail. Supprimez-les d'abord si vous souhaitez les régénérer.")
+        );
+      }
 
-    installments.push(installment);
-  }
+      const periods = listBillingPeriods(
+        new Date(lease.start_date),
+        lease.end_date ? new Date(lease.end_date) : null,
+        lease.billing_frequency
+      );
+
+      if (periods.length === 0) {
+        throw new BadRequestError(t('La durée du bail est invalide'));
+      }
+
+      const created = [];
+      for (const { start: currentPeriodStart, end: currentPeriodEnd } of periods) {
+        // Extract period year and month from the period start date
+        // This represents which month/year the installment covers (the billing period)
+        const periodYear = currentPeriodStart.getFullYear();
+        const periodMonth = currentPeriodStart.getMonth() + 1; // JavaScript months are 0-indexed
+
+        // Délègue le calcul de l'échéance (montants, date d'échéance) à la fonction
+        // pure partagée avec la campagne de facturation (lot 1). La fin effective de
+        // la période (horizon d'un an d'un bail sans date de fin comprise) est
+        // transmise pour le prorata au jour (décision H5). Le cas « non inclus » ne
+        // devrait jamais se produire ici : on l'ignore plutôt que de dupliquer le calcul.
+        // Loyer effectif à la période : une révision future ne réécrit pas le passé.
+        const built = buildInstallmentForPeriod(
+          withEffectiveAmounts(lease, revisions, new Date(Date.UTC(periodYear, periodMonth - 1, 1, 12))),
+          periodYear,
+          periodMonth,
+          undefined,
+          { periodEnd: currentPeriodEnd }
+        );
+
+        if (!built.included) {
+          continue;
+        }
+
+        // Check for duplicate (should not happen, but safety check)
+        const existing = await tx.rentalInstallment.findUnique({
+          where: {
+            lease_id_period_year_period_month: {
+              lease_id: leaseId,
+              period_year: periodYear,
+              period_month: periodMonth
+            }
+          }
+        });
+
+        if (existing) {
+          logger.warn('Duplicate installment skipped', {
+            leaseId,
+            periodYear,
+            periodMonth
+          });
+          continue;
+        }
+
+        created.push(await tx.rentalInstallment.create({ data: built.data }));
+      }
+      return created;
+    },
+    { timeout: 30_000, maxWait: 10_000 }
+  );
 
   logger.info('Installments generated', {
     tenantId,

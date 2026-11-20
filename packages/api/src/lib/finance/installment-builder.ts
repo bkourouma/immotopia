@@ -1,5 +1,6 @@
 import { Decimal } from '@prisma/client/runtime/library';
 import { RentalBillingFrequency, RentalInstallmentStatus, RentalLease } from '@prisma/client';
+import { roundForCurrency } from './currency-rounding';
 
 /**
  * Cœur de calcul de la génération d'échéances, extrait de
@@ -118,6 +119,43 @@ function resolvePeriodStartDate(
   return periodStart;
 }
 
+/** Numéro de jour (calendrier local, insensible à l'heure d'été) : permet de compter des jours entiers. */
+function dayNumber(date: Date): number {
+  return Math.floor(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86_400_000);
+}
+
+/**
+ * Fraction facturée d'une période (décision H5, prorata au jour) : jours
+ * effectivement couverts / jours de la période calendaire nominale.
+ *
+ * La période nominale d'un cycle de N mois va du 1er du mois de début de période
+ * au dernier jour du Ne mois. Les jours couverts vont de `coveredStart` (début
+ * exact du bail pour la première période, 1er du mois pour les suivantes) à
+ * `coveredEnd` (fin nominale, plafonnée par la fin du bail). Une période
+ * complète vaut 1 : un bail qui commence un 1er du mois ne change pas.
+ */
+export function periodFraction(
+  periodYear: number,
+  periodMonth: number,
+  cycleMonths: number,
+  coveredStart: Date,
+  coveredEnd: Date
+): number {
+  const nominalStart = new Date(periodYear, periodMonth - 1, 1);
+  const nominalEnd = new Date(periodYear, periodMonth - 1 + cycleMonths, 0);
+  const nominalDays = dayNumber(nominalEnd) - dayNumber(nominalStart) + 1;
+  const covered = dayNumber(coveredEnd) - dayNumber(coveredStart) + 1;
+  if (covered >= nominalDays) return 1;
+  if (covered <= 0) return 0;
+  return covered / nominalDays;
+}
+
+/** Applique une fraction de période à un montant, arrondi selon la devise. Fraction 1 : montant inchangé. */
+function prorate(amount: Decimal | number, fraction: number, currency: string): Decimal | number {
+  if (fraction >= 1) return amount;
+  return roundForCurrency(Number(amount) * fraction, currency);
+}
+
 /**
  * Calcule la date d'échéance pour une période, au jour du mois configuré sur
  * le bail (`due_day_of_month`), avec repli sur le dernier jour du mois si ce
@@ -190,6 +228,19 @@ export function resolveAmountsForPeriod(
 }
 
 /**
+ * Options de `buildInstallmentForPeriod`.
+ *
+ * `periodEnd` : fin effective de la période, quand l'appelant la connaît mieux
+ * que le builder (`generateInstallments` : horizon d'un an d'un bail sans date
+ * de fin). Sans elle, la fin est déduite de min(fin nominale, fin du bail) ; un
+ * bail sans date de fin n'est alors PAS prorata en fin de période (la campagne
+ * de facturation émet des mois pleins tant que le bail est actif).
+ */
+export interface BuildInstallmentOptions {
+  periodEnd?: Date;
+}
+
+/**
  * Construit les données d'une échéance pour un bail et une période donnés,
  * ou indique pourquoi cette période ne concerne pas ce bail.
  *
@@ -203,7 +254,8 @@ export function buildInstallmentForPeriod(
   lease: LeaseForInstallmentBuilding,
   periodYear: number,
   periodMonth: number,
-  changes?: RentChange[]
+  changes?: RentChange[],
+  options?: BuildInstallmentOptions
 ): InstallmentBuildResult {
   const leaseStartDate = new Date(lease.start_date);
   const leaseStartYear = leaseStartDate.getFullYear();
@@ -268,6 +320,19 @@ export function buildInstallmentForPeriod(
 
   const amounts = resolveAmountsForPeriod(lease, periodYear, periodMonth, changes);
 
+  // Prorata au jour (décision H5) : première et dernière périodes au nombre de
+  // jours couverts. Les échéances déjà générées ne sont jamais recalculées.
+  const currency = lease.currency || 'FCFA';
+  const nominalEnd = new Date(periodYear, periodMonth - 1 + cycleMonths, 0);
+  let coveredEnd = nominalEnd;
+  if (options?.periodEnd) {
+    coveredEnd = new Date(options.periodEnd);
+  } else if (lease.end_date) {
+    const leaseEnd = new Date(lease.end_date);
+    if (dayNumber(leaseEnd) < dayNumber(nominalEnd)) coveredEnd = leaseEnd;
+  }
+  const fraction = periodFraction(periodYear, periodMonth, cycleMonths, periodStartDate, coveredEnd);
+
   return {
     included: true,
     data: {
@@ -277,9 +342,9 @@ export function buildInstallmentForPeriod(
       period_month: periodMonth,
       due_date: dueDate,
       status: RentalInstallmentStatus.DRAFT,
-      currency: lease.currency || 'FCFA',
-      amount_rent: amounts.rent,
-      amount_service: amounts.charges,
+      currency,
+      amount_rent: prorate(amounts.rent, fraction, currency),
+      amount_service: prorate(amounts.charges, fraction, currency),
       amount_other_fees: 0,
       penalty_amount: 0,
       amount_paid: 0

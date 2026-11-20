@@ -48,6 +48,18 @@ jest.mock('../../src/lib/treasury/accounts', () => ({
     const number = p.treasuryAccountId ? `T-${p.treasuryAccountId}` : '5711';
     if (!chart.has(number)) chart.set(number, `A${number}`);
     return { chartOfAccountId: chart.get(number), journal: 'CASH', accountNumber: number };
+  }),
+  // Sortie : tout compte de l'agence (caisse, banque, Mobile Money) peut payer ; un autre compte est refusé.
+  resolveOutflowTreasuryAccountTx: jest.fn(async (_tx: any, _t: string, p: Row) => {
+    if (!p.treasuryAccountId) {
+      if (!chart.has('5711')) chart.set('5711', 'A5711');
+      return { chartOfAccountId: chart.get('5711'), journal: 'CASH', accountNumber: '5711' };
+    }
+    const known = outflowAccounts[p.treasuryAccountId];
+    if (!known || p.method !== 'OTHER') throw new Error('Compte de trésorerie introuvable');
+    const number = `T-${p.treasuryAccountId}`;
+    if (!chart.has(number)) chart.set(number, `A${number}`);
+    return { chartOfAccountId: chart.get(number), journal: known === 'CASH' ? 'CASH' : 'BANK', accountNumber: number };
   })
 }));
 
@@ -62,6 +74,8 @@ import {
 
 const TENANT = 'agence-1';
 const day = (m: number, d: number) => new Date(Date.UTC(2026, m - 1, d, 12));
+
+const outflowAccounts: Record<string, string> = { 'bank-1': 'BANK', 'momo-1': 'MOBILE_MONEY' };
 
 const db = {
   leases: [
@@ -199,6 +213,40 @@ describe('dépôt de garantie en gestion directe', () => {
     expect(balanceOf('5711')).toBe(100000); // 500 000 − 400 000 ; la retenue reste en caisse
     expect(balanceOf('758')).toBe(-100000); // produit de la retenue
     expect(balanceOf('411')).toBe(0);
+  });
+
+  it('un remboursement par un compte BANQUE ou MOBILE_MONEY de l’agence est comptabilisé sur ce compte', async () => {
+    db.movements.push({
+      id: 'mv-bank',
+      type: 'REFUND',
+      amount: 100000,
+      created_at: day(12, 2),
+      treasury_account_id: 'bank-1'
+    });
+    db.movements.push({
+      id: 'mv-momo',
+      type: 'REFUND',
+      amount: 50000,
+      created_at: day(12, 3),
+      treasury_account_id: 'momo-1'
+    });
+    await syncDirectDepositMovementEntryTx(tx, TENANT, 'mv-bank');
+    await syncDirectDepositMovementEntryTx(tx, TENANT, 'mv-momo');
+    expect(balanceOf('T-bank-1')).toBe(-100000);
+    expect(balanceOf('T-momo-1')).toBe(-50000);
+    expect(balanceOf('165')).toBe(150000);
+  });
+
+  it('un remboursement par un compte inconnu de l’agence est refusé (rien n’est écrit)', async () => {
+    db.movements.push({
+      id: 'mv-x',
+      type: 'REFUND',
+      amount: 100000,
+      created_at: day(12, 2),
+      treasury_account_id: 'autre-agence'
+    });
+    await expect(syncDirectDepositMovementEntryTx(tx, TENANT, 'mv-x')).rejects.toThrow();
+    expect(entries).toHaveLength(0);
   });
 
   it('rejouer un remboursement ou une retenue ne réécrit rien (idempotence par mouvement)', async () => {

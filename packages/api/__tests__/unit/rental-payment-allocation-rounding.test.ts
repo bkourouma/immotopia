@@ -61,7 +61,7 @@ function makeTx(paymentAmount: number, installments: Row[]) {
         amount: paymentAmount,
         method: 'CASH',
         status: 'SUCCESS',
-        currency: 'FCFA',
+        currency: 'EUR',
         allocations: []
       }))
     },
@@ -131,7 +131,8 @@ describe('schémas de paiement : montant minimum', () => {
 
   it('refuse un montant inférieur au centime (arrondi à 0,00 par Decimal(12,2))', () => {
     expect(createPaymentSchema.safeParse({ ...base, amount: 0.004 }).success).toBe(false);
-    expect(createPaymentSchema.safeParse({ ...base, amount: 0.01 }).success).toBe(true);
+    // Centimes : devise à décimales (en FCFA, un montant décimal est refusé).
+    expect(createPaymentSchema.safeParse({ ...base, currency: 'EUR', amount: 0.01 }).success).toBe(true);
   });
 
   it('refuse une affectation partielle inférieure au centime', () => {

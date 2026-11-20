@@ -13,7 +13,7 @@ describe('createPaymentSchema — borne du montant', () => {
   });
 
   it('accepte le plus grand montant que la colonne sait porter', () => {
-    expect(createPaymentSchema.safeParse({ ...base, amount: 9_999_999_999.99 }).success).toBe(true);
+    expect(createPaymentSchema.safeParse({ ...base, currency: 'EUR', amount: 9_999_999_999.99 }).success).toBe(true);
   });
 
   it('refuse 10 000 000 000 avec un message clair', () => {

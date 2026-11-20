@@ -22,7 +22,9 @@ import { listPortalLeaseIds, resolveRequestedLeaseId } from '../utils/tenant-por
 import { handleTenantPortalFinanceStatement } from './finance-controller';
 import { parseNumberParam } from '../utils/query-params';
 import { parsePagination } from '../utils/pagination-helper';
-import { asyncHandler, BadRequestError, ForbiddenError } from '../middleware/error-middleware';
+import { AppError, asyncHandler, BadRequestError, ForbiddenError } from '../middleware/error-middleware';
+import { t } from '../i18n';
+import { PORTAL_READ_ONLY_CODE } from '../middleware/tenant-portal-access';
 import {
   definedOnly,
   parseTenantPortalInstallmentsQuery,
@@ -40,6 +42,16 @@ function portalContext(req: Request): { tenantClientId: string; leaseId: string;
 }
 
 /**
+ * Défense en profondeur (H4) : la garde du middleware refuse déjà toute écriture en
+ * lecture seule ; chaque handler d'écriture le revérifie, fail-closed.
+ */
+function assertPortalWritable(req: Request): void {
+  if (!req.tenantPortal || req.tenantPortal.readOnly) {
+    throw new AppError(t('Votre bail est terminé : le portail est en lecture seule.'), 403, PORTAL_READ_ONLY_CODE);
+  }
+}
+
+/**
  * Contexte multi-baux (H29). `leaseIds` = baux actifs du locataire connecté
  * (jamais un identifiant fourni par l'appelant). `?leaseId=` restreint à un
  * seul bail, qui doit appartenir à ce périmètre, sinon 404. Sans lui, `leaseIds`
@@ -54,7 +66,8 @@ async function portalLeaseScope(req: Request): Promise<{
   explicit: boolean;
 }> {
   const { tenantClientId, leaseId, tenantId } = portalContext(req);
-  const all = await listPortalLeaseIds(tenantId, tenantClientId);
+  // Mode lecture seule (H4) : le périmètre = baux terminés/suspendus du client, sinon baux actifs.
+  const all = await listPortalLeaseIds(tenantId, tenantClientId, req.tenantPortal?.readOnly === true);
   // Périmètre vide : comme le middleware, aucun bail actif => 403 (pas de repli).
   if (all.length === 0) {
     throw new ForbiddenError('Aucun bail actif trouvé.');
@@ -113,7 +126,7 @@ export class TenantPortalController {
 
     res.status(200).json({
       success: true,
-      data: dashboardData
+      data: { ...dashboardData, readOnly: req.tenantPortal?.readOnly === true }
     });
   });
 
@@ -197,6 +210,7 @@ export class TenantPortalController {
    * POST /api/portal/tenant/payments/declare
    */
   declarePayment = asyncHandler(async (req, res) => {
+    assertPortalWritable(req);
     // Le corps est validé AVANT toute requête en base (400 sans lecture).
     const body = req.body ?? {};
 
@@ -281,6 +295,7 @@ export class TenantPortalController {
    * POST /api/portal/tenant/maintenance
    */
   createMaintenanceTicket = asyncHandler(async (req, res) => {
+    assertPortalWritable(req);
     const { tenantClientId, leaseId, tenantId } = await portalSingleLease(req);
     const body = req.body ?? {};
 
@@ -367,6 +382,7 @@ export class TenantPortalController {
    * POST /api/portal/tenant/maintenance/:id/comment
    */
   addTicketComment = asyncHandler(async (req, res) => {
+    assertPortalWritable(req);
     const { comment: text } = addCommentSchema.parse({ comment: req.body?.comment });
 
     const { tenantClientId, leaseId, tenantId, allLeaseIds } = await portalLeaseScope(req);

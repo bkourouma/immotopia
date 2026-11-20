@@ -3,7 +3,11 @@ import type { PrismaTransactionClient } from '../utils/database';
 import { logger } from '../utils/logger';
 import { logAuditEvent, recordAuditEvent } from './audit-service';
 import { RentalDepositMovementType } from '@prisma/client';
-import { assertTreasuryAccountUsableTx, type PaymentMethodLike } from '../lib/treasury/accounts';
+import {
+  assertTreasuryAccountUsableTx,
+  resolveOutflowTreasuryAccountTx,
+  type PaymentMethodLike
+} from '../lib/treasury/accounts';
 import { t } from '../i18n';
 import { syncDirectDepositMovementEntryTx, syncDirectRentPaymentEntryTx } from '../lib/finance/rental-direct-ledger';
 import { annulerPieceTx, compteLocataireDuBailTx, compteLocataireTx } from './rental-installment-service';
@@ -594,7 +598,13 @@ export async function createDepositMovement(
       }
 
       await assertDepositMovementAllowedTx(tx, tenantId, locked, type, amount, paymentId);
-      await assertTreasuryAccountUsableTx(tx, tenantId, treasuryAccountId, method ?? 'CASH');
+      if (type === 'REFUND' && treasuryAccountId) {
+        // Sortie d'argent : compte actif de l'agence dont la nature peut payer
+        // (caisse, banque, Mobile Money) selon `outflowKindsForMethod`.
+        await resolveOutflowTreasuryAccountTx(tx, tenantId, { method: method ?? 'OTHER', treasuryAccountId });
+      } else {
+        await assertTreasuryAccountUsableTx(tx, tenantId, treasuryAccountId, method ?? 'CASH');
+      }
 
       const created = await tx.rentalDepositMovement.create({
         data: {

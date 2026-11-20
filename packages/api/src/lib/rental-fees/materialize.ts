@@ -148,6 +148,7 @@ async function computeManagementFeeRows(
       id: true,
       amount: true,
       created_at: true,
+      installment_id: true,
       payment_id: true,
       payment: { select: { succeeded_at: true, initiated_at: true } },
       installment: {
@@ -169,6 +170,12 @@ async function computeManagementFeeRows(
     }
   });
   if (allocations.length === 0) return { rows: [], scanned: 0, lastId: null };
+
+  // Arrondi cumulé (FCFA sans décimales) : une échéance réglée en plusieurs fois doit
+  // porter ses honoraires une seule fois au total. Les affectations précédentes
+  // peuvent être dans un lot antérieur du curseur ou déjà matérialisées : on relit
+  // donc toutes celles des échéances du lot (règlements réussis, même agence).
+  const priorByAllocationId = await priorAllocatedAmounts(tenantId, allocations);
 
   const ownerIds = Array.from(
     new Set(allocations.map(a => a.installment.lease.owner_client_id).filter((id): id is string => Boolean(id)))
@@ -215,6 +222,7 @@ async function computeManagementFeeRows(
 
     const fee = computeAllocationFee({
       amount: Number(allocation.amount),
+      priorAmount: priorByAllocationId.get(allocation.id) ?? 0,
       installment: { amountRent, total },
       terms,
       vat: { registered: settings.vatRegistered, rate: settings.vatRate },
@@ -246,4 +254,37 @@ async function computeManagementFeeRows(
   }
 
   return { rows, scanned: allocations.length, lastId: allocations[allocations.length - 1].id };
+}
+
+/**
+ * Pour chaque affectation, la somme des affectations des règlements réussis de la
+ * MÊME échéance qui la précèdent (ordre `created_at` puis `id`). Une affectation
+ * seule sur son échéance donne 0 : comportement inchangé.
+ */
+async function priorAllocatedAmounts(
+  tenantId: string,
+  allocations: Array<{ id: string; installment_id: string; created_at: Date }>
+): Promise<Map<string, number>> {
+  const installmentIds = Array.from(new Set(allocations.map(a => a.installment_id)));
+  const siblings = await prisma.rentalPaymentAllocation.findMany({
+    where: { tenant_id: tenantId, installment_id: { in: installmentIds }, payment: { status: 'SUCCESS' } },
+    orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
+    select: { id: true, installment_id: true, amount: true, created_at: true }
+  });
+  const byInstallment = new Map<string, typeof siblings>();
+  for (const row of siblings) {
+    const list = byInstallment.get(row.installment_id) ?? [];
+    list.push(row);
+    byInstallment.set(row.installment_id, list);
+  }
+  const result = new Map<string, number>();
+  for (const allocation of allocations) {
+    let prior = 0;
+    for (const row of byInstallment.get(allocation.installment_id) ?? []) {
+      if (row.id === allocation.id) break;
+      prior += Number(row.amount);
+    }
+    result.set(allocation.id, prior);
+  }
+  return result;
 }

@@ -19,7 +19,9 @@ import {
   MaintenanceSummary
 } from '../types/tenant-portal-types';
 import {
+  RentalDocumentStatus,
   RentalInstallmentStatus,
+  RentalLeaseStatus,
   RentalPaymentStatus,
   MaintenanceTicketStatus,
   MaintenanceTicketCommentAuthorType,
@@ -228,6 +230,7 @@ export class TenantPortalService {
         end_date: true,
         rent_amount: true,
         service_charge_amount: true,
+        status: true,
         property: { select: { address: true, title: true } }
       },
       orderBy: [{ start_date: 'asc' }, { id: 'asc' }]
@@ -240,6 +243,7 @@ export class TenantPortalService {
       endDate: row.end_date,
       monthlyRent: Number(row.rent_amount),
       serviceCharges: Number(row.service_charge_amount),
+      status: row.status,
       isDefault: row.id === defaultLeaseId
     }));
   }
@@ -1133,7 +1137,9 @@ export class TenantPortalService {
           where: {
             id: data.installmentId,
             lease_id: { in: leaseIds && leaseIds.length > 0 ? leaseIds : [defaultLeaseId] },
-            tenant_id: tenantId
+            tenant_id: tenantId,
+            // Défense en profondeur (H4) : aucune déclaration sur un bail non actif.
+            lease: { status: RentalLeaseStatus.ACTIVE }
           }
         });
 
@@ -1603,10 +1609,12 @@ export class TenantPortalService {
   ): Promise<any> {
     try {
       // Get lease to get property ID (T085)
+      // Défense en profondeur (H4) : jamais de ticket sur un bail terminé ou suspendu.
       const lease = await prisma.rentalLease.findFirst({
         where: {
           id: leaseId,
-          tenant_id: tenantId
+          tenant_id: tenantId,
+          status: RentalLeaseStatus.ACTIVE
         },
         include: {
           property: {
@@ -1898,9 +1906,8 @@ export class TenantPortalService {
       const where: any = {
         lease_id: { in: leaseIds && leaseIds.length > 0 ? leaseIds : [leaseId] },
         tenant_id: tenantId,
-        status: {
-          not: 'VOID'
-        }
+        // Documents finaux seuls : ni brouillon, ni remplacé, ni annulé (H4).
+        status: RentalDocumentStatus.FINAL
       };
 
       if (filters?.type) {
@@ -1972,9 +1979,7 @@ export class TenantPortalService {
           id: documentId,
           lease_id: { in: leaseIds && leaseIds.length > 0 ? leaseIds : [leaseId] },
           tenant_id: tenantId,
-          status: {
-            not: 'VOID'
-          }
+          status: RentalDocumentStatus.FINAL
         }
       });
 
