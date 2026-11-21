@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Button } from '../ui/button';
 import { DealForm } from './DealForm';
 import { CreateCrmDealRequest } from '../../types/crm-types';
@@ -23,12 +23,26 @@ export const AddDealDialog: React.FC<AddDealDialogProps> = ({
   onCancel,
   loading = false
 }) => {
+  // Échap ferme la fenêtre, comme toute boîte de dialogue.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !loading) onCancel();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onCancel, loading]);
+
   const handleSubmit = async (data: CreateCrmDealRequest | any) => {
     await onSubmit(data as CreateCrmDealRequest);
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label={t('Nouvelle affaire pour {{nom}}', { nom: contactName })}
+    >
       <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="p-6 border-b border-gray-200 flex items-center justify-between">
@@ -45,7 +59,14 @@ export const AddDealDialog: React.FC<AddDealDialogProps> = ({
               </p>
             </div>
           </div>
-          <Button type="button" variant="ghost" size="sm" onClick={onCancel} className="h-8 w-8 p-0">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={onCancel}
+            className="h-11 w-11 p-0"
+            aria-label={t('Fermer')}
+          >
             <X className="h-5 w-5" />
           </Button>
         </div>

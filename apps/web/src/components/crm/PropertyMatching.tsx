@@ -45,7 +45,7 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ tenantId, de
     setLoading(true);
     setError(null);
     try {
-      const response = await matchProperties(tenantId, dealId, threshold, 10);
+      const response = await matchProperties(tenantId, dealId, Number.isNaN(threshold) ? 40 : threshold, 10);
       if (response.success) {
         setMatches(response.matches);
       } else {
@@ -90,14 +90,16 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ tenantId, de
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-wrap justify-between items-center gap-3">
         <h2 className="text-xl font-semibold">{t('Correspondance de biens')}</h2>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <input
             type="number"
-            value={threshold}
+            inputMode="numeric"
+            aria-label={t('Score minimum de correspondance (0 à 100)')}
+            value={Number.isNaN(threshold) ? '' : threshold}
             onChange={e => setThreshold(parseInt(e.target.value, 10))}
-            className="w-20 px-2 py-1 border rounded text-sm"
+            className="w-20 px-2 py-1 min-h-[44px] lg:min-h-0 border rounded text-sm"
             min="0"
             max="100"
           />
@@ -108,7 +110,11 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ tenantId, de
         </div>
       </div>
 
-      {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">{error}</div>}
+      {error && (
+        <div role="alert" className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+          {error}
+        </div>
+      )}
 
       {/* Shortlist */}
       {shortlist.length > 0 && (

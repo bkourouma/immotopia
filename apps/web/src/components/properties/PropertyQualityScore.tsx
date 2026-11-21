@@ -4,6 +4,7 @@ import { Star, AlertCircle, CheckCircle, RefreshCw, Loader2 } from 'lucide-react
 import { getQualityScore } from '../../services/property-service';
 import { App } from 'antd';
 import { t } from '../../i18n/t';
+import { SkeletonDetail, StateBlock } from '../primitives';
 
 interface PropertyQualityScoreProps {
   propertyId: string;
@@ -26,6 +27,7 @@ export const PropertyQualityScore: React.FC<PropertyQualityScoreProps> = ({ prop
   const [qualityScore, setQualityScore] = useState<QualityScoreData | null>(null);
   const [loading, setLoading] = useState(true);
   const [recalculating, setRecalculating] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
 
   useEffect(() => {
     loadQualityScore();
@@ -33,11 +35,13 @@ export const PropertyQualityScore: React.FC<PropertyQualityScoreProps> = ({ prop
 
   const loadQualityScore = async () => {
     setLoading(true);
+    setLoadFailed(false);
     try {
       const score = await getQualityScore(tenantId, propertyId);
       setQualityScore(score);
     } catch (error) {
       console.error('Error loading quality score:', error);
+      setLoadFailed(true);
     } finally {
       setLoading(false);
     }
@@ -48,6 +52,7 @@ export const PropertyQualityScore: React.FC<PropertyQualityScoreProps> = ({ prop
     try {
       const score = await getQualityScore(tenantId, propertyId, true);
       setQualityScore(score);
+      message.success(t('Score recalculé.'));
     } catch (error) {
       console.error('Error recalculating quality score:', error);
       message.error(t('Erreur lors du recalcul du score'));
@@ -64,18 +69,16 @@ export const PropertyQualityScore: React.FC<PropertyQualityScoreProps> = ({ prop
   };
 
   const getScoreLabel = (score: number) => {
-    if (score >= 80) return 'Excellent';
-    if (score >= 60) return 'Bon';
-    if (score >= 40) return 'Moyen';
+    if (score >= 80) return t('Excellent');
+    if (score >= 60) return t('Bon');
+    if (score >= 40) return t('Moyen');
     return t('À améliorer');
   };
 
   if (loading) {
     return (
       <div className="bg-white rounded-lg shadow p-6">
-        <div className="flex items-center justify-center py-8">
-          <Loader2 className="h-6 w-6 animate-spin text-primary" />
-        </div>
+        <SkeletonDetail rows={2} aria-label={t('Chargement du score de qualité')} />
       </div>
     );
   }
@@ -83,10 +86,29 @@ export const PropertyQualityScore: React.FC<PropertyQualityScoreProps> = ({ prop
   if (!qualityScore) {
     return (
       <div className="bg-white rounded-lg shadow p-6">
-        <p className="text-gray-600">{t('Score de qualité non disponible')}</p>
+        <StateBlock
+          variant={loadFailed ? 'error' : 'empty'}
+          title={t('Score de qualité non disponible')}
+          description={
+            loadFailed
+              ? t("Le score n'a pas pu être chargé.")
+              : t('Le score apparaîtra dès que la fiche du bien sera enregistrée.')
+          }
+          onRetry={loadFailed ? () => void loadQualityScore() : undefined}
+        />
       </div>
     );
   }
+
+  /** Ce qu'il reste à faire, rubrique par rubrique (texte seul, les pondérations viennent de l'API). */
+  const aFaire: string[] = [
+    qualityScore.breakdown.requiredFields < 100
+      ? t('Complétez les champs obligatoires de la fiche (titre, adresse, prix, surface…).')
+      : null,
+    qualityScore.breakdown.media < 100 ? t("Ajoutez des photos du bien, dans l'onglet Médias.") : null,
+    qualityScore.breakdown.geolocation < 100 ? t('Renseignez la position du bien sur la carte.') : null,
+    qualityScore.breakdown.description < 100 ? t('Rédigez une description plus détaillée.') : null
+  ].filter((ligne): ligne is string => Boolean(ligne));
 
   return (
     <div className="bg-white rounded-lg shadow p-6">
@@ -95,11 +117,17 @@ export const PropertyQualityScore: React.FC<PropertyQualityScoreProps> = ({ prop
           <h3 className="text-lg font-semibold text-slate-900">{t('Score de qualité')}</h3>
           <p className="text-sm text-gray-600 mt-1">{t('Évaluation automatique de la complétude de votre annonce')}</p>
         </div>
-        <Button variant="outline" size="sm" onClick={handleRecalculate} disabled={recalculating}>
+        <Button
+          variant="outline"
+          size="sm"
+          className="min-h-[44px] lg:min-h-0"
+          onClick={handleRecalculate}
+          disabled={recalculating}
+        >
           {recalculating ? (
             <>
               <Loader2 className="h-4 w-4 me-2 animate-spin" />
-              Calcul...
+              {t('Calcul…')}
             </>
           ) : (
             <>
@@ -175,6 +203,18 @@ export const PropertyQualityScore: React.FC<PropertyQualityScoreProps> = ({ prop
           </div>
         </div>
       </div>
+
+      {/* Que faire pour gagner des points */}
+      {aFaire.length > 0 && (
+        <div className="mb-6">
+          <h4 className="text-sm font-semibold text-gray-700 mb-3">{t('Pour améliorer votre score')}</h4>
+          <ul className="list-disc ps-5 space-y-1 text-sm text-gray-700">
+            {aFaire.map(ligne => (
+              <li key={ligne}>{ligne}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Suggestions */}
       {qualityScore.suggestions.length > 0 && (

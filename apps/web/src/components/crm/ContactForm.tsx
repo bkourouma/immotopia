@@ -31,6 +31,8 @@ import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { t } from '../../i18n/t';
 import { PortalEmailNotice } from './PortalEmailNotice';
 import { HelpButton, helpAnchor } from '../../help';
+import { useConfirmAction } from '../primitives';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 
 const { TextArea } = Input;
 const { TabPane } = Tabs;
@@ -97,9 +99,15 @@ interface ContactFormProps {
 
 export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onCancel, loading = false }) => {
   const { message } = App.useApp();
+  const confirm = useConfirmAction();
+  const { isDesktop } = useBreakpoint();
 
   const [form] = Form.useForm();
   const [activeTab, setActiveTab] = useState('basic');
+  // Anti double-clic : le parent ne passe pas toujours `loading`, le formulaire se verrouille seul.
+  const [submitting, setSubmitting] = useState(false);
+  // Onglets contenant un champ refusé, signalés par un point rouge.
+  const [tabsWithErrors, setTabsWithErrors] = useState<string[]>([]);
   const [location, setLocation] = useState<GeographicLocation | null>(null);
   const [fileList, setFileList] = useState<UploadFile[]>([]);
 
@@ -190,6 +198,9 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
   }, [contact]);
 
   const handleFinish = async (values: any) => {
+    if (submitting) return;
+    setSubmitting(true);
+    setTabsWithErrors([]);
     try {
       const phonePrimary = buildInternationalPhone(values.phonePrimaryCountryCode, values.phonePrimary);
       const phoneSecondary = buildInternationalPhone(values.phoneSecondaryCountryCode, values.phoneSecondary);
@@ -298,6 +309,8 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
         console.error('Echec de creation du contact', error);
       }
       return;
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -359,11 +372,53 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
     communeId: 'contact'
   };
   const handleFinishFailed = (info: Parameters<ReturnType<typeof onAntFormValidationFailed>>[0]) => {
+    setTabsWithErrors(
+      Array.from(
+        new Set(
+          info.errorFields
+            .map(f => (typeof f.name[0] === 'string' ? FIELD_TABS[f.name[0] as string] : undefined))
+            .filter((x): x is string => Boolean(x))
+        )
+      )
+    );
     const first = info.errorFields[0]?.name?.[0];
     const tab = typeof first === 'string' ? FIELD_TABS[first] : undefined;
     if (tab) setActiveTab(tab);
     onAntFormValidationFailed(form)(info);
   };
+
+  // Garde de sortie : une saisie en cours ne se perd pas sur un « Annuler » involontaire.
+  const handleCancel = () => {
+    if (!onCancel) return;
+    if (form.isFieldsTouched() && !submitting) {
+      confirm({
+        title: t('Abandonner la saisie ?'),
+        description: t('Les informations saisies dans ce formulaire seront perdues.'),
+        okText: t('Abandonner'),
+        cancelText: t('Continuer la saisie'),
+        danger: true,
+        onConfirm: onCancel
+      });
+      return;
+    }
+    onCancel();
+  };
+
+  const tabLabel = (label: string, key: string) =>
+    tabsWithErrors.includes(key) ? (
+      <span>
+        {label}
+        <span
+          aria-label={t('Champ à corriger')}
+          role="img"
+          style={{ color: 'var(--color-error)', marginInlineStart: 4 }}
+        >
+          {'●'}
+        </span>
+      </span>
+    ) : (
+      label
+    );
 
   return (
     <Form
@@ -387,7 +442,7 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div {...helpAnchor('contact-form-onglets')}>
           <Tabs activeKey={activeTab} onChange={setActiveTab} type="card">
-            <TabPane forceRender tab={t('Basique')} key="basic">
+            <TabPane forceRender tab={tabLabel(t('Basique'), 'basic')} key="basic">
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <HelpButton size="small" helpId="commercial.contacts.nouveau.basique" />
               </div>
@@ -410,7 +465,7 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
                       name="firstName"
                       rules={[{ required: true, message: t('Le prénom est requis') }]}
                     >
-                      <Input placeholder={t('Prénom')} />
+                      <Input placeholder={t('Prénom')} autoComplete="given-name" />
                     </Form.Item>
                   </Col>
                   <Col xs={24} sm={12}>
@@ -419,7 +474,7 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
                       name="lastName"
                       rules={[{ required: true, message: t('Le nom est requis') }]}
                     >
-                      <Input placeholder={t('Nom')} />
+                      <Input placeholder={t('Nom')} autoComplete="family-name" />
                     </Form.Item>
                   </Col>
                 </Row>
@@ -434,13 +489,13 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
                         { type: 'email', message: t('Adresse email invalide') }
                       ]}
                     >
-                      <Input type="email" placeholder="email@example.com" />
+                      <Input type="email" inputMode="email" autoComplete="email" placeholder="email@example.com" />
                     </Form.Item>
                     <PortalEmailNotice notice={contact?.portalAccountEmailNotice} />
                   </Col>
                   <Col xs={24} sm={12}>
                     <Form.Item label={t('Email professionnel')} name="emailSecondary">
-                      <Input type="email" placeholder="email@example.com" />
+                      <Input type="email" inputMode="email" autoComplete="email" placeholder="email@example.com" />
                     </Form.Item>
                   </Col>
                 </Row>
@@ -455,6 +510,8 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
                         <Form.Item name="phonePrimary" noStyle>
                           <Input
                             type="tel"
+                            inputMode="tel"
+                            autoComplete="tel-national"
                             placeholder={t('Numéro principal')}
                             addonBefore={
                               <Form.Item name="phonePrimaryCountryCode" noStyle>
@@ -480,6 +537,8 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
                         <Form.Item name="phoneSecondary" noStyle>
                           <Input
                             type="tel"
+                            inputMode="tel"
+                            autoComplete="tel-national"
                             placeholder={t('Numéro secondaire')}
                             addonBefore={
                               <Form.Item name="phoneSecondaryCountryCode" noStyle>
@@ -500,7 +559,7 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
               </Card>
             </TabPane>
 
-            <TabPane forceRender tab={t('Identité')} key="identification">
+            <TabPane forceRender tab={tabLabel(t('Identité'), 'identification')} key="identification">
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <HelpButton size="small" helpId="commercial.contacts.nouveau.identite" />
               </div>
@@ -872,11 +931,12 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
             justifyContent: 'flex-end',
             gap: 16,
             paddingTop: 16,
-            borderTop: '1px solid #f0f0f0'
+            borderTop: '1px solid var(--border-subtle)',
+            flexWrap: 'wrap'
           }}
         >
           {onCancel && (
-            <Button onClick={onCancel} disabled={loading}>
+            <Button onClick={handleCancel} disabled={loading || submitting} block={!isDesktop}>
               {t('Annuler')}
             </Button>
           )}
@@ -884,11 +944,16 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
             type="primary"
             htmlType="submit"
             icon={<SaveOutlined />}
-            loading={loading}
+            loading={loading || submitting}
+            block={!isDesktop}
             size="large"
             {...helpAnchor('contact-form-enregistrer')}
           >
-            {loading ? 'Enregistrement...' : contact ? t('Mettre à jour le contact') : t('Créer le contact')}
+            {loading || submitting
+              ? t('Enregistrement en cours…')
+              : contact
+                ? t('Mettre à jour le contact')
+                : t('Créer le contact')}
           </Button>
         </div>
       </Space>

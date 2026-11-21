@@ -1,18 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import {
-  Alert,
-  App,
-  Button,
-  Card,
-  InputNumber,
-  Modal,
-  Popconfirm,
-  Progress,
-  Select,
-  Space,
-  Spin,
-  Typography
-} from 'antd';
+import { Alert, App, Button, Card, InputNumber, Modal, Progress, Select, Space, Typography } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import {
   getPropertyOwnership,
@@ -24,6 +11,9 @@ import { PropertyMandateCard } from './PropertyMandateCard';
 import { t } from '../../i18n/t';
 import { HelpSectionTitle } from '../../help';
 import { activeLocale } from '../../i18n/format';
+import { ConfirmAction, SkeletonList, StateBlock } from '../primitives';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { apiErrorText } from './property-api-errors';
 
 const { Text } = Typography;
 
@@ -57,6 +47,9 @@ const pourcentage = (valeur: number) => valeur.toLocaleString(activeLocale(), { 
 
 export const PropertyOwnershipCard: React.FC<PropertyOwnershipCardProps> = ({ tenantId, propertyId }) => {
   const { message } = App.useApp();
+  const { isMobile } = useBreakpoint();
+  // Incrémenté par « Réessayer » : relance la lecture de l'indivision.
+  const [relance, setRelance] = useState(0);
 
   const [donnees, setDonnees] = useState<PropertyOwnership | null>(null);
   const [chargement, setChargement] = useState(true);
@@ -78,7 +71,7 @@ export const PropertyOwnershipCard: React.FC<PropertyOwnershipCardProps> = ({ te
       })
       .catch((erreur: any) => {
         if (!annule) {
-          setErreurChargement(erreur.response?.data?.message || t("Impossible de charger l'indivision de ce bien."));
+          setErreurChargement(apiErrorText(erreur, t("Impossible de charger l'indivision de ce bien.")));
         }
       })
       .finally(() => {
@@ -87,7 +80,7 @@ export const PropertyOwnershipCard: React.FC<PropertyOwnershipCardProps> = ({ te
     return () => {
       annule = true;
     };
-  }, [tenantId, propertyId]);
+  }, [tenantId, propertyId, relance]);
 
   /**
    * Ouvre la modale, avec la proposition de départ prescrite par le contrat :
@@ -184,9 +177,7 @@ export const PropertyOwnershipCard: React.FC<PropertyOwnershipCardProps> = ({ te
       // Le 400 de l'API dit précisément ce qui cloche (« Les quotes-parts
       // doivent totaliser 100 % (actuellement 90 %). ») : on l'affiche tel
       // quel plutôt que de le remplacer par un message générique.
-      setErreurEnvoi(
-        erreur.response?.data?.message || t("Une erreur est survenue lors de l'enregistrement de l'indivision.")
-      );
+      setErreurEnvoi(apiErrorText(erreur, t("Une erreur est survenue lors de l'enregistrement de l'indivision.")));
     } finally {
       setEnregistrement(false);
     }
@@ -199,9 +190,7 @@ export const PropertyOwnershipCard: React.FC<PropertyOwnershipCardProps> = ({ te
       setDonnees(resultat);
       message.success(t('Indivision supprimée.'));
     } catch (erreur: any) {
-      message.error(
-        erreur.response?.data?.message || t("Une erreur est survenue lors de la suppression de l'indivision.")
-      );
+      message.error(apiErrorText(erreur, t("Une erreur est survenue lors de la suppression de l'indivision.")));
     } finally {
       setSuppression(false);
     }
@@ -211,11 +200,14 @@ export const PropertyOwnershipCard: React.FC<PropertyOwnershipCardProps> = ({ te
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
       <Card title={<HelpSectionTitle title={t('Indivision')} helpId="commercial.biens.detail.indivision" />}>
         {chargement ? (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-4) 0' }}>
-            <Spin />
-          </div>
+          <SkeletonList rows={1} aria-label={t("Chargement de l'indivision")} />
         ) : erreurChargement ? (
-          <Alert type="error" message={erreurChargement} showIcon />
+          <StateBlock
+            variant="error"
+            title={t("Impossible de charger l'indivision")}
+            description={erreurChargement}
+            onRetry={() => setRelance(n => n + 1)}
+          />
         ) : donnees ? (
           <Space direction="vertical" style={{ width: '100%' }} size="middle">
             {donnees.shares.length === 0 ? (
@@ -243,18 +235,19 @@ export const PropertyOwnershipCard: React.FC<PropertyOwnershipCardProps> = ({ te
                 {donnees.shares.length === 0 ? t("Définir l'indivision") : t('Modifier')}
               </Button>
               {donnees.shares.length > 0 && (
-                <Popconfirm
-                  title={t("Supprimer l'indivision ?")}
+                <ConfirmAction
+                  title={t("Supprimer l'indivision entre {{noms}} ?", {
+                    noms: donnees.shares.map(part => part.ownerName).join(', ')
+                  })}
                   description={t('Le bien reviendra en entier au propriétaire désigné sur les baux.')}
                   okText={t('Supprimer')}
-                  cancelText={t('Annuler')}
-                  okButtonProps={{ danger: true }}
+                  danger
                   onConfirm={supprimerIndivision}
                 >
-                  <Button danger loading={suppression}>
+                  <Button danger loading={suppression} disabled={suppression}>
                     {t("Supprimer l'indivision")}
                   </Button>
-                </Popconfirm>
+                </ConfirmAction>
               )}
             </Space>
           </Space>
@@ -265,7 +258,9 @@ export const PropertyOwnershipCard: React.FC<PropertyOwnershipCardProps> = ({ te
           open={modaleOuverte}
           onCancel={() => setModaleOuverte(false)}
           footer={null}
-          width={640}
+          width={isMobile ? '100%' : 640}
+          style={isMobile ? { top: 0, maxWidth: '100vw', margin: 0 } : undefined}
+          maskClosable={!enregistrement}
           destroyOnHidden
         >
           <Space direction="vertical" style={{ width: '100%' }} size="middle">
@@ -280,12 +275,13 @@ export const PropertyOwnershipCard: React.FC<PropertyOwnershipCardProps> = ({ te
             <Space direction="vertical" style={{ width: '100%' }} size="small">
               {lignes.map((ligne, index) => (
                 // eslint-disable-next-line react/no-array-index-key -- l'index EST l'identité de la ligne, tant qu'elle est vide.
-                <Space key={index} align="start" style={{ width: '100%' }}>
+                <Space key={index} align="start" wrap style={{ width: '100%' }}>
                   <Select
                     showSearch
                     virtual={false}
                     placeholder={t('Choisir un propriétaire')}
-                    style={{ width: 280 }}
+                    style={{ width: isMobile ? '100%' : 280, minWidth: 0 }}
+                    aria-label={t('Propriétaire (ligne {{n}})', { n: index + 1 })}
                     value={ligne.ownerClientId || undefined}
                     optionFilterProp="children"
                     onChange={valeur => modifierProprietaire(index, valeur)}
@@ -314,7 +310,8 @@ export const PropertyOwnershipCard: React.FC<PropertyOwnershipCardProps> = ({ te
                     type="text"
                     danger
                     icon={<DeleteOutlined />}
-                    aria-label={t('Supprimer cette ligne')}
+                    aria-label={t('Supprimer la ligne {{n}}', { n: index + 1 })}
+                    style={{ minWidth: 44, minHeight: 44 }}
                     onClick={() => supprimerLigne(index)}
                   />
                 </Space>
@@ -339,7 +336,9 @@ export const PropertyOwnershipCard: React.FC<PropertyOwnershipCardProps> = ({ te
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
-              <Button onClick={() => setModaleOuverte(false)}>{t('Annuler')}</Button>
+              <Button disabled={enregistrement} onClick={() => setModaleOuverte(false)}>
+                {t('Annuler')}
+              </Button>
               <Button type="primary" loading={enregistrement} disabled={!peutEnregistrer} onClick={enregistrer}>
                 {t('Enregistrer')}
               </Button>

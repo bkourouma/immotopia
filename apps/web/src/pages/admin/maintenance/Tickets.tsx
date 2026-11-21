@@ -1,22 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Card, Button, Typography, Tag, Spin } from 'antd';
+import { Card, Button } from 'antd';
 import { EyeOutlined } from '@ant-design/icons';
-import { Table } from '../../../components/primitives';
+import type { ColumnsType } from 'antd/es/table';
+import { DataCard, DataView, PageHeader, StatusTag, type StatusTone } from '../../../components/primitives';
 import { collectAllPages } from '../../../utils/table-export/collect';
 import { TicketStatusBadge } from '../../../components/maintenance/TicketStatusBadge';
 import { managerMaintenanceService, vendorMaintenanceService } from '../../../services/maintenance-service';
 import { getProperty, listProperties } from '../../../services/property-service';
 import { useListSearch } from '../../../hooks/useListSearch';
-import { Ticket, MaintenanceTicketStatus } from '../../../types/maintenance-types';
+import { Ticket } from '../../../types/maintenance-types';
 import { useAuth } from '../../../hooks/useAuth';
 import { safeFormatDate } from '../../../utils/date-utils';
 import dayjs from 'dayjs';
 import { localizedList } from '../../../i18n/localized';
 import { t } from '../../../i18n/t';
 import { localizedRecord } from '../../../i18n/localized';
-
-const { Title } = Typography;
 
 const categoryLabels: Record<string, string> = localizedRecord(() => ({
   PLUMBING: t('Plomberie'),
@@ -56,12 +55,20 @@ const CATEGORY_OPTIONS = localizedList(() => [
 const propertyOptionLabel = (property: { internalReference?: string; title?: string }) =>
   [property.internalReference, property.title].filter(Boolean).join(' · ');
 
-const priorityColors: Record<string, string> = {
-  LOW: 'default',
-  MEDIUM: 'processing',
+const priorityTones: Record<string, StatusTone> = {
+  LOW: 'neutral',
+  MEDIUM: 'info',
   HIGH: 'warning',
-  URGENT: 'error'
+  URGENT: 'danger'
 };
+
+function formatCreatedAt(date: string | null | undefined): string {
+  if (!date) return '-';
+  const parsed = dayjs(date);
+  if (parsed.isValid()) return parsed.format('DD MMM YYYY');
+  const formatted = safeFormatDate(date, 'DD MMM YYYY', '');
+  return formatted && formatted !== 'Date invalide' ? formatted : '-';
+}
 
 export const Tickets: React.FC = () => {
   const { tenantId } = useParams<{ tenantId: string }>();
@@ -72,7 +79,8 @@ export const Tickets: React.FC = () => {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
-  // Premier chargement terminé : le spinner plein écran ne remplace plus la page ensuite
+  const [error, setError] = useState<string | null>(null);
+  // Premier chargement terminé : les squelettes ne remplacent plus la page ensuite
   // (la barre de recherche garde son focus, même quand une recherche ne donne rien).
   const [loaded, setLoaded] = useState(false);
 
@@ -126,31 +134,43 @@ export const Tickets: React.FC = () => {
   paramsRef.current = search.apiParams;
   const paramsKey = JSON.stringify(search.apiParams);
 
-  useEffect(() => {
-    if (effectiveTenantId) {
-      loadTickets();
-    }
-  }, [effectiveTenantId, paramsKey]);
-
   const loadTickets = async () => {
     if (!effectiveTenantId) return;
 
     setLoading(true);
+    setError(null);
     try {
       const response = await managerMaintenanceService.listTickets(effectiveTenantId, paramsRef.current as never);
       if (response.success) {
         setTickets(response.data);
         setTotal(response.pagination?.total ?? response.data.length);
       }
-    } catch (error) {
-      console.error('Error loading tickets:', error);
+    } catch (err) {
+      console.error('Error loading tickets:', err);
+      setError(t('Les tickets de maintenance ne se sont pas chargés. Vérifiez votre connexion puis réessayez.'));
     } finally {
       setLoading(false);
       setLoaded(true);
     }
   };
 
-  const columns = [
+  useEffect(() => {
+    if (effectiveTenantId) {
+      loadTickets();
+    }
+  }, [effectiveTenantId, paramsKey]);
+
+  const ticketPath = (record: Ticket) => `/tenant/${effectiveTenantId}/admin/maintenance/tickets/${record.id}`;
+
+  const priorityTag = (priority: string) => (
+    <StatusTag
+      status={priority}
+      tone={priorityTones[priority] ?? 'neutral'}
+      label={priorityLabels[priority] || priority}
+    />
+  );
+
+  const columns: ColumnsType<Ticket> = [
     {
       title: t('Titre'),
       dataIndex: 'title',
@@ -160,7 +180,7 @@ export const Tickets: React.FC = () => {
       render: (text: string, record: Ticket) => (
         <Button
           type="link"
-          onClick={() => navigate(`/tenant/${effectiveTenantId}/admin/maintenance/tickets/${record.id}`)}
+          onClick={() => navigate(ticketPath(record))}
           style={{
             padding: 0,
             textAlign: 'start',
@@ -168,7 +188,8 @@ export const Tickets: React.FC = () => {
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
-            display: 'block'
+            display: 'block',
+            minHeight: 44
           }}
           title={text}
         >
@@ -196,14 +217,14 @@ export const Tickets: React.FC = () => {
       dataIndex: 'priority',
       key: 'priority',
       width: 120,
-      render: (priority: string) => <Tag color={priorityColors[priority]}>{priorityLabels[priority] || priority}</Tag>
+      render: (priority: string) => priorityTag(priority)
     },
     {
       title: t('Statut'),
       dataIndex: 'status',
       key: 'status',
       width: 130,
-      render: (status: MaintenanceTicketStatus) => <TicketStatusBadge status={status} />
+      render: (_status: string, record: Ticket) => <TicketStatusBadge status={record.status} />
     },
     {
       title: t('Prestataire'),
@@ -211,78 +232,55 @@ export const Tickets: React.FC = () => {
       key: 'assignedVendor',
       width: 150,
       ellipsis: true,
-      render: (name: string, record: Ticket) => {
-        // Try multiple ways to get the vendor name
-        return name || record.assignedVendor?.name || '-';
-      }
+      render: (name: string, record: Ticket) => name || record.assignedVendor?.name || '-'
     },
     {
       title: t('Date de création'),
       dataIndex: 'createdAt',
       key: 'createdAt',
       width: 140,
-      render: (date: string | null | undefined, record: Ticket) => {
-        // Try multiple approaches to format the date
-        if (!date && record.createdAt) {
-          date = record.createdAt;
-        }
-        if (!date) {
-          return <span style={{ color: '#999' }}>-</span>;
-        }
-
-        // Try dayjs first (more lenient)
-        const dayjsDate = dayjs(date);
-        if (dayjsDate.isValid()) {
-          return dayjsDate.format('DD MMM YYYY');
-        }
-
-        // Fallback to safeFormatDate
-        const formatted = safeFormatDate(date, 'DD MMM YYYY', '');
-        if (formatted && formatted !== 'Date invalide') {
-          return formatted;
-        }
-
-        // Last resort: try to display the raw value if it exists
-        return <span style={{ color: '#999' }}>-</span>;
-      }
+      render: (date: string | null | undefined) => formatCreatedAt(date)
     },
     {
       title: t('Action'),
       key: 'action',
       width: 80,
-      render: (_: any, record: Ticket) => (
+      render: (_: unknown, record: Ticket) => (
         <Button
           type="link"
           icon={<EyeOutlined />}
-          onClick={() => navigate(`/tenant/${effectiveTenantId}/admin/maintenance/tickets/${record.id}`)}
+          onClick={() => navigate(ticketPath(record))}
           title={t('Voir les détails')}
+          aria-label={t('Voir les détails')}
+          style={{ minWidth: 44, minHeight: 44 }}
         />
       )
     }
   ];
 
-  if (!loaded) {
-    return (
-      <>
-        <Spin size="large" style={{ display: 'block', textAlign: 'center', padding: '50px' }} />
-      </>
-    );
-  }
-
   return (
-    <>
-      <div style={{ padding: '24px' }}>
-        <div className="it-toolbar" style={{ marginBottom: 24 }}>
-          <Title level={2}>{t('Gestion des tickets de maintenance')}</Title>
-        </div>
+    <div style={{ padding: '24px' }}>
+      <PageHeader title={t('Gestion des tickets de maintenance')} />
 
-        <Card>
-          <Table
-            helpId="administration.maintenance-gestion.tickets.tableau"
-            aria-label={t('Gestion des tickets de maintenance')}
-            search={search.searchProps}
-            exportFilename={t('Gestion des tickets de maintenance')}
-            exportFetchAll={() =>
+      <Card>
+        <DataView<Ticket>
+          helpId="administration.maintenance-gestion.tickets.tableau"
+          aria-label={t('Gestion des tickets de maintenance')}
+          search={search.searchProps}
+          {...search.dataViewProps}
+          items={tickets}
+          total={total}
+          loading={!loaded}
+          isReloading={loaded && loading}
+          error={error}
+          onRetry={() => void loadTickets()}
+          rowKey={ticket => ticket.id}
+          columns={columns}
+          scrollX={900}
+          emptyDescription={t('Aucun ticket de maintenance')}
+          export={{
+            filename: t('Gestion des tickets de maintenance'),
+            fetchAll: () =>
               collectAllPages<Ticket>(async (page, limit) => {
                 const reponse = await managerMaintenanceService.listTickets(effectiveTenantId as string, {
                   ...(search.filterParams as object),
@@ -291,17 +289,24 @@ export const Tickets: React.FC = () => {
                 });
                 return { items: reponse.data ?? [], total: reponse.pagination?.total ?? 0 };
               })
-            }
-            columns={columns}
-            dataSource={tickets}
-            rowKey="id"
-            pagination={search.tablePagination(total)}
-            loading={loading}
-            scroll={{ x: 'max-content' }}
-            locale={search.isFiltered ? undefined : { emptyText: t('Aucun ticket de maintenance') }}
-          />
-        </Card>
-      </div>
-    </>
+          }}
+          renderCard={ticket => (
+            <DataCard
+              title={ticket.title}
+              subtitle={ticket.property?.address || undefined}
+              status={<TicketStatusBadge status={ticket.status} />}
+              fields={[
+                { label: t('Priorité'), value: priorityTag(ticket.priority) },
+                { label: t('Catégorie'), value: categoryLabels[ticket.category] || ticket.category },
+                { label: t('Prestataire'), value: ticket.assignedVendor?.name || '-' },
+                { label: t('Date de création'), value: formatCreatedAt(ticket.createdAt) }
+              ]}
+              onOpen={() => navigate(ticketPath(ticket))}
+              aria-label={ticket.title}
+            />
+          )}
+        />
+      </Card>
+    </div>
   );
 };

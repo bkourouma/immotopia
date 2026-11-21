@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useId, useState } from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { t } from '../../i18n/t';
+import { apiErrorText } from './property-api-errors';
 
 interface PropertyMandateFormProps {
   propertyId: string;
@@ -16,6 +17,7 @@ export const PropertyMandateForm: React.FC<PropertyMandateFormProps> = ({
   onCancel,
   loading = false
 }) => {
+  const idBase = useId();
   const [formData, setFormData] = useState({
     startDate: new Date().toISOString().split('T')[0],
     endDate: '',
@@ -56,11 +58,7 @@ export const PropertyMandateForm: React.FC<PropertyMandateFormProps> = ({
         notes: formData.notes || undefined
       });
     } catch (error: any) {
-      if (error.response?.data?.error) {
-        setErrors({ submit: error.response.data.error });
-      } else {
-        setErrors({ submit: t('Une erreur est survenue lors de la création du mandat') });
-      }
+      setErrors({ submit: apiErrorText(error, t('Une erreur est survenue lors de la création du mandat')) });
     } finally {
       setIsSubmitting(false);
     }
@@ -80,15 +78,19 @@ export const PropertyMandateForm: React.FC<PropertyMandateFormProps> = ({
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       {errors.submit && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">{errors.submit}</div>
+        <div role="alert" className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+          {errors.submit}
+        </div>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor={`${idBase}-debut`} className="block text-sm font-medium text-gray-700 mb-1">
             {t('Date de début')} <span className="text-red-500">*</span>
           </label>
           <Input
+            id={`${idBase}-debut`}
+            aria-invalid={Boolean(errors.startDate)}
             type="date"
             value={formData.startDate}
             onChange={e => handleChange('startDate', e.target.value)}
@@ -99,8 +101,12 @@ export const PropertyMandateForm: React.FC<PropertyMandateFormProps> = ({
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">{t('Date de fin (optionnel)')}</label>
+          <label htmlFor={`${idBase}-fin`} className="block text-sm font-medium text-gray-700 mb-1">
+            {t('Date de fin (optionnel)')}
+          </label>
           <Input
+            id={`${idBase}-fin`}
+            aria-invalid={Boolean(errors.endDate)}
             type="date"
             value={formData.endDate}
             onChange={e => handleChange('endDate', e.target.value)}
@@ -112,8 +118,11 @@ export const PropertyMandateForm: React.FC<PropertyMandateFormProps> = ({
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">{t('Notes (optionnel)')}</label>
+        <label htmlFor={`${idBase}-notes`} className="block text-sm font-medium text-gray-700 mb-1">
+          {t('Notes (optionnel)')}
+        </label>
         <textarea
+          id={`${idBase}-notes`}
           value={formData.notes}
           onChange={e => handleChange('notes', e.target.value)}
           rows={4}
@@ -122,7 +131,7 @@ export const PropertyMandateForm: React.FC<PropertyMandateFormProps> = ({
         />
       </div>
 
-      <div className="flex justify-end gap-4 pt-4 border-t">
+      <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 pt-4 border-t">
         {onCancel && (
           <Button type="button" variant="outline" onClick={onCancel} disabled={isSubmitting}>
             {t('Annuler')}

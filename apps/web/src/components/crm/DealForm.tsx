@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useId } from 'react';
 import { Form, Input, Select, Button, Checkbox, InputNumber, Row, Col, Card, Alert, Space, Typography } from 'antd';
 import { LocationSelector } from '../ui/location-selector';
 import { GeographicLocation } from '../../services/geographic-service';
@@ -6,6 +6,8 @@ import { CreateCrmDealRequest, UpdateCrmDealRequest, CrmDeal } from '../../types
 import { ContactRemoteSelect } from './RemoteSelect';
 import { t } from '../../i18n/t';
 import { HelpSectionTitle, HelpButton, helpAnchor } from '../../help';
+import { useConfirmAction } from '../primitives';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 
 const { TextArea } = Input;
 const { Title, Text } = Typography;
@@ -78,6 +80,35 @@ export const DealForm: React.FC<DealFormProps> = ({
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Saisie en cours : sert à la garde de sortie (« Annuler » ne jette pas un formulaire rempli sans demander).
+  const [touched, setTouched] = useState(false);
+  const confirm = useConfirmAction();
+  const { isDesktop } = useBreakpoint();
+  const formId = useId();
+
+  // Une erreur (validation ou serveur) se trouve parfois hors de l'écran, sur un formulaire long : on y amène la vue.
+  useEffect(() => {
+    if (Object.keys(errors).length === 0) return;
+    const root = document.getElementById(formId);
+    const target = root?.querySelector('.ant-form-item-has-error, [role="alert"]');
+    (target as HTMLElement | null | undefined)?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+  }, [errors, formId]);
+
+  const handleCancel = () => {
+    if (!onCancel) return;
+    if (touched && !isSubmitting) {
+      confirm({
+        title: t('Abandonner la saisie ?'),
+        description: t('Les informations saisies dans ce formulaire seront perdues.'),
+        okText: t('Abandonner'),
+        cancelText: t('Continuer la saisie'),
+        danger: true,
+        onConfirm: onCancel
+      });
+      return;
+    }
+    onCancel();
+  };
 
   // Helper functions for number formatting with spaces
   const formatNumber = (value: string): string => {
@@ -158,6 +189,7 @@ export const DealForm: React.FC<DealFormProps> = ({
   };
 
   const handleSubmit = async () => {
+    if (isSubmitting) return;
     if (!validate()) {
       return;
     }
@@ -259,6 +291,7 @@ export const DealForm: React.FC<DealFormProps> = ({
   };
 
   const handleChange = (field: string, value: string | boolean | GeographicLocation | null) => {
+    setTouched(true);
     setFormData(prev => ({ ...prev, [field]: value }));
     if (errors[field]) {
       setErrors(prev => {
@@ -273,6 +306,7 @@ export const DealForm: React.FC<DealFormProps> = ({
     // Parse the value to remove formatting
     const numericValue = parseNumber(value);
     // Store the numeric value (without spaces)
+    setTouched(true);
     setFormData(prev => ({ ...prev, [field]: numericValue }));
     if (errors[field]) {
       setErrors(prev => {
@@ -284,7 +318,7 @@ export const DealForm: React.FC<DealFormProps> = ({
   };
 
   return (
-    <Form onFinish={handleSubmit} layout="vertical" className="space-y-6">
+    <Form id={formId} onFinish={handleSubmit} layout="vertical" className="space-y-6">
       {errors.submit && <Alert message={errors.submit} type="error" showIcon className="mb-4" />}
 
       {/* Section: Informations générales et Budget en 2 colonnes */}
@@ -1004,9 +1038,9 @@ export const DealForm: React.FC<DealFormProps> = ({
       </Card>
 
       <Form.Item>
-        <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
+        <Space wrap style={{ width: '100%', justifyContent: 'flex-end' }}>
           {onCancel && (
-            <Button onClick={onCancel} disabled={isSubmitting || loading}>
+            <Button onClick={handleCancel} disabled={isSubmitting || loading} block={!isDesktop}>
               {t('Annuler')}
             </Button>
           )}
@@ -1014,6 +1048,7 @@ export const DealForm: React.FC<DealFormProps> = ({
             type="primary"
             htmlType="submit"
             loading={isSubmitting || loading}
+            block={!isDesktop}
             {...helpAnchor('affaire-enregistrer')}
           >
             {deal ? t("Mettre à jour l'affaire") : t("Créer l'affaire")}
