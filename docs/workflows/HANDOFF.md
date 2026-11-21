@@ -17,6 +17,12 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 
 Modèle de section : voir le bloc « Modèle de section » plus bas.
 
+## fix/reversements-proprietaires-recette — 2026-11-21
+
+**État** — Correctifs issus de la recette des reversements (PR #236) : BUG-003 (tri du « Dernier reversement », départage par `createdAt`, année, séquence), BUG-001 (alerte « taux non fixé » seulement si des loyers sont encaissés), BUG-005 (échec d'envoi du relevé en 502 avec message actionnable). Un test par correctif.
+
+**Reste** — BUG-004 (reversement absent du relevé suivant, à arbitrer) et BUG-002 (409 super-admin avec plusieurs invitations). Rejouer GL-REV-006/020/021/031/041 avec un SMTP local sur `api-demo`. `npm run typecheck` de l'API échoue en local sur un client Prisma périmé : lancer `prisma generate` avant de conclure sur les types.
+
 ## Revue Syndic et Gestion locative — 2026-11-20
 
 **Branche :** `orch/2026-11-20-revue-syndic-locatif`, base `origin/main` `25e340fe` ; dernier commit : voir `git log` de la branche. Pull request https://github.com/bkourouma/immotopia/pull/234 (fusion par l'utilisateur).

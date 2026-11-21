@@ -1508,6 +1508,7 @@
   "L'assistant IA n'est pas activé.": "مساعد الذكاء الاصطناعي غير مفعّل.",
   "L'assistant IA n'est pas disponible pour ce compte.": "مساعد الذكاء الاصطناعي غير متاح لهذا الحساب.",
   "L'assistant ne peut pas répondre à cette demande.": "لا يمكن للمساعد الرد على هذا الطلب.",
+  "L'e-mail n'a pas pu être envoyé. Réessayez ou vérifiez la configuration d'envoi.": "تعذّر إرسال البريد الإلكتروني. أعد المحاولة أو تحقّق من إعدادات الإرسال.",
   "L’écart correspond au prévisionnel moins le réalisé. Un écart négatif indique un dépassement.": "الفرق هو المبلغ المتوقع مطروحًا منه الإنفاق الفعلي. وتشير القيمة السالبة إلى تجاوز الميزانية.",
   "L’écart est le budget révisé moins l’engagé selon le tableau de bord du chantier.": "الانحراف هو الفرق بين الميزانية المعدلة والتكاليف الملتزم بها، حسب لوحة معلومات المشروع.",
   "L'échéance du mois n'existe plus.": "قسط الشهر لم يعد موجودًا.",
