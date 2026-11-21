@@ -1051,6 +1051,20 @@ export const auditExportRateLimiter = rateLimit({
   legacyHeaders: false
 });
 
+/** Regeneration du lien d'invitation d'une agence (super-admin) : 20 par 10 minutes et par utilisateur. */
+export const invitationLinkRateLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 20,
+  keyGenerator: req => `invitation-link:${req.user?.userId ?? 'anonyme'}`,
+  message: {
+    success: false,
+    code: 'RATE_LIMITED',
+    message: "Trop de liens d'invitation générés en peu de temps. Réessayez dans quelques minutes."
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
 /** Vérification d'intégrité du journal d'audit (ADR-006, phase 5) : relit des journées entières. 10 par 10 minutes. */
 export const auditIntegrityRateLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,

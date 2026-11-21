@@ -411,7 +411,8 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
       ['GET', '/api/tenants/:tenantId/forms/:formKey/modes', 'TENANT'],
       ['GET', '/api/portal/copropriete/forms/:formKey/modes', 'TENANT'],
       ['GET', '/api/admin/tenants/:tenantId/form-unlocks', 'PLATFORM_TENANTS_VIEW'],
-      ['PUT', '/api/admin/tenants/:tenantId/form-unlocks', 'PLATFORM_TENANTS_EDIT']
+      ['PUT', '/api/admin/tenants/:tenantId/form-unlocks', 'PLATFORM_TENANTS_EDIT'],
+      ['POST', '/api/admin/tenants/:tenantId/invitation-link', 'PLATFORM_TENANTS_EDIT']
     ];
     for (const [method, path, guard] of expected) {
       const route = routes.find(r => r.method === method && r.path === path);

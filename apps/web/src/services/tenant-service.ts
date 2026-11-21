@@ -261,6 +261,19 @@ export async function activateTenant(tenantId: string): Promise<TenantResponse> 
   return response.data;
 }
 
+export interface TenantInvitationLink {
+  acceptUrl: string;
+  email: string;
+  expiresAt: string;
+  invitationId: string;
+}
+
+// Regenere le lien d'invitation en attente de l'agence (super-admin, aucun e-mail envoye).
+export async function getTenantInvitationLink(tenantId: string): Promise<TenantInvitationLink> {
+  const response = await apiClient.post(`/admin/tenants/${tenantId}/invitation-link`, {});
+  return response.data.data;
+}
+
 // Get tenant statistics
 export async function getTenantStats(tenantId: string): Promise<TenantStatsResponse> {
   const response = await apiClient.get(`/admin/tenants/${tenantId}/stats`);

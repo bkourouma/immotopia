@@ -26,7 +26,14 @@ import { getTenantModules, updateTenantModules } from '../services/module-servic
 import { provisionTenant } from '../services/tenant-provisioning-service';
 import { IDEMPOTENCY_KEY_MAX_LENGTH } from '../utils/idempotency';
 import { timeZoneSchema } from '../utils/time-zone';
-import { AppError, asyncHandler, BadRequestError, NotFoundError } from '../middleware/error-middleware';
+import {
+  AppError,
+  asyncHandler,
+  BadRequestError,
+  NotFoundError,
+  UnauthorizedError
+} from '../middleware/error-middleware';
+import { regenerateInvitationLinkForPlatform } from '../services/invitation-service';
 import { t } from '../i18n';
 import { httpUrl } from '../lib/safe-url';
 import { parsePagination } from '../utils/pagination-helper';
@@ -202,6 +209,25 @@ export const provisionTenantHandler = asyncHandler(async (req: Request, res: Res
   );
 
   res.status(replay ? 200 : 201).json({ success: true, data: result });
+});
+
+const invitationLinkBodySchema = z.object({ invitationId: z.string().uuid().optional() }).strict();
+
+/**
+ * Regenere le lien d'invitation en attente d'une agence (super-admin) : aucun
+ * e-mail ni WhatsApp n'est envoye. Le lien porte le jeton en clair : reponse
+ * jamais mise en cache.
+ * POST /api/admin/tenants/:tenantId/invitation-link
+ */
+export const regenerateInvitationLinkHandler = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user?.userId) {
+    throw new UnauthorizedError();
+  }
+  const body = invitationLinkBodySchema.parse(req.body ?? {});
+  const data = await regenerateInvitationLinkForPlatform(req.params.tenantId, req.user.userId, body.invitationId);
+
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(200).json({ success: true, data });
 });
 
 // --- Lot G : logo d'agence --------------------------------------------------
