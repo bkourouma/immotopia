@@ -81,6 +81,41 @@ export const ResetPassword: React.FC = () => {
     }
   };
 
+  // Lien sans jeton (copié à moitié, tronqué par la messagerie) : pas de formulaire
+  // inutilisable, on propose directement d'en demander un nouveau.
+  if (!searchParams.get('token')) {
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 24,
+          background: 'var(--surface-page)'
+        }}
+      >
+        <Card style={{ maxWidth: 480, width: '100%' }}>
+          <Result
+            status="warning"
+            title={t('Lien de réinitialisation incomplet')}
+            subTitle={t(
+              'Ce lien ne fonctionne pas : il est peut-être incomplet ou a expiré. Demandez-en un nouveau pour choisir votre mot de passe.'
+            )}
+            extra={[
+              <Button type="primary" key="forgot" onClick={() => navigate('/forgot-password')}>
+                {t('Demander un nouveau lien')}
+              </Button>,
+              <Button key="login" onClick={() => navigate('/login')}>
+                {t('Retour à la connexion')}
+              </Button>
+            ]}
+          />
+        </Card>
+      </div>
+    );
+  }
+
   if (success) {
     return (
       <div
@@ -119,7 +154,7 @@ export const ResetPassword: React.FC = () => {
         alignItems: 'center',
         justifyContent: 'center',
         padding: 24,
-        background: '#f0f2f5'
+        background: 'var(--surface-page)'
       }}
     >
       <Card
@@ -141,10 +176,14 @@ export const ResetPassword: React.FC = () => {
           onFinish={handleSubmit}
           onValuesChange={handleValuesChange}
           initialValues={{ token: formData.token, newPassword: '', confirmPassword: '' }}
+          scrollToFirstError={{ focus: true }}
         >
           {errors.general && (
             <Alert
               message={errors.general}
+              description={
+                <Link to="/forgot-password">{t('Le lien a peut-être expiré ? Demandez-en un nouveau.')}</Link>
+              }
               type="error"
               showIcon
               closable
@@ -179,7 +218,13 @@ export const ResetPassword: React.FC = () => {
               }
             ]}
           >
-            <Input.Password size="large" prefix={<LockOutlined />} placeholder="••••••••" autoComplete="new-password" />
+            <Input.Password
+              size="large"
+              prefix={<LockOutlined />}
+              placeholder="••••••••"
+              autoComplete="new-password"
+              autoFocus
+            />
           </Form.Item>
 
           <Form.Item noStyle shouldUpdate={(prev, curr) => prev.newPassword !== curr.newPassword}>
@@ -189,6 +234,7 @@ export const ResetPassword: React.FC = () => {
           <Form.Item
             name="confirmPassword"
             label={t('Confirmer le nouveau mot de passe')}
+            dependencies={['newPassword']}
             validateStatus={errors.confirmPassword ? 'error' : undefined}
             help={errors.confirmPassword}
             rules={[

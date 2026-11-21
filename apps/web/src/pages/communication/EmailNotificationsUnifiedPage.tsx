@@ -20,7 +20,8 @@ import {
 } from 'antd';
 import { EditOutlined, MailOutlined, CodeOutlined, TeamOutlined, UserOutlined } from '@ant-design/icons';
 import { HtmlCodeEditor } from '../../components/HtmlCodeEditor';
-import { Table } from '../../components/primitives';
+import { ConfirmAction, StateBlock, Table } from '../../components/primitives';
+import { VariableChip } from '../../components/communication/VariableChip';
 import {
   emailNotificationConfigService,
   type EmailNotificationConfigItem,
@@ -60,6 +61,8 @@ export function EmailNotificationsUnifiedPage() {
   const { tenantId } = useParams<{ tenantId: string }>();
   const [items, setItems] = useState<EmailNotificationConfigItem[]>([]);
   const [loading, setLoading] = useState(true);
+  // Échec du chargement : le toast disparaît et laisserait croire à une liste vide ; ce bloc reste et propose « Réessayer ».
+  const [loadFailed, setLoadFailed] = useState(false);
   const [selectedEventGroup, setSelectedEventGroup] = useState<string | null>(null);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [applyToOtherKeys, setApplyToOtherKeys] = useState<string[]>([]);
@@ -78,12 +81,14 @@ export function EmailNotificationsUnifiedPage() {
     setLoading(true);
     try {
       const list = await emailNotificationConfigService.list(tenantId);
+      setLoadFailed(false);
       setItems(list);
       setSelectedKey(null);
       setSelectedEventGroup(null);
       form.resetFields();
     } catch (e: unknown) {
       const err = e as { response?: { data?: { message?: string } } };
+      setLoadFailed(true);
       message.error(err.response?.data?.message || t('Erreur lors du chargement'));
     } finally {
       setLoading(false);
@@ -184,7 +189,7 @@ export function EmailNotificationsUnifiedPage() {
       message.success(enabled ? t('Notification activée') : t('Notification désactivée'));
     } catch (e: unknown) {
       const err = e as { response?: { data?: { message?: string } } };
-      message.error(err.response?.data?.message || 'Erreur');
+      message.error(err.response?.data?.message || t('Erreur'));
     }
   };
 
@@ -223,7 +228,7 @@ export function EmailNotificationsUnifiedPage() {
     } catch (e: unknown) {
       if ((e as { errorFields?: unknown[] })?.errorFields) return;
       const err = e as { response?: { data?: { message?: string } } };
-      message.error(err.response?.data?.message || 'Erreur');
+      message.error(err.response?.data?.message || t('Erreur'));
     } finally {
       setSaving(false);
     }
@@ -241,7 +246,7 @@ export function EmailNotificationsUnifiedPage() {
       load();
     } catch (e: unknown) {
       const err = e as { response?: { data?: { message?: string } } };
-      message.error(err.response?.data?.message || 'Erreur');
+      message.error(err.response?.data?.message || t('Erreur'));
     }
   };
 
@@ -250,6 +255,8 @@ export function EmailNotificationsUnifiedPage() {
     const placeholder = getVariablePlaceholder(variableName);
     const body = form.getFieldValue('bodyHtmlOverride') ?? '';
     form.setFieldsValue({ bodyHtmlOverride: body + placeholder });
+    // L'éditeur ne montre pas où le texte arrive : on le dit.
+    message.info(t('Variable {{name}} ajoutée à la fin du corps.', { name: variableName }));
   };
 
   const columns = [
@@ -281,7 +288,15 @@ export function EmailNotificationsUnifiedPage() {
       width: 90,
       exportValue: (record: EmailNotificationConfigItem) => record.enabled,
       render: (enabled: boolean, record: EmailNotificationConfigItem) => (
-        <Switch checked={enabled} disabled={!canEdit} onChange={checked => handleToggleEnabled(record.key, checked)} />
+        <Switch
+          checked={enabled}
+          disabled={!canEdit}
+          aria-label={t('Activer « {{label}} » pour {{recipient}}', {
+            label: record.label,
+            recipient: record.recipientLabel
+          })}
+          onChange={checked => handleToggleEnabled(record.key, checked)}
+        />
       )
     },
     {
@@ -470,13 +485,11 @@ export function EmailNotificationsUnifiedPage() {
                       </Space>
                       <Space size={[4, 4]} wrap>
                         {variablesForEvent.map(name => (
-                          <Tag
+                          <VariableChip
                             key={name}
-                            style={{ cursor: canEdit ? 'pointer' : 'default', marginBottom: 4 }}
-                            onClick={canEdit ? () => insertVariable(name) : undefined}
-                          >
-                            {`{{${name}}}`}
-                          </Tag>
+                            name={name}
+                            onActivate={canEdit ? () => insertVariable(name) : undefined}
+                          />
                         ))}
                       </Space>
                     </div>
@@ -516,13 +529,26 @@ export function EmailNotificationsUnifiedPage() {
                       </div>
                     )}
 
-                    <Space>
+                    <Space wrap>
                       <Button type="primary" onClick={handleSaveTemplate} loading={saving} disabled={!canEdit}>
                         {t('Enregistrer')}
                       </Button>
-                      <Button onClick={handleReset} disabled={!canEdit}>
-                        {t('Réinitialiser au modèle par défaut')}
-                      </Button>
+                      {/* Efface la personnalisation : on nomme le modèle touché et la conséquence. */}
+                      <ConfirmAction
+                        danger
+                        title={t('Réinitialiser le modèle « {{label}} » pour {{recipient}} ?', {
+                          label: selectedItem.label,
+                          recipient: selectedItem.recipientLabel
+                        })}
+                        description={t(
+                          'Votre sujet et votre corps personnalisés seront remplacés par le modèle par défaut.'
+                        )}
+                        okText={t('Réinitialiser')}
+                        onConfirm={handleReset}
+                        disabled={!canEdit}
+                      >
+                        <Button disabled={!canEdit}>{t('Réinitialiser au modèle par défaut')}</Button>
+                      </ConfirmAction>
                     </Space>
                   </Form>
                 </>
@@ -541,18 +567,27 @@ export function EmailNotificationsUnifiedPage() {
       </Card>
 
       <Card title={t('Liste des notifications email')}>
-        <Spin spinning={loading}>
-          <Table
-            helpId="communication.canaux.email.tableau"
-            exportFilename={t('Liste des notifications email')}
-            {...local.tableProps}
-            exportFetchAll={local.exportAll}
-            scroll={{ x: 'max-content' }}
-            rowKey="key"
-            columns={columns}
-            size="middle"
+        {loadFailed && !loading && items.length === 0 ? (
+          <StateBlock
+            variant="error"
+            title={t('Impossible de charger les notifications')}
+            description={t('La liste n’a pas pu être récupérée. Vérifiez votre connexion puis réessayez.')}
+            onRetry={() => void load()}
           />
-        </Spin>
+        ) : (
+          <Spin spinning={loading}>
+            <Table
+              helpId="communication.canaux.email.tableau"
+              exportFilename={t('Liste des notifications email')}
+              {...local.tableProps}
+              exportFetchAll={local.exportAll}
+              scroll={{ x: 'max-content' }}
+              rowKey="key"
+              columns={columns}
+              size="middle"
+            />
+          </Spin>
+        )}
       </Card>
     </>
   );

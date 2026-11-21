@@ -582,3 +582,105 @@ code {
   border-top-color: var(--color-primary);
   animation: it-spin 0.8s linear infinite;
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   Lot UX 0 — accessibilité et ergonomie transverses
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* Lien d'évitement : invisible tant qu'il n'a pas le focus clavier, il permet
+   de passer l'en-tête et le menu pour atteindre le contenu en un seul Tab. */
+.it-skip-link {
+  position: fixed;
+  inset-block-start: var(--space-2, 8px);
+  inset-inline-start: var(--space-2, 8px);
+  z-index: 2000;
+  padding: var(--space-2, 8px) var(--space-4, 16px);
+  border-radius: var(--radius-md, 6px);
+  background: var(--color-primary);
+  color: #fff;
+  font-weight: 600;
+  text-decoration: none;
+  transform: translateY(-200%);
+}
+
+.it-skip-link:focus,
+.it-skip-link:focus-visible {
+  transform: none;
+  color: #fff;
+}
+
+/* Le conteneur principal reçoit le focus programmatique du lien d'évitement :
+   pas d'anneau sur une zone entière. */
+#main:focus {
+  outline: none;
+}
+
+/* Anneau de focus clavier net et contrasté, partout, sans gêner le clic souris.
+   Ant Design ne dessine qu'un halo pâle sur certains contrôles. */
+:where(a, button, [role='button'], [role='tab'], [role='menuitem'], input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Sur fond sombre (menu latéral), l'anneau bleu disparaît : on passe au clair. */
+.ant-layout-sider :where(a, button, [role='menuitem'], [tabindex]):focus-visible,
+.ant-drawer-body .ant-menu :where(a, button, [role='menuitem'], [tabindex]):focus-visible {
+  outline-color: #fff;
+  outline-offset: -2px;
+}
+
+/* Cibles tactiles : sous 992 px, un bouton à icône seule ou une action de
+   tableau fait au moins 44 x 44 px (WCAG 2.5.5 / §10.1). */
+@media (max-width: 991px) {
+  .ant-btn.ant-btn-icon-only,
+  .ant-btn.ant-btn-sm.ant-btn-icon-only {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .ant-table-tbody .ant-btn-link,
+  .ant-table-tbody .ant-btn-text {
+    min-height: 44px;
+    padding-inline: var(--space-3, 12px);
+  }
+
+  .ant-pagination .ant-pagination-item,
+  .ant-pagination .ant-pagination-prev,
+  .ant-pagination .ant-pagination-next {
+    min-width: 40px;
+    height: 40px;
+    line-height: 38px;
+  }
+}
+
+/* iOS Safari zoome la page au focus d'un champ dont le texte fait moins de
+   16 px, puis ne dézoome pas : on force 16 px sur mobile uniquement. */
+@media (max-width: 767px) {
+  .ant-input,
+  .ant-input-affix-wrapper > input.ant-input,
+  .ant-input-number-input,
+  .ant-select-selection-search-input,
+  .ant-picker-input > input,
+  textarea.ant-input {
+    font-size: var(--font-size-input, 16px) !important;
+  }
+}
+
+/* Mouvement réduit : coupe aussi les animations CSS et les défilements doux
+   qui ne passent pas par les tokens de durée. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* Le spinner de repli reste un repère de chargement : on le laisse tourner. */
+  .it-route-fallback-spinner {
+    animation-duration: 1.6s !important;
+    animation-iteration-count: infinite !important;
+  }
+}

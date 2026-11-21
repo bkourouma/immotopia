@@ -25,7 +25,12 @@ export function MessageThread({ messages, participants, hasMore, loadingMore, on
   }, [lastId]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 12 }} aria-label={t('Messages')}>
+    <div
+      style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 12 }}
+      role="log"
+      aria-live="polite"
+      aria-label={t('Messages')}
+    >
       {hasMore ? (
         <Button size="small" onClick={onLoadMore} loading={loadingMore} style={{ alignSelf: 'center' }}>
           {t('Charger les messages plus anciens')}
