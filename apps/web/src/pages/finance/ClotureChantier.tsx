@@ -43,6 +43,7 @@ import {
 } from '../../components/primitives';
 import { t } from '../../i18n/t';
 import { HelpSectionTitle, helpAnchor } from '../../help';
+import { saisieNombreProps } from '../../utils/montant-saisi';
 import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion } from '../../utils/list-search';
 
@@ -896,6 +897,7 @@ export const ClotureChantier: React.FC = () => {
               </div>
               <Input
                 id="lot-nom"
+                onPressEnter={() => !ajoutEnCours && ajouterLot()}
                 value={nouveauNom}
                 onChange={event => setNouveauNom(event.target.value)}
                 placeholder={t('Ex. Villa A3')}
@@ -908,6 +910,8 @@ export const ClotureChantier: React.FC = () => {
               </div>
               <InputNumber
                 id="lot-surface"
+                {...saisieNombreProps(2)}
+                addonAfter="m²"
                 min={0}
                 step={1}
                 style={{ width: 160 }}
@@ -921,6 +925,8 @@ export const ClotureChantier: React.FC = () => {
               </div>
               <InputNumber
                 id="lot-quote-part"
+                {...saisieNombreProps(2)}
+                addonAfter="%"
                 min={0}
                 max={100}
                 step={0.01}
@@ -1136,7 +1142,13 @@ export const ClotureChantier: React.FC = () => {
             <div>
               <label htmlFor="correction-nom">{t('Nom du lot')}</label>
             </div>
-            <Input id="correction-nom" value={correctionNom} onChange={event => setCorrectionNom(event.target.value)} />
+            <Input
+              id="correction-nom"
+              autoFocus
+              onPressEnter={() => correctionNom.trim() && !correctionEnCours && enregistrerCorrection()}
+              value={correctionNom}
+              onChange={event => setCorrectionNom(event.target.value)}
+            />
           </div>
           <div>
             <div>
@@ -1144,6 +1156,8 @@ export const ClotureChantier: React.FC = () => {
             </div>
             <InputNumber
               id="correction-surface"
+              {...saisieNombreProps(2)}
+              addonAfter="m²"
               min={0}
               step={1}
               style={{ width: '100%' }}
@@ -1157,6 +1171,8 @@ export const ClotureChantier: React.FC = () => {
             </div>
             <InputNumber
               id="correction-quote-part"
+              {...saisieNombreProps(2)}
+              addonAfter="%"
               min={0}
               max={100}
               step={0.01}
@@ -1202,7 +1218,7 @@ export const ClotureChantier: React.FC = () => {
               description={
                 <span>
                   {t('Cette opération est irréversible. Elle crée un bien réel au patrimoine, «')}{' '}
-                  {formulaireBien.title.trim() || 'sans titre'} {t('», de référence')}{' '}
+                  {formulaireBien.title.trim() || t('sans titre')} {t('», de référence')}{' '}
                   {formulaireBien.internalReference.trim() || '—'}
                   {t(", avec une valeur d'acquisition de")} <MoneyValue value={valeurAcquisition} />{' '}
                   {t("— le coût de revient figé de ce lot. Un lot ne bascule qu'une fois.")}
@@ -1236,6 +1252,7 @@ export const ClotureChantier: React.FC = () => {
             </div>
             <Input
               id="bien-reference"
+              autoFocus
               value={formulaireBien.internalReference}
               onChange={event => setFormulaireBien({ ...formulaireBien, internalReference: event.target.value })}
               placeholder={t('Ex. VIL-2026-014')}

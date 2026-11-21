@@ -322,6 +322,7 @@ export const BauxDeTerrain: React.FC = () => {
             <label htmlFor="bail-bailleur">{t('Bailleur')}</label>
             <Input
               id="bail-bailleur"
+              autoFocus
               value={bailleur}
               onChange={event => setBailleur(event.target.value)}
               placeholder={t('Ex. Mamadou Kouadio')}

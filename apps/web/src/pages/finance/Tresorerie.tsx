@@ -944,7 +944,7 @@ export const Tresorerie: React.FC = () => {
         open={modalCompteOuvert}
         onCancel={fermerModalCompte}
         onOk={soumettreCompte}
-        okText={t('Créer')}
+        okText={t('Créer le compte')}
         cancelText={t('Annuler')}
         confirmLoading={enregistrementCompte}
         destroyOnHidden
@@ -956,6 +956,7 @@ export const Tresorerie: React.FC = () => {
             rules={[{ required: true, message: t('La nature est obligatoire.') }]}
           >
             <Select
+              autoFocus
               options={OPTIONS_NATURE}
               placeholder={t('Choisir…')}
               onChange={valeur => setNatureChoisie(valeur as TreasuryAccountKind)}
@@ -1063,7 +1064,7 @@ export const Tresorerie: React.FC = () => {
         open={modalVirementOuvert}
         onCancel={fermerModalVirement}
         onOk={soumettreVirement}
-        okText={t('Enregistrer')}
+        okText={t('Enregistrer le virement')}
         cancelText={t('Annuler')}
         confirmLoading={enregistrementVirement}
         destroyOnHidden
@@ -1163,7 +1164,7 @@ export const Tresorerie: React.FC = () => {
         open={modalVersementOuvert}
         onCancel={fermerModalVersement}
         onOk={soumettreVersement}
-        okText={t('Enregistrer')}
+        okText={t('Enregistrer le versement')}
         cancelText={t('Annuler')}
         confirmLoading={enregistrementVersement}
         destroyOnHidden
@@ -1174,7 +1175,7 @@ export const Tresorerie: React.FC = () => {
             label={t('Période')}
             rules={[{ required: true, message: t('La période est obligatoire.') }]}
           >
-            <Input placeholder={t('Ex. Septembre 2026')} />
+            <Input autoFocus placeholder={t('Ex. Septembre 2026')} />
           </Form.Item>
           <Form.Item
             name="amount"

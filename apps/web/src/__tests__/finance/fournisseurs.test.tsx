@@ -336,7 +336,7 @@ describe('Fournisseurs — liste et création', () => {
     await user.click(within(screen.getByRole('dialog')).getByRole('combobox'));
     await user.click(await screen.findByText('Prestation'));
 
-    await user.click(screen.getByRole('button', { name: 'Créer' }));
+    await user.click(screen.getByRole('button', { name: 'Créer le fournisseur' }));
 
     await waitFor(() => expect(createSupplier).toHaveBeenCalledTimes(1));
     expect(createSupplier.mock.calls[0][1]).toMatchObject({ name: 'Nouveau Fournisseur SARL', kind: 'SERVICES' });

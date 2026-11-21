@@ -188,7 +188,11 @@ export const StockPhotoCapture: React.FC<StockPhotoCaptureProps> = ({
                 <Text>{item.fileName}</Text>
                 <Text type={item.status === 'failed' ? 'warning' : 'secondary'}>{STATUS_LABEL[item.status]()}</Text>
                 {item.status === 'failed' && target ? (
-                  <Button size="small" icon={<ReloadOutlined />} onClick={() => patch(item.key, { status: 'pending' })}>
+                  <Button
+                    icon={<ReloadOutlined />}
+                    onClick={() => patch(item.key, { status: 'pending' })}
+                    style={{ minHeight: 44 }}
+                  >
                     {t('Réessayer')}
                   </Button>
                 ) : null}
