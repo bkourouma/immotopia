@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { App, Card, Typography, Spin, Alert, Empty, List, Button, Space, Tag, Pagination } from 'antd';
+import { App, Card, Typography, Spin, List, Button, Space, Tag, Pagination } from 'antd';
 import { FolderOutlined, DownloadOutlined, FileTextOutlined, CalendarOutlined, SyncOutlined } from '@ant-design/icons';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { ownerPortalService } from '../../services/ownerPortalService';
 import type { OwnerPortalPagination } from '../../services/ownerPortalService';
-import { ListSearch, StateBlock } from '../../components/primitives';
+import { ListSearch, PageHeader, SkeletonList, StateBlock } from '../../components/primitives';
 import { useListSearch } from '../../hooks/useListSearch';
 import { STALE_TIME } from '../../lib/query-keys';
 import { useOwnerPropertyOptions } from './useOwnerPropertyOptions';
@@ -12,7 +12,7 @@ import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
 import { HelpSectionTitle } from '../../help';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 interface RentalDocument {
   id: string;
@@ -57,12 +57,12 @@ export default function Documents() {
   const getDocumentTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
       LEASE_CONTRACT: t('Contrat de bail'),
-      LEASE_ADDENDUM: 'Avenant',
+      LEASE_ADDENDUM: t('Avenant'),
       RENT_RECEIPT: t('Quittance de loyer'),
-      RENT_QUITTANCE: 'Quittance',
+      RENT_QUITTANCE: t('Quittance'),
       DEPOSIT_RECEIPT: t('Reçu de dépôt'),
       STATEMENT: t('Relevé'),
-      OTHER: 'Autre'
+      OTHER: t('Autre')
     };
     return labels[type] || type;
   };
@@ -171,42 +171,40 @@ export default function Documents() {
     return <Tag color={config.color}>{config.label}</Tag>;
   };
 
-  if (isPending && !data) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <Spin size="large" tip={t('Chargement des documents...')} />
-      </div>
-    );
-  }
-
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      {/* Page Header */}
-      <div className="it-toolbar">
-        <div>
-          <Title level={2}>{t('Documents')}</Title>
-          <Text type="secondary">{t('Accès aux documents de location')}</Text>
-        </div>
-        <Button
-          icon={<SyncOutlined />}
-          onClick={() => refetch()}
-          loading={isFetching}
-          aria-label={t('Rafraîchir les documents')}
-        >
-          {t('Actualiser')}
-        </Button>
-      </div>
+      <PageHeader
+        title={t('Documents')}
+        subtitle={t('Accès aux documents de location')}
+        extra={
+          <Button
+            icon={<SyncOutlined />}
+            onClick={() => refetch()}
+            loading={isFetching}
+            aria-label={t('Rafraîchir les documents')}
+          >
+            {t('Actualiser')}
+          </Button>
+        }
+      />
 
       {/* Recherche multicritères (T137) : le type et le bien sont filtrés par le serveur */}
       <div>
         <ListSearch {...search.searchProps} resultCount={error ? undefined : total} />
       </div>
 
-      {error && <Alert message={t('Erreur')} description={error} type="error" showIcon />}
-
       {/* Documents Grouped by Type (T136) */}
       <Spin spinning={isFetching && !isPending}>
-        {groupedPage.length > 0 ? (
+        {error ? (
+          <StateBlock
+            variant="error"
+            title={t('Impossible de charger les documents')}
+            description={error}
+            actions={[{ label: t('Réessayer'), onClick: () => void refetch(), primary: true }]}
+          />
+        ) : isPending && !data ? (
+          <SkeletonList rows={3} aria-label={t('Chargement des documents')} />
+        ) : groupedPage.length > 0 ? (
           <Space direction="vertical" size="large" style={{ width: '100%' }}>
             {groupedPage.map(([type, group]) => (
               <Card
@@ -282,13 +280,13 @@ export default function Documents() {
                 actions={[{ label: t('Effacer les critères'), onClick: search.clear, primary: true }]}
               />
             ) : (
-              <Empty description={t('Aucun document trouvé')} />
+              <StateBlock variant="empty" description={t('Aucun document trouvé')} />
             )}
           </Card>
         )}
       </Spin>
 
-      {(total > search.pageSize || search.page > 1) && (
+      {!error && (total > search.pageSize || search.page > 1) && (
         <Pagination
           align="end"
           current={search.page}

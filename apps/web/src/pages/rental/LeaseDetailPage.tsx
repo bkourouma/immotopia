@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { App, Button, Card, Tag, Tabs, Select, Descriptions, Space, Row, Col, Spin, Alert, Typography } from 'antd';
+import { App, Button, Card, Tag, Tabs, Select, Descriptions, Space, Row, Col, Typography } from 'antd';
 import {
   EditOutlined,
-  ArrowLeftOutlined,
   FileTextOutlined,
   CalendarOutlined,
   DollarOutlined,
@@ -30,11 +29,15 @@ import type { SignerInput } from '../../types/signature-types';
 import { LeaseDirectDebitPanel } from '../../components/rental/direct-debit/LeaseDirectDebitPanel';
 import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { HelpButton, HelpSectionTitle } from '../../help';
+import { PageHeader } from '../../components/primitives/PageHeader';
+import { StateBlock } from '../../components/primitives/StateBlock';
+import { SkeletonDetail } from '../../components/primitives/Skeleton';
+import { useConfirmAction } from '../../components/primitives/ConfirmAction';
 import { t as translate } from '../../i18n/t';
 import { LEASE_TAB_PARAM, defaultLeaseTab, resolveLeaseTab, withLeaseTab, withTabLifecycle } from './lease-detail-tabs';
 
 import { activeLocale } from '../../i18n/format';
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 /**
  * Paramètres d'URL propres à la liste d'un onglet (filtres, page, tri). Chaque
@@ -48,6 +51,7 @@ const ONGLET_PRINCIPAL_PARAM = 'tab';
 
 export const LeaseDetailPage: React.FC = () => {
   const { message } = App.useApp();
+  const confirmer = useConfirmAction();
 
   const { tenantId, leaseId } = useParams<{ tenantId: string; leaseId: string }>();
   const navigate = useNavigate();
@@ -167,6 +171,29 @@ export const LeaseDetailPage: React.FC = () => {
     }
   };
 
+  /**
+   * Terminer ou annuler un bail est un geste lourd : on le confirme en nommant
+   * le bail et la conséquence. Les autres statuts s'appliquent directement.
+   */
+  const demanderChangementStatut = (newStatus: RentalLeaseStatus) => {
+    if (newStatus !== 'ENDED' && newStatus !== 'CANCELED') {
+      void handleStatusChange(newStatus);
+      return;
+    }
+    const numero = lease?.lease_number ?? '';
+    confirmer({
+      title:
+        newStatus === 'ENDED'
+          ? translate('Marquer le bail {{numero}} comme terminé ?', { numero })
+          : translate('Annuler le bail {{numero}} ?', { numero }),
+      description: translate('Le statut du bail changera. Vous pourrez le modifier de nouveau depuis cette fiche.'),
+      okText: newStatus === 'ENDED' ? translate('Marquer comme terminé') : translate('Annuler le bail'),
+      cancelText: translate('Garder le statut actuel'),
+      danger: true,
+      onConfirm: () => handleStatusChange(newStatus)
+    });
+  };
+
   const getStatusTag = (status: RentalLeaseStatus) => {
     const statusMap: Record<RentalLeaseStatus, { label: string; color: string }> = {
       DRAFT: { label: translate('Brouillon'), color: 'default' },
@@ -206,26 +233,20 @@ export const LeaseDetailPage: React.FC = () => {
   };
 
   if (loading) {
-    return (
-      <>
-        <div style={{ textAlign: 'center', padding: '48px 0' }}>
-          <Spin size="large" tip="Chargement..." />
-        </div>
-      </>
-    );
+    return <SkeletonDetail aria-label={translate('Chargement du bail')} />;
   }
 
   if (error || !lease) {
     return (
-      <>
-        <Alert
-          message={translate('Erreur')}
-          description={error || translate('Bail non trouvé')}
-          type="error"
-          showIcon
-          style={{ margin: '24px' }}
-        />
-      </>
+      <StateBlock
+        variant="error"
+        title={translate('Bail non chargé')}
+        description={error || translate('Bail non trouvé')}
+        actions={[
+          { label: translate('Réessayer'), onClick: () => void loadLease(), primary: true },
+          { label: translate('Retour aux baux'), onClick: () => navigate(`/tenant/${tenantId}/rental/leases`) }
+        ]}
+      />
     );
   }
 
@@ -270,48 +291,45 @@ export const LeaseDetailPage: React.FC = () => {
   return (
     <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        <Row justify="space-between" align="middle">
-          <Col>
-            <Space size="middle">
-              <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/tenant/${tenantId}/rental/leases`)}>
-                {translate('Retour')}
-              </Button>
-              <div>
-                <Title level={2} style={{ margin: 0 }}>
-                  {translate('Bail')} {lease.lease_number}
-                </Title>
-                <Text type="secondary">{translate('Détails du bail de location')}</Text>
-              </div>
+        <PageHeader
+          title={`${translate('Bail')} ${lease.lease_number}`}
+          subtitle={
+            <Space size="small">
+              {getStatusTag(lease.status)}
+              <span>{translate('Détails du bail de location')}</span>
             </Space>
-          </Col>
-          <Col>
-            <Space>
-              <Select
-                showSearch
-                optionFilterProp="children"
-                value={lease.status}
-                onChange={value => handleStatusChange(value as RentalLeaseStatus)}
-                style={{ width: 180 }}
-                disabled={!peutModifier}
-              >
-                <Select.Option value="DRAFT">{translate('Brouillon')}</Select.Option>
-                <Select.Option value="ACTIVE">{translate('Actif')}</Select.Option>
-                <Select.Option value="SUSPENDED">{translate('Suspendu')}</Select.Option>
-                <Select.Option value="ENDED">{translate('Terminé')}</Select.Option>
-                <Select.Option value="CANCELED">{translate('Annulé')}</Select.Option>
-              </Select>
-              {peutModifier && (
-                <Button
-                  type="primary"
-                  icon={<EditOutlined />}
-                  onClick={() => navigate(`/tenant/${tenantId}/rental/leases/${leaseId}/edit`)}
-                >
-                  {translate('Modifier')}
-                </Button>
-              )}
-            </Space>
-          </Col>
-        </Row>
+          }
+          breadcrumbs={[
+            { label: translate('Baux'), to: `/tenant/${tenantId}/rental/leases` },
+            { label: lease.lease_number }
+          ]}
+          extra={
+            <Select
+              showSearch
+              optionFilterProp="children"
+              aria-label={translate('Statut du bail')}
+              value={lease.status}
+              onChange={value => demanderChangementStatut(value as RentalLeaseStatus)}
+              style={{ width: 180 }}
+              disabled={!peutModifier}
+            >
+              <Select.Option value="DRAFT">{translate('Brouillon')}</Select.Option>
+              <Select.Option value="ACTIVE">{translate('Actif')}</Select.Option>
+              <Select.Option value="SUSPENDED">{translate('Suspendu')}</Select.Option>
+              <Select.Option value="ENDED">{translate('Terminé')}</Select.Option>
+              <Select.Option value="CANCELED">{translate('Annulé')}</Select.Option>
+            </Select>
+          }
+          primaryAction={
+            peutModifier
+              ? {
+                  label: translate('Modifier'),
+                  icon: <EditOutlined />,
+                  onClick: () => navigate(`/tenant/${tenantId}/rental/leases/${leaseId}/edit`)
+                }
+              : undefined
+          }
+        />
 
         <Row gutter={[16, 16]}>
           <Col xs={24} md={12}>

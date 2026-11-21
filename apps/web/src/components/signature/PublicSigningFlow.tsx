@@ -19,6 +19,11 @@ import { t } from '../../i18n/t';
 
 const { Paragraph, Text, Title } = Typography;
 
+/** Cible tactile minimale (44 px) pour un signataire sur téléphone. */
+const TOUCH: React.CSSProperties = { minHeight: 44 };
+/** Les écrans de résultat se resserrent : le padding par défaut d'Ant (48 px) mange un téléphone. */
+const RESULT_STYLE: React.CSSProperties = { padding: '32px 16px' };
+
 type View =
   | { kind: 'loading' }
   | { kind: 'invalid' }
@@ -94,6 +99,8 @@ export const PublicSigningFlow: React.FC<PublicSigningFlowProps> = ({ token, onD
   const [viewToken, setViewToken] = useState<string | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [pdfError, setPdfError] = useState<string | null>(null);
+  // Incrémenté par « Réessayer » : relance le chargement de la demande.
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -111,7 +118,7 @@ export const PublicSigningFlow: React.FC<PublicSigningFlowProps> = ({ token, onD
     return () => {
       alive = false;
     };
-  }, [token]);
+  }, [token, reloadKey]);
 
   useEffect(() => {
     if (countdown <= 0) return;
@@ -164,68 +171,149 @@ export const PublicSigningFlow: React.FC<PublicSigningFlowProps> = ({ token, onD
     }
   }, [token]);
 
+  /** Réception puis saisie du code à usage unique, en pleine largeur et au pouce sur téléphone. */
+  const renderCodeControls = (withVerify: boolean) => (
+    <Space direction="vertical" size="small" style={{ width: '100%' }}>
+      <Button block size="large" style={TOUCH} onClick={() => void sendCode()} disabled={busy || countdown > 0}>
+        {countdown > 0
+          ? t('Renvoyer le code dans {{n}} s', { n: countdown })
+          : otpSentTo
+            ? t('Renvoyer le code')
+            : t('Recevoir le code')}
+      </Button>
+      <Input
+        value={code}
+        onChange={event => setCode(event.target.value.replace(/\s/g, ''))}
+        inputMode="numeric"
+        autoComplete="one-time-code"
+        maxLength={8}
+        placeholder={t('Code reçu')}
+        aria-label={t('Code reçu')}
+        size="large"
+        style={{ ...TOUCH, letterSpacing: 4 }}
+      />
+      {withVerify && (
+        <Button
+          block
+          type="primary"
+          size="large"
+          style={TOUCH}
+          disabled={busy || code.trim().length < 4}
+          onClick={() => void verifyCode()}
+        >
+          {t('Vérifier le code')}
+        </Button>
+      )}
+    </Space>
+  );
+
+  const retryButton = (
+    <Button type="primary" size="large" style={TOUCH} onClick={() => setReloadKey(value => value + 1)}>
+      {t('Réessayer')}
+    </Button>
+  );
+
   if (view.kind === 'loading') {
     return (
-      <div style={{ textAlign: 'center', padding: 48 }}>
+      <div role="status" aria-live="polite" style={{ textAlign: 'center', padding: 48 }}>
         <Spin size="large" />
+        <Paragraph type="secondary" style={{ marginTop: 12 }}>
+          {t('Chargement de votre document…')}
+        </Paragraph>
       </div>
     );
   }
   if (view.kind === 'invalid') {
     return (
       <Result
+        style={RESULT_STYLE}
         status="404"
         title={t('Lien invalide ou expiré')}
-        subTitle={t("Ce lien de signature n'existe pas ou n'est plus valable. Contactez l'agence qui vous l'a envoyé.")}
+        subTitle={t(
+          "Ce lien de signature n'existe pas ou n'est plus valable. Vérifiez que vous avez ouvert le lien en entier, sinon demandez un nouveau lien à l'agence qui vous l'a envoyé."
+        )}
       />
     );
   }
   if (view.kind === 'rate_limited') {
-    return <Result status="warning" title={t('Trop de demandes')} subTitle={t('Réessayez dans quelques minutes.')} />;
+    return (
+      <Result
+        style={RESULT_STYLE}
+        status="warning"
+        title={t('Trop de demandes')}
+        subTitle={t('Réessayez dans quelques minutes.')}
+        extra={retryButton}
+      />
+    );
   }
   if (view.kind === 'unavailable') {
     return (
       <Result
+        style={RESULT_STYLE}
         status="error"
         title={t('Service momentanément indisponible')}
         subTitle={t('Réessayez dans un instant.')}
+        extra={retryButton}
       />
     );
   }
   if (view.kind === 'signed') {
     return (
-      <Result
-        status="success"
-        title={t('Merci, votre signature est enregistrée')}
-        subTitle={
-          view.requestStatus === 'COMPLETED'
-            ? t("Toutes les signatures sont réunies : l'agence vous enverra le document signé.")
-            : t("Les autres signataires vont être sollicités. L'agence vous enverra le document signé.")
-        }
-      />
+      <div role="status" aria-live="polite">
+        <Result
+          style={RESULT_STYLE}
+          status="success"
+          title={t('Merci, votre signature est enregistrée')}
+          subTitle={
+            view.requestStatus === 'COMPLETED'
+              ? t("Toutes les signatures sont réunies : l'agence vous enverra le document signé.")
+              : t("Les autres signataires vont être sollicités. L'agence vous enverra le document signé.")
+          }
+          extra={onDone ? undefined : <Text type="secondary">{t('Vous pouvez fermer cette page.')}</Text>}
+        />
+      </div>
     );
   }
   if (view.kind === 'declined') {
     return (
-      <Result
-        status="info"
-        title={t('Vous avez refusé de signer')}
-        subTitle={t("L'agence a été informée. Aucune signature n'a été enregistrée.")}
-      />
+      <div role="status" aria-live="polite">
+        <Result
+          style={RESULT_STYLE}
+          status="info"
+          title={t('Vous avez refusé de signer')}
+          subTitle={t("L'agence a été informée. Aucune signature n'a été enregistrée.")}
+          extra={onDone ? undefined : <Text type="secondary">{t('Vous pouvez fermer cette page.')}</Text>}
+        />
+      </div>
     );
   }
 
   const { request, signer, consentText } = view.data;
 
   if (signer.status === 'SIGNED') {
-    return <Result status="success" title={t('Vous avez déjà signé ce document')} />;
+    return (
+      <Result
+        style={RESULT_STYLE}
+        status="success"
+        title={t('Vous avez déjà signé ce document')}
+        subTitle={t("Rien d'autre à faire : l'agence a bien reçu votre signature.")}
+      />
+    );
   }
   if (signer.status === 'DECLINED' || request.status === 'DECLINED') {
-    return <Result status="info" title={t('Cette signature a été refusée')} />;
+    return (
+      <Result
+        style={RESULT_STYLE}
+        status="info"
+        title={t('Cette signature a été refusée')}
+        subTitle={t("Contactez l'agence si vous souhaitez reprendre la signature.")}
+      />
+    );
   }
   if (request.status === 'EXPIRED') {
     return (
       <Result
+        style={RESULT_STYLE}
         status="warning"
         title={t('Cette demande a expiré')}
         subTitle={t("Demandez à l'agence de vous envoyer un nouveau lien.")}
@@ -233,15 +321,30 @@ export const PublicSigningFlow: React.FC<PublicSigningFlowProps> = ({ token, onD
     );
   }
   if (request.status === 'CANCELED') {
-    return <Result status="warning" title={t("Cette demande a été annulée par l'agence")} />;
+    return (
+      <Result
+        style={RESULT_STYLE}
+        status="warning"
+        title={t("Cette demande a été annulée par l'agence")}
+        subTitle={t("Contactez l'agence si vous pensez qu'il s'agit d'une erreur.")}
+      />
+    );
   }
   if (request.status === 'COMPLETED') {
-    return <Result status="success" title={t('Ce document est déjà entièrement signé')} />;
+    return (
+      <Result
+        style={RESULT_STYLE}
+        status="success"
+        title={t('Ce document est déjà entièrement signé')}
+        subTitle={t("Rien d'autre à faire : l'agence vous enverra le document signé.")}
+      />
+    );
   }
 
   if (view.data.canSign === false) {
     return (
       <Result
+        style={RESULT_STYLE}
         status="info"
         title={t("Ce n'est pas encore votre tour")}
         subTitle={t('Vous recevrez votre lien de signature dès que les signataires précédents auront signé.')}
@@ -349,6 +452,35 @@ export const PublicSigningFlow: React.FC<PublicSigningFlowProps> = ({ token, onD
 
   const fileUrl = publicSignatureFileUrl(token);
 
+  // Étapes numérotées : avec « code avant consultation », le code vient d'abord.
+  const readStep = codeBeforeView ? 2 : 1;
+  const idStep = codeBeforeView ? 1 : 2;
+  const signStep = codeBeforeView || needsCode ? 3 : 2;
+  const stepHeading = (n: number, label: string) => (
+    <Title level={5} style={{ margin: '0 0 8px' }}>
+      {`${n}. ${label}`}
+    </Title>
+  );
+
+  const showSignArea = !(codeBeforeView && (!viewToken || external));
+  // Ce qu'il reste à faire tant que le bouton est grisé : un bouton inactif sans raison laisse le signataire bloqué.
+  const missing: string[] = [];
+  if (showSignArea) {
+    if (needsCode && !codeBeforeView && code.trim().length < 4) missing.push(t('saisissez le code reçu'));
+    if (signatureValue.length === 0) {
+      missing.push(effectiveMode === 'TYPED' ? t('tapez votre nom') : t('dessinez votre signature'));
+    }
+    if (!consent) missing.push(t('cochez la case de consentement'));
+  }
+  const linkStyle: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', minHeight: 44 };
+  const frameStyle: React.CSSProperties = {
+    width: '100%',
+    height: '60vh',
+    minHeight: 320,
+    border: '1px solid #d1d5db',
+    borderRadius: 8
+  };
+
   return (
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
       <div>
@@ -367,33 +499,28 @@ export const PublicSigningFlow: React.FC<PublicSigningFlowProps> = ({ token, onD
       {codeBeforeView ? (
         viewToken ? (
           <div>
+            {stepHeading(readStep, t('Lisez le document'))}
             {pdfUrl ? (
               <>
-                <iframe
-                  title={t('Document à signer')}
-                  src={pdfUrl}
-                  style={{
-                    width: '100%',
-                    height: '60vh',
-                    minHeight: 320,
-                    border: '1px solid #d1d5db',
-                    borderRadius: 8
-                  }}
-                />
-                <a href={pdfUrl} download={`${request.title}.pdf`}>
+                <iframe title={t('Document à signer')} src={pdfUrl} style={frameStyle} />
+                <Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
+                  {t("Le document s'affiche mal sur votre téléphone ? Ouvrez-le avec le lien ci-dessous.")}
+                </Text>
+                <a href={pdfUrl} download={`${request.title}.pdf`} style={linkStyle}>
                   {t('Télécharger le document (PDF)')}
                 </a>
               </>
             ) : pdfError ? (
               <Alert type="error" showIcon message={pdfError} />
             ) : (
-              <div style={{ textAlign: 'center', padding: 24 }}>
+              <div role="status" style={{ textAlign: 'center', padding: 24 }}>
                 <Spin />
               </div>
             )}
           </div>
         ) : (
           <div>
+            {stepHeading(idStep, t('Confirmez votre identité'))}
             <Alert
               type="info"
               showIcon
@@ -407,82 +534,41 @@ export const PublicSigningFlow: React.FC<PublicSigningFlowProps> = ({ token, onD
                     contact: signer.maskedContact
                   })}
             </Paragraph>
-            <Space wrap>
-              <Button onClick={() => void sendCode()} disabled={busy || countdown > 0}>
-                {countdown > 0
-                  ? t('Renvoyer le code dans {{n}} s', { n: countdown })
-                  : otpSentTo
-                    ? t('Renvoyer le code')
-                    : t('Recevoir le code')}
-              </Button>
-              <Input
-                value={code}
-                onChange={event => setCode(event.target.value.replace(/\s/g, ''))}
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                maxLength={8}
-                placeholder={t('Code reçu')}
-                aria-label={t('Code reçu')}
-                style={{ width: 140 }}
-              />
-              <Button type="primary" disabled={busy || code.trim().length < 4} onClick={() => void verifyCode()}>
-                {t('Vérifier le code')}
-              </Button>
-            </Space>
+            {renderCodeControls(true)}
           </div>
         )
       ) : (
         <div>
-          <iframe
-            title={t('Document à signer')}
-            src={fileUrl}
-            style={{ width: '100%', height: '60vh', minHeight: 320, border: '1px solid #d1d5db', borderRadius: 8 }}
-          />
-          <a href={fileUrl} target="_blank" rel="noopener noreferrer" download>
+          {stepHeading(readStep, t('Lisez le document'))}
+          <iframe title={t('Document à signer')} src={fileUrl} style={frameStyle} />
+          <Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
+            {t("Le document s'affiche mal sur votre téléphone ? Ouvrez-le avec le lien ci-dessous.")}
+          </Text>
+          <a href={fileUrl} target="_blank" rel="noopener noreferrer" download style={linkStyle}>
             {t('Télécharger le document (PDF)')}
           </a>
         </div>
       )}
 
-      {!(codeBeforeView && (!viewToken || external)) && (
-        <Checkbox checked={consent} onChange={event => setConsent(event.target.checked)}>
-          {consentText}
-        </Checkbox>
-      )}
-
       {needsCode && !codeBeforeView && (
         <div>
+          {stepHeading(idStep, t('Confirmez votre identité'))}
           <Paragraph style={{ marginBottom: 8 }}>
             {otpSentTo
               ? t('Un code a été envoyé à {{contact}}.', { contact: otpSentTo })
               : t('Pour confirmer votre identité, recevez un code sur {{contact}}.', { contact: signer.maskedContact })}
           </Paragraph>
-          <Space wrap>
-            <Button onClick={() => void sendCode()} disabled={busy || countdown > 0}>
-              {countdown > 0
-                ? t('Renvoyer le code dans {{n}} s', { n: countdown })
-                : otpSentTo
-                  ? t('Renvoyer le code')
-                  : t('Recevoir le code')}
-            </Button>
-            <Input
-              value={code}
-              onChange={event => setCode(event.target.value.replace(/\s/g, ''))}
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={8}
-              placeholder={t('Code reçu')}
-              aria-label={t('Code reçu')}
-              style={{ width: 140 }}
-            />
-          </Space>
+          {renderCodeControls(false)}
         </div>
       )}
 
-      {!(codeBeforeView && (!viewToken || external)) && (
+      {showSignArea && (
         <div>
+          {stepHeading(signStep, t('Signez'))}
           {!inPerson && (
             <Segmented<SignatureMode>
+              block
+              size="large"
               value={mode}
               onChange={value => {
                 setMode(value);
@@ -502,8 +588,9 @@ export const PublicSigningFlow: React.FC<PublicSigningFlowProps> = ({ token, onD
               onChange={event => setTyped(event.target.value)}
               placeholder={t('Tapez votre nom complet')}
               aria-label={t('Tapez votre nom complet')}
+              autoComplete="name"
               size="large"
-              style={{ fontStyle: 'italic' }}
+              style={{ ...TOUCH, fontStyle: 'italic' }}
             />
           ) : (
             <SignaturePad onChange={setDrawn} />
@@ -511,22 +598,52 @@ export const PublicSigningFlow: React.FC<PublicSigningFlowProps> = ({ token, onD
         </div>
       )}
 
+      {showSignArea && (
+        <div style={{ border: '1px solid #d1d5db', borderRadius: 8, padding: '12px 12px' }}>
+          <Checkbox
+            checked={consent}
+            onChange={event => setConsent(event.target.checked)}
+            style={{ display: 'flex', alignItems: 'flex-start', width: '100%', lineHeight: 1.5 }}
+          >
+            {consentText}
+          </Checkbox>
+        </div>
+      )}
+
       {error && <Alert type="error" showIcon message={error} />}
 
       {external && viewToken && (
-        <Button type="primary" size="large" block loading={busy} onClick={() => void continueExternal()}>
+        <Button type="primary" size="large" block style={TOUCH} loading={busy} onClick={() => void continueExternal()}>
           {t('Continuer vers la signature')}
         </Button>
       )}
 
-      {!(codeBeforeView && (!viewToken || external)) && (
-        <Button type="primary" size="large" block disabled={!canSign} loading={busy} onClick={() => void sign()}>
-          {t('Signer le document')}
-        </Button>
+      {showSignArea && (
+        <div>
+          <Button
+            type="primary"
+            size="large"
+            block
+            style={TOUCH}
+            disabled={!canSign}
+            loading={busy}
+            onClick={() => void sign()}
+          >
+            {t('Signer le document')}
+          </Button>
+          {!canSign && !busy && missing.length > 0 && (
+            <Text type="secondary" role="status" style={{ display: 'block', marginTop: 8 }}>
+              {t('Pour signer : {{etapes}}.', { etapes: missing.join(', ') })}
+            </Text>
+          )}
+        </div>
       )}
 
       {codeBeforeView && !viewToken ? null : declining ? (
         <Space direction="vertical" style={{ width: '100%' }}>
+          <Text type="secondary">
+            {t("Votre refus sera transmis à l'agence. Vous ne pourrez plus signer avec ce lien.")}
+          </Text>
           <Input.TextArea
             value={reason}
             onChange={event => setReason(event.target.value)}
@@ -535,15 +652,17 @@ export const PublicSigningFlow: React.FC<PublicSigningFlowProps> = ({ token, onD
             placeholder={t('Motif du refus (facultatif)')}
             aria-label={t('Motif du refus (facultatif)')}
           />
-          <Space>
-            <Button danger loading={busy} onClick={() => void decline()}>
+          <Space wrap>
+            <Button danger size="large" style={TOUCH} loading={busy} onClick={() => void decline()}>
               {t('Confirmer le refus')}
             </Button>
-            <Button onClick={() => setDeclining(false)}>{t('Annuler')}</Button>
+            <Button size="large" style={TOUCH} onClick={() => setDeclining(false)}>
+              {t('Annuler')}
+            </Button>
           </Space>
         </Space>
       ) : (
-        <Button type="link" danger onClick={() => setDeclining(true)} style={{ paddingInlineStart: 0 }}>
+        <Button type="link" danger onClick={() => setDeclining(true)} style={{ ...TOUCH, paddingInlineStart: 0 }}>
           {t('Refuser de signer')}
         </Button>
       )}

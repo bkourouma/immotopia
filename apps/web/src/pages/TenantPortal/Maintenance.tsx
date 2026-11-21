@@ -6,8 +6,6 @@ import {
   Button,
   Space,
   Tag,
-  Spin,
-  Alert,
   Empty,
   Statistic,
   Row,
@@ -35,7 +33,7 @@ import {
   type PortalAttachment
 } from '../../components/maintenance/AttachmentList';
 import { tenantPortalService } from '../../services/tenantPortalService';
-import { Table } from '../../components/primitives';
+import { DataCard, DataView, PageHeader, SkeletonDetail } from '../../components/primitives';
 import { collectAllPages } from '../../utils/table-export/collect';
 import { useListSearch } from '../../hooks/useListSearch';
 import dayjs from 'dayjs';
@@ -48,10 +46,10 @@ const { TextArea } = Input;
 /** Libellé d'une catégorie de ticket (lu au moment de l'appel, pour suivre la langue). */
 function getCategoryLabel(category: string) {
   const labels: Record<string, string> = {
-    PLUMBING: 'Plomberie',
+    PLUMBING: t('Plomberie'),
     ELECTRICITY: t('Électricité'),
-    AC: 'Climatisation',
-    OTHER: 'Autre'
+    AC: t('Climatisation'),
+    OTHER: t('Autre')
   };
   return labels[category] || category;
 }
@@ -328,7 +326,12 @@ export default function TenantMaintenance() {
       title: t('Actions'),
       key: 'actions',
       render: (_: any, record: MaintenanceTicket) => (
-        <Button type="link" icon={<EyeOutlined />} onClick={() => loadTicketDetails(record.id)}>
+        <Button
+          type="link"
+          icon={<EyeOutlined />}
+          style={{ minHeight: 44 }}
+          onClick={() => loadTicketDetails(record.id)}
+        >
           {t('Détails')}
         </Button>
       )
@@ -337,21 +340,21 @@ export default function TenantMaintenance() {
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      {/* Page Header */}
-      <div className="it-toolbar">
-        <div>
-          <Title level={2}>{t('Maintenance')}</Title>
-          <Text type="secondary">{t('Gérez vos demandes de maintenance')}</Text>
-        </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalVisible(true)}>
-          {t('Nouvelle demande')}
-        </Button>
-      </div>
+      <PageHeader
+        title={t('Maintenance')}
+        subtitle={t('Gérez vos demandes de maintenance')}
+        primaryAction={{
+          label: t('Nouvelle demande'),
+          icon: <PlusOutlined aria-hidden />,
+          onClick: () => setModalVisible(true)
+        }}
+      />
 
       {leases.length > 1 && (
         <Select
           aria-label={t('Bail')}
-          style={{ minWidth: 280, maxWidth: '100%' }}
+          size="large"
+          style={{ minWidth: 240, maxWidth: '100%' }}
           value={selectedLeaseId ?? leases[0].id}
           onChange={value => setSelectedLeaseId(value)}
           options={leases.map(lease => ({
@@ -364,7 +367,7 @@ export default function TenantMaintenance() {
       {/* Summary Cards */}
       {data?.summary && (
         <Row gutter={[16, 16]}>
-          <Col xs={24} sm={12} lg={6}>
+          <Col xs={12} lg={6}>
             <Card>
               <Statistic
                 title={
@@ -375,7 +378,7 @@ export default function TenantMaintenance() {
               />
             </Card>
           </Col>
-          <Col xs={24} sm={12} lg={6}>
+          <Col xs={12} lg={6}>
             <Card>
               <Statistic
                 title={t('Ouverts')}
@@ -385,7 +388,7 @@ export default function TenantMaintenance() {
               />
             </Card>
           </Col>
-          <Col xs={24} sm={12} lg={6}>
+          <Col xs={12} lg={6}>
             <Card>
               <Statistic
                 title={t('En cours')}
@@ -395,7 +398,7 @@ export default function TenantMaintenance() {
               />
             </Card>
           </Col>
-          <Col xs={24} sm={12} lg={6}>
+          <Col xs={12} lg={6}>
             <Card>
               <Statistic
                 title={t('Résolus')}
@@ -416,39 +419,50 @@ export default function TenantMaintenance() {
           </>
         }
       >
-        {error ? (
-          <Alert message={t('Erreur')} description={error} type="error" showIcon style={{ marginBottom: 16 }} />
-        ) : null}
-        <Table
+        <DataView<MaintenanceTicket>
           helpId="portails.locataire.incidents.liste"
+          aria-label={t('Liste des tickets')}
           search={search.searchProps}
-          exportFilename={t('Liste des tickets')}
-          // Export de TOUS les tickets, avec les mêmes critères que la liste affichée.
-          exportFetchAll={() =>
-            collectAllPages<MaintenanceTicket>(async (page, limit) => {
-              const reponse = await tenantPortalService.getMaintenanceTickets({
-                ...search.filterParams,
-                leaseId: selectedLeaseId,
-                page,
-                limit
-              });
-              const donnees = reponse.data?.data;
-              return { items: donnees?.tickets ?? [], total: donnees?.pagination?.total ?? 0 };
-            })
-          }
-          scroll={{ x: 'max-content' }}
-          columns={columns}
-          dataSource={data?.tickets ?? []}
-          rowKey="id"
-          loading={loading}
-          pagination={{
-            ...search.tablePagination(data?.pagination?.total ?? 0),
-            showTotal: total => t('Total: {{total}} tickets', { total: total })
+          {...search.dataViewProps}
+          items={data?.tickets ?? []}
+          total={data?.pagination?.total ?? 0}
+          loading={loading && !data}
+          isReloading={loading && Boolean(data)}
+          error={error ? t('Impossible de charger vos demandes de maintenance. Réessayez.') : null}
+          onRetry={loadTickets}
+          rowKey={ticket => ticket.id}
+          emptyDescription={t(
+            "Vous n'avez encore fait aucune demande. Utilisez « Nouvelle demande » pour signaler un problème."
+          )}
+          export={{
+            filename: t('Liste des tickets'),
+            // Export de TOUS les tickets, avec les mêmes critères que la liste affichée.
+            fetchAll: () =>
+              collectAllPages<MaintenanceTicket>(async (page, limit) => {
+                const reponse = await tenantPortalService.getMaintenanceTickets({
+                  ...search.filterParams,
+                  leaseId: selectedLeaseId,
+                  page,
+                  limit
+                });
+                const donnees = reponse.data?.data;
+                return { items: donnees?.tickets ?? [], total: donnees?.pagination?.total ?? 0 };
+              })
           }}
-          // Sous critère, la Table affiche seule son bloc « Aucun résultat » et « Effacer les critères ».
-          locale={
-            search.isFiltered || error ? undefined : { emptyText: <Empty description={t('Aucun ticket trouvé')} /> }
-          }
+          columns={columns}
+          renderCard={ticket => (
+            <DataCard
+              title={ticket.title}
+              subtitle={getCategoryLabel(ticket.category)}
+              status={getStatusTag(ticket.status)}
+              fields={[
+                { label: t('Priorité'), value: getPriorityTag(ticket.priority) },
+                { label: t('Date de création'), value: formatDate(ticket.created_at) }
+              ]}
+              onOpen={() => loadTicketDetails(ticket.id)}
+              aria-label={ticket.title}
+            />
+          )}
         />
       </Card>
 
@@ -485,9 +499,7 @@ export default function TenantMaintenance() {
         destroyOnClose
       >
         {detailsLoading ? (
-          <div style={{ textAlign: 'center', padding: '40px' }}>
-            <Spin size="large" tip={t('Chargement des détails...')} />
-          </div>
+          <SkeletonDetail aria-label={t('Chargement des détails...')} />
         ) : selectedTicket ? (
           <Space direction="vertical" size="large" style={{ width: '100%' }}>
             {/* Ticket Details */}
@@ -527,8 +539,8 @@ export default function TenantMaintenance() {
             {/* Comments Section (T100, T101) */}
             <div>
               <Title level={5}>
-                <MessageOutlined /> {t('Commentaires (')}
-                {selectedTicket.comments?.length || 0})
+                <MessageOutlined aria-hidden />{' '}
+                {t('Commentaires ({{count}})', { count: selectedTicket.comments?.length || 0 })}
               </Title>
               {selectedTicket.comments && selectedTicket.comments.length > 0 ? (
                 <List
@@ -568,6 +580,7 @@ export default function TenantMaintenance() {
               <div style={{ marginTop: 16 }}>
                 <TextArea
                   rows={3}
+                  aria-label={t('Ajouter un commentaire')}
                   placeholder={t('Ajouter un commentaire...')}
                   value={commentText}
                   onChange={e => setCommentText(e.target.value)}

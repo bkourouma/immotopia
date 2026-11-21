@@ -12,7 +12,7 @@ interface SignaturePadProps {
  * Canevas de signature manuscrite, tactile et souris (événements pointeur).
  * `touch-action: none` empêche la page de défiler pendant le tracé.
  */
-export const SignaturePad: React.FC<SignaturePadProps> = ({ onChange, height = 180 }) => {
+export const SignaturePad: React.FC<SignaturePadProps> = ({ onChange, height = 220 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
   const [hasInk, setHasInk] = useState(false);
@@ -20,7 +20,7 @@ export const SignaturePad: React.FC<SignaturePadProps> = ({ onChange, height = 1
   const context = useCallback(() => {
     const ctx = canvasRef.current?.getContext?.('2d') ?? null;
     if (ctx) {
-      ctx.lineWidth = 2.5;
+      ctx.lineWidth = 3;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       ctx.strokeStyle = '#111827';
@@ -85,28 +85,53 @@ export const SignaturePad: React.FC<SignaturePadProps> = ({ onChange, height = 1
 
   return (
     <div>
-      <canvas
-        ref={canvasRef}
-        data-testid="signature-canvas"
-        aria-label={t('Zone de signature : dessinez votre signature')}
-        role="img"
-        onPointerDown={start}
-        onPointerMove={move}
-        onPointerUp={end}
-        onPointerCancel={end}
-        style={{
-          width: '100%',
-          height,
-          touchAction: 'none',
-          border: '1px dashed #9ca3af',
-          borderRadius: 8,
-          background: '#fff',
-          display: 'block'
-        }}
-      />
-      <Button size="small" type="link" onClick={clear} disabled={!hasInk} style={{ paddingInlineStart: 0 }}>
+      <div style={{ position: 'relative' }}>
+        {!hasInk && (
+          <span
+            aria-hidden="true"
+            style={{
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 16,
+              textAlign: 'center',
+              color: '#6b7280',
+              pointerEvents: 'none'
+            }}
+          >
+            {t('Signez ici avec le doigt ou la souris')}
+          </span>
+        )}
+        <canvas
+          ref={canvasRef}
+          data-testid="signature-canvas"
+          aria-label={t('Zone de signature : dessinez votre signature')}
+          role="img"
+          onPointerDown={start}
+          onPointerMove={move}
+          onPointerUp={end}
+          onPointerCancel={end}
+          style={{
+            width: '100%',
+            height,
+            touchAction: 'none',
+            border: '2px dashed #6b7280',
+            borderRadius: 8,
+            background: '#fff',
+            display: 'block',
+            userSelect: 'none',
+            WebkitUserSelect: 'none'
+          }}
+        />
+      </div>
+      <Button onClick={clear} disabled={!hasInk} style={{ minHeight: 44, marginTop: 8 }}>
         {t('Effacer')}
       </Button>
+      <span style={{ marginInlineStart: 12, color: '#6b7280' }}>
+        {hasInk ? t('Pas satisfait ? Effacez et recommencez.') : ''}
+      </span>
     </div>
   );
 };

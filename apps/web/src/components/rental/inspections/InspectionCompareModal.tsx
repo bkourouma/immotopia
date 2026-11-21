@@ -11,6 +11,10 @@ import { conditionLabel } from './inspection-constants';
 import { MoneyValue } from '../../primitives/MoneyValue';
 import { StatCard } from '../../primitives/StatCard';
 import { Table } from '../../primitives/Table';
+import { DataCard } from '../../primitives/DataCard';
+import { StateBlock } from '../../primitives/StateBlock';
+import { SkeletonList } from '../../primitives/Skeleton';
+import { useBreakpoint } from '../../../hooks/useBreakpoint';
 import { activeLocale } from '../../../i18n/format';
 import { t } from '../../../i18n/t';
 import { HelpSectionTitle } from '../../../help';
@@ -193,6 +197,7 @@ export const InspectionCompareModal: React.FC<InspectionCompareModalProps> = ({ 
   const [gapsOnly, setGapsOnly] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { isDesktop } = useBreakpoint();
 
   useEffect(() => {
     if (!open) return;
@@ -257,30 +262,74 @@ export const InspectionCompareModal: React.FC<InspectionCompareModalProps> = ({ 
       open={open}
       onCancel={onClose}
       footer={null}
-      width={900}
+      width={isDesktop ? 900 : '100%'}
+      style={isDesktop ? undefined : { top: 8, maxWidth: 'calc(100vw - 16px)' }}
       destroyOnHidden
     >
       {error && <Alert type="error" message={error} showIcon style={{ marginBottom: 16 }} />}
       {summary && <CompareSummaryBlock summary={summary} />}
-      <Space align="center" style={{ marginBottom: 12 }}>
+      <Space align="center" style={{ marginBottom: 12, minHeight: 44 }}>
         <Switch checked={gapsOnly} onChange={setGapsOnly} aria-label={t('Afficher seulement les écarts')} />
         <Text>{t('Afficher seulement les écarts')}</Text>
       </Space>
-      <Table
-        helpId="locatif.edl.comparaison.tableau"
-        exportFilename={t('Comparaison entrée et sortie')}
-        rowKey={row => `${row.roomId}-${row.itemId}`}
-        dataSource={visibleRows}
-        columns={columns}
-        loading={loading}
-        pagination={false}
-        scroll={{ x: 'max-content' }}
-        rowClassName={row => (row.degraded ? 'inspection-compare-row-degraded' : '')}
-        onRow={row => {
-          const background = rowBackground(row);
-          return { style: background ? { background } : undefined };
-        }}
-      />
+      {!isDesktop ? (
+        // Téléphone et tablette portrait : une carte par élément plutôt qu'un tableau à faire défiler.
+        loading ? (
+          <SkeletonList />
+        ) : visibleRows.length === 0 ? (
+          <StateBlock
+            variant={gapsOnly ? 'no-results' : 'empty'}
+            title={gapsOnly ? t('Aucun écart constaté') : t('Aucun élément à comparer')}
+            description={gapsOnly ? t('Désactivez le filtre pour voir tous les éléments.') : undefined}
+          />
+        ) : (
+          <div>
+            {visibleRows.map(row => {
+              const background = rowBackground(row);
+              return (
+                <div
+                  key={`${row.roomId}-${row.itemId}`}
+                  style={{ background, borderRadius: 8, marginBottom: background ? 4 : 0 }}
+                >
+                  <DataCard
+                    title={row.label}
+                    subtitle={row.roomName}
+                    highlight={row.missingValue ? <MoneyValue value={row.missingValue} /> : undefined}
+                    fields={[
+                      { label: t('État d’entrée'), value: conditionLabel(row.entryCondition) },
+                      { label: t('État de sortie'), value: exitConditionCell(row) },
+                      ...(row.kind === 'FURNITURE'
+                        ? [
+                            {
+                              label: t('Quantité (entrée → sortie)'),
+                              value: `${row.entryQuantity ?? '—'} → ${row.exitQuantity ?? '—'}`
+                            }
+                          ]
+                        : [])
+                    ]}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        )
+      ) : (
+        <Table
+          helpId="locatif.edl.comparaison.tableau"
+          exportFilename={t('Comparaison entrée et sortie')}
+          rowKey={row => `${row.roomId}-${row.itemId}`}
+          dataSource={visibleRows}
+          columns={columns}
+          loading={loading}
+          pagination={false}
+          scroll={{ x: 'max-content' }}
+          rowClassName={row => (row.degraded ? 'inspection-compare-row-degraded' : '')}
+          onRow={row => {
+            const background = rowBackground(row);
+            return { style: background ? { background } : undefined };
+          }}
+        />
+      )}
     </Modal>
   );
 };

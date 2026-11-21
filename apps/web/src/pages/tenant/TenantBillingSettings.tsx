@@ -1,15 +1,14 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Alert, Space, Typography } from 'antd';
+import { Alert, Space } from 'antd';
 import { useQueryClient } from '@tanstack/react-query';
 import { getOwnEntitlements, type TenantEntitlements } from '../../services/subscription-v2-service';
 import { TenantInvoicesSection } from '../../components/subscription/TenantInvoicesSection';
 import { AccountAccessReserved } from '../../components/subscription/AccountAccessReserved';
 import { useMenuEntryAccess } from '../../hooks/useMenuAccess';
 import { ASSET_USAGE_QUERY_KEY } from '../../services/personal-space-service';
+import { PageHeader } from '../../components/primitives';
 import { t } from '../../i18n/t';
-
-const { Title, Text } = Typography;
 
 /**
  * `/tenant/:tenantId/settings/facturation` — factures de la plateforme vues par
@@ -40,12 +39,10 @@ export const TenantBillingSettings: React.FC = () => {
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      <div>
-        <Title level={2} style={{ margin: 0 }}>
-          {t('Facturation')}
-        </Title>
-        <Text type="secondary">{t('Vos factures ImmoTopia : consultation, PDF et paiement en ligne.')}</Text>
-      </div>
+      <PageHeader
+        title={t('Facturation')}
+        subtitle={t('Vos factures ImmoTopia : consultation, PDF et paiement en ligne.')}
+      />
 
       {access.ready && !access.allowed && <AccountAccessReserved />}
 

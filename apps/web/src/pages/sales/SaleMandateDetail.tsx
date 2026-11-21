@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   App,
+  Alert,
   Button,
   Card,
   DatePicker,
@@ -495,7 +496,15 @@ export const SaleMandateDetail: React.FC = () => {
     <>
       <PageHeader
         title={mandate.number}
-        subtitle={mandate.propertyLabel}
+        subtitle={
+          <Space size="small" wrap>
+            <SaleStatusTag
+              kind="mandate"
+              status={mandate.isExpired && mandate.status === 'ACTIVE' ? 'EXPIRED' : mandate.status}
+            />
+            <span>{mandate.propertyLabel}</span>
+          </Space>
+        }
         breadcrumbs={[...filAriane, { label: mandate.number }]}
         secondaryActions={
           peutRevoquer
@@ -576,18 +585,30 @@ export const SaleMandateDetail: React.FC = () => {
 
       {/* Révocation du mandat */}
       <Modal
-        title={<HelpSectionTitle title={t('Révoquer le mandat')} helpId="commercial.ventes.mandat.revoquer" />}
+        title={
+          <HelpSectionTitle
+            title={t('Révoquer le mandat {{number}}', { number: mandate.number })}
+            helpId="commercial.ventes.mandat.revoquer"
+          />
+        }
         open={revokeOpen}
         onCancel={() => setRevokeOpen(false)}
         onOk={revoquer}
         confirmLoading={revoking}
         okText={t('Révoquer')}
-        okButtonProps={{ danger: true }}
+        okButtonProps={{ danger: true, disabled: revokeReason.trim().length < 3 }}
         cancelText={t('Annuler')}
       >
-        <Text>{t('Motif de révocation')}</Text>
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 'var(--space-3)' }}
+          message={t('La révocation est définitive : le mandat ne pourra plus être réactivé.')}
+        />
+        <Text>{t('Motif de révocation (3 caractères minimum)')}</Text>
         <TextArea
           rows={3}
+          autoFocus
           style={{ marginTop: 'var(--space-2)' }}
           value={revokeReason}
           onChange={e => setRevokeReason(e.target.value)}

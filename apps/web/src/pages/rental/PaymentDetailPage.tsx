@@ -1,23 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { App, Tag, Space, Typography, Card, Descriptions, Select, Modal, Alert, Empty, Row, Col } from 'antd';
 import {
-  App,
-  Button,
-  Tag,
-  Space,
-  Typography,
-  Card,
-  Descriptions,
-  Select,
-  Modal,
-  Alert,
-  Spin,
-  Empty,
-  Row,
-  Col
-} from 'antd';
-import {
-  ArrowLeftOutlined,
   DollarOutlined,
   CreditCardOutlined,
   CalendarOutlined,
@@ -47,7 +31,10 @@ import {
 import { activeLocale } from '../../i18n/format';
 import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { HelpButton, HelpSectionTitle } from '../../help';
-const { Title, Text } = Typography;
+import { PageHeader } from '../../components/primitives/PageHeader';
+import { StateBlock } from '../../components/primitives/StateBlock';
+import { SkeletonDetail } from '../../components/primitives/Skeleton';
+const { Text } = Typography;
 
 export const PaymentDetailPage: React.FC = () => {
   const { message, modal } = App.useApp();
@@ -189,22 +176,24 @@ export const PaymentDetailPage: React.FC = () => {
   const statutsDisponibles = payment ? statutsAtteignables(payment.status) : [];
 
   if (loading) {
-    return (
-      <>
-        <div style={{ textAlign: 'center', padding: '48px 0' }}>
-          <Spin size="large" />
-        </div>
-      </>
-    );
+    return <SkeletonDetail aria-label={t('Chargement du paiement')} />;
   }
 
   if (error || !payment) {
     return (
-      <>
-        <Alert message={t('Erreur')} description={error || t('Paiement non trouvé')} type="error" showIcon />
-      </>
+      <StateBlock
+        variant="error"
+        title={t('Paiement non chargé')}
+        description={error || t('Paiement non trouvé')}
+        actions={[
+          { label: t('Réessayer'), onClick: () => void loadPayment(), primary: true },
+          { label: t('Retour aux paiements'), onClick: () => navigate(`/tenant/${tenantId}/rental/payments`) }
+        ]}
+      />
     );
   }
+
+  const peutAllouer = peutAffecter && Boolean(payment.lease_id) && availableAmount > 0 && payment.status === 'SUCCESS';
 
   return (
     <>
@@ -219,47 +208,50 @@ export const PaymentDetailPage: React.FC = () => {
             onClose={() => setActionError(null)}
           />
         )}
-        <div className="it-toolbar">
-          <Space>
-            <Button
-              icon={<ArrowLeftOutlined />}
-              onClick={() => {
-                if (payment.lease_id) {
-                  navigate(`/tenant/${tenantId}/rental/leases/${payment.lease_id}`);
-                } else {
-                  navigate(`/tenant/${tenantId}/rental/payments`);
-                }
-              }}
-            >
-              {t('Retour')}
-            </Button>
-            <div>
-              <Title level={2} style={{ margin: 0 }}>
-                {t('Paiement #')}
-                {payment.id.slice(0, 8)}
-              </Title>
-              <Text type="secondary">{t('Détails du paiement')}</Text>
-            </div>
-          </Space>
-          <Space>
-            <HelpButton helpId="locatif.paiements.fiche.statut" size="small" />
-            <Select
-              showSearch
-              optionFilterProp="label"
-              aria-label={t('Statut')}
-              value={payment.status}
-              // Seuls les changements que l'API accepte sont proposés ; « Remboursé »
-              // est définitif, le sélecteur n'a alors plus rien à offrir.
-              disabled={!peutAffecter || statutsDisponibles.length === 0}
-              options={[payment.status, ...statutsDisponibles].map(statut => ({
-                value: statut,
-                label: libelleStatutPaiement(statut)
-              }))}
-              onChange={value => demanderChangementStatut(value as RentalPaymentStatus)}
-              style={{ width: 220 }}
-            />
-          </Space>
-        </div>
+        <PageHeader
+          title={`${t('Paiement #')}${payment.id.slice(0, 8)}`}
+          subtitle={
+            <Space size="small" wrap>
+              {getStatusTag(payment.status)}
+              <span>{t('Détails du paiement')}</span>
+              <Text strong>{formatCurrency(payment.amount, payment.currency)}</Text>
+              {availableAmount > 0 && (
+                <Text type="secondary">
+                  {t('{{montant}} disponible', { montant: formatCurrency(availableAmount, payment.currency) })}
+                </Text>
+              )}
+            </Space>
+          }
+          breadcrumbs={[
+            payment.lease_id
+              ? { label: t('Bail'), to: `/tenant/${tenantId}/rental/leases/${payment.lease_id}` }
+              : { label: t('Paiements'), to: `/tenant/${tenantId}/rental/payments` },
+            { label: t('Paiement #') + payment.id.slice(0, 8) }
+          ]}
+          extra={
+            <Space>
+              <HelpButton helpId="locatif.paiements.fiche.statut" size="small" />
+              <Select
+                showSearch
+                optionFilterProp="label"
+                aria-label={t('Statut')}
+                value={payment.status}
+                // Seuls les changements que l'API accepte sont proposés ; « Remboursé »
+                // est définitif, le sélecteur n'a alors plus rien à offrir.
+                disabled={!peutAffecter || statutsDisponibles.length === 0}
+                options={[payment.status, ...statutsDisponibles].map(statut => ({
+                  value: statut,
+                  label: libelleStatutPaiement(statut)
+                }))}
+                onChange={value => demanderChangementStatut(value as RentalPaymentStatus)}
+                style={{ width: 220 }}
+              />
+            </Space>
+          }
+          primaryAction={
+            peutAllouer ? { label: t('Allouer aux échéances'), onClick: () => setShowAllocateForm(true) } : undefined
+          }
+        />
 
         <Row gutter={16}>
           <Col xs={24} md={12}>
@@ -356,13 +348,6 @@ export const PaymentDetailPage: React.FC = () => {
               <HelpSectionTitle title={t('Utilisation du paiement')} helpId="locatif.paiements.fiche.utilisation" />
             </Space>
           }
-          extra={
-            peutAffecter && payment.lease_id && availableAmount > 0 && payment.status === 'SUCCESS' ? (
-              <Button type="primary" onClick={() => setShowAllocateForm(true)}>
-                {t('Allouer aux échéances')}
-              </Button>
-            ) : null
-          }
         >
           <Space direction="vertical" style={{ width: '100%' }} size="large">
             {/* Allocations aux échéances */}
@@ -451,8 +436,9 @@ export const PaymentDetailPage: React.FC = () => {
                     <p>{t('Aucune utilisation enregistrée pour ce paiement.')}</p>
                     {payment.lease_id && availableAmount > 0 && payment.status === 'SUCCESS' && (
                       <Text type="secondary" style={{ fontSize: '12px', display: 'block', marginTop: 8 }}>
-                        Cliquez sur &quot;Allouer aux échéances&quot; pour allouer ce paiement à une ou plusieurs
-                        échéances.
+                        {t(
+                          'Utilisez « Allouer aux échéances », en haut de la page, pour affecter ce paiement à une ou plusieurs échéances.'
+                        )}
                       </Text>
                     )}
                   </>

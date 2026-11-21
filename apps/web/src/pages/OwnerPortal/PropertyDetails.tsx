@@ -1,31 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import {
-  Card,
-  Button,
-  Tag,
-  Space,
-  Row,
-  Col,
-  Typography,
-  Alert,
-  Spin,
-  Descriptions,
-  Empty,
-  Tabs,
-  List,
-  Statistic
-} from 'antd';
-import {
-  ArrowLeftOutlined,
-  HomeOutlined,
-  DollarOutlined,
-  FileTextOutlined,
-  ToolOutlined,
-  CalendarOutlined
-} from '@ant-design/icons';
+import { Card, Tag, Space, Row, Col, Typography, Descriptions, Empty, Tabs, List, Statistic } from 'antd';
+import { HomeOutlined, DollarOutlined, FileTextOutlined, ToolOutlined, CalendarOutlined } from '@ant-design/icons';
 import { ownerPortalService } from '../../services/ownerPortalService';
-import { ListSearch, StateBlock } from '../../components/primitives';
+import { ListSearch, PageHeader, SkeletonDetail, StateBlock } from '../../components/primitives';
 import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion } from '../../utils/list-search';
 import { t } from '../../i18n/t';
@@ -337,40 +315,41 @@ export default function PropertyDetails() {
     }
   };
 
-  if (loading) {
+  const propertiesCrumb = { label: t('Mes propriétés'), to: '/owner/properties' };
+
+  if (loading && !data) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <Spin size="large" tip={t('Chargement des détails...')} />
-      </div>
+      <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        <PageHeader title={t('Propriété')} breadcrumbs={[propertiesCrumb, { label: t('Détail') }]} />
+        <SkeletonDetail aria-label={t('Chargement des détails')} />
+      </Space>
     );
   }
 
-  if (error) {
+  if (error || !data) {
     return (
-      <Alert
-        message={t('Erreur')}
-        description={error}
-        type="error"
-        showIcon
-        action={<Button onClick={() => navigate('/owner/properties')}>{t('Retour à la liste')}</Button>}
-      />
+      <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        <PageHeader title={t('Propriété')} breadcrumbs={[propertiesCrumb, { label: t('Détail') }]} />
+        <StateBlock
+          variant="error"
+          title={t('Impossible de charger cette propriété')}
+          description={error ?? undefined}
+          actions={[
+            { label: t('Réessayer'), onClick: () => void loadPropertyDetails(), primary: true },
+            { label: t('Retour à la liste'), onClick: () => navigate('/owner/properties') }
+          ]}
+        />
+      </Space>
     );
-  }
-
-  if (!data) {
-    return <Empty description={t('Aucune donnée disponible')} />;
   }
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      {/* Header */}
-      <div>
-        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/owner/properties')} style={{ marginBottom: 16 }}>
-          {t('Retour')}
-        </Button>
-        <Title level={2}>{data.property.title}</Title>
-        <Text type="secondary">{data.property.address}</Text>
-      </div>
+      <PageHeader
+        title={data.property.title}
+        subtitle={data.property.address}
+        breadcrumbs={[propertiesCrumb, { label: t('Détail') }]}
+      />
 
       <Tabs activeKey={ongletActif} onChange={changerOnglet} destroyOnHidden>
         {/* T048: Property Information Section */}

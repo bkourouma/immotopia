@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, App, Button, Empty, Popconfirm, Space, Tag, Typography } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import type { SorterResult } from 'antd/es/table/interface';
-import { Table } from '../../components/primitives';
+import { PageHeader, Table } from '../../components/primitives';
 import { useListSearch } from '../../hooks/useListSearch';
 import {
   cancelSignatureRequest,
@@ -26,7 +26,7 @@ import { t } from '../../i18n/t';
 import { SignatureDetailDrawer } from './SignatureDetailDrawer';
 import { SIGNATURE_KINDS, SIGNATURE_STATUSES, kindLabel } from './signature-admin-labels';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 const PAGE_SIZE = 25;
 
 function dateLabel(iso?: string | null): string {
@@ -221,7 +221,8 @@ const SignaturesPage: React.FC = () => {
                 {t('Relancer')}
               </Button>
               <Popconfirm
-                title={t('Annuler cette demande de signature ?')}
+                title={t('Annuler la demande de signature « {{title}} » ?', { title: request.title })}
+                description={t('Les signataires ne pourront plus signer avec leur lien.')}
                 okText={t('Annuler la demande')}
                 cancelText={t('Retour')}
                 onConfirm={() => void cancel(request)}
@@ -262,9 +263,7 @@ const SignaturesPage: React.FC = () => {
 
   return (
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-      <Title level={2} style={{ margin: 0 }}>
-        {t('Signatures')}
-      </Title>
+      <PageHeader title={t('Signatures')} />
 
       <Space wrap size="small" data-testid="signature-counters">
         <Button

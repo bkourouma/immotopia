@@ -88,7 +88,7 @@ export const DirectDebitRemittances: React.FC = () => {
   });
   const creditorId = search.values.creditorId as string | undefined;
 
-  const { data, isFetching, error } = useQuery({
+  const { data, isFetching, error, refetch } = useQuery({
     queryKey: queryKey('direct-debit-remittances', tenantId, search.apiParams),
     queryFn: () => listRemittances(tenantId as string, search.apiParams as RemittanceListFilters),
     enabled: Boolean(tenantId),
@@ -150,12 +150,26 @@ export const DirectDebitRemittances: React.FC = () => {
       <DirectDebitTabs />
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
         <Space wrap size={[12, 12]}>
-          <Button icon={<UploadOutlined />} onClick={() => setImporting(true)} {...helpAnchor('remises-import')}>
+          <Button
+            icon={<UploadOutlined />}
+            style={{ minHeight: 44 }}
+            onClick={() => setImporting(true)}
+            {...helpAnchor('remises-import')}
+          >
             {t('Importer un retour de la banque')}
           </Button>
         </Space>
         {error && (
-          <Alert type="error" showIcon message={apiErrorMessage(error, t('Erreur lors du chargement des remises'))} />
+          <Alert
+            type="error"
+            showIcon
+            message={apiErrorMessage(error, t('Erreur lors du chargement des remises'))}
+            action={
+              <Button style={{ minHeight: 44 }} onClick={() => void refetch()}>
+                {t('Réessayer')}
+              </Button>
+            }
+          />
         )}
         <div {...helpAnchor('remises-tableau')}>
           <Table<RemittanceSummaryDto>

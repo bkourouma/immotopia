@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { App, Card, Space, Typography, Spin, Alert } from 'antd';
+import { App, Button, Card, Space, Alert } from 'antd';
 import { LeaseForm } from '../../components/rental/LeaseForm';
 import { LeaseFormWizard } from '../../components/rental/LeaseFormWizard';
 import {
@@ -12,8 +12,8 @@ import {
   RentalLease
 } from '../../services/rental-service';
 import { t } from '../../i18n/t';
-
-const { Title, Text } = Typography;
+import { PageHeader } from '../../components/primitives/PageHeader';
+import { SkeletonDetail } from '../../components/primitives/Skeleton';
 
 export const LeaseFormPage: React.FC = () => {
   const { tenantId, leaseId } = useParams<{ tenantId: string; leaseId: string }>();
@@ -68,9 +68,12 @@ export const LeaseFormPage: React.FC = () => {
             }
           )
         );
+      } else {
+        message.success(t('Bail enregistré'));
       }
     } else {
       await createLease(tenantId, data as CreateLeaseRequest);
+      message.success(t('Bail créé'));
     }
     navigate(`/tenant/${tenantId}/rental/leases`);
   };
@@ -80,31 +83,20 @@ export const LeaseFormPage: React.FC = () => {
   };
 
   if (loading && leaseId) {
-    return (
-      <>
-        <Card>
-          <div style={{ textAlign: 'center', padding: '48px 0' }}>
-            <Spin size="large" />
-            <div style={{ marginTop: 16 }}>
-              <Text>{t('Chargement du bail...')}</Text>
-            </div>
-          </div>
-        </Card>
-      </>
-    );
+    return <SkeletonDetail aria-label={t('Chargement du bail')} />;
   }
 
   return (
     <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        <div>
-          <Title level={2} style={{ margin: 0 }}>
-            {leaseId ? t('Modifier le bail') : t('Nouveau bail')}
-          </Title>
-          <Text type="secondary">
-            {leaseId ? t('Modifiez les informations du bail') : t('Créez un nouveau bail de location')}
-          </Text>
-        </div>
+        <PageHeader
+          title={leaseId ? t('Modifier le bail') : t('Nouveau bail')}
+          subtitle={leaseId ? t('Modifiez les informations du bail') : t('Créez un nouveau bail de location')}
+          breadcrumbs={[
+            { label: t('Baux'), to: `/tenant/${tenantId}/rental/leases` },
+            { label: leaseId ? t('Modifier le bail') : t('Nouveau bail') }
+          ]}
+        />
 
         {error && (
           <Alert
@@ -112,6 +104,13 @@ export const LeaseFormPage: React.FC = () => {
             description={error}
             type="error"
             showIcon
+            action={
+              leaseId ? (
+                <Button size="small" onClick={() => void loadLease()}>
+                  {t('Réessayer')}
+                </Button>
+              ) : undefined
+            }
             closable
             onClose={() => setError(null)}
           />

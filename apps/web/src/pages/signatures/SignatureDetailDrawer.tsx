@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Descriptions, Drawer, List, Space, Spin, Tag, Timeline, Typography } from 'antd';
+import { Descriptions, Drawer, List, Space, Tag, Timeline, Typography } from 'antd';
 import { Link, useParams } from 'react-router-dom';
+import { SkeletonDetail, StateBlock } from '../../components/primitives';
 import { fetchSignatureDetail } from '../../services/signature-admin-service';
 import type { SignatureDetailDto } from '../../services/signature-admin-service';
 import {
@@ -32,6 +33,7 @@ export const SignatureDetailDrawer: React.FC<Props> = ({ requestId, onClose }) =
   const { tenantId } = useParams<{ tenantId: string }>();
   const [detail, setDetail] = useState<SignatureDetailDto | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     if (!requestId) return;
@@ -48,7 +50,7 @@ export const SignatureDetailDrawer: React.FC<Props> = ({ requestId, onClose }) =
     return () => {
       cancelled = true;
     };
-  }, [requestId]);
+  }, [requestId, reloadKey]);
 
   const status = detail ? requestStatusLabel(detail.status) : null;
   const href = detail ? targetHref(tenantId, detail.targetType, detail.targetId) : null;
@@ -62,8 +64,14 @@ export const SignatureDetailDrawer: React.FC<Props> = ({ requestId, onClose }) =
       title={<HelpSectionTitle title={detail?.title ?? t('Détail de la demande')} helpId="locatif.signatures.detail" />}
       destroyOnHidden
     >
-      {error && <Alert type="error" showIcon message={error} />}
-      {!detail && !error && <Spin />}
+      {error && (
+        <StateBlock
+          variant="error"
+          description={error}
+          actions={[{ label: t('Réessayer'), onClick: () => setReloadKey(value => value + 1), primary: true }]}
+        />
+      )}
+      {!detail && !error && <SkeletonDetail aria-label={t('Chargement de la demande')} />}
       {detail && status && (
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
           <Descriptions column={1} size="small" bordered>

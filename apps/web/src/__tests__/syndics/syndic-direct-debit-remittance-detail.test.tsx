@@ -254,7 +254,8 @@ describe('SyndicDirectDebitRemittanceDetail — gestes de la remise', () => {
     expect(await screen.findByText('Fichier PRL-2026-0001.csv téléchargé.')).toBeInTheDocument();
 
     await user.click(buttons('Annuler la remise')[0]);
-    const dialog = await screen.findByRole('dialog');
+    // Les fenêtres de confirmation précédentes finissent de se fermer : la dernière ouverte est celle du motif.
+    const dialog = (await screen.findAllByRole('dialog')).at(-1) as HTMLElement;
     // Textes propres à la copropriété.
     expect(within(dialog).getByText(/Les copropriétaires ont déjà reçu un avis de prélèvement/)).toBeInTheDocument();
     await user.type(within(dialog).getByRole('textbox'), 'Erreur de montant');

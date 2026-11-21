@@ -115,6 +115,8 @@ export const ReturnImportModal: React.FC<ReturnImportModalProps> = ({
   const [applied, setApplied] = useState<ReturnApplyDto | null>(null);
   const [busy, setBusy] = useState<'preview' | 'apply' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Où l'erreur est survenue : la correction proposée n'est pas la même.
+  const [errorStage, setErrorStage] = useState<'preview' | 'apply'>('preview');
   const [confirming, setConfirming] = useState(false);
   const { token } = theme.useToken();
 
@@ -138,6 +140,7 @@ export const ReturnImportModal: React.FC<ReturnImportModalProps> = ({
     try {
       setPreview(await (api ? api.preview(next) : previewReturnFile(tenantId, next)));
     } catch (err) {
+      setErrorStage('preview');
       setError(apiErrorMessage(err, t('Erreur lors de la lecture du fichier de retour')));
     } finally {
       setBusy(null);
@@ -156,6 +159,7 @@ export const ReturnImportModal: React.FC<ReturnImportModalProps> = ({
     } catch (err) {
       // 400 (plafond) et 409 (déjà appliqué, application en cours) : le message de l'API est affiché tel quel.
       setConfirming(false);
+      setErrorStage('apply');
       setError(apiErrorMessage(err, t("Erreur lors de l'application du fichier de retour")));
     } finally {
       setBusy(null);
@@ -225,17 +229,18 @@ export const ReturnImportModal: React.FC<ReturnImportModalProps> = ({
   const lateCount = preview?.records.filter(isLateReject).length ?? 0;
 
   const footer = applied ? (
-    <Button type="primary" onClick={onClose}>
+    <Button type="primary" style={{ minHeight: 44 }} onClick={onClose}>
       {t('Fermer')}
     </Button>
   ) : confirming ? (
     <Space key="confirm">
-      <Button onClick={() => setConfirming(false)} disabled={busy !== null}>
+      <Button style={{ minHeight: 44 }} onClick={() => setConfirming(false)} disabled={busy !== null}>
         {t('Retour')}
       </Button>
       <Button
         type="primary"
         danger
+        style={{ minHeight: 44 }}
         loading={busy === 'apply'}
         disabled={busy !== null}
         onClick={() => void handleApply()}
@@ -245,8 +250,16 @@ export const ReturnImportModal: React.FC<ReturnImportModalProps> = ({
     </Space>
   ) : (
     <Space key="review">
-      <Button onClick={onClose}>{t('Fermer')}</Button>
-      <Button key="apply" type="primary" disabled={nothingToApply || busy !== null} onClick={() => setConfirming(true)}>
+      <Button style={{ minHeight: 44 }} onClick={onClose}>
+        {t('Fermer')}
+      </Button>
+      <Button
+        key="apply"
+        type="primary"
+        style={{ minHeight: 44 }}
+        disabled={nothingToApply || busy !== null}
+        onClick={() => setConfirming(true)}
+      >
         {t('Appliquer')}
       </Button>
     </Space>
@@ -319,7 +332,12 @@ export const ReturnImportModal: React.FC<ReturnImportModalProps> = ({
               return false;
             }}
           >
-            <Button icon={<UploadOutlined />} loading={busy === 'preview'} disabled={busy !== null}>
+            <Button
+              icon={<UploadOutlined />}
+              loading={busy === 'preview'}
+              disabled={busy !== null}
+              style={{ minHeight: 44 }}
+            >
               {file ? t('Choisir un autre fichier') : t('Choisir un fichier CSV')}
             </Button>
           </Upload>
@@ -328,7 +346,20 @@ export const ReturnImportModal: React.FC<ReturnImportModalProps> = ({
               <bdi dir="ltr">{file.name}</bdi>
             </Text>
           )}
-          {error && <Alert type="error" showIcon message={error} />}
+          {error && (
+            <Alert
+              type="error"
+              showIcon
+              message={error}
+              description={
+                errorStage === 'preview'
+                  ? t(
+                      'Vérifiez que le fichier est un CSV exporté par votre banque, avec les colonnes attendues, puis choisissez-le à nouveau.'
+                    )
+                  : t("Relisez l'aperçu ci-dessous ou consultez l'historique des imports avant de réessayer.")
+              }
+            />
+          )}
           {preview && (
             <>
               {preview.alreadyImported && (
@@ -344,7 +375,7 @@ export const ReturnImportModal: React.FC<ReturnImportModalProps> = ({
                 <Alert
                   type="warning"
                   showIcon
-                  message={t("Confirmer l'application du fichier ?")}
+                  message={t('Appliquer le fichier {{name}} ?', { name: file?.name ?? '' })}
                   description={
                     syndic
                       ? t(

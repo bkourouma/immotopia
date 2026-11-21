@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { App, Upload, Button, List, Typography } from 'antd';
+import { ConfirmAction } from '../primitives';
 import { UploadOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { UploadFile, UploadProps, RcFile } from 'antd/es/upload/interface';
 import { t } from '../../i18n/t';
@@ -83,7 +84,9 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
         multiple
         fileList={[]}
       >
-        <Button icon={<UploadOutlined />}>{t('Sélectionner des fichiers')}</Button>
+        <Button icon={<UploadOutlined />} style={{ minHeight: 44 }}>
+          {t('Sélectionner des fichiers')}
+        </Button>
       </Upload>
 
       {fileList.length > 0 && (
@@ -93,9 +96,25 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
           renderItem={file => (
             <List.Item
               actions={[
-                <Button key="remove" type="text" danger icon={<DeleteOutlined />} onClick={() => handleRemove(file)}>
-                  {t('Supprimer')}
-                </Button>
+                <ConfirmAction
+                  key="remove"
+                  title={t('Retirer le fichier « {{name}} » ?', { name: file.name })}
+                  description={t('Il ne sera pas envoyé avec le ticket.')}
+                  okText={t('Retirer')}
+                  cancelText={t('Annuler')}
+                  danger
+                  onConfirm={() => handleRemove(file)}
+                >
+                  <Button
+                    type="text"
+                    danger
+                    icon={<DeleteOutlined />}
+                    style={{ minHeight: 44 }}
+                    aria-label={t('Retirer le fichier « {{name}} »', { name: file.name })}
+                  >
+                    {t('Supprimer')}
+                  </Button>
+                </ConfirmAction>
               ]}
             >
               <List.Item.Meta
@@ -108,7 +127,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
       )}
 
       {fileList.length > 0 && (
-        <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 8 }}>
+        <Text type="secondary" role="status" style={{ fontSize: 12, display: 'block', marginTop: 8 }}>
           {fileList.length} fichier{fileList.length > 1 ? 's' : ''} {t('sélectionné')}
           {fileList.length > 1 ? 's' : ''}
         </Text>
@@ -116,7 +135,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
 
       <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: fileList.length > 0 ? 4 : 8 }}>
         {t('Types autorisés: JPEG, PNG, WebP, PDF. Taille maximale:')} {maxSize}
-        {t('MB. Maximum:')} {maxFiles} fichiers.
+        {t('MB. Maximum:')} {maxFiles} {t('fichiers.')}
       </Text>
     </div>
   );

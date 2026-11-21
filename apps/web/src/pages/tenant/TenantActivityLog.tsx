@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Alert, Button, Card, Empty, Space, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Empty, Space, Tag } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { EyeOutlined } from '@ant-design/icons';
 import {
@@ -20,12 +20,10 @@ import { useListSearch } from '../../hooks/useListSearch';
 import { getAuditActorDisplay, getAuditOutcomeColor } from '../../utils/tenant-audit-display';
 import { AuditResourceCell } from '../../components/audit/AuditResourceCell';
 import { ActivityLogDetailModal } from '../../components/tenant/ActivityLogDetailModal';
-import { Table } from '../../components/primitives';
+import { PageHeader, Table } from '../../components/primitives';
 import { EXPORT_MAX_ROWS } from '../../utils/table-export/collect';
 import { activeLocale } from '../../i18n/format';
 import { t } from '../../i18n/t';
-
-const { Title, Text } = Typography;
 
 type ApiError = { response?: { data?: { message?: string } } };
 
@@ -189,12 +187,7 @@ export const TenantActivityLog: React.FC = () => {
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      <div>
-        <Title level={2} style={{ margin: 0 }}>
-          {t("Journal d'activité")}
-        </Title>
-        <Text type="secondary">{t('Qui a fait quoi, et quand, dans votre agence.')}</Text>
-      </div>
+      <PageHeader title={t("Journal d'activité")} subtitle={t('Qui a fait quoi, et quand, dans votre agence.')} />
 
       {error && (
         <Alert
