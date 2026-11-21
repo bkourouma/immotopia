@@ -133,6 +133,7 @@ const { __mockPrisma: mockPrisma } = jest.requireMock('@prisma/client') as {
       count: jest.Mock;
     };
     syndicateBudget: { count: jest.Mock };
+    directDebitCreditor: { count: jest.Mock };
     chargeCall: { count: jest.Mock };
     generalMeeting: { count: jest.Mock };
     syndicateDocument: { count: jest.Mock };

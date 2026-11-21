@@ -176,8 +176,8 @@ describe('indivision : pièce par pièce, comme le compte', () => {
           }
         ],
         expenses: [
-          { propertyId: 'prop-1', label: 'Plomberie', amount: 7_001, category: ExpenseCategory.MAINTENANCE },
-          { propertyId: 'prop-1', label: 'Serrure', amount: 3_001, category: ExpenseCategory.MAINTENANCE }
+          { propertyId: 'prop-1', label: 'Plomberie', amount: 7_001, category: ExpenseCategory.ROUTINE_MAINTENANCE },
+          { propertyId: 'prop-1', label: 'Serrure', amount: 3_001, category: ExpenseCategory.ROUTINE_MAINTENANCE }
         ],
         indivision: new Map([['prop-1', { ownerClientId, shares }]])
       })

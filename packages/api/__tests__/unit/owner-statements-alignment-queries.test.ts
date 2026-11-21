@@ -15,7 +15,7 @@ const resolveScope = jest.fn();
 const sharesByProperty = jest.fn();
 const settings = jest.fn();
 
-const emptyList = jest.fn(async () => []);
+const emptyList: jest.Mock = jest.fn(async (..._a: any[]) => []);
 
 jest.mock('../../src/utils/database', () => {
   const client: any = {

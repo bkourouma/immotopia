@@ -140,7 +140,7 @@ describe("détail d'un ticket : réponse restreinte", () => {
       assignedVendor: { id: 'v1', name: 'Plomberie', phone: '0700000000', email: 'v@plomberie.test' }
     });
 
-    const out = (await service.getMaintenanceTicketDetails(UUID, [OWN], TENANT)).ticket;
+    const out: any = (await service.getMaintenanceTicketDetails(UUID, [OWN], TENANT)).ticket;
 
     const args = mockDb.maintenanceTicket.findFirst.mock.calls[0][0];
     const keys = selectedKeys(args.select);
