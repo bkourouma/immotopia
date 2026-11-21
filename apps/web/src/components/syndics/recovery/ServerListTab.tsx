@@ -1,9 +1,8 @@
 import React from 'react';
-import { Alert, Space } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { AnyObject } from 'antd/es/_util/type';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { Table } from '../../primitives';
+import { DataView } from '../../primitives';
 import type { SyndicPage } from '../../../services/syndic-service';
 import type { UseListSearchResult } from '../../../hooks/useListSearch';
 import type { ApiParams } from '../../../utils/list-search';
@@ -20,16 +19,22 @@ interface ServerListTabProps<T extends AnyObject> {
   columns: ColumnsType<T>;
   rowKey: string;
   exportFilename: string;
-  /** Texte du tableau vide SANS critère actif (sous critère, la Table propose d'effacer). */
+  /** Phrase d'accueil de la liste vide SANS critère actif (sous critère, la liste propose d'effacer). */
   emptyText: string;
+  /** Représentation en carte sous 992 px : pas de tableau sans stratégie mobile. */
+  renderCard: (item: T) => React.ReactNode;
+  /** Largeur minimale du tableau (défilement horizontal entre 992 et 1200 px). */
+  scrollX?: number;
   /** Identifiant de la fiche d'aide du tableau (« ? »). */
   helpId?: string;
 }
 
 /**
- * Tableau de recouvrement paginé et filtré par le serveur. Les critères, la
- * page et la taille de page vivent dans l'URL (préfixe de la section) ; les
- * critères partent à l'API, jamais de filtre sur la page reçue.
+ * Liste de recouvrement paginée et filtrée par le serveur : tableau au-dessus
+ * de 992 px, cartes en dessous. Les critères, la page et la taille de page
+ * vivent dans l'URL (préfixe de la section) ; les critères partent à l'API,
+ * jamais de filtre sur la page reçue. Une panne de chargement propose
+ * « Réessayer » à l'endroit de la liste.
  */
 export function ServerListTab<T extends AnyObject>({
   queryKey,
@@ -39,6 +44,8 @@ export function ServerListTab<T extends AnyObject>({
   rowKey,
   exportFilename,
   emptyText,
+  renderCard,
+  scrollX,
   helpId
 }: ServerListTabProps<T>) {
   const query = useQuery({
@@ -50,36 +57,31 @@ export function ServerListTab<T extends AnyObject>({
   const failure = query.error as { response?: { data?: { error?: string } } } | null;
 
   return (
-    <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-      {failure ? (
-        <Alert
-          type="error"
-          showIcon
-          message={failure.response?.data?.error || t('Impossible de charger le recouvrement')}
-        />
-      ) : null}
-      <Table<T>
-        aria-label={exportFilename}
-        helpId={helpId}
-        search={search.searchProps}
-        exportFilename={exportFilename}
-        exportFetchAll={() =>
+    <DataView<T>
+      aria-label={exportFilename}
+      helpId={helpId}
+      search={search.searchProps}
+      {...search.dataViewProps}
+      items={query.data?.items ?? []}
+      total={query.data?.pagination.total ?? 0}
+      loading={query.isLoading}
+      isReloading={query.isFetching && !query.isLoading}
+      error={failure ? failure.response?.data?.error || t('Impossible de charger le recouvrement') : null}
+      errorCause={query.error}
+      onRetry={() => void query.refetch()}
+      emptyDescription={emptyText}
+      columns={columns}
+      rowKey={item => String((item as Record<string, unknown>)[rowKey])}
+      scrollX={scrollX}
+      renderCard={renderCard}
+      export={{
+        filename: exportFilename,
+        fetchAll: () =>
           collectAllPages<T>(async (nextPage, nextLimit) => {
             const result = await fetchPage({ ...search.filterParams, page: nextPage, limit: nextLimit });
             return { items: result.items, total: result.pagination.total };
           })
-        }
-        scroll={{ x: 'max-content' }}
-        rowKey={rowKey}
-        dataSource={query.data?.items ?? []}
-        loading={query.isFetching}
-        columns={columns}
-        pagination={{
-          ...search.tablePagination(query.data?.pagination.total ?? 0),
-          pageSizeOptions: [10, 20, 50, 100]
-        }}
-        locale={search.isFiltered ? undefined : { emptyText }}
-      />
-    </Space>
+      }}
+    />
   );
 }

@@ -1,22 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import {
-  App,
-  Alert,
-  Button,
-  Col,
-  Empty,
-  Form,
-  Input,
-  InputNumber,
-  Modal,
-  Pagination,
-  Row,
-  Select,
-  Space,
-  Spin,
-  Typography
-} from 'antd';
+import { App, Alert, Button, Col, Form, Input, InputNumber, Modal, Pagination, Row, Select, Space, Spin } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { SyndicateCard } from '../../components/syndics/SyndicateCard';
 import { useAuth } from '../../hooks/useAuth';
@@ -24,14 +8,12 @@ import { useFormFieldModes } from '../../hooks/useFormFieldModes';
 import { createSyndicate, deleteSyndicate, listSyndicates } from '../../services/syndic-service';
 import { listMandatingAgencies, MandatingAgency } from '../../services/document-branding-service';
 import { CreateSyndicateRequest, Syndicate } from '../../types/syndic-types';
-import { ListSearch, StateBlock, useConfirmAction } from '../../components/primitives';
+import { ListSearch, namedPageItemRender, PageHeader, StateBlock, useConfirmAction } from '../../components/primitives';
 import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion, SearchOption } from '../../utils/list-search';
 import { localizedList } from '../../i18n/localized';
 import { t } from '../../i18n/t';
 import { HelpSectionTitle } from '../../help';
-
-const { Paragraph, Title } = Typography;
 
 const PAGE_SIZE = 12;
 /** Valeur du critère « Mandant » pour les copropriétés sans agence mandante (identité de l'agence). */
@@ -194,7 +176,9 @@ export const SyndicsList: React.FC = () => {
     setSubmitting(true);
     try {
       const created = await createSyndicate(effectiveTenantId, values);
-      message.success(t('Copropriété créée'));
+      message.success(
+        t('Copropriété « {{name}} » créée : importez maintenant ses lots.', { name: created.name ?? values.name })
+      );
       setOpen(false);
       form.resetFields();
       navigate(`/tenant/${effectiveTenantId}/syndics/${created.id}/lots?openImport=true`);
@@ -210,8 +194,9 @@ export const SyndicsList: React.FC = () => {
       return;
     }
 
+    const name = items.find(item => item.id === syndicId)?.name;
     confirmAction({
-      title: t('Supprimer cette copropriété ?'),
+      title: name ? t('Supprimer la copropriété « {{name}} » ?', { name }) : t('Supprimer cette copropriété ?'),
       description: t('Cette action supprime définitivement la copropriété et ses données liées.'),
       okText: t('Supprimer'),
       danger: true,
@@ -220,7 +205,7 @@ export const SyndicsList: React.FC = () => {
         setDeletingSyndicId(syndicId);
         try {
           await deleteSyndicate(effectiveTenantId, syndicId);
-          message.success(t('Copropriété supprimée'));
+          message.success(name ? t('Copropriété « {{name}} » supprimée', { name }) : t('Copropriété supprimée'));
           await loadSyndicates();
         } catch (err: any) {
           message.error(err.response?.data?.error || t('Suppression impossible'));
@@ -234,32 +219,38 @@ export const SyndicsList: React.FC = () => {
   return (
     <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-          <div>
-            <Title level={2} style={{ marginBottom: 8 }}>
-              {t('Copropriétés')}
-            </Title>
-            <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-              {t("Gérez vos syndics, leurs adresses, leur statut et l'accès aux lots.")}
-            </Paragraph>
-          </div>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
-            {t('Nouvelle copropriété')}
-          </Button>
-        </div>
+        <PageHeader
+          title={t('Copropriétés')}
+          subtitle={t("Gérez vos syndics, leurs adresses, leur statut et l'accès aux lots.")}
+          primaryAction={{ label: t('Nouvelle copropriété'), icon: <PlusOutlined />, onClick: () => setOpen(true) }}
+        />
 
-        {error ? <Alert type="error" message={error} showIcon /> : null}
+        {error ? (
+          <Alert
+            type="error"
+            message={error}
+            showIcon
+            action={
+              effectiveTenantId ? (
+                <Button size="small" onClick={() => void loadSyndicates()}>
+                  {t('Réessayer')}
+                </Button>
+              ) : undefined
+            }
+          />
+        ) : null}
 
         {loading ? (
           <div style={{ minHeight: 280, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Spin size="large" />
           </div>
-        ) : visibleItems.length === 0 ? (
-          <Empty description={t('Aucune copropriété trouvée')}>
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
-              {t('Créer une copropriété')}
-            </Button>
-          </Empty>
+        ) : visibleItems.length === 0 && error ? null : visibleItems.length === 0 ? (
+          <StateBlock
+            variant="empty"
+            title={t('Aucune copropriété trouvée')}
+            description={t('Créez votre première copropriété, puis importez ses lots depuis vos biens.')}
+            actions={[{ label: t('Créer une copropriété'), onClick: () => setOpen(true), primary: true }]}
+          />
         ) : (
           <>
             <ListSearch {...local.searchProps} />
@@ -290,6 +281,7 @@ export const SyndicsList: React.FC = () => {
                   pageSize={PAGE_SIZE}
                   total={local.total}
                   onChange={page => local.setPage(page)}
+                  itemRender={namedPageItemRender(local.page)}
                   showSizeChanger={false}
                 />
               </div>
@@ -312,7 +304,7 @@ export const SyndicsList: React.FC = () => {
       >
         <Form form={form} layout="vertical" initialValues={{ propertyId: undefined }}>
           <Form.Item label={t('Nom')} name="name" rules={[{ required: true, message: t('Le nom est obligatoire') }]}>
-            <Input />
+            <Input autoFocus />
           </Form.Item>
           <Form.Item
             label={t('Adresse')}

@@ -3,6 +3,7 @@ import {
   App,
   Alert,
   Button,
+  Col,
   DatePicker,
   Descriptions,
   Drawer,
@@ -10,6 +11,7 @@ import {
   Input,
   InputNumber,
   Modal,
+  Row,
   Select,
   Space,
   Spin,
@@ -20,7 +22,7 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import { DownloadOutlined, UploadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { MoneyValue } from '../primitives/MoneyValue';
+import { MoneyValue, formatMoney } from '../primitives/MoneyValue';
 import { Table, useConfirmAction } from '../primitives';
 import {
   cancelProviderInvoice,
@@ -44,6 +46,8 @@ import { t } from '../../i18n/t';
 import { useFormFieldModes } from '../../hooks/useFormFieldModes';
 import { HelpButton } from '../../help';
 import { displayCurrency } from '../../utils/syndic-currency';
+import { montantSaisiProps } from '../../utils/montant-saisi';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 
 const { Text, Title } = Typography;
 const { TextArea } = Input;
@@ -75,6 +79,7 @@ export const ProviderInvoiceDrawer: React.FC<ProviderInvoiceDrawerProps> = ({
 }) => {
   const { message } = App.useApp();
   const confirmAction = useConfirmAction();
+  const { isMobile } = useBreakpoint();
 
   const [invoice, setInvoice] = useState<ProviderInvoiceDetail | null>(null);
   const [loading, setLoading] = useState(false);
@@ -151,7 +156,11 @@ export const ProviderInvoiceDrawer: React.FC<ProviderInvoiceDrawerProps> = ({
         reference: (payFm.isVisible('reference') && values.reference) || undefined,
         fundId: (payFm.isVisible('fundId') && values.fundId) || undefined
       });
-      message.success(t('Paiement enregistré'));
+      message.success(
+        t('Paiement de {{amount}} enregistré', {
+          amount: formatMoney(values.amount, { currency: displayCurrency(invoice.currency) })
+        })
+      );
       if (result.fundBalanceNegative) {
         message.warning(t('Le solde du fonds débité est désormais négatif.'));
       }
@@ -173,7 +182,7 @@ export const ProviderInvoiceDrawer: React.FC<ProviderInvoiceDrawerProps> = ({
     setCancellingInvoice(true);
     try {
       await cancelProviderInvoice(tenantId, syndicId, invoice.id, { reason: cancelInvoiceReason.trim() });
-      message.success(t('Facture annulée'));
+      message.success(t('Facture {{number}} annulée', { number: invoice.number }));
       setCancelInvoiceOpen(false);
       setCancelInvoiceReason('');
       await refresh();
@@ -195,7 +204,11 @@ export const ProviderInvoiceDrawer: React.FC<ProviderInvoiceDrawerProps> = ({
       const result = await cancelProviderPayment(tenantId, syndicId, invoice.id, cancelPaymentTarget.id, {
         reason: cancelPaymentReason.trim()
       });
-      message.success(t('Paiement annulé'));
+      message.success(
+        t('Paiement de {{amount}} annulé', {
+          amount: formatMoney(cancelPaymentTarget.amount, { currency: displayCurrency(invoice.currency) })
+        })
+      );
       if (result.fundBalanceNegative) {
         message.warning(t('Le solde du fonds recrédité est désormais négatif.'));
       }
@@ -232,7 +245,11 @@ export const ProviderInvoiceDrawer: React.FC<ProviderInvoiceDrawerProps> = ({
     setUploading(true);
     try {
       await uploadProviderInvoiceFile(tenantId, syndicId, invoice.id, file);
-      message.success(t('Pièce jointe remplacée'));
+      message.success(
+        invoice.hasFile
+          ? t('Pièce jointe remplacée : {{name}}', { name: file.name })
+          : t('Pièce jointe ajoutée : {{name}}', { name: file.name })
+      );
       await refresh();
     } catch (err: any) {
       if (err.response?.status === 409) {
@@ -252,8 +269,11 @@ export const ProviderInvoiceDrawer: React.FC<ProviderInvoiceDrawerProps> = ({
   const handleDeleteFile = () => {
     if (!invoice) return;
     confirmAction({
-      title: t('Supprimer la pièce jointe de cette facture ?'),
-      okText: t('Supprimer'),
+      title: t('Supprimer la pièce jointe de la facture {{number}} ?', { number: invoice.number }),
+      description: invoice.fileName
+        ? t('Le fichier « {{name}} » sera retiré de la facture.', { name: invoice.fileName })
+        : undefined,
+      okText: t('Supprimer la pièce jointe'),
       danger: true,
       cancelText: t('Annuler'),
       onConfirm: async () => {
@@ -317,7 +337,12 @@ export const ProviderInvoiceDrawer: React.FC<ProviderInvoiceDrawerProps> = ({
       align: 'end',
       render: (_: unknown, row) =>
         row.cancelledAt ? null : (
-          <Button size="small" danger onClick={() => setCancelPaymentTarget(row)}>
+          <Button
+            size="small"
+            danger
+            aria-label={t('Annuler le paiement du {{date}}', { date: dayjs(row.paidAt).format(dateFormat('short')) })}
+            onClick={() => setCancelPaymentTarget(row)}
+          >
             {t('Annuler')}
           </Button>
         )
@@ -329,14 +354,25 @@ export const ProviderInvoiceDrawer: React.FC<ProviderInvoiceDrawerProps> = ({
       title={invoice ? t('Facture {{number}}', { number: invoice.number }) : t('Facture')}
       open={Boolean(invoiceId)}
       onClose={onClose}
-      width={720}
+      width={isMobile ? '100%' : 720}
     >
       {loading ? (
         <div style={{ minHeight: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <Spin size="large" />
         </div>
       ) : error ? (
-        <Alert type="error" message={error} showIcon />
+        <Alert
+          type="error"
+          message={error}
+          showIcon
+          action={
+            invoiceId ? (
+              <Button size="small" onClick={() => void load(invoiceId)}>
+                {t('Réessayer')}
+              </Button>
+            ) : undefined
+          }
+        />
       ) : invoice ? (
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
           <Space align="center">
@@ -348,6 +384,38 @@ export const ProviderInvoiceDrawer: React.FC<ProviderInvoiceDrawerProps> = ({
               </Button>
             )}
           </Space>
+
+          <Row gutter={[16, 8]} role="group" aria-label={t('Résumé des montants')}>
+            <Col xs={24} sm={8}>
+              <Text type="secondary">{t('Total à payer (TTC)')}</Text>
+              <div>
+                <Text strong style={{ fontSize: 18 }}>
+                  <MoneyValue value={invoice.amountTTC} currency={displayCurrency(invoice.currency)} />
+                </Text>
+              </div>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {t('dont TVA {{vat}}', {
+                  vat: formatMoney(invoice.vatAmount, { currency: displayCurrency(invoice.currency) })
+                })}
+              </Text>
+            </Col>
+            <Col xs={12} sm={8}>
+              <Text type="secondary">{t('Déjà payé')}</Text>
+              <div>
+                <Text strong style={{ fontSize: 18 }}>
+                  <MoneyValue value={invoice.amountPaid} currency={displayCurrency(invoice.currency)} />
+                </Text>
+              </div>
+            </Col>
+            <Col xs={12} sm={8}>
+              <Text type="secondary">{t('Il reste à payer')}</Text>
+              <div>
+                <Text strong type={invoice.amountDue > 0 ? 'danger' : 'success'} style={{ fontSize: 18 }}>
+                  <MoneyValue value={invoice.amountDue} currency={displayCurrency(invoice.currency)} />
+                </Text>
+              </div>
+            </Col>
+          </Row>
 
           <Descriptions column={1} size="small" bordered>
             <Descriptions.Item label={t('Prestataire')}>{invoice.provider?.name || '—'}</Descriptions.Item>
@@ -389,6 +457,9 @@ export const ProviderInvoiceDrawer: React.FC<ProviderInvoiceDrawerProps> = ({
           <div>
             <Title level={5}>{t('Pièce jointe')}</Title>
             <Space wrap>
+              {!invoice.hasFile && canAttach ? (
+                <Text type="secondary">{t('Aucune pièce jointe. Formats acceptés : PDF, PNG, JPG.')}</Text>
+              ) : null}
               {invoice.hasFile ? (
                 <>
                   <Button icon={<DownloadOutlined />} loading={downloading} onClick={() => void handleDownload()}>
@@ -432,7 +503,15 @@ export const ProviderInvoiceDrawer: React.FC<ProviderInvoiceDrawerProps> = ({
           </div>
 
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: 8
+              }}
+            >
               <Title level={5} style={{ margin: 0 }}>
                 {t('Paiements')}
               </Title>
@@ -450,6 +529,7 @@ export const ProviderInvoiceDrawer: React.FC<ProviderInvoiceDrawerProps> = ({
               size="small"
               dataSource={invoice.payments}
               columns={paymentColumns}
+              scroll={{ x: 'max-content' }}
               pagination={{ pageSize: 5, hideOnSinglePage: true }}
               locale={{ emptyText: t('Aucun paiement enregistré') }}
             />
@@ -465,6 +545,8 @@ export const ProviderInvoiceDrawer: React.FC<ProviderInvoiceDrawerProps> = ({
         modes={payFm}
         funds={funds}
         currency={invoice?.currency}
+        amountDue={invoice?.amountDue}
+        isMobile={isMobile}
         onOk={() => void handlePay()}
         onCancel={() => setPayOpen(false)}
       />
@@ -473,6 +555,15 @@ export const ProviderInvoiceDrawer: React.FC<ProviderInvoiceDrawerProps> = ({
       <ReasonModal
         open={cancelInvoiceOpen}
         title={t('Annuler cette facture')}
+        description={
+          invoice
+            ? t('Facture {{number}} · {{provider}} · {{amount}}. L’annulation sera enregistrée avec le motif saisi.', {
+                number: invoice.number,
+                provider: invoice.provider?.name || '—',
+                amount: formatMoney(invoice.amountTTC, { currency: displayCurrency(invoice.currency) })
+              })
+            : undefined
+        }
         okText={t('Confirmer l’annulation')}
         submitting={cancellingInvoice}
         reason={cancelInvoiceReason}
@@ -488,6 +579,14 @@ export const ProviderInvoiceDrawer: React.FC<ProviderInvoiceDrawerProps> = ({
       <ReasonModal
         open={Boolean(cancelPaymentTarget)}
         title={t('Annuler ce paiement')}
+        description={
+          cancelPaymentTarget
+            ? t('Paiement de {{amount}} du {{date}}. Le montant sera recrédité sur le fonds débité.', {
+                amount: formatMoney(cancelPaymentTarget.amount, { currency: displayCurrency(invoice?.currency) }),
+                date: dayjs(cancelPaymentTarget.paidAt).format(dateFormat('short'))
+              })
+            : undefined
+        }
         okText={t('Confirmer l’annulation')}
         submitting={cancellingPayment}
         reason={cancelPaymentReason}
@@ -509,6 +608,9 @@ interface DrawerPaymentModalProps {
   modes: ReturnType<typeof useFormFieldModes>;
   funds: SyndicateFund[];
   currency?: string;
+  /** Reste dû de la facture : rappelé sous le champ « Montant ». */
+  amountDue?: number;
+  isMobile?: boolean;
   onOk: () => void;
   onCancel: () => void;
 }
@@ -524,6 +626,9 @@ const DrawerPaymentModal: React.FC<DrawerPaymentModalProps> = ({
   form,
   modes,
   funds,
+  currency,
+  amountDue,
+  isMobile = false,
   onOk,
   onCancel
 }) => {
@@ -533,32 +638,63 @@ const DrawerPaymentModal: React.FC<DrawerPaymentModalProps> = ({
       open={open}
       onOk={onOk}
       onCancel={onCancel}
-      okText={t('Enregistrer')}
+      okText={t('Enregistrer le paiement')}
       cancelText={t('Annuler')}
       confirmLoading={submitting}
+      maskClosable={!submitting}
+      width={isMobile ? '100%' : 520}
+      style={isMobile ? { top: 0, maxWidth: '100vw', paddingBottom: 0 } : undefined}
+      afterOpenChange={visible => {
+        if (visible) document.getElementById('provider-payment-amount')?.focus();
+      }}
     >
       <Form form={form} layout="vertical">
         <Form.Item
           label={t('Montant')}
           name="amount"
-          rules={[{ required: true, message: t('Le montant est obligatoire') }]}
+          extra={
+            amountDue !== undefined
+              ? t('Reste dû : {{amount}}', { amount: formatMoney(amountDue, { currency: displayCurrency(currency) }) })
+              : undefined
+          }
+          rules={[{ required: true, message: t('Saisissez le montant payé') }]}
         >
-          <InputNumber min={1} style={{ width: '100%' }} />
-        </Form.Item>
-        <Form.Item
-          label={t('Date de paiement')}
-          name="paidAt"
-          rules={[{ required: true, message: t('La date de paiement est obligatoire') }]}
-        >
-          <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
-        </Form.Item>
-        <Form.Item label={t('Mode')} name="method" rules={[{ required: true, message: t('Le mode est obligatoire') }]}>
-          <Select
-            showSearch
-            optionFilterProp="label"
-            options={PAYMENT_METHODS.map(method => ({ value: method, label: providerPaymentMethodLabels[method] }))}
+          <InputNumber
+            id="provider-payment-amount"
+            {...montantSaisiProps}
+            min={1}
+            inputMode="decimal"
+            style={{ width: '100%' }}
+            addonAfter={displayCurrency(currency) ?? 'FCFA'}
           />
         </Form.Item>
+        <Row gutter={16}>
+          <Col xs={24} md={12}>
+            <Form.Item
+              label={t('Date de paiement')}
+              name="paidAt"
+              rules={[{ required: true, message: t('Choisissez la date du paiement') }]}
+            >
+              <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
+            </Form.Item>
+          </Col>
+          <Col xs={24} md={12}>
+            <Form.Item
+              label={t('Mode')}
+              name="method"
+              rules={[{ required: true, message: t('Choisissez le mode de paiement') }]}
+            >
+              <Select
+                showSearch
+                optionFilterProp="label"
+                options={PAYMENT_METHODS.map(method => ({
+                  value: method,
+                  label: providerPaymentMethodLabels[method]
+                }))}
+              />
+            </Form.Item>
+          </Col>
+        </Row>
         {modes.isVisible('reference') && (
           <Form.Item
             label={t('Référence')}
@@ -593,6 +729,8 @@ const DrawerPaymentModal: React.FC<DrawerPaymentModalProps> = ({
 interface ReasonModalProps {
   open: boolean;
   title: string;
+  /** Ce qui va être annulé (objet, montant) et ce que l'annulation entraîne. */
+  description?: string;
   okText: string;
   submitting: boolean;
   reason: string;
@@ -604,6 +742,7 @@ interface ReasonModalProps {
 const ReasonModal: React.FC<ReasonModalProps> = ({
   open,
   title,
+  description,
   okText,
   submitting,
   reason,
@@ -621,11 +760,24 @@ const ReasonModal: React.FC<ReasonModalProps> = ({
       cancelText={t('Fermer')}
       confirmLoading={submitting}
       okButtonProps={{ danger: true }}
+      maskClosable={!submitting}
+      afterOpenChange={visible => {
+        if (visible) document.getElementById('provider-cancel-reason')?.focus();
+      }}
     >
-      <Text>{t('Motif (obligatoire)')}</Text>
+      {description ? (
+        <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
+          {description}
+        </Text>
+      ) : null}
+      <label htmlFor="provider-cancel-reason">
+        <Text strong>{t('Motif (obligatoire)')}</Text>
+      </label>
       <TextArea
+        id="provider-cancel-reason"
         rows={3}
         value={reason}
+        placeholder={t('Ex : erreur de saisie, facture en double…')}
         onChange={event => onReasonChange(event.target.value)}
         style={{ marginTop: 8 }}
       />

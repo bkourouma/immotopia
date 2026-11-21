@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { Button, Tag } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
-import { Table } from '../../primitives';
+import { DataCard, DataView } from '../../primitives';
 import type { Property } from '../../../types/property-types';
 import type { LotTenantProfile, SyndicateLot } from '../../../types/syndic-types';
 import { useLocalListSearch } from '../../../utils/list-search';
@@ -45,6 +45,8 @@ interface TenantProfilesTabProps {
   propertiesByInternalReference: Record<string, Property>;
   endingTenantProfileId: string | null;
   onEnd: (profile: LotTenantProfile) => void;
+  /** Proposition affichée quand la copropriété n'a encore aucun profil locataire. */
+  onCreate?: () => void;
 }
 
 /**
@@ -58,7 +60,8 @@ export const TenantProfilesTab: React.FC<TenantProfilesTabProps> = ({
   lotsById,
   propertiesByInternalReference,
   endingTenantProfileId,
-  onEnd
+  onEnd,
+  onCreate
 }) => {
   const rows = useMemo<TenantRow[]>(
     () =>
@@ -152,16 +155,33 @@ export const TenantProfilesTab: React.FC<TenantProfilesTabProps> = ({
   ];
 
   return (
-    <Table<TenantRow>
-      {...local.tableProps}
+    <DataView<TenantRow>
+      {...local.dataViewProps}
       helpId="syndic.profils.locataires"
-      exportFilename={t('Profils locataires')}
-      exportFetchAll={local.exportAll}
-      scroll={{ x: 'max-content' }}
-      rowKey="id"
+      aria-label={t('Profils locataires')}
+      export={{ filename: t('Profils locataires'), fetchAll: local.exportAll }}
+      rowKey={row => row.id}
       loading={loading}
       columns={columns}
-      locale={local.isFiltered ? undefined : { emptyText: t('Aucun profil locataire pour cette copropriété.') }}
+      scrollX={760}
+      emptyDescription={t('Aucun profil locataire pour cette copropriété.')}
+      emptyAction={onCreate ? { label: t('Profil locataire'), onClick: onCreate } : undefined}
+      renderCard={row => (
+        <DataCard
+          title={row.contactName}
+          subtitle={row.lotLabel}
+          status={row.situation === 'current' ? <Tag color="green">{t('Actuel')}</Tag> : <Tag>{t('Terminé')}</Tag>}
+          fields={[
+            { label: t('Depuis'), value: dayjs(row.tenantSince).format(dateFormat('short')) },
+            { label: t('Facture au locataire'), value: row.chargesBilledToTenant ? t('Oui') : t('Non') }
+          ]}
+          primaryAction={
+            row.situation === 'current'
+              ? { label: t('Terminer'), onClick: () => onEnd(row), loading: endingTenantProfileId === row.id }
+              : undefined
+          }
+        />
+      )}
     />
   );
 };

@@ -4,6 +4,7 @@ import { DownloadOutlined, SyncOutlined } from '@ant-design/icons';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { DataCard, DataView, MoneyValue } from '../../components/primitives';
 import { collectAllPages } from '../../utils/table-export/collect';
 import { useListSearch } from '../../hooks/useListSearch';
@@ -31,6 +32,8 @@ function receiptKindLabel(kind: CoOwnerDocumentKind): string {
 
 function DownloadButton({ receipt }: { receipt: CoOwnerReceipt }) {
   const [loading, setLoading] = useState<'original' | 'ar' | null>(null);
+  const { isMobile } = useBreakpoint();
+  const touchStyle = isMobile ? { minHeight: 44 } : undefined;
   const download = async (translation?: 'ar') => {
     setLoading(translation ?? 'original');
     try {
@@ -40,6 +43,9 @@ function DownloadButton({ receipt }: { receipt: CoOwnerReceipt }) {
         translation
       );
       saveBlob(blob, filename);
+      feedback.success(
+        t('{{label}} {{number}} téléchargé.', { label: receiptKindLabel(receipt.kind), number: receipt.number })
+      );
     } catch (error) {
       feedback.error(await blobErrorMessage(error, t('Téléchargement impossible.')));
     } finally {
@@ -48,10 +54,15 @@ function DownloadButton({ receipt }: { receipt: CoOwnerReceipt }) {
   };
   return (
     <Space wrap>
-      <Button icon={<DownloadOutlined />} loading={loading === 'original'} onClick={() => void download()}>
+      <Button
+        style={touchStyle}
+        icon={<DownloadOutlined />}
+        loading={loading === 'original'}
+        onClick={() => void download()}
+      >
         {t('Télécharger')}
       </Button>
-      <Button loading={loading === 'ar'} onClick={() => void download('ar')}>
+      <Button style={touchStyle} loading={loading === 'ar'} onClick={() => void download('ar')}>
         {t('Traduction arabe')}
       </Button>
     </Space>

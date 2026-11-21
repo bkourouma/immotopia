@@ -1,12 +1,13 @@
 import React from 'react';
 import { Alert, Button, Card, Drawer, Space, Spin, Tabs, Typography } from 'antd';
-import { HistoryOutlined, PlusOutlined } from '@ant-design/icons';
+import { HistoryOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import { ScheduleFormFields } from '../../components/syndics/charge-schedules/ScheduleFormFields';
 import { SchedulePreviewPanel } from '../../components/syndics/charge-schedules/SchedulePreviewPanel';
 import { ScheduleRunsPanel } from '../../components/syndics/charge-schedules/ScheduleRunsPanel';
 import { ScheduleTable } from '../../components/syndics/charge-schedules/ScheduleTable';
 import { useChargeSchedules } from '../../components/syndics/charge-schedules/useChargeSchedules';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { t } from '../../i18n/t';
 import { HelpSectionTitle } from '../../help';
 
@@ -24,6 +25,7 @@ export const SyndicChargeSchedules: React.FC = () => {
     schedules,
     loading,
     error,
+    reload,
     submitting,
     drawerOpen,
     editing,
@@ -52,6 +54,7 @@ export const SyndicChargeSchedules: React.FC = () => {
     handleExecute,
     handleNoticesResent
   } = useChargeSchedules(effectiveTenantId, syndicId);
+  const { isMobile } = useBreakpoint();
 
   return (
     <>
@@ -72,7 +75,20 @@ export const SyndicChargeSchedules: React.FC = () => {
           </Button>
         </div>
 
-        {error ? <Alert type="error" message={error} showIcon /> : null}
+        {error ? (
+          <Alert
+            type="error"
+            showIcon
+            message={
+              <Space wrap size={8}>
+                <span>{error}</span>
+                <Button size="small" icon={<ReloadOutlined />} onClick={() => void reload()}>
+                  {t('Réessayer')}
+                </Button>
+              </Space>
+            }
+          />
+        ) : null}
 
         {loading ? (
           <div style={{ minHeight: 280, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -105,11 +121,11 @@ export const SyndicChargeSchedules: React.FC = () => {
         }
         open={drawerOpen}
         onClose={closeDrawer}
-        width={560}
+        width={isMobile ? '100%' : 560}
         destroyOnHidden
         extra={
           <Button type="primary" loading={submitting} onClick={() => void handleSubmit()}>
-            {editing ? t('Enregistrer') : t('Créer')}
+            {editing ? t('Enregistrer la programmation') : t('Créer la programmation')}
           </Button>
         }
       >

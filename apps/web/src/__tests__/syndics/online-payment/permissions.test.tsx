@@ -133,7 +133,7 @@ describe('SyndicOnlinePayments : droits', () => {
     await screen.findByPlaceholderText('•••• 1234');
     expect(screen.queryByRole('button', { name: /Vérifier/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /Trancher/ })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Enregistrer' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Enregistrer les paramètres' })).toBeNull();
     expect(screen.queryByRole('button', { name: /Tester la connexion/ })).toBeNull();
     openPayouts();
     expect(screen.queryByRole('button', { name: /Enregistrer un reversement/ })).toBeNull();
@@ -147,7 +147,7 @@ describe('SyndicOnlinePayments : droits', () => {
     await screen.findByPlaceholderText('•••• 1234');
     expect(screen.getByRole('button', { name: /Vérifier/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /Trancher/ })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Enregistrer' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Enregistrer les paramètres' })).toBeNull();
     expect(screen.queryByRole('button', { name: /Tester la connexion/ })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Remplacer la clé' })).toBeNull();
     openPayouts();
@@ -161,7 +161,7 @@ describe('SyndicOnlinePayments : droits', () => {
     await screen.findByText('A12');
     await screen.findByPlaceholderText('•••• 1234');
     expect(screen.getByRole('button', { name: /Trancher/ })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Enregistrer' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Enregistrer les paramètres' })).toBeTruthy();
     expect(screen.getByRole('button', { name: /Tester la connexion/ })).toBeTruthy();
   });
 });

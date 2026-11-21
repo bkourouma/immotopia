@@ -163,7 +163,12 @@ export const MeetingProxies: React.FC<MeetingProxiesProps> = ({
   };
 
   const handleCreate = async () => {
-    const values = await form.validateFields();
+    let values;
+    try {
+      values = await form.validateFields();
+    } catch {
+      return; // saisie incomplète : les messages sont affichés sous les champs
+    }
     setSubmitting(true);
     try {
       await createMeetingProxy(tenantId, syndicId, meetingId, values);
@@ -216,8 +221,13 @@ export const MeetingProxies: React.FC<MeetingProxiesProps> = ({
             render: (_: unknown, proxy: MeetingProxy) => (
               <Popconfirm
                 title={t('Retirer ce pouvoir ?')}
-                okText={t('Oui')}
-                cancelText={t('Non')}
+                description={t('{{grantor}} ne sera plus représenté(e) par {{representative}} à cette assemblée.', {
+                  grantor: contactName(proxy.grantor),
+                  representative: contactName(proxy.representative)
+                })}
+                okText={t('Retirer le pouvoir')}
+                okButtonProps={{ danger: true }}
+                cancelText={t('Conserver')}
                 onConfirm={() => handleRemove(proxy.id)}
               >
                 <Button size="small" danger icon={<DeleteOutlined />} loading={removingId === proxy.id}>
@@ -250,6 +260,11 @@ export const MeetingProxies: React.FC<MeetingProxiesProps> = ({
       {grantorOptions.length === 0 && !readOnly ? (
         <Text type="secondary">{t("Aucun lot n'a de copropriétaire : aucun pouvoir possible.")}</Text>
       ) : null}
+      {proxies.length > 0 ? (
+        <Text type="secondary" style={{ display: 'block', marginBlockEnd: 8 }}>
+          {t('{{count}} pouvoir(s) enregistré(s) pour cette assemblée.', { count: proxies.length })}
+        </Text>
+      ) : null}
       <Table<MeetingProxy>
         helpId="syndic.assemblees.detail.pouvoirs"
         {...local.tableProps}
@@ -272,6 +287,7 @@ export const MeetingProxies: React.FC<MeetingProxiesProps> = ({
         okText={t('Enregistrer')}
         cancelText={t('Annuler')}
         confirmLoading={submitting}
+        okButtonProps={{ disabled: submitting }}
       >
         {contactsError ? (
           <Alert type="warning" showIcon message={contactsError} style={{ marginBlockEnd: 12 }} />
@@ -283,6 +299,7 @@ export const MeetingProxies: React.FC<MeetingProxiesProps> = ({
             rules={[{ required: true, message: t('Le mandant est obligatoire') }]}
           >
             <Select
+              autoFocus
               showSearch
               optionFilterProp="label"
               options={grantorOptions}

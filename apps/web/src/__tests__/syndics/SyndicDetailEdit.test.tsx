@@ -14,6 +14,10 @@ import apiClient from '../../utils/api-client';
  * déjà l'affichage de `<SyndicDetail>` sans ce formulaire.
  */
 
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));
+
 vi.mock('../../utils/api-client', () => ({
   __esModule: true,
   default: {

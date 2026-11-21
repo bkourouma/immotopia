@@ -35,6 +35,11 @@ vi.mock('../../../services/syndic-declared-payment-service', () => ({
   updateSyndicDeclaredSettings: (...a: unknown[]) => updateSyndicDeclaredSettings(...a)
 }));
 
+// Les listes passent en cartes sous 992 px : jsdom se déclare mobile, on force le bureau.
+vi.mock('../../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));
+
 function numero(overrides: Partial<ReceivingNumberAdmin> = {}): ReceivingNumberAdmin {
   return {
     id: 'n1',

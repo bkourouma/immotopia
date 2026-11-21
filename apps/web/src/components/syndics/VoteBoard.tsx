@@ -158,6 +158,9 @@ export const VoteBoard: React.FC<VoteBoardProps> = ({
         canDeleteResolution(resolution) ? (
           <Popconfirm
             title={t('Supprimer cette résolution ?')}
+            description={t('« {{title}} » sera retirée de l’assemblée. Cette action est définitive.', {
+              title: resolution.title
+            })}
             okText={t('Supprimer')}
             cancelText={t('Annuler')}
             okButtonProps={{ danger: true }}
@@ -175,20 +178,23 @@ export const VoteBoard: React.FC<VoteBoardProps> = ({
     <Row gutter={[16, 16]}>
       <Col xs={24} md={8}>
         <Card>
-          <Statistic
-            title={<HelpSectionTitle title={t('Quorum')} helpId="syndic.assemblees.detail.quorum" />}
-            value={quorumPercent}
-            suffix="%"
-          />
-          <Progress percent={Math.min(100, Math.max(0, quorumPercent))} />
-          {attendance ? (
-            <Text type="secondary">
-              {t('{{represented}} / {{total}} tantièmes représentés', {
-                represented: attendance.representedShares,
-                total: attendance.totalShares
-              })}
-            </Text>
-          ) : null}
+          {/* Région vivante : le quorum se met à jour pendant la séance, les lecteurs d'écran l'annoncent. */}
+          <div role="status" aria-live="polite" aria-atomic="true">
+            <Statistic
+              title={<HelpSectionTitle title={t('Quorum')} helpId="syndic.assemblees.detail.quorum" />}
+              value={quorumPercent}
+              suffix="%"
+            />
+            <Progress percent={Math.min(100, Math.max(0, quorumPercent))} />
+            {attendance ? (
+              <Text type="secondary">
+                {t('{{represented}} / {{total}} tantièmes représentés', {
+                  represented: attendance.representedShares,
+                  total: attendance.totalShares
+                })}
+              </Text>
+            ) : null}
+          </div>
         </Card>
       </Col>
       <Col xs={24} md={16}>

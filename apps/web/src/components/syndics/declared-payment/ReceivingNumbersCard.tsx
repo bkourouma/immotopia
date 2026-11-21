@@ -1,20 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import {
-  Alert,
-  App,
-  Button,
-  Card,
-  Form,
-  Input,
-  Modal,
-  Popconfirm,
-  Select,
-  Space,
-  Switch,
-  Table,
-  Tag,
-  Typography
-} from 'antd';
+import { Alert, App, Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Switch, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import {
@@ -27,7 +12,7 @@ import {
   type ReceivingNumberAdmin,
   type UpdateReceivingNumberBody
 } from '../../../services/syndic-declared-payment-service';
-import { MoneyValue } from '../../primitives';
+import { DataCard, DataView, MoneyValue, useConfirmAction } from '../../primitives';
 import { t } from '../../../i18n/t';
 import { HelpSectionTitle } from '../../../help';
 import { OPERATOR_OPTIONS, apiErrorCode, apiErrorMessage, formatPhone, operatorLabel } from './helpers';
@@ -67,6 +52,7 @@ export const ReceivingNumbersCard: React.FC<ReceivingNumbersCardProps> = ({
   onChanged
 }) => {
   const { message } = App.useApp();
+  const confirmAction = useConfirmAction();
   const [form] = Form.useForm<FormValues>();
   const [items, setItems] = useState<ReceivingNumberAdmin[]>([]);
   const [loading, setLoading] = useState(true);
@@ -306,6 +292,74 @@ export const ReceivingNumbersCard: React.FC<ReceivingNumbersCardProps> = ({
     });
   }
 
+  /** Carte mobile : « Modifier » en action visible ; désactiver, activer et supprimer (confirmés) derrière « ⋮ ». */
+  const renderCard = (row: ReceivingNumberAdmin) => (
+    <DataCard
+      title={`${operatorLabel(row.operator)} · ${formatPhone(row.phoneNumber)}`}
+      subtitle={row.holderName}
+      status={row.isActive ? <Tag color="success">{t('Actif')}</Tag> : <Tag>{t('Inactif')}</Tag>}
+      fields={[
+        ...(row.label ? [{ label: t('Libellé'), value: row.label }] : []),
+        {
+          label: t('Compte de trésorerie'),
+          value: (
+            <>
+              {row.treasuryAccountNumber} · <MoneyValue value={row.treasuryBalance} />
+            </>
+          )
+        },
+        { label: t('En attente'), value: row.pendingDeclarations },
+        ...(row.sharedWithCount > 0
+          ? [
+              {
+                label: t('Numéro partagé'),
+                value: t(
+                  'Ce numéro reçoit aussi les paiements de {{n}} autre(s) copropriété(s) : le rapprochement se fera sur la référence.',
+                  { n: row.sharedWithCount }
+                )
+              }
+            ]
+          : [])
+      ]}
+      primaryAction={
+        canEdit ? { label: t('Modifier'), icon: <EditOutlined aria-hidden />, onClick: () => openEdit(row) } : undefined
+      }
+      secondaryActions={
+        canEdit
+          ? [
+              row.isActive
+                ? {
+                    key: 'deactivate',
+                    label: t('Désactiver'),
+                    onClick: () =>
+                      confirmAction({
+                        title: t('Désactiver ce numéro ?'),
+                        description: t(
+                          'Il ne sera plus proposé aux copropriétaires. Les déclarations déjà en attente restent validables.'
+                        ),
+                        okText: t('Désactiver'),
+                        onConfirm: () => setActive(row, false)
+                      })
+                  }
+                : { key: 'activate', label: t('Activer'), onClick: () => void setActive(row, true) },
+              {
+                key: 'delete',
+                danger: true,
+                label: t('Supprimer'),
+                onClick: () =>
+                  confirmAction({
+                    title: t('Supprimer ce numéro ?'),
+                    okText: t('Supprimer'),
+                    danger: true,
+                    onConfirm: () => handleDelete(row)
+                  })
+              }
+            ]
+          : undefined
+      }
+    />
+  );
+
   const title = t('Paiement par transfert mobile money');
 
   if (loadError && items.length === 0) {
@@ -314,7 +368,7 @@ export const ReceivingNumbersCard: React.FC<ReceivingNumbersCardProps> = ({
         <Alert
           type="error"
           showIcon
-          message={t('Erreur')}
+          message={t('Impossible de charger les numéros de réception')}
           description={loadError}
           action={
             <Button size="small" icon={<ReloadOutlined />} onClick={() => void load()}>
@@ -342,15 +396,21 @@ export const ReceivingNumbersCard: React.FC<ReceivingNumbersCardProps> = ({
           'Les copropriétaires envoient leur paiement à l’un de ces numéros puis le déclarent sur le portail. Chaque numéro est suivi sur son propre compte de trésorerie.'
         )}
       </Paragraph>
-      <Table<ReceivingNumberAdmin>
-        rowKey="id"
-        size="small"
+      <DataView<ReceivingNumberAdmin>
+        aria-label={t('Numéros de réception')}
+        items={items}
+        total={items.length}
+        paginated={false}
+        page={1}
+        pageSize={Math.max(items.length, 1)}
+        onPageChange={() => undefined}
         loading={loading}
+        export={false}
+        rowKey={row => row.id}
         columns={columns}
-        dataSource={items}
-        pagination={false}
-        scroll={{ x: 'max-content' }}
-        locale={{ emptyText: t('Aucun numéro de réception pour le moment.') }}
+        scrollX={1000}
+        emptyDescription={t('Aucun numéro de réception pour le moment.')}
+        renderCard={renderCard}
       />
 
       <Modal

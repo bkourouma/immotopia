@@ -382,6 +382,22 @@ describe('OnlinePaymentReturn — états du bandeau', () => {
     await waitFor(() => expect(onSettled).toHaveBeenCalledTimes(1));
   });
 
+  it('payé : rappelle le montant réglé et propose de voir les quittances', async () => {
+    getOnlinePayment.mockResolvedValue(checkout({ status: 'SUCCESS' }));
+    render(
+      <MemoryRouter>
+        <OnlinePaymentReturn codePaiement={CODE} intervalMs={10} maxMs={80} />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText('Paiement confirmé.', {}, WAIT)).toBeInTheDocument();
+    expect(screen.getByText(/Montant réglé/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Voir mes quittances' })).toHaveAttribute(
+      'href',
+      '/copropriete/quittances'
+    );
+  });
+
   it('échoué', async () => {
     getOnlinePayment.mockResolvedValue(checkout({ status: 'FAILED' }));
     const onSettled = mountReturn();

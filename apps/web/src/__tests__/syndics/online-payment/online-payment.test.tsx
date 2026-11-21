@@ -124,7 +124,7 @@ describe('GatewayConfigCard', () => {
     wrap(<GatewayConfigCard tenantId="t1" syndicId="s1" canEditSettings />);
 
     await screen.findByPlaceholderText('•••• 1234');
-    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer les paramètres' }));
 
     await waitFor(() => expect(updateSyndicGatewaySettings).toHaveBeenCalled());
     const [tenantId, syndicId, payload] = updateSyndicGatewaySettings.mock.calls[0];
@@ -143,7 +143,7 @@ describe('GatewayConfigCard', () => {
     const field = screen.getByPlaceholderText('•••• 1234') as HTMLInputElement;
     expect(field.disabled).toBe(false);
     fireEvent.change(field, { target: { value: 'nouvelle-cle-secrete' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer les paramètres' }));
 
     await waitFor(() => expect(updateSyndicGatewaySettings).toHaveBeenCalled());
     expect(updateSyndicGatewaySettings.mock.calls[0][2]).toMatchObject({ apiKey: 'nouvelle-cle-secrete' });
@@ -157,7 +157,7 @@ describe('GatewayConfigCard', () => {
     wrap(<GatewayConfigCard tenantId="t1" syndicId="s1" canEditSettings />);
 
     await screen.findByPlaceholderText('•••• 1234');
-    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer les paramètres' }));
 
     expect(await screen.findByText('Un paiement est en cours.')).toBeTruthy();
   });
@@ -358,7 +358,7 @@ describe('PayoutsPanel — reversement d’un numéro de réception (spec 047, R
     expect(within(dialog).getByText(/Solde du compte 55211 :/)).toBeInTheDocument();
     fireEvent.change(within(dialog).getByLabelText('Référence du virement'), { target: { value: 'VIR-9' } });
     fireEvent.change(within(dialog).getByLabelText('Montant reversé'), { target: { value: '50000' } });
-    const confirm = within(dialog).getByRole('button', { name: 'Enregistrer' }) as HTMLButtonElement;
+    const confirm = within(dialog).getByRole('button', { name: 'Enregistrer le reversement' }) as HTMLButtonElement;
     await waitFor(() => expect(confirm.disabled).toBe(false));
     fireEvent.click(confirm);
 
@@ -382,7 +382,7 @@ describe('PayoutsPanel — reversement d’un numéro de réception (spec 047, R
     fireEvent.change(within(dialog).getByLabelText('Référence du virement'), { target: { value: 'R' } });
     fireEvent.change(within(dialog).getByLabelText('Montant reversé'), { target: { value: '90000' } });
     fireEvent.blur(within(dialog).getByLabelText('Montant reversé'));
-    const confirm = within(dialog).getByRole('button', { name: 'Enregistrer' }) as HTMLButtonElement;
+    const confirm = within(dialog).getByRole('button', { name: 'Enregistrer le reversement' }) as HTMLButtonElement;
     recordSyndicGatewayPayout.mockResolvedValue({
       entryId: 'e2',
       reference: 'R',
@@ -402,7 +402,7 @@ describe('PayoutsPanel — reversement d’un numéro de réception (spec 047, R
     listSyndicGatewayPayouts.mockResolvedValue({ items: [] });
     listSyndicReceivingNumbers.mockResolvedValue([{ ...NUMBER, treasuryBalance: 0 }]);
     wrap(<PayoutsPanel tenantId="t1" syndicId="s1" canEdit collectionBalance={0} />);
-    await screen.findByText('Aucun reversement enregistré');
+    await screen.findByText(/Aucun reversement enregistré/);
     expect(screen.getByRole('button', { name: /Enregistrer un reversement/ })).toBeDisabled();
   });
 
@@ -410,7 +410,7 @@ describe('PayoutsPanel — reversement d’un numéro de réception (spec 047, R
     listSyndicGatewayPayouts.mockResolvedValue({ items: [] });
     listSyndicReceivingNumbers.mockRejectedValue(new Error('403'));
     wrap(<PayoutsPanel tenantId="t1" syndicId="s1" canEdit collectionBalance={20000} />);
-    await screen.findByText('Aucun reversement enregistré');
+    await screen.findByText(/Aucun reversement enregistré/);
     expect(screen.getByRole('button', { name: /Enregistrer un reversement/ })).toBeEnabled();
   });
 });
@@ -428,11 +428,11 @@ describe('PayoutsPanel', () => {
     const onRecorded = vi.fn();
     wrap(<PayoutsPanel tenantId="t1" syndicId="s1" collectionBalance={150000} onRecorded={onRecorded} canEdit />);
 
-    await screen.findByText('Aucun reversement enregistré');
+    await screen.findByText(/Aucun reversement enregistré/);
     fireEvent.click(screen.getByRole('button', { name: /Enregistrer un reversement/ }));
 
     const dialog = await screen.findByRole('dialog');
-    const confirm = within(dialog).getByRole('button', { name: 'Enregistrer' }) as HTMLButtonElement;
+    const confirm = within(dialog).getByRole('button', { name: 'Enregistrer le reversement' }) as HTMLButtonElement;
     expect(confirm.disabled).toBe(true);
 
     fireEvent.change(within(dialog).getByLabelText('Référence du virement'), { target: { value: 'VIR-1' } });

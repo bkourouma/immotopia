@@ -148,3 +148,8 @@ describe('SyndicBudgets — dialogue de clôture avec coût d incidents (C1)', (
     expect(view.getByText(/3 facture\(s\) \/ imputation\(s\) non rattachée\(s\) à un poste/)).toBeTruthy();
   });
 });
+
+// Les écrans « charges » et « budgets » basculent en cartes sous 992 px : ici on teste la disposition tableau.
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));

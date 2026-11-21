@@ -12,6 +12,10 @@ import { authValue, formModes } from './charges-form-modes-mock';
 
 const T = { timeout: 15000 };
 
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));
+
 vi.mock('../../hooks/useFormFieldModes', async () => (await import('./charges-form-modes-mock')).formModesModule);
 
 vi.mock('../../utils/api-client', () => ({
@@ -75,7 +79,7 @@ describe('SyndicOwnerAccount — champ réglable « Référence »', () => {
   it('obligatoire : message de validation, aucun envoi', async () => {
     formModes.current = { reference: 'REQUIRED' };
     const dialog = await openAdjustmentModal();
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Enregistrer' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: "Enregistrer l'ajustement" }));
     expect(await within(dialog).findByText('La référence est obligatoire', {}, T)).toBeTruthy();
     expect(mockApiClient.post).not.toHaveBeenCalled();
   }, 60000);

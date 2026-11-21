@@ -118,3 +118,8 @@ describe('<ChargeCallTable> — lien de paiement (spec 042)', () => {
     expect(screen.getAllByRole('button', { name: /Lien de paiement/ })).toHaveLength(1);
   });
 });
+
+// Les écrans « charges » et « budgets » basculent en cartes sous 992 px : ici on teste la disposition tableau.
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));

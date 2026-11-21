@@ -9,6 +9,7 @@ import {
 } from '../../../services/syndic-online-payment-service';
 import { displayCurrency } from '../../../utils/syndic-currency';
 import { t } from '../../../i18n/t';
+import { useBreakpoint } from '../../../hooks/useBreakpoint';
 import { HelpSectionTitle } from '../../../help';
 import { allowedDecisions, apiErrorMessage, formatDateTime, reviewKindLabel } from './helpers';
 
@@ -37,6 +38,7 @@ export const ReviewDecisionModal: React.FC<ReviewDecisionModalProps> = ({
   onClose,
   onDecided
 }) => {
+  const { isMobile } = useBreakpoint();
   const [decision, setDecision] = useState<Decision | null>(null);
   const [note, setNote] = useState('');
   const [paidAt, setPaidAt] = useState<Dayjs | null>(null);
@@ -98,9 +100,11 @@ export const ReviewDecisionModal: React.FC<ReviewDecisionModalProps> = ({
       onOk={() => void submit()}
       okText={t('Enregistrer la décision')}
       cancelText={t('Annuler')}
-      okButtonProps={{ disabled: !decision || !noteOk, loading: submitting }}
+      okButtonProps={{ disabled: !decision || !noteOk, loading: submitting, danger: decision === 'REJECT' }}
+      cancelButtonProps={{ disabled: submitting }}
       destroyOnClose
-      width={640}
+      width={isMobile ? '100%' : 640}
+      style={isMobile ? { top: 0, maxWidth: '100vw', paddingBottom: 0 } : undefined}
     >
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         {kind ? (

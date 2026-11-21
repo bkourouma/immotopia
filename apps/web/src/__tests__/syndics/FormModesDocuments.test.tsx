@@ -77,7 +77,7 @@ describe('Ajouter un document : modes de champs', () => {
     expect(within(dialog).queryByRole('checkbox')).toBeNull();
 
     await fillRequired(dialog);
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Ajouter' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Ajouter le document' }));
     await waitFor(() => expect(service.createSyndicDocument).toHaveBeenCalled());
     expect(service.createSyndicDocument.mock.calls[0][2].visibleToCoOwners).toBeUndefined();
   });
@@ -87,7 +87,7 @@ describe('Ajouter un document : modes de champs', () => {
     renderPage();
     const dialog = await openModal();
     await fillRequired(dialog);
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Ajouter' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Ajouter le document' }));
 
     expect(await screen.findByText('Ce champ est obligatoire')).toBeTruthy();
     expect(service.createSyndicDocument).not.toHaveBeenCalled();

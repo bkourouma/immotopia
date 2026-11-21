@@ -1,5 +1,21 @@
 ﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { App, Button, DatePicker, Form, Input, InputNumber, Modal, Select, Space, Alert, Tabs, Typography } from 'antd';
+import {
+  App,
+  Button,
+  Col,
+  DatePicker,
+  Divider,
+  Form,
+  Input,
+  InputNumber,
+  Modal,
+  Row,
+  Select,
+  Space,
+  Alert,
+  Tabs,
+  Typography
+} from 'antd';
 import { PlusOutlined, UserAddOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -24,6 +40,8 @@ import {
   updateSyndicIncident
 } from '../../services/syndic-service';
 import { useFormFieldModes } from '../../hooks/useFormFieldModes';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { montantSaisiProps } from '../../utils/montant-saisi';
 import { CoOwnerInvitationResult } from '../../components/syndics/CoOwnerInvitationResult';
 import { useTabParam } from '../../components/syndics/finances/url-params';
 import { IncidentsTab } from '../../components/syndics/profiles/IncidentsTab';
@@ -122,6 +140,16 @@ function contactLabel(profile: LotOwnerProfile): string {
 export const SyndicProfilesIncidents: React.FC = () => {
   const { message, modal } = App.useApp();
   const queryClient = useQueryClient();
+  const { isMobile } = useBreakpoint();
+  // Plein écran sur téléphone, annulation du clic sur le fond pendant l'envoi, focus sur le premier champ.
+  const modalProps = (focusId?: string) => ({
+    width: isMobile ? '100%' : 520,
+    style: isMobile ? { top: 0, maxWidth: '100vw', paddingBottom: 0 } : undefined,
+    maskClosable: !submitting,
+    afterOpenChange: (visible: boolean) => {
+      if (visible && focusId && !isMobile) document.getElementById(focusId)?.focus();
+    }
+  });
   const ownerProfileFm = useFormFieldModes('syndic.profil-proprietaire');
   const incidentCreateFm = useFormFieldModes('syndic.incident-creation');
   const incidentEditFm = useFormFieldModes('syndic.incident-modification');
@@ -343,6 +371,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
   const renderContactSelect = (target: ContactTarget) => (
     <Space.Compact style={{ width: '100%' }}>
       <Select
+        id={`profile-contact-${target}`}
         style={{ width: '100%' }}
         showSearch
         filterOption={false}
@@ -660,7 +689,10 @@ export const SyndicProfilesIncidents: React.FC = () => {
 
   const confirmEndTenantProfile = (profile: LotTenantProfile) => {
     modal.confirm({
-      title: t("Mettre fin à ce profil locataire à la date d'aujourd'hui ?"),
+      title: t('Mettre fin au profil locataire de {{name}} ?', {
+        name: profileContactName(profile.contact, profile.contactId)
+      }),
+      content: t("Mettre fin à ce profil locataire à la date d'aujourd'hui ?"),
       okText: t('Terminer'),
       cancelText: t('Annuler'),
       onOk: () => handleEndTenantProfile(profile)
@@ -693,6 +725,19 @@ export const SyndicProfilesIncidents: React.FC = () => {
     void loadImputationOptions();
   };
 
+  const openOwnerModal = () => {
+    setOpenOwner(true);
+    void ensureContacts();
+  };
+  const openTenantModal = () => {
+    setOpenTenant(true);
+    void ensureContacts();
+  };
+  const openIncidentModal = () => {
+    setOpenIncident(true);
+    void ensureContacts();
+  };
+
   return (
     <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -705,39 +750,39 @@ export const SyndicProfilesIncidents: React.FC = () => {
               {t('Profils propriétaires/locataires et suivi des incidents avec imputations.')}
             </Paragraph>
           </Space>
-          <Space>
-            <Button
-              icon={<PlusOutlined />}
-              onClick={() => {
-                setOpenOwner(true);
-                void ensureContacts();
-              }}
-            >
+          <Space wrap>
+            <Button icon={<PlusOutlined />} onClick={openOwnerModal}>
               {t('Profil propriétaire')}
             </Button>
-            <Button
-              icon={<PlusOutlined />}
-              onClick={() => {
-                setOpenTenant(true);
-                void ensureContacts();
-              }}
-            >
+            <Button icon={<PlusOutlined />} onClick={openTenantModal}>
               {t('Profil locataire')}
             </Button>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => {
-                setOpenIncident(true);
-                void ensureContacts();
-              }}
-            >
+            <Button type="primary" icon={<PlusOutlined />} onClick={openIncidentModal}>
               {t('Nouvel incident')}
             </Button>
           </Space>
         </div>
 
-        {error ? <Alert type="error" message={error} showIcon /> : null}
+        {error ? (
+          <Alert
+            type="error"
+            message={error}
+            showIcon
+            action={
+              ready ? (
+                <Button
+                  size="small"
+                  onClick={() => {
+                    void activeQuery.refetch();
+                    void lotsQuery.refetch();
+                  }}
+                >
+                  {t('Réessayer')}
+                </Button>
+              ) : undefined
+            }
+          />
+        ) : null}
 
         <Tabs
           activeKey={activeTab}
@@ -759,6 +804,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
                   revokingProfileId={revokingProfileId}
                   onInvite={profile => void handleInvite(profile)}
                   onRevoke={confirmRevoke}
+                  onCreate={openOwnerModal}
                 />
               ) : null
             },
@@ -774,6 +820,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
                   propertiesByInternalReference={propertiesByInternalReference}
                   endingTenantProfileId={endingTenantProfileId}
                   onEnd={confirmEndTenantProfile}
+                  onCreate={openTenantModal}
                 />
               ) : null
             },
@@ -794,6 +841,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
                   onAssignProvider={(incidentId, providerId) => void handleAssignProvider(incidentId, providerId)}
                   onEdit={openEditIncidentModal}
                   onAddImputation={openImputationModal}
+                  onCreate={openIncidentModal}
                 />
               ) : null
             }
@@ -820,7 +868,10 @@ export const SyndicProfilesIncidents: React.FC = () => {
         onCancel={() => setOpenOwner(false)}
         afterClose={() => ownerForm.resetFields()}
         onOk={() => void handleCreateOwner()}
+        okText={t('Créer le profil propriétaire')}
+        cancelText={t('Annuler')}
         confirmLoading={submitting}
+        {...modalProps('owner-lot')}
       >
         <Form
           form={ownerForm}
@@ -835,6 +886,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
         >
           <Form.Item label={t('Lot')} name="lotId" rules={[{ required: true, message: t('Lot obligatoire') }]}>
             <Select
+              id="owner-lot"
               showSearch
               optionFilterProp="label"
               options={lots.map(lot => ({
@@ -850,12 +902,26 @@ export const SyndicProfilesIncidents: React.FC = () => {
           >
             {renderContactSelect('owner')}
           </Form.Item>
-          <Form.Item label={t('Part de propriété (%)')} name="ownershipPercentage" rules={[{ required: true }]}>
-            <InputNumber min={0.01} max={100} step={0.01} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item label={t('Date de début')} name="ownedSince" rules={[{ required: true }]}>
-            <Input type="date" />
-          </Form.Item>
+          <Row gutter={16}>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label={t('Part de propriété (%)')}
+                name="ownershipPercentage"
+                rules={[{ required: true, message: t('Indiquez la part de propriété (ex. 100)') }]}
+              >
+                <InputNumber min={0.01} max={100} step={0.01} inputMode="decimal" style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label={t('Date de début')}
+                name="ownedSince"
+                rules={[{ required: true, message: t('Choisissez la date de début de propriété') }]}
+              >
+                <Input type="date" />
+              </Form.Item>
+            </Col>
+          </Row>
           {ownerProfileFm.isVisible('portalAccessEnabled') && (
             <Form.Item
               label={t('Activer accès portail')}
@@ -912,7 +978,8 @@ export const SyndicProfilesIncidents: React.FC = () => {
         open={createContactFor !== null}
         onCancel={() => setCreateContactFor(null)}
         footer={null}
-        width={800}
+        width={isMobile ? '100%' : 800}
+        style={isMobile ? { top: 0, maxWidth: '100vw', paddingBottom: 0 } : undefined}
         destroyOnHidden
       >
         <ContactForm onSubmit={handleCreateContact} onCancel={() => setCreateContactFor(null)} />
@@ -924,11 +991,15 @@ export const SyndicProfilesIncidents: React.FC = () => {
         onCancel={() => setOpenTenant(false)}
         afterClose={() => tenantForm.resetFields()}
         onOk={() => void handleCreateTenant()}
+        okText={t('Créer le profil locataire')}
+        cancelText={t('Annuler')}
         confirmLoading={submitting}
+        {...modalProps('tenant-lot')}
       >
         <Form form={tenantForm} layout="vertical" initialValues={{ chargesBilledToTenant: false }}>
           <Form.Item label={t('Lot')} name="lotId" rules={[{ required: true, message: t('Lot obligatoire') }]}>
             <Select
+              id="tenant-lot"
               showSearch
               optionFilterProp="label"
               options={lots.map(lot => ({
@@ -944,19 +1015,29 @@ export const SyndicProfilesIncidents: React.FC = () => {
           >
             {renderContactSelect('tenant')}
           </Form.Item>
-          <Form.Item label={t("Date d'entrée")} name="tenantSince" rules={[{ required: true }]}>
-            <Input type="date" />
-          </Form.Item>
-          <Form.Item label={t('Charges facturées au locataire')} name="chargesBilledToTenant">
-            <Select
-              showSearch
-              optionFilterProp="label"
-              options={[
-                { value: true, label: t('Oui') },
-                { value: false, label: t('Non') }
-              ]}
-            />
-          </Form.Item>
+          <Row gutter={16}>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label={t("Date d'entrée")}
+                name="tenantSince"
+                rules={[{ required: true, message: t("Choisissez la date d'entrée du locataire") }]}
+              >
+                <Input type="date" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label={t('Charges facturées au locataire')} name="chargesBilledToTenant">
+                <Select
+                  showSearch
+                  optionFilterProp="label"
+                  options={[
+                    { value: true, label: t('Oui') },
+                    { value: false, label: t('Non') }
+                  ]}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
         </Form>
       </Modal>
 
@@ -966,7 +1047,10 @@ export const SyndicProfilesIncidents: React.FC = () => {
         onCancel={() => setOpenIncident(false)}
         afterClose={() => incidentForm.resetFields()}
         onOk={() => void handleCreateIncident()}
+        okText={t("Déclarer l'incident")}
+        cancelText={t('Annuler')}
         confirmLoading={submitting}
+        {...modalProps('profile-contact-incident')}
       >
         <Form form={incidentForm} layout="vertical" initialValues={{ incidentType: 'OTHER', urgency: 'MEDIUM' }}>
           <Form.Item
@@ -995,22 +1079,40 @@ export const SyndicProfilesIncidents: React.FC = () => {
               />
             </Form.Item>
           )}
-          <Form.Item label={t('Type incident')} name="incidentType" rules={[{ required: true }]}>
-            <Select
-              showSearch
-              optionFilterProp="label"
-              options={INCIDENT_TYPES.map(value => ({ value, label: getIncidentTypeLabel(value) }))}
-            />
-          </Form.Item>
-          <Form.Item label={t('Urgence')} name="urgency" rules={[{ required: true }]}>
-            <Select
-              showSearch
-              optionFilterProp="label"
-              options={INCIDENT_URGENCIES.map(value => ({ value, label: getIncidentUrgencyLabel(value) }))}
-            />
-          </Form.Item>
-          <Form.Item label={t('Description')} name="description" rules={[{ required: true }]}>
-            <Input.TextArea rows={3} />
+          <Row gutter={16}>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label={t('Type incident')}
+                name="incidentType"
+                rules={[{ required: true, message: t("Choisissez le type d'incident") }]}
+              >
+                <Select
+                  showSearch
+                  optionFilterProp="label"
+                  options={INCIDENT_TYPES.map(value => ({ value, label: getIncidentTypeLabel(value) }))}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label={t('Urgence')}
+                name="urgency"
+                rules={[{ required: true, message: t("Choisissez l'urgence") }]}
+              >
+                <Select
+                  showSearch
+                  optionFilterProp="label"
+                  options={INCIDENT_URGENCIES.map(value => ({ value, label: getIncidentUrgencyLabel(value) }))}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item
+            label={t('Description')}
+            name="description"
+            rules={[{ required: true, whitespace: true, message: t('Décrivez le problème en quelques mots') }]}
+          >
+            <Input.TextArea rows={3} placeholder={t('Ex : fuite d’eau au plafond du couloir, 2e étage')} />
           </Form.Item>
         </Form>
       </Modal>
@@ -1025,8 +1127,18 @@ export const SyndicProfilesIncidents: React.FC = () => {
         }}
         onOk={() => void handleUpdateIncident()}
         okText={t('Enregistrer')}
+        cancelText={t('Annuler')}
         confirmLoading={submitting}
+        {...modalProps('edit-incident-status')}
       >
+        {editingIncident ? (
+          <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
+            {t('Incident du lot {{lot}} : {{description}}', {
+              lot: editingIncident.lotId ? lotsById[editingIncident.lotId]?.lotNumber || '-' : '-',
+              description: editingIncident.description
+            })}
+          </Typography.Text>
+        ) : null}
         <Form
           form={editIncidentForm}
           layout="vertical"
@@ -1036,6 +1148,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
         >
           <Form.Item label={t('Statut')} name="status" rules={[{ required: true, message: t('Statut obligatoire') }]}>
             <Select
+              id="edit-incident-status"
               showSearch
               optionFilterProp="label"
               options={INCIDENT_STATUSES.map(value => ({ value, label: getIncidentStatusLabel(value) }))}
@@ -1086,27 +1199,51 @@ export const SyndicProfilesIncidents: React.FC = () => {
         onCancel={() => setOpenImputation(false)}
         afterClose={() => imputationForm.resetFields()}
         onOk={() => void handleCreateImputation()}
+        okText={t("Enregistrer l'imputation")}
+        cancelText={t('Annuler')}
         confirmLoading={submitting}
+        {...modalProps('imputation-type')}
       >
         <Form
           form={imputationForm}
           layout="vertical"
           initialValues={{ imputationType: 'SYNDICATE_BUDGET', currency: 'XOF' }}
         >
-          <Form.Item label={t('Type imputation')} name="imputationType" rules={[{ required: true }]}>
-            <Select
-              showSearch
-              optionFilterProp="label"
-              options={IMPUTATION_TYPES.map(value => ({ value, label: getImputationTypeLabel(value) }))}
-            />
-          </Form.Item>
-          <Form.Item label={t('Montant')} name="amount" rules={[{ required: true }]}>
-            <InputNumber min={1} style={{ width: '100%' }} />
-          </Form.Item>
-          {/* L'API attend le code ISO XOF ; l'écran affiche le libellé usuel FCFA. */}
-          <Form.Item label={t('Devise')}>
-            <Input value="FCFA" readOnly disabled />
-          </Form.Item>
+          <Row gutter={16}>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label={t('Type imputation')}
+                name="imputationType"
+                rules={[{ required: true, message: t("Choisissez le type d'imputation") }]}
+              >
+                <Select
+                  id="imputation-type"
+                  showSearch
+                  optionFilterProp="label"
+                  options={IMPUTATION_TYPES.map(value => ({ value, label: getImputationTypeLabel(value) }))}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label={t('Montant')}
+                name="amount"
+                rules={[{ required: true, message: t('Saisissez le montant imputé') }]}
+              >
+                {/* L'API attend le code ISO XOF (posé à l'envoi) ; l'écran affiche le libellé usuel FCFA. */}
+                <InputNumber
+                  {...montantSaisiProps}
+                  min={1}
+                  inputMode="decimal"
+                  style={{ width: '100%' }}
+                  addonAfter="FCFA"
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Divider titlePlacement="start" plain>
+            {t('Rattachement (facultatif)')}
+          </Divider>
           {imputationFm.isVisible('budgetLineId') && (
             <Form.Item
               label={
