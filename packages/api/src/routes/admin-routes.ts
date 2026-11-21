@@ -7,6 +7,7 @@ import {
   getTenantStatsHandler,
   suspendTenantHandler,
   activateTenantHandler,
+  regenerateInvitationLinkHandler,
   getTenantModulesHandler,
   updateTenantModulesHandler
 } from '../controllers/tenant-controller';
@@ -24,7 +25,11 @@ import {
 import { getGlobalStatisticsHandler, getTenantActivityStatsHandler } from '../controllers/statistics-controller';
 import { exportAuditLogsHandler, getAuditIntegrityHandler, getAuditLogsHandler } from '../controllers/audit-controller';
 import { requireSuperAdmin } from '../middleware/super-admin-middleware';
-import { auditExportRateLimiter, auditIntegrityRateLimiter } from '../middleware/rate-limit-middleware';
+import {
+  auditExportRateLimiter,
+  auditIntegrityRateLimiter,
+  invitationLinkRateLimiter
+} from '../middleware/rate-limit-middleware';
 import {
   listCatalogHandler,
   updateCatalogItemHandler,
@@ -83,6 +88,14 @@ router.get('/tenants/:tenantId/stats', requirePermission('PLATFORM_TENANTS_VIEW'
 router.post('/tenants/:tenantId/suspend', requirePermission('PLATFORM_TENANTS_EDIT'), suspendTenantHandler);
 
 router.post('/tenants/:tenantId/activate', requirePermission('PLATFORM_TENANTS_EDIT'), activateTenantHandler);
+
+// Lien d'invitation de l'administrateur (sans e-mail) : nouveau jeton, ancien invalide.
+router.post(
+  '/tenants/:tenantId/invitation-link',
+  invitationLinkRateLimiter,
+  requirePermission('PLATFORM_TENANTS_EDIT'),
+  regenerateInvitationLinkHandler
+);
 
 // Module management routes
 router.get('/tenants/:tenantId/modules', requirePermission('PLATFORM_MODULES_VIEW'), getTenantModulesHandler);
