@@ -4,6 +4,7 @@ import { EditOutlined, SyncOutlined, FileTextOutlined, StopOutlined } from '@ant
 import dayjs from 'dayjs';
 import { LeaseEvent, LeaseEventInitiator, LeaseEventType } from '../../../services/lease-lifecycle-service';
 import { formatMoney } from '../../primitives';
+import { formatMontantLocatif } from '../../../lib/rental-labels';
 import { t } from '../../../i18n/t';
 
 const { Text } = Typography;
@@ -52,11 +53,15 @@ function initiatorLabel(initiatedBy: LeaseEventInitiator | null): string {
  * dans « de 150 000 à 157 500 FCFA », ce qu'un `<MoneyValue>` par valeur ne
  * permettrait pas.
  */
-export function describeLeaseEvent(event: LeaseEvent): string {
+export function describeLeaseEvent(event: LeaseEvent, currency?: string | null): string {
   switch (event.type) {
     case 'REVISION': {
-      const from = formatMoney(event.previousRent, { currency: null });
-      const to = formatMoney(event.newRent);
+      // Décimales conservées pour une devise qui en porte (EUR) ; devise du bail, pas FCFA par défaut.
+      const from = formatMoney(event.previousRent, {
+        currency: null,
+        fractionDigits: Number.isInteger(Number(event.previousRent)) ? 0 : 2
+      });
+      const to = formatMontantLocatif(event.newRent, currency);
       const date = formatDate(event.effectiveDate);
       let phrase = t('Loyer révisé de {{from}} à {{to}} au {{date}}', { from, to, date });
       if (event.revisionRate != null) {
@@ -103,6 +108,8 @@ export function describeLeaseEvent(event: LeaseEvent): string {
 
 interface LeaseEventTimelineProps {
   events: LeaseEvent[];
+  /** Devise du bail : les montants de l'historique s'y expriment. */
+  currency?: string | null;
 }
 
 /**
@@ -111,7 +118,7 @@ interface LeaseEventTimelineProps {
  * Le contrat (§A) rend déjà les événements dans cet ordre : pas de tri côté
  * client.
  */
-export const LeaseEventTimeline: React.FC<LeaseEventTimelineProps> = ({ events }) => {
+export const LeaseEventTimeline: React.FC<LeaseEventTimelineProps> = ({ events, currency }) => {
   if (events.length === 0) {
     return <Empty description={t('Aucun événement enregistré')} image={Empty.PRESENTED_IMAGE_SIMPLE} />;
   }
@@ -124,7 +131,7 @@ export const LeaseEventTimeline: React.FC<LeaseEventTimelineProps> = ({ events }
     color: COLOR_BY_TYPE[event.type],
     children: (
       <div>
-        <Text>{describeLeaseEvent(event)}</Text>
+        <Text>{describeLeaseEvent(event, currency)}</Text>
         <div style={{ marginTop: 2 }}>
           <Text type="secondary" style={{ fontSize: 12 }}>
             {t('Par {{name}}, le {{date}}', {

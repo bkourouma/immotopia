@@ -31,6 +31,7 @@ import { LotPaymentModal } from '../../components/syndics/LotPaymentModal';
 import { ChargeCallPaymentLinkModal } from '../../components/syndics/online-payment/ChargeCallPaymentLinkModal';
 import { useSyndicOnlinePaymentUsable } from '../../components/syndics/online-payment/useOnlinePaymentUsable';
 import { MoneyValue, StatCard, formatMoney } from '../../components/primitives';
+import { currencyFractionDigits } from '../../components/syndics/budget-money';
 import {
   assignChargeCallFund,
   createChargeCall,
@@ -363,7 +364,9 @@ export const SyndicCharges: React.FC = () => {
       amount: allocationMethod === 'BY_LOT_TYPE' ? undefined : values.amount,
       allocationMethod: allocationMethod ?? undefined,
       currency: values.currency || 'XOF',
-      dueDate: values.dueDate.toISOString(),
+      // Jour civil choisi, sans heure (comme les bornes de période) : `toISOString()` d'un minuit local
+      // reculait l'échéance d'un jour (avis, quittances, retard) pour un navigateur à l'est de UTC.
+      dueDate: dayjs(values.dueDate).format('YYYY-MM-DD'),
       ...(fm.isVisible('fundId') ? { fundId: values.fundId || undefined } : {}),
       ...(recurringVisible
         ? {
@@ -397,8 +400,9 @@ export const SyndicCharges: React.FC = () => {
     if (!effectiveTenantId || !syndicId) return;
     try {
       await downloadChargeCallNotice(effectiveTenantId, syndicId, charge.id);
-    } catch (err: any) {
-      message.error(err.response?.data?.error || t("Téléchargement de l'avis d'appel impossible"));
+    } catch (err) {
+      // Requête en `blob` : le corps JSON de l'erreur (429, 404…) n'est lisible que par `describeDownloadError`.
+      message.error(await describeDownloadError(err));
     }
   };
 
@@ -677,7 +681,11 @@ export const SyndicCharges: React.FC = () => {
                   name="amount"
                   rules={[{ required: true, message: t('Le montant est obligatoire') }]}
                 >
-                  <InputNumber min={1} style={{ width: '100%' }} />
+                  <InputNumber
+                    min={1}
+                    precision={currencyFractionDigits(currencyValue || 'XOF')}
+                    style={{ width: '100%' }}
+                  />
                 </Form.Item>
               </Col>
             )}

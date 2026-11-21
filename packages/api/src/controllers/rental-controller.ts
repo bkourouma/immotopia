@@ -144,6 +144,15 @@ export const updateLeaseHandler = asyncHandler(async (req: Request, res: Respons
 
   // Convert date strings to Date objects with validation
   const updateData: any = { ...validatedData };
+  // Le schéma tolère une date vide : « absent » (inchangée), jamais une chaîne vide envoyée à Prisma (500).
+  // Retirer une date se fait avec `null`.
+  for (const key of ['endDate', 'moveInDate', 'moveOutDate'] as const) {
+    const value = validatedData[key];
+    if (typeof value === 'string' && value.trim() === '') {
+      delete updateData[key];
+      delete (validatedData as Record<string, unknown>)[key];
+    }
+  }
   if (validatedData.endDate) {
     updateData.endDate = new Date(validatedData.endDate);
     if (isNaN(updateData.endDate.getTime())) {

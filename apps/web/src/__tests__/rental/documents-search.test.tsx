@@ -134,3 +134,19 @@ describe('Documents : recherche multicritères', () => {
     expect(screen.getByTestId('url').textContent).not.toContain('q=');
   });
 });
+
+describe('Documents : téléchargement', () => {
+  it('désactive « Télécharger » quand l’API signale un document sans fichier', async () => {
+    listDocuments.mockResolvedValue(
+      reponse([
+        { ...DOC, id: 'doc-ok', document_number: 'DOC-OK', downloadable: true },
+        { ...DOC, id: 'doc-vide', document_number: 'DOC-VIDE', downloadable: false }
+      ])
+    );
+    renderPage();
+    await screen.findByText('DOC-VIDE', undefined, T);
+    const boutons = screen.getAllByRole('button', { name: /Télécharger/ });
+    expect(boutons.filter(b => (b as HTMLButtonElement).disabled)).toHaveLength(1);
+    expect(boutons.filter(b => !(b as HTMLButtonElement).disabled)).toHaveLength(1);
+  });
+});

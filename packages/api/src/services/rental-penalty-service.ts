@@ -4,6 +4,8 @@ import { logger } from '../utils/logger';
 import { logAuditEvent, recordAuditEvent } from './audit-service';
 import { diffForAudit } from '../lib/audit/changes';
 import { Prisma, RentalPenaltyMode } from '@prisma/client';
+import { roundForCurrency } from '../lib/finance/currency-rounding';
+import { hasForbiddenDecimals } from '../lib/rental/payment-schemas';
 import {
   compteLocataireTx,
   libellePeriodeEcheance,
@@ -130,6 +132,16 @@ export async function calculatePenalty(tenantId: string, installmentId: string, 
     throw new NotFoundError(t('Échéance introuvable'));
   }
 
+  // Une échéance annulée ne doit rien, une échéance soldée n'a plus de retard :
+  // sans cette garde, un montant fixe (ou la route unitaire) créait une
+  // pénalité et un débit au compte du locataire sur une pièce qui ne doit rien.
+  if (installment.status === 'CANCELED') {
+    throw new BadRequestError(t('Aucune pénalité ne se calcule sur une échéance annulée'));
+  }
+  if (installment.status === 'PAID') {
+    throw new BadRequestError(t('Aucune pénalité ne se calcule sur une échéance entièrement payée'));
+  }
+
   // Une pénalité ne se calcule que pour un bail actif (brouillon, suspendu,
   // terminé ou annulé : rien n'est dû au titre du retard).
   if (installment.lease.status !== 'ACTIVE') {
@@ -183,10 +195,15 @@ export async function calculatePenalty(tenantId: string, installmentId: string, 
     const totalDue =
       Number(installment.amount_rent) + Number(installment.amount_service) + Number(installment.amount_other_fees);
     const paid = Number(installment.amount_paid);
-    const balance = totalDue - paid;
+    // Jamais négatif : un règlement qui entame déjà la pénalité (payé > loyer + charges)
+    // laissait un solde négatif, donc une pénalité négative qui créditait le locataire.
+    const balance = Math.max(0, totalDue - paid);
     // Convert percentage to decimal (e.g., 10% becomes 0.10)
     penaltyAmount = balance * (rate / 100);
   }
+
+  // Franc CFA : à l'unité ; autre devise : au centime (jamais 3266,66 FCFA).
+  penaltyAmount = roundForCurrency(penaltyAmount, installment.currency);
 
   // Apply cap if set
   if (capAmount && penaltyAmount > capAmount) {
@@ -558,6 +575,11 @@ export async function updatePenalty(
 
   if (!penalty) {
     throw new NotFoundError(t('Pénalité introuvable'));
+  }
+
+  // Franc CFA : montant entier, refusé (400) et non arrondi, comme ailleurs.
+  if (hasForbiddenDecimals(amount, penalty.installment?.currency)) {
+    throw new BadRequestError(t('Le montant doit être un nombre entier en FCFA.'));
   }
 
   // Le JSON peut déjà porter un justificatif joint avant tout ajustement : on le

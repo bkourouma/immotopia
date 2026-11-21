@@ -365,13 +365,19 @@ export const updateDocumentSchema = z
     message: 'Aucune modification fournie'
   });
 
-export const createLotTenantAssignmentSchema = z.object({
-  tenantId: uuidSchema,
-  startDate: z.coerce.date(),
-  endDate: blankAsAbsent(z.coerce.date().optional()),
-  leaseId: blankAsAbsent(uuidSchema.optional()),
-  notes: z.string().optional()
-});
+export const createLotTenantAssignmentSchema = z
+  .object({
+    tenantId: uuidSchema,
+    startDate: z.coerce.date(),
+    endDate: blankAsAbsent(z.coerce.date().optional()),
+    leaseId: blankAsAbsent(uuidSchema.optional()),
+    notes: z.string().optional()
+  })
+  // Une affectation ne se termine pas avant d'avoir commencé.
+  .refine(value => !value.endDate || value.endDate >= value.startDate, {
+    message: 'La date de fin doit etre posterieure ou egale a la date de debut',
+    path: ['endDate']
+  });
 
 export const linkMaintenanceRequestSchema = z.object({
   maintenanceRequestId: uuidSchema,
@@ -456,7 +462,8 @@ export const createBudgetSchema = z.object({
   syndicateId: uuidSchema,
   fiscalYear: z.number().int().min(2000),
   label: z.string().min(1),
-  totalAmount: z.number().positive(),
+  // Optionnel : le total est la somme des lignes ; un total fourni doit lui etre egal (422 sinon).
+  totalAmount: z.number().positive().optional(),
   currency: z.string().default('XOF'),
   lines: z
     .array(
@@ -584,17 +591,23 @@ export const updateIncidentSchema = z
     message: 'Au moins un champ doit etre fourni pour la mise a jour de l incident'
   });
 
-export const createLotOwnerProfileSchema = z.object({
-  lotId: uuidSchema,
-  contactId: uuidSchema,
-  ownershipPercentage: z.number().positive().max(100),
-  ownedSince: z.coerce.date(),
-  ownedUntil: z.coerce.date().optional(),
-  portalAccessEnabled: z.boolean().optional().default(false),
-  notificationPrefs: z.record(z.any()).optional(),
-  isActive: z.boolean().optional().default(true),
-  previousOwnersHandling: z.enum(['CLOSE', 'KEEP']).optional()
-});
+export const createLotOwnerProfileSchema = z
+  .object({
+    lotId: uuidSchema,
+    contactId: uuidSchema,
+    ownershipPercentage: z.number().positive().max(100),
+    ownedSince: z.coerce.date(),
+    ownedUntil: z.coerce.date().optional(),
+    portalAccessEnabled: z.boolean().optional().default(false),
+    notificationPrefs: z.record(z.any()).optional(),
+    isActive: z.boolean().optional().default(true),
+    previousOwnersHandling: z.enum(['CLOSE', 'KEEP']).optional()
+  })
+  // Un propriétaire ne cesse pas de l'être avant de l'être devenu.
+  .refine(value => !value.ownedUntil || value.ownedUntil >= value.ownedSince, {
+    message: 'La date de fin de propriete doit etre posterieure ou egale a la date de debut',
+    path: ['ownedUntil']
+  });
 
 export const updateLotOwnerProfileSchema = z
   .object({
@@ -609,14 +622,33 @@ export const updateLotOwnerProfileSchema = z
     message: 'Au moins un champ doit etre fourni pour la mise a jour du profil proprietaire'
   });
 
-export const createLotTenantProfileSchema = z.object({
-  lotId: uuidSchema,
-  contactId: uuidSchema,
-  leaseId: uuidSchema.optional(),
-  tenantSince: z.coerce.date(),
-  tenantUntil: z.coerce.date().optional(),
-  chargesBilledToTenant: z.boolean().optional().default(false),
-  isCurrent: z.boolean().optional().default(true)
+export const createLotTenantProfileSchema = z
+  .object({
+    lotId: uuidSchema,
+    contactId: uuidSchema,
+    leaseId: uuidSchema.optional(),
+    tenantSince: z.coerce.date(),
+    tenantUntil: z.coerce.date().optional(),
+    chargesBilledToTenant: z.boolean().optional().default(false),
+    isCurrent: z.boolean().optional().default(true)
+  })
+  // Un locataire ne sort pas avant d'être entré.
+  .refine(value => !value.tenantUntil || value.tenantUntil >= value.tenantSince, {
+    message: "La date de sortie doit etre posterieure ou egale a la date d'entree",
+    path: ['tenantUntil']
+  });
+
+/** `?lotId=` des listes de profils : un uuid (sinon 400 plutôt qu'une erreur de base). */
+export const profileLotFilterQuerySchema = z.object({
+  lotId: z.preprocess(value => (value === '' ? undefined : value), uuidSchema.optional())
+});
+
+/** `?status=` de la liste des incidents. */
+export const incidentListQuerySchema = z.object({
+  status: z.preprocess(
+    value => (value === '' ? undefined : value),
+    z.enum(['REPORTED', 'ASSIGNED', 'IN_PROGRESS', 'RESOLVED', 'CLOSED']).optional()
+  )
 });
 
 export const updateLotTenantProfileSchema = z
@@ -686,10 +718,28 @@ export const lockJournalEntrySchema = z.object({
   lock: z.literal(true).default(true)
 });
 
+/**
+ * Borne du releve : un jour seul (aaaa-mm-jj) vaut debut (`from`) ou fin INCLUSIVE (`to`) de
+ * ce jour, comme les listes du compte ; un horodatage complet reste pris tel quel. Vide = absente.
+ */
+const statementBound = (edge: 'start' | 'end') =>
+  z.preprocess(raw => {
+    if (typeof raw === 'string') {
+      const value = raw.trim();
+      if (value === '') return undefined;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        const date = new Date(`${value}T${edge === 'start' ? '00:00:00.000' : '23:59:59.999'}Z`);
+        // Controle aller-retour : 2026-02-31 deviendrait 2026-03-03 ; un jour impossible reste refuse.
+        return Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value ? 'invalid' : date;
+      }
+    }
+    return raw;
+  }, z.coerce.date().optional());
+
 export const ownerAccountStatementQuerySchema = z
   .object({
-    from: z.coerce.date().optional(),
-    to: z.coerce.date().optional()
+    from: statementBound('start'),
+    to: statementBound('end')
   })
   .refine(value => !value.from || !value.to || value.from <= value.to, {
     message: 'La date de debut doit etre inferieure ou egale a la date de fin'
@@ -766,6 +816,12 @@ export const chargeCallListQuerySchema = z.object({
   // Un identifiant d'un autre syndic ou d'une autre agence ne ramène aucun appel : la requête reste bornée à la copropriété.
   budgetId: optionalQuery(z.string().uuid()),
   fundId: optionalQuery(z.string().uuid())
+});
+
+/** `GET .../charges/batch?status=&period=` : un statut inconnu est refuse (400) au lieu d'atteindre Prisma (500). */
+export const chargeCallBatchListQuerySchema = z.object({
+  status: optionalQuery(z.enum(['DRAFT', 'SENT', 'CLOSED'])),
+  period: optionalQuery(z.string().trim().min(1).max(100))
 });
 
 export const ownerAccountTransactionListQuerySchema = z

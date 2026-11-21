@@ -235,6 +235,8 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
           <Button
             icon={<DownloadOutlined />}
             loading={telechargementEnCours === doc.id}
+            // Aucun fichier (brouillon sans rendu) ou document annulé : l'API le dit, le bouton se tait.
+            disabled={doc.downloadable === false}
             onClick={() => handleDownload(doc)}
           >
             {t('Télécharger')}
@@ -318,12 +320,16 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
               { label: t('Type'), value: TYPE_LABELS[doc.type] || doc.type },
               { label: t('Émis le'), value: dateCourte(doc.issued_at) }
             ]}
-            primaryAction={{
-              label: t('Télécharger'),
-              icon: <DownloadOutlined />,
-              loading: telechargementEnCours === doc.id,
-              onClick: () => handleDownload(doc)
-            }}
+            primaryAction={
+              doc.downloadable === false
+                ? undefined
+                : {
+                    label: t('Télécharger'),
+                    icon: <DownloadOutlined />,
+                    loading: telechargementEnCours === doc.id,
+                    onClick: () => handleDownload(doc)
+                  }
+            }
             secondaryActions={actionsSecondaires(doc)}
           />
         )}

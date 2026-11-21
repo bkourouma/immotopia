@@ -13,6 +13,7 @@
  * requête : il voyage dans le corps JSON des routes publiques.
  */
 import { prisma } from '../../../utils/database';
+import { onlineAmountDue } from './online-amount';
 import { env } from '../../../config/env';
 import { t } from '../../../i18n';
 import { logger } from '../../../utils/logger';
@@ -225,7 +226,7 @@ export async function loadChargeCallPaymentContext(
   if (!isSupportedCurrency(call.currency)) return { failure: 'CURRENCY_UNSUPPORTED' };
 
   const paid = (await sumAllocationsByCall(prisma, [call.id])).get(call.id) ?? 0;
-  const amountDue = Math.round((toCents(call.amount) - paid) / 100);
+  const amountDue = onlineAmountDue(toCents(call.amount) - paid);
   if (amountDue <= 0) return { failure: 'SETTLED' };
 
   // Règle unique du destinataire (`ownerContactId` puis `coownerId`).

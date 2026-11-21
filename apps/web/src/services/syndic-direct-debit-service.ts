@@ -452,8 +452,8 @@ export async function applySyndicReturnFile(
 export async function listSyndicReturnImports(
   tenantId: string,
   syndicId: string,
-  params: { page?: number; pageSize?: number } = {}
+  params: { search?: string; from?: string; to?: string; page?: number; pageSize?: number } = {}
 ): Promise<ReturnImportListResult> {
-  const response = await apiClient.get(`${base(tenantId, syndicId)}/retours`, { params });
+  const response = await apiClient.get(`${base(tenantId, syndicId)}/retours`, { params: cleanParams(params) });
   return response.data.data;
 }

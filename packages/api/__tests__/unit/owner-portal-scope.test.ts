@@ -93,32 +93,32 @@ beforeEach(() => {
     { id: 'tk-foreign', tenant_id: TENANT, property_id: FOREIGN }
   ];
   store.documents = [
-    { id: 'doc-own-lease', tenant_id: TENANT, status: 'ISSUED', lease_id: 'lease-own', lease: { property_id: OWN } },
+    { id: 'doc-own-lease', tenant_id: TENANT, status: 'FINAL', lease_id: 'lease-own', lease: { property_id: OWN } },
     {
       id: 'doc-own-inst',
       tenant_id: TENANT,
-      status: 'ISSUED',
+      status: 'FINAL',
       lease_id: null,
       installment: { lease: { property_id: OWN } }
     },
     {
       id: 'doc-foreign-lease',
       tenant_id: TENANT,
-      status: 'ISSUED',
+      status: 'FINAL',
       lease_id: FOREIGN_LEASE,
       lease: { property_id: FOREIGN }
     },
     {
       id: 'doc-foreign-inst',
       tenant_id: TENANT,
-      status: 'ISSUED',
+      status: 'FINAL',
       lease_id: null,
       installment: { lease: { property_id: FOREIGN } }
     },
     {
       id: 'doc-foreign-pay',
       tenant_id: TENANT,
-      status: 'ISSUED',
+      status: 'FINAL',
       lease_id: null,
       payment: { lease: { property_id: FOREIGN } }
     }
@@ -187,6 +187,28 @@ describe('portail propriétaire — le filtre propertyId restreint le périmètr
     const { where } = findManyDocuments.mock.calls[0][0];
     expect(selectedIds(store.documents, where).sort()).toEqual(['doc-own-inst', 'doc-own-lease']);
   });
+
+  it.each(['VOID', 'SUPERSEDED', 'DRAFT'])(
+    'documents : un document %s n’est jamais listé côté propriétaire',
+    async status => {
+      store.documents.push({
+        id: 'doc-own-' + status,
+        tenant_id: TENANT,
+        status,
+        lease_id: 'lease-own',
+        lease: { property_id: OWN }
+      });
+      try {
+        await service.getDocuments(scope, TENANT, { propertyId: OWN });
+      } catch {
+        /* idem */
+      }
+      const { where } = findManyDocuments.mock.calls[0][0];
+      const ids = selectedIds(store.documents, where);
+      expect(ids).not.toContain('doc-own-' + status);
+      expect(ids.sort()).toEqual(['doc-own-inst', 'doc-own-lease']);
+    }
+  );
 
   it('documents : leaseId étranger ne renvoie rien', async () => {
     try {

@@ -50,6 +50,7 @@ import { t } from '../../i18n/t';
 import { useFormFieldModes } from '../../hooks/useFormFieldModes';
 import { HelpButton, HelpSectionTitle } from '../../help';
 import { displayCurrency } from '../../utils/syndic-currency';
+import { currencyFractionDigits } from './budget-money';
 
 const { Paragraph, Title, Text } = Typography;
 
@@ -564,7 +565,7 @@ export const ProviderInvoicesTab: React.FC<ProviderInvoicesTabProps> = ({
             <InputNumber
               min={0}
               style={{ width: '100%' }}
-              precision={2}
+              precision={currencyFractionDigits(createCurrency)}
               onChange={value => setCreateAmountHT(Number(value) || 0)}
             />
           </Form.Item>
@@ -572,7 +573,7 @@ export const ProviderInvoicesTab: React.FC<ProviderInvoicesTabProps> = ({
             <InputNumber
               min={0}
               style={{ width: '100%' }}
-              precision={2}
+              precision={currencyFractionDigits(createCurrency)}
               onChange={value => setCreateVatAmount(Number(value) || 0)}
             />
           </Form.Item>

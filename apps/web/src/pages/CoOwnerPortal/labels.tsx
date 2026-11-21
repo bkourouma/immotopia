@@ -155,6 +155,24 @@ export function voteLabel(vote: 'FOR' | 'AGAINST' | 'ABSTAIN'): string {
   }
 }
 
+/**
+ * L'agence peut rendre visible un document de n'importe quel type (diagnostic,
+ * assurance, budget...) : un type autre que règlement ou procès-verbal ne doit
+ * pas être étiqueté « Procès-verbal ».
+ */
 export function documentTypeLabel(type: string): string {
-  return type === 'REGULATION' ? t('Règlement de copropriété') : t("Procès-verbal d'assemblée générale");
+  switch (type) {
+    case 'REGULATION':
+      return t('Règlement de copropriété');
+    case 'GENERAL_MEETING_MINUTES':
+      return t("Procès-verbal d'assemblée générale");
+    case 'DIAGNOSTIC':
+      return t('Diagnostic');
+    case 'INSURANCE':
+      return t('Assurance');
+    case 'BUDGET':
+      return t('Budget');
+    default:
+      return t('Autre');
+  }
 }

@@ -3,12 +3,17 @@ import type { PrismaTransactionClient } from '../utils/database';
 import { logger } from '../utils/logger';
 import { logAuditEvent, recordAuditEvent } from './audit-service';
 import { RentalDepositMovementType } from '@prisma/client';
-import { assertTreasuryAccountUsableTx, type PaymentMethodLike } from '../lib/treasury/accounts';
+import {
+  assertTreasuryAccountUsableTx,
+  resolveOutflowTreasuryAccountTx,
+  type PaymentMethodLike
+} from '../lib/treasury/accounts';
 import { t } from '../i18n';
 import { syncDirectDepositMovementEntryTx, syncDirectRentPaymentEntryTx } from '../lib/finance/rental-direct-ledger';
 import { annulerPieceTx, compteLocataireDuBailTx, compteLocataireTx } from './rental-installment-service';
 import { NotFoundError, ConflictError, BadRequestError } from '../middleware/error-middleware';
 import { montantDisponibleTx } from './rental-payment-service';
+import { hasForbiddenDecimals } from '../lib/rental/payment-schemas';
 import { env } from '../config/env';
 
 /**
@@ -275,7 +280,37 @@ export function computeDepositBalance(deposit: {
   refunded_amount: unknown;
   forfeited_amount: unknown;
 }): number {
-  return Number(deposit.collected_amount) - Number(deposit.refunded_amount) - Number(deposit.forfeited_amount);
+  return roundCents(
+    Number(deposit.collected_amount) - Number(deposit.refunded_amount) - Number(deposit.forfeited_amount)
+  );
+}
+
+/**
+ * Arrondi au centime : les colonnes sont `Decimal(12,2)` mais les calculs se
+ * font en flottants (`100,10 - 100` donne `0,0999999…` et refuserait le
+ * remboursement du dernier dixième).
+ */
+function roundCents(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+/** Plus grand montant que la colonne `Decimal(12,2)` sait stocker. */
+const MAX_MOVEMENT_AMOUNT = 9_999_999_999.99;
+
+/** Montant d'un mouvement : fini, strictement positif, au plus deux décimales, dans la colonne. */
+function assertMovementAmount(amount: number): void {
+  if (typeof amount !== 'number' || !Number.isFinite(amount)) {
+    throw new BadRequestError(t('Le montant du mouvement est invalide'));
+  }
+  if (amount <= 0) {
+    throw new BadRequestError(t('Le montant du mouvement doit être positif'));
+  }
+  if (amount > MAX_MOVEMENT_AMOUNT) {
+    throw new BadRequestError(t('Le montant du mouvement dépasse le maximum autorisé'));
+  }
+  if (Math.abs(amount * 100 - Math.round(amount * 100)) > 1e-6) {
+    throw new BadRequestError(t('Le montant du mouvement ne peut avoir plus de deux décimales'));
+  }
 }
 
 /** Contrôles métier d'un mouvement, sur le dépôt relu sous verrou. */
@@ -285,11 +320,13 @@ async function assertDepositMovementAllowedTx(
   deposit: {
     id: string;
     lease_id?: string | null;
+    currency?: string | null;
     target_amount: unknown;
     collected_amount: unknown;
     refunded_amount: unknown;
     forfeited_amount: unknown;
     held_amount: unknown;
+    lease?: { status?: string | null; primary_renter_client_id?: string | null } | null;
   },
   type: RentalDepositMovementType,
   amount: number,
@@ -315,6 +352,9 @@ async function assertDepositMovementAllowedTx(
     if (!paymentId) {
       throw new BadRequestError(t("L'identifiant du paiement est requis pour l'encaissement du dépôt"));
     }
+    if (deposit.lease?.status === 'CANCELED') {
+      throw new ConflictError(t('Le bail est annulé : le dépôt de garantie ne peut pas être encaissé'));
+    }
 
     // Un paiement ne sert qu'à une destination à la fois : la collecte ne peut
     // s'appuyer que sur un règlement encaissé, du même bail, dont le montant
@@ -328,6 +368,23 @@ async function assertDepositMovementAllowedTx(
     }
     if (payment.lease_id && deposit.lease_id && payment.lease_id !== deposit.lease_id) {
       throw new BadRequestError(t("Ce paiement n'appartient pas au bail de ce dépôt de garantie"));
+    }
+    // Un règlement sans bail doit au moins être celui du locataire du bail.
+    if (
+      !payment.lease_id &&
+      payment.renter_client_id &&
+      deposit.lease?.primary_renter_client_id &&
+      payment.renter_client_id !== deposit.lease.primary_renter_client_id
+    ) {
+      throw new BadRequestError(t("Ce paiement n'appartient pas au locataire de ce dépôt de garantie"));
+    }
+    if (payment.currency && payment.currency !== deposit.currency) {
+      throw new BadRequestError(
+        t('La devise du paiement ({{payment}}) diffère de celle du dépôt ({{deposit}})', {
+          payment: String(payment.currency),
+          deposit: String(deposit.currency ?? '')
+        })
+      );
     }
     const disponible = await montantDisponibleTx(tx, tenantId, payment);
     if (disponible < Number(amount)) {
@@ -349,10 +406,28 @@ async function assertDepositMovementAllowedTx(
     }
   }
 
+  // Un remboursement ne touche pas la part bloquée (HOLD) : il faut d'abord la
+  // libérer. Sans cela, `held_amount` dépasserait le solde détenu.
+  if (type === RentalDepositMovementType.REFUND && Number(deposit.held_amount) > 0) {
+    const refundable = roundCents(computeDepositBalance(deposit) - Number(deposit.held_amount));
+    if (amount > refundable) {
+      throw new BadRequestError(
+        t(
+          'Une partie du dépôt est bloquée ({{held}}) : libérez-la avant de la rembourser (remboursable : {{available}}, demandé : {{requested}})',
+          {
+            held: String(Number(deposit.held_amount)),
+            available: String(Math.max(0, refundable)),
+            requested: String(amount)
+          }
+        )
+      );
+    }
+  }
+
   // Une retenue ne peut pas dépasser ce que le dépôt détient encore, retenues
   // déjà posées comprises : sinon la retenue excéderait le dépôt accepté.
   if (type === RentalDepositMovementType.HOLD) {
-    const availableToHold = computeDepositBalance(deposit) - Number(deposit.held_amount);
+    const availableToHold = roundCents(computeDepositBalance(deposit) - Number(deposit.held_amount));
     if (amount > availableToHold) {
       throw new BadRequestError(
         t('Le montant à retenir dépasse le dépôt disponible (disponible : {{available}}, demandé : {{requested}})', {
@@ -365,7 +440,7 @@ async function assertDepositMovementAllowedTx(
 
   // Une libération ne peut pas dépasser ce qui est retenu : sinon held_amount
   // deviendrait négatif.
-  if (type === RentalDepositMovementType.RELEASE && amount > Number(deposit.held_amount)) {
+  if (type === RentalDepositMovementType.RELEASE && amount > roundCents(Number(deposit.held_amount))) {
     throw new BadRequestError(
       t('Le montant retenu est insuffisant pour cette libération (retenu : {{held}}, demandé : {{requested}})', {
         held: String(Number(deposit.held_amount)),
@@ -468,6 +543,8 @@ export async function createDepositMovement(
    */
   method?: PaymentMethodLike
 ) {
+  assertMovementAmount(amount);
+
   // Get deposit with tenant isolation
   const deposit = await prisma.rentalSecurityDeposit.findFirst({
     where: {
@@ -478,6 +555,12 @@ export async function createDepositMovement(
 
   if (!deposit) {
     throw new NotFoundError(t('Dépôt de garantie introuvable'));
+  }
+
+  // Devise entière (décision H3) : la devise du dépôt est celle du bail ; en
+  // FCFA, un montant avec décimales est refusé, jamais arrondi en silence.
+  if (hasForbiddenDecimals(amount, deposit.currency)) {
+    throw new BadRequestError(t('Le montant doit être un nombre entier en FCFA.'));
   }
 
   // Validate that the referenced payment and installment, when provided,
@@ -500,11 +583,6 @@ export async function createDepositMovement(
     }
   }
 
-  // Validate amount
-  if (amount <= 0) {
-    throw new BadRequestError(t('Le montant du mouvement doit être positif'));
-  }
-
   // Les contrôles de solde, l'écriture du mouvement et la mise à jour des
   // cumuls se font dans UNE transaction, sous verrou de ligne du dépôt : deux
   // remboursements concurrents de 300 000 sur 500 000 lisaient le même solde et
@@ -518,13 +596,22 @@ export async function createDepositMovement(
   const movement = await prisma.$transaction(
     async tx => {
       await tx.$queryRaw`SELECT id FROM rental_security_deposits WHERE id = ${depositId}::uuid FOR UPDATE`;
-      const locked = await tx.rentalSecurityDeposit.findFirst({ where: { id: depositId, tenant_id: tenantId } });
+      const locked = await tx.rentalSecurityDeposit.findFirst({
+        where: { id: depositId, tenant_id: tenantId },
+        include: { lease: { select: { status: true, primary_renter_client_id: true } } }
+      });
       if (!locked) {
         throw new NotFoundError(t('Dépôt de garantie introuvable'));
       }
 
       await assertDepositMovementAllowedTx(tx, tenantId, locked, type, amount, paymentId);
-      await assertTreasuryAccountUsableTx(tx, tenantId, treasuryAccountId, method ?? 'CASH');
+      if (type === 'REFUND' && treasuryAccountId) {
+        // Sortie d'argent : compte actif de l'agence dont la nature peut payer
+        // (caisse, banque, Mobile Money) selon `outflowKindsForMethod`.
+        await resolveOutflowTreasuryAccountTx(tx, tenantId, { method: method ?? 'OTHER', treasuryAccountId });
+      } else {
+        await assertTreasuryAccountUsableTx(tx, tenantId, treasuryAccountId, method ?? 'CASH');
+      }
 
       const created = await tx.rentalDepositMovement.create({
         data: {

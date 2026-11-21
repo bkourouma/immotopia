@@ -155,9 +155,9 @@ export const PaymentDetailPage: React.FC = () => {
       [RentalDepositMovementType.COLLECT]: t('Collecte (dépôt de garantie)'),
       [RentalDepositMovementType.HOLD]: t('Mise en retenue'),
       [RentalDepositMovementType.RELEASE]: t('Libération'),
-      [RentalDepositMovementType.REFUND]: 'Remboursement',
-      [RentalDepositMovementType.FORFEIT]: 'Confiscation',
-      [RentalDepositMovementType.ADJUSTMENT]: 'Ajustement'
+      [RentalDepositMovementType.REFUND]: t('Remboursement'),
+      [RentalDepositMovementType.FORFEIT]: t('Confiscation'),
+      [RentalDepositMovementType.ADJUSTMENT]: t('Ajustement')
     };
     return labels[type] || type;
   };

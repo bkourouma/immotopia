@@ -20,6 +20,7 @@ import {
 import { PlusOutlined } from '@ant-design/icons';
 import { SyndicateCard } from '../../components/syndics/SyndicateCard';
 import { useAuth } from '../../hooks/useAuth';
+import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { useFormFieldModes } from '../../hooks/useFormFieldModes';
 import { createSyndicate, deleteSyndicate, listSyndicates } from '../../services/syndic-service';
 import { listMandatingAgencies, MandatingAgency } from '../../services/document-branding-service';
@@ -71,6 +72,12 @@ export const SyndicsList: React.FC = () => {
   const [searchParams] = useSearchParams();
   const { tenantMembership } = useAuth();
   const effectiveTenantId = tenantId || tenantMembership?.tenantId;
+  // Créer exige SYNDIC_CREATE, supprimer SYNDIC_EDIT (l'API répondrait 403). L'API reste l'autorité : on ne grise
+  // que lorsque l'absence du droit est connue (chargement ou échec réseau : pas de filtre).
+  const { permissions, ready: permissionsReady } = useMyMenuAccess(effectiveTenantId);
+  const hasPermission = (key: string) => !(permissionsReady && permissions !== null && !permissions.has(key));
+  const canCreate = hasPermission('SYNDIC_CREATE');
+  const canDelete = hasPermission('SYNDIC_EDIT');
 
   const [items, setItems] = useState<Syndicate[]>([]);
   const [loading, setLoading] = useState(true);
@@ -243,7 +250,7 @@ export const SyndicsList: React.FC = () => {
               {t("Gérez vos syndics, leurs adresses, leur statut et l'accès aux lots.")}
             </Paragraph>
           </div>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)} disabled={!canCreate}>
             {t('Nouvelle copropriété')}
           </Button>
         </div>
@@ -256,7 +263,7 @@ export const SyndicsList: React.FC = () => {
           </div>
         ) : visibleItems.length === 0 ? (
           <Empty description={t('Aucune copropriété trouvée')}>
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)} disabled={!canCreate}>
               {t('Créer une copropriété')}
             </Button>
           </Empty>
@@ -277,6 +284,7 @@ export const SyndicsList: React.FC = () => {
                       tenantId={effectiveTenantId || ''}
                       onDelete={handleDelete}
                       deleting={deletingSyndicId === item.id}
+                      canDelete={canDelete}
                       helpId={index === 0 ? 'syndic.copropriete.liste.cartes' : undefined}
                     />
                   </Col>

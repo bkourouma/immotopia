@@ -32,6 +32,11 @@ vi.mock('../../hooks/useBreakpoint', () => ({
   useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
 }));
 
+// Droits de la personne connectée : aucune restriction connue (administrateur d'agence), sans appel réseau.
+vi.mock('../../hooks/useMenuAccess', () => ({
+  useMyMenuAccess: () => ({ disabled: new Set(), enabled: new Set(), permissions: null, ready: true })
+}));
+
 // Seul `App.useApp` est remplacé : la confirmation « Charger le plan » est capturée par `confirmSpy`.
 vi.mock('antd', async () => {
   const actual = await vi.importActual<typeof import('antd')>('antd');

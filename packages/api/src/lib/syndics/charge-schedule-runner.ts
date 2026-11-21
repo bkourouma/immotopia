@@ -233,7 +233,7 @@ export async function computePeriodPlan(
     amounts =
       allocationMethod === 'SHARES'
         ? schedule.includeAnnexLots === false
-          ? distributeFixedAmount(fixedAmount, lots)
+          ? distributeFixedAmount(fixedAmount, lots, currency)
           : allocateFixed('SHARES', fixedAmount, currency, lots, lotTypeRates)
         : allocateFixed(allocationMethod, fixedAmount, currency, lots, lotTypeRates);
   } else {
@@ -256,7 +256,12 @@ export async function computePeriodPlan(
       .filter(allocation => lotNumber.has(allocation.lotId) && activeLotIds.has(allocation.lotId))
       .map(allocation => ({
         lotId: allocation.lotId,
-        amount: annualShareForPeriod(Number(allocation.totalAllocated), period.periodsPerYear, period.indexInYear)
+        amount: annualShareForPeriod(
+          Number(allocation.totalAllocated),
+          period.periodsPerYear,
+          period.indexInYear,
+          currency
+        )
       }));
   }
 
@@ -525,7 +530,6 @@ async function createRunTx(
           dueDate,
           batchType: 'REGULAR',
           budgetId: plan.budgetId,
-          totalAmount: plan.totalAmount,
           currency: plan.currency,
           allocationMethod: plan.allocationMethod,
           lots: plan.lots

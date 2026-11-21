@@ -45,6 +45,7 @@ import {
   accountingKey
 } from '../../components/syndics/accounting/accounting-shared';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
+import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { HelpSectionTitle } from '../../help';
 import { t } from '../../i18n/t';
 
@@ -65,6 +66,11 @@ export const SyndicAccounting: React.FC = () => {
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
   const tenantId = effectiveTenantId ?? '';
   const ready = Boolean(effectiveTenantId && syndicId);
+
+  // Créer un compte, un journal ou une écriture, charger le plan et verrouiller exigent SYNDIC_EDIT (l'API répondrait
+  // 403). L'API reste l'autorité : on ne grise que lorsque l'absence du droit est connue (lecture, échec réseau : pas de filtre).
+  const { permissions, ready: permissionsReady } = useMyMenuAccess(effectiveTenantId);
+  const canEdit = !(permissionsReady && permissions !== null && !permissions.has('SYNDIC_EDIT'));
 
   const [submitting, setSubmitting] = useState(false);
 
@@ -173,7 +179,12 @@ export const SyndicAccounting: React.FC = () => {
 
   const handleCreateAccount = async () => {
     if (!effectiveTenantId || !syndicId) return;
-    const values = await accountForm.validateFields();
+    let values;
+    try {
+      values = await accountForm.validateFields();
+    } catch {
+      return;
+    }
     setSubmitting(true);
 
     try {
@@ -230,7 +241,12 @@ export const SyndicAccounting: React.FC = () => {
 
   const handleCreateJournal = async () => {
     if (!effectiveTenantId || !syndicId) return;
-    const values = await journalForm.validateFields();
+    let values;
+    try {
+      values = await journalForm.validateFields();
+    } catch {
+      return;
+    }
     setSubmitting(true);
 
     try {
@@ -248,7 +264,12 @@ export const SyndicAccounting: React.FC = () => {
 
   const handleCreateEntry = async () => {
     if (!effectiveTenantId || !syndicId) return;
-    const values = await entryForm.validateFields();
+    let values;
+    try {
+      values = await entryForm.validateFields();
+    } catch {
+      return;
+    }
     setSubmitting(true);
 
     try {
@@ -305,6 +326,7 @@ export const SyndicAccounting: React.FC = () => {
           {...tabProps}
           journals={journals}
           submitting={submitting}
+          canLock={canEdit}
           onLock={entryId => void handleLockEntry(entryId)}
         />
       )
@@ -327,6 +349,7 @@ export const SyndicAccounting: React.FC = () => {
           accounts={fullPlan}
           loading={fullPlanQuery.isLoading}
           submitting={submitting}
+          canLoadTemplate={canEdit}
           onLoadTemplate={handleLoadChartTemplate}
         />
       )
@@ -351,22 +374,27 @@ export const SyndicAccounting: React.FC = () => {
             </Paragraph>
           </Space>
           <Space wrap>
-            <Button icon={<PlusOutlined />} onClick={() => setOpenAccount(true)}>
+            <Button icon={<PlusOutlined />} disabled={!canEdit} onClick={() => setOpenAccount(true)}>
               {t('Nouveau compte')}
             </Button>
             {accounts.length > 0 ? (
-              <Button icon={<DownloadOutlined />} onClick={handleLoadChartTemplate} loading={submitting}>
+              <Button
+                icon={<DownloadOutlined />}
+                onClick={handleLoadChartTemplate}
+                loading={submitting}
+                disabled={!canEdit}
+              >
                 {t('Charger le plan SYSCOHADA')}
               </Button>
             ) : null}
-            <Button icon={<PlusOutlined />} onClick={() => setOpenJournal(true)}>
+            <Button icon={<PlusOutlined />} disabled={!canEdit} onClick={() => setOpenJournal(true)}>
               {t('Nouveau journal')}
             </Button>
             <Button
               type="primary"
               icon={<PlusOutlined />}
               onClick={() => setOpenEntry(true)}
-              disabled={accounts.length < 2 || journals.length < 1}
+              disabled={!canEdit || accounts.length < 2 || journals.length < 1}
             >
               {t('Nouvelle écriture')}
             </Button>

@@ -8,6 +8,16 @@ type Row = Record<string, any>;
 const store = { lease: {} as Row, created: [] as Row[] };
 
 const mockPrisma: Row = {
+  // Simule le retour arrière : si le callback échoue, les créations de la transaction disparaissent.
+  $transaction: jest.fn(async (fn: (tx: Row) => Promise<unknown>) => {
+    const snapshot = [...store.created];
+    try {
+      return await fn(mockPrisma);
+    } catch (error) {
+      store.created = snapshot;
+      throw error;
+    }
+  }),
   rentalLease: { findFirst: jest.fn(async () => ({ ...store.lease })) },
   leaseEvent: { findMany: jest.fn(async () => []) },
   rentalInstallment: {
@@ -108,6 +118,91 @@ describe('generateInstallments — périodes', () => {
   it('échéance au 30 en février', async () => {
     const rows = await generer('2027-01-01', '2027-12-31', F.MONTHLY, 30);
     expect(rows.find(r => r.period_month === 2)!.due_date.getDate()).toBe(28);
+  });
+});
+
+describe('generateInstallments — prorata au jour (H5)', () => {
+  const montants = (rows: Row[]) => rows.map(r => Number(r.amount_rent));
+
+  it('bail 15/07/2026 -> 14/07/2027 : 13 échéances, extrémités 17/31 et 14/31', async () => {
+    const rows = await generer('2026-07-15', '2027-07-14', F.MONTHLY);
+    expect(rows).toHaveLength(13);
+    const m = montants(rows);
+    expect(m[0]).toBe(54839); // 100 000 x 17/31
+    expect(m[12]).toBe(45161); // 100 000 x 14/31
+    expect(m[0] + m[12]).toBe(100000);
+    expect(m.slice(1, 12).every(v => v === 100000)).toBe(true);
+  });
+
+  it('bail sans date de fin démarrant le 15/07/2026 : horizon d’un an, extrémités = un mois', async () => {
+    const rows = await generer('2026-07-15', null, F.MONTHLY);
+    expect(rows).toHaveLength(13);
+    const m = montants(rows);
+    expect(m[0] + m[12]).toBe(100000);
+  });
+
+  it('bail démarrant le 1er : 12 échéances pleines, inchangé', async () => {
+    const rows = await generer('2026-07-01', '2027-06-30', F.MONTHLY);
+    expect(montants(rows)).toEqual(Array(12).fill(100000));
+    const sansFin = await generer('2026-07-01', null, F.MONTHLY);
+    expect(montants(sansFin)).toEqual(Array(12).fill(100000));
+  });
+
+  it('bail 01/07/2026 -> 01/07/2027 : 12 échéances pleines (pas de période d’un jour)', async () => {
+    const rows = await generer('2026-07-01', '2027-07-01', F.MONTHLY);
+    expect(montants(rows)).toEqual(Array(12).fill(100000));
+  });
+});
+
+describe('generateInstallments — transactionnel', () => {
+  it('un échec en milieu de génération ne laisse rien de créé', async () => {
+    store.created = [];
+    store.lease = {
+      id: 'l1',
+      tenant_id: 't1',
+      status: 'ACTIVE',
+      start_date: d('2026-07-01'),
+      end_date: d('2027-06-30'),
+      billing_frequency: F.MONTHLY,
+      due_day_of_month: 5,
+      rent_amount: 100000,
+      service_charge_amount: 0,
+      currency: 'FCFA'
+    };
+    let calls = 0;
+    mockPrisma.rentalInstallment.create.mockImplementation(async ({ data }: Row) => {
+      calls += 1;
+      if (calls === 6) throw new Error('panne en cours de route');
+      store.created.push(data);
+      return data;
+    });
+    await expect(generateInstallments('t1', 'l1', 'u1')).rejects.toThrow('panne en cours de route');
+    expect(store.created).toHaveLength(0);
+    expect(mockPrisma.$transaction).toHaveBeenCalled();
+    // Restaure le comportement nominal pour les autres tests.
+    mockPrisma.rentalInstallment.create.mockImplementation(async ({ data }: Row) => {
+      store.created.push(data);
+      return data;
+    });
+  });
+
+  it('le contrôle « échéances déjà existantes » se fait dans la transaction et lève ConflictError', async () => {
+    store.created = [];
+    store.lease = {
+      id: 'l1',
+      tenant_id: 't1',
+      status: 'ACTIVE',
+      start_date: d('2026-07-01'),
+      end_date: d('2027-06-30'),
+      billing_frequency: F.MONTHLY,
+      due_day_of_month: 5,
+      rent_amount: 100000,
+      service_charge_amount: 0,
+      currency: 'FCFA'
+    };
+    mockPrisma.rentalInstallment.count.mockImplementationOnce(async () => 3);
+    await expect(generateInstallments('t1', 'l1', 'u1')).rejects.toMatchObject({ statusCode: 409 });
+    expect(store.created).toHaveLength(0);
   });
 });
 

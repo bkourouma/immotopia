@@ -425,8 +425,29 @@ export async function handleTenantPortalFinanceStatement(req: Request, res: Resp
       select: { id: true }
     });
 
+    // Le compte de tiers n'est créé qu'au premier mouvement de grand livre : un bail
+    // tout juste signé n'en a pas encore. Ce n'est pas une erreur pour le locataire, son
+    // relevé est simplement vide (solde nul), et non un 404 « Impossible de charger ».
     if (!account) {
-      res.status(404).json({ success: false, message: 'Compte de tiers introuvable pour ce locataire.' });
+      // Même libellé que celui que `getOrCreateTenantAccountTx` copiera à la création du compte.
+      const renter = await prisma.tenantClient.findFirst({
+        where: { id: tenantClientId, tenantId },
+        select: { user: { select: { fullName: true, email: true } } }
+      });
+      const empty: AccountStatementResult = {
+        accountId: '',
+        label: renter?.user?.fullName || renter?.user?.email || 'Locataire',
+        kind: 'TENANT',
+        openingBalance: 0,
+        closingBalance: 0,
+        currency: 'XOF',
+        movements: [],
+        total: 0
+      };
+      res.status(200).json({
+        success: true,
+        data: toAccountStatementResponse(empty, pagination.page, pagination.pageSize)
+      });
       return;
     }
 

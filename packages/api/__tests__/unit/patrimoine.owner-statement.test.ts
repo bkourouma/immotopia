@@ -236,6 +236,23 @@ describe('computeOwnerStatement', () => {
     });
   });
 
+  it('en indivision, ne réapplique pas la quote-part à la retenue ni au dépôt conservé (déjà ceux du propriétaire)', () => {
+    const result = computeOwnerStatement(
+      input({
+        installments: [installment({ allocations: [{ amount: 200_000, paidAt: PAID_SEPT }] })],
+        // Lignes déjà à la part de CE propriétaire (50 %) : 12 000 = 50 % de 24 000 de retenue totale.
+        withholdings: [{ propertyId: 'prop-1', amount: 12_000 }],
+        depositsRetained: [{ propertyId: 'prop-1', amount: 50_000 }],
+        shareByProperty: new Map([['prop-1', 50]])
+      })
+    );
+
+    expect(result.totalRevenue).toBe(100_000);
+    expect(result.totalWithholdingTax).toBe(12_000);
+    expect(result.totalDepositRetained).toBe(50_000);
+    expect(result.netAmount).toBe(100_000 - 12_000 + 50_000);
+  });
+
   it("n'attribue pas à un bien l'argent ni les honoraires d'un autre", () => {
     const result = computeOwnerStatement(
       input({

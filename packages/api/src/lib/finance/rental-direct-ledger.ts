@@ -45,7 +45,7 @@
  * défaut) : créés à la volée.
  */
 import type { ExtendedPrismaClient, PrismaTransactionClient } from '../../utils/database';
-import { ensureChartAccountTx, resolveTreasuryAccountTx } from '../treasury/accounts';
+import { ensureChartAccountTx, resolveOutflowTreasuryAccountTx, resolveTreasuryAccountTx } from '../treasury/accounts';
 import { postDocumentEntryTx, ensureOperationalJournalTx } from './accounting';
 import { getOrCreateTenantAccountTx } from './ledger';
 import { roundMoney } from './money';
@@ -415,8 +415,11 @@ export async function syncDirectDepositMovementEntryTx(
   const date = movement.created_at;
 
   if (movement.type === 'REFUND') {
-    const treasury = await resolveTreasuryAccountTx(tx, tenantId, {
-      method: 'CASH',
+    // Un remboursement est une SORTIE : tout compte de l'agence qui peut payer
+    // (caisse, banque, portefeuille Mobile Money) convient, pas seulement la
+    // caisse (revue locative, lot 6). Sans compte désigné : caisse par défaut.
+    const treasury = await resolveOutflowTreasuryAccountTx(tx, tenantId, {
+      method: movement.treasury_account_id ? 'OTHER' : 'CASH',
       treasuryAccountId: movement.treasury_account_id
     });
     const label = `Dépôt de garantie remboursé — mouvement ${refOf(movement.id)}`;

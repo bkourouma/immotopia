@@ -16,6 +16,7 @@ import {
 } from '../lib/rental/declared-payment/portal-schemas';
 import { readRentalProof } from '../lib/rental/declared-payment/proof-read';
 import { asyncHandler, ErrorCode, ForbiddenError, AppError } from '../middleware/error-middleware';
+import { PORTAL_READ_ONLY_CODE } from '../middleware/tenant-portal-access';
 import { prisma } from '../utils/database';
 import { listPortalLeaseIds, resolveRequestedLeaseId } from '../utils/tenant-portal-leases';
 
@@ -27,10 +28,15 @@ import { listPortalLeaseIds, resolveRequestedLeaseId } from '../utils/tenant-por
  * de bail. Les captures ne sont jamais servies au locataire.
  */
 
-async function sessionScope(req: Request) {
+async function sessionScope(req: Request, options: { write?: boolean } = {}) {
   if (!req.tenantPortal) throw new ForbiddenError('Accès portail locataire requis.');
-  const { tenantClientId, tenantId, leaseId } = req.tenantPortal;
-  const leaseIds = await listPortalLeaseIds(tenantId, tenantClientId);
+  const { tenantClientId, tenantId, leaseId, readOnly } = req.tenantPortal;
+  // H4 : en lecture seule, les lectures voient les baux terminés/suspendus ; toute
+  // écriture est refusée (fail-closed, en plus de la garde du middleware).
+  if (options.write && readOnly) {
+    throw new AppError(t('Votre bail est terminé : le portail est en lecture seule.'), 403, PORTAL_READ_ONLY_CODE);
+  }
+  const leaseIds = await listPortalLeaseIds(tenantId, tenantClientId, readOnly === true);
   if (leaseIds.length === 0) throw new ForbiddenError('Aucun bail actif trouvé.');
   return { tenantClientId, tenantId, defaultLeaseId: leaseId, leaseIds };
 }
@@ -43,7 +49,7 @@ export const getAvailabilityHandler = asyncHandler(async (req, res) => {
 });
 
 export const readProofHandler = asyncHandler(async (req, res) => {
-  const { tenantClientId, tenantId } = await sessionScope(req);
+  const { tenantClientId, tenantId } = await sessionScope(req, { write: true });
   const data = await readRentalProof({ tenantId, tenantClientId, file: req.file ?? null });
   res.json({ success: true, data });
 });
@@ -51,7 +57,7 @@ export const readProofHandler = asyncHandler(async (req, res) => {
 export const declarePaymentHandler = asyncHandler(async (req, res) => {
   // Forme validée AVANT toute lecture en base (ZodError : 400 avec le détail par champ).
   const body = declareBodySchema.parse(req.body ?? {});
-  const { tenantClientId, tenantId, defaultLeaseId, leaseIds } = await sessionScope(req);
+  const { tenantClientId, tenantId, defaultLeaseId, leaseIds } = await sessionScope(req, { write: true });
 
   // Bail : celui de l'échéance visée (H29), à condition qu'elle soit dans le périmètre du
   // locataire ; sinon le bail par défaut (ou celui de ?leaseId=, s'il est dans le périmètre).
@@ -116,7 +122,7 @@ export const getMyDeclarationHandler = asyncHandler(async (req, res) => {
 
 export const cancelMyDeclarationHandler = asyncHandler(async (req, res) => {
   const declarationId = declarationIdOf(req);
-  const { tenantClientId, tenantId, leaseIds } = await sessionScope(req);
+  const { tenantClientId, tenantId, leaseIds } = await sessionScope(req, { write: true });
   await cancelRentalDeclaration({ tenantId, tenantClientId, leaseIds, declarationId });
   res.json({ success: true, data: await getMyDeclaration({ tenantId, tenantClientId, leaseIds, declarationId }) });
 });

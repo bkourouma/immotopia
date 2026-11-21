@@ -85,6 +85,16 @@ export const updateOwnerStatementHandler = asyncHandler(async (req: Request, res
   const statementId = req.params.statementId;
   if (!statementId) throw new BadRequestError('StatementId manquant');
   const parsed = updateStatementSchema.parse(req.body);
+  if (parsed.status === 'SENT') {
+    // Marquer « Envoyé » à la main est licite (remise en main propre), mais pas pour un
+    // relevé de l'ancien calcul : même garde que l'envoi, il porte un loyer erroné.
+    const current = await getOwnerStatementById(tenantId, statementId);
+    if (current.computationVersion < OWNER_STATEMENT_COMPUTATION_VERSION) {
+      throw new ConflictError(
+        t("Ce relevé a été calculé selon l'ancienne méthode : recalculez-le avant de l'envoyer.")
+      );
+    }
+  }
   const data = await updateOwnerStatement(tenantId, statementId, parsed);
   res.json({ success: true, data });
 });

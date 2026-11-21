@@ -257,11 +257,15 @@ export async function importSyndicateLotsFromProperties(
   syndicId: string,
   propertyIds: string[]
 ): Promise<ImportLotsFromPropertiesResult> {
-  const response = await apiClient.post<{ success: boolean; data: ImportLotsFromPropertiesResult }>(
-    `/tenants/${tenantId}/syndics/${syndicId}/lots/import-properties`,
-    { propertyIds }
-  );
-  return response.data.data;
+  const response = await apiClient.post<{
+    success: boolean;
+    data: ImportLotsFromPropertiesResult;
+    warnings?: string[];
+  }>(`/tenants/${tenantId}/syndics/${syndicId}/lots/import-properties`, { propertyIds });
+  // Avertissements non bloquants (total de référence des tantièmes), comme à la création d'un lot.
+  return response.data.warnings?.length
+    ? { ...response.data.data, warnings: response.data.warnings }
+    : response.data.data;
 }
 
 export async function addLotTenantAssignment(
@@ -758,11 +762,12 @@ export async function listContracts(
   syndicId: string,
   filters?: { status?: string }
 ): Promise<MaintenanceContract[]> {
-  const response = await apiClient.get<{ success: boolean; data: MaintenanceContract[] }>(
-    `/tenants/${tenantId}/syndics/${syndicId}/contrats`,
-    { params: filters }
-  );
-  return response.data.data;
+  // `GET .../contrats` renvoie les LIENS copropriete-contrat (`{ id: lien, contract }`), pas les contrats : ils
+  // sont vides tant que personne n'a lie de contrat, et leur `id` n'est pas celui du contrat. Les contrats de la
+  // copropriete (avec leur prestataire) viennent de `GET .../prestataires`, filtres ici par statut.
+  const { contracts } = await listProvidersContracts(tenantId, syndicId);
+  const all = contracts ?? [];
+  return filters?.status ? all.filter(contract => contract.status === filters.status) : all;
 }
 
 export async function createContract(

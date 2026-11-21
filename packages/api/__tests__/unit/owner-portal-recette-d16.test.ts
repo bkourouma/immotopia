@@ -146,7 +146,7 @@ describe('BUG-2026-11-04-006 — reste à payer = exigible non soldé', () => {
     mockDb.rentalSecurityDeposit.findUnique.mockResolvedValue(null);
     (mockDb as any).rentalPayment.findMany.mockResolvedValue([]);
 
-    const result: any = await service.getLeaseDetails('l1', [OWN], TENANT);
+    const result: any = await service.getLeaseDetails('00000000-0000-4000-8000-0000000000a1', [OWN], TENANT);
     expect(result.balance.totalDue).toBe(111000);
     expect(result.balance.remaining).toBe(18500);
     expect(result.balance.upcoming).toBe(37000);

@@ -19,9 +19,12 @@ import { HelpSectionTitle, helpAnchor } from '../../help';
 
 import { activeLocale } from '../../i18n/format';
 import { formatMontantLocatif } from '../../lib/rental-labels';
+import { ReadOnlyBanner } from './readOnly';
 const { Title, Text } = Typography;
 
 interface DashboardData {
+  /** Bail terminé ou suspendu, aucun bail actif : consultation seule (H4). */
+  readOnly?: boolean;
   /** Présent seulement avec plusieurs baux actifs : un résumé par bail. */
   leases?: Array<{
     id: string;
@@ -169,7 +172,7 @@ export default function TenantDashboard() {
           <Title level={2}>{t('Tableau de bord')}</Title>
           <Text type="secondary">{t("Vue d'ensemble de votre situation locative")}</Text>
         </div>
-        {onlinePaymentAvailability?.available && data.currentBalance > 0 ? (
+        {!data.readOnly && onlinePaymentAvailability?.available && data.currentBalance > 0 ? (
           <Button
             type="primary"
             icon={<CreditCardOutlined aria-hidden />}
@@ -180,6 +183,8 @@ export default function TenantDashboard() {
           </Button>
         ) : null}
       </div>
+
+      {data.readOnly ? <ReadOnlyBanner /> : null}
 
       {/* Plusieurs baux actifs (BUG-2026-11-04-049) : solde et retards par bail, cumulés plus bas. */}
       {data.leases && data.leases.length > 1 ? (

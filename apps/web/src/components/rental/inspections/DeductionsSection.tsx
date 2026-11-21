@@ -96,6 +96,7 @@ export const DeductionsSection: React.FC<DeductionsSectionProps> = ({
                 <InputNumber
                   aria-label={t('Montant de la retenue')}
                   min={0}
+                  max={100000000000}
                   step={1000}
                   value={deduction.amount}
                   {...montantSaisiProps}

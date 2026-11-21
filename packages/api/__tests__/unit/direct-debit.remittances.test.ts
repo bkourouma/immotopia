@@ -486,6 +486,29 @@ describe('remises / création', () => {
     ).toEqual(['MDT-2026-0001', 'MDT-2026-0002']);
   });
 
+  it('écarte une échéance dont la ligne réglée garde l’échéance (reste dû après plafond), sans bloquer la remise', async () => {
+    await create();
+    // Mandat 2 plafonné à 100 000 : sa ligne est constatée réglée, l'échéance reste PARTIAL (50 000 dus).
+    const settled = state.lines.find(line => line.mandateId === 'mandate-2') as Row;
+    settled.status = 'SETTLED';
+    (state.installments.find(entry => entry.id === 'inst-2') as Row).amount_paid = 150000;
+    state.installments.push({ ...state.installments[0], id: 'inst-6', lease_id: 'lease-6' });
+    state.leases.push({ id: 'lease-6', tenant_id: TENANT, lease_number: 'BAIL-006', status: 'ACTIVE' });
+    state.debtors.push({ id: 'client-6', fullName: 'Nina Diallo', email: null });
+    state.mandates.push({
+      ...state.mandates[0],
+      id: 'mandate-6',
+      sequence: 6,
+      leaseId: 'lease-6',
+      debtorClientId: 'client-6'
+    });
+
+    const { remittance, skipped } = await create();
+
+    expect(remittance.lines.map(line => line.mandate.reference)).toEqual(['MDT-2026-0006']);
+    expect(skipped.find(entry => entry.mandateReference === 'MDT-2026-0002')?.reason).toBe('ALREADY_IN_REMITTANCE');
+  });
+
   it('refuse une date trop proche en donnant la première date possible, sans rien écrire', async () => {
     const error = await create({ collectionDate: new Date('2026-10-20T00:00:00Z') }).catch(e => e);
     expect(error).toBeInstanceOf(BadRequestError);

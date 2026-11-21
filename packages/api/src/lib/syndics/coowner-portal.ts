@@ -1,7 +1,11 @@
 import type { MeetingStatus, Prisma, TransactionType } from '@prisma/client';
 import { prisma } from '../../utils/database';
 import { escapeLike } from '../../utils/like-escape';
-import { NotFoundError } from '../../middleware/error-middleware';
+import { ConflictError, NotFoundError } from '../../middleware/error-middleware';
+import { t } from '../../i18n';
+import { logAuditEvent } from '../../services/audit-service';
+import { AuditActionKey } from '../../types/audit-types';
+import { lockMeetingTx, recomputeMeetingResultsTx } from './meeting-results';
 import { isTenantOptionAvailable } from '../subscription/option-access';
 import { isExternalDocumentUrl, localSyndicateDocumentPath, readSyndicateDocumentFile } from './document-files';
 import { computeOutstanding, deriveChargeCallStatus, roundMoney, type ChargeCallStatusValue } from './finance-utils';
@@ -765,13 +769,17 @@ type VoterLot = Prisma.SyndicateLotGetPayload<{ select: typeof VOTER_LOT_SELECT 
  * pour un lot que s'il en est le votant désigné, jamais pour un lot dont il
  * n'est qu'indivisaire minoritaire ou dont il n'était pas propriétaire alors.
  */
-function isDesignatedVoter(scope: CoOwnerPortalScope, lot: VoterLot, meetingDate: Date): boolean {
+function designatedVoterContactId(scope: CoOwnerPortalScope, lot: VoterLot, meetingDate: Date): string | null {
   const profiles: LotOwnerProfileForVoters[] = lot.ownerProfiles.map(profile => ({
     ...profile,
     ownershipPercentage: Number(profile.ownershipPercentage)
   }));
   const [voter] = votersAt(lot, profiles, meetingDate);
-  return voter !== undefined && scope.contactIds.includes(voter.contactId);
+  return voter !== undefined && scope.contactIds.includes(voter.contactId) ? voter.contactId : null;
+}
+
+function isDesignatedVoter(scope: CoOwnerPortalScope, lot: VoterLot, meetingDate: Date): boolean {
+  return designatedVoterContactId(scope, lot, meetingDate) !== null;
 }
 
 async function loadMyVoterLots(scope: CoOwnerPortalScope, syndicateIds: string[]): Promise<VoterLot[]> {
@@ -985,37 +993,107 @@ export async function listCoOwnerMeetingsPage(
 
 /**
  * Vote d'un copropriétaire sur une résolution, pour un de SES lots. Le
- * périmètre vient de la garde ; l'assemblée doit être ouverte (le service
- * partagé refuse une assemblée clôturée ou annulée, en 409) et le demandeur
- * doit être le votant du lot à la date de l'assemblée. Tout le reste répond
- * comme un objet inexistant.
+ * périmètre vient de la garde ; le demandeur doit être le votant du lot à la
+ * date de l'assemblée (sinon 404, comme un objet inexistant). Mêmes règles que
+ * le vote en ligne par lien (spec 043, D4 et D6) : assemblée EN COURS et
+ * résolution au vote OUVERT (sinon 409), un vote saisi par le syndic n'est
+ * jamais remplacé en ligne (409), le vote garde son origine `CO_OWNER` et son
+ * auteur, le lot voté est émargé présent, les résultats sont recalculés sous
+ * le verrou de l'assemblée. Un lot émargé absent refuse le vote (409).
  */
 export async function castCoOwnerVote(
   scope: CoOwnerPortalScope,
   resolutionId: string,
   lotId: string,
-  vote: 'FOR' | 'AGAINST' | 'ABSTAIN'
+  vote: 'FOR' | 'AGAINST' | 'ABSTAIN',
+  actorUserId: string | null = null
 ) {
   const lotScope = scope.lots.find(lot => lot.lotId === lotId);
   if (!lotScope) throw new NotFoundError('Lot introuvable.');
 
   const resolution = await prisma.gMResolution.findFirst({
     where: { id: resolutionId, meeting: { syndicateId: lotScope.syndicateId } },
-    select: { id: true, meeting: { select: { scheduledAt: true } } }
+    select: { id: true, meetingId: true, meeting: { select: { scheduledAt: true } } }
   });
   if (!resolution) throw new NotFoundError('Résolution introuvable.');
 
   const lots = await loadMyVoterLots(scope, [lotScope.syndicateId]);
   const lot = lots.find(candidate => candidate.id === lotId);
-  if (!lot || !isDesignatedVoter(scope, lot, resolution.meeting.scheduledAt)) {
-    throw new NotFoundError('Lot introuvable.');
-  }
+  const voterContactId = lot ? designatedVoterContactId(scope, lot, resolution.meeting.scheduledAt) : null;
+  if (!lot || !voterContactId) throw new NotFoundError('Lot introuvable.');
 
-  // Le détail d'assemblée rendu par le service partagé contient les votes de
-  // tous les lots : il n'est jamais renvoyé au copropriétaire.
-  // Import tardif : `queries` tire tout le module comptable ; en tête de fichier il crée un cycle d'imports
-  // avec ce module (constantes encore indéfinies au chargement).
-  const { castVoteAndRecomputeResolutionCounters } = await import('./queries');
-  await castVoteAndRecomputeResolutionCounters(scope.tenantId, lotScope.syndicateId, resolutionId, lotId, vote);
+  const tenantId = scope.tenantId;
+  const syndicateId = lotScope.syndicateId;
+  await prisma.$transaction(async tx => {
+    // Verrou de l'AG, puis relecture de l'état sous le verrou : une clôture ou
+    // une fermeture de vote simultanée ne laisse pas passer ce vote.
+    await lockMeetingTx(tx, resolution.meetingId);
+    const meeting = await tx.generalMeeting.findFirst({
+      where: { id: resolution.meetingId, syndicateId, syndicate: { tenantId } },
+      select: { id: true, status: true, scheduledAt: true }
+    });
+    if (!meeting) throw new NotFoundError('Résolution introuvable.');
+    if (meeting.status !== 'IN_PROGRESS') {
+      throw new ConflictError(t("L'assemblée n'est pas en cours : le vote est fermé"));
+    }
+    const current = await tx.gMResolution.findFirst({
+      where: { id: resolutionId, meetingId: meeting.id },
+      select: { id: true, voteStatus: true }
+    });
+    if (!current) throw new NotFoundError('Résolution introuvable.');
+    if (current.voteStatus !== 'OPEN') {
+      throw new ConflictError(t("Le vote de cette résolution n'est pas ouvert"));
+    }
+    const attendance = await tx.gMAttendance.findFirst({
+      where: { meetingId: meeting.id, lotId },
+      select: { status: true }
+    });
+    if (attendance?.status === 'ABSENT') {
+      const message = t("Ce lot est émargé absent : modifiez son émargement avant d'enregistrer son vote.");
+      throw new ConflictError(message, [{ field: 'lotId', message }]);
+    }
+    const existing = await tx.gMVote.findFirst({
+      where: { resolutionId, lotId },
+      select: { source: true }
+    });
+    if (existing?.source === 'MANAGER') {
+      throw new ConflictError(
+        t('Le vote de ce lot a été enregistré par le syndic : adressez-vous à lui pour le modifier.')
+      );
+    }
+    await tx.gMVote.upsert({
+      where: { resolutionId_lotId: { resolutionId, lotId } },
+      update: { vote, source: 'CO_OWNER', castByContactId: voterContactId, castByUserId: null },
+      create: { resolutionId, lotId, vote, source: 'CO_OWNER', castByContactId: voterContactId }
+    });
+    // Un lot qui vote est présent : émargement créé s'il manque, jamais rétrogradé.
+    if (!attendance) {
+      await tx.gMAttendance.upsert({
+        where: { meetingId_lotId: { meetingId: meeting.id, lotId } },
+        update: {},
+        create: {
+          tenantId,
+          meetingId: meeting.id,
+          lotId,
+          status: 'PRESENT',
+          mode: 'ONLINE',
+          attendeeContactId: voterContactId,
+          recordedBy: 'SELF',
+          recordedByUserId: null
+        }
+      });
+    }
+    await recomputeMeetingResultsTx(tx, syndicateId, meeting.id, meeting.scheduledAt);
+  });
+
+  // Le sens du vote n'entre jamais dans l'audit.
+  logAuditEvent({
+    actorUserId,
+    tenantId,
+    actionKey: AuditActionKey.SYNDIC_MEETING_VOTE_CAST,
+    entityType: 'GMResolution',
+    entityId: resolutionId,
+    payload: { meetingId: resolution.meetingId, resolutionId, lotId, source: 'CO_OWNER', contactId: voterContactId }
+  });
   return { resolutionId, lotId, vote };
 }

@@ -144,6 +144,7 @@ import {
   ownerAccountStatementQuerySchema,
   ownerAccountTransactionListQuerySchema,
   chargeCallListQuerySchema,
+  chargeCallBatchListQuerySchema,
   paymentReminderListQuerySchema,
   latePenaltyListQuerySchema,
   paymentScheduleListQuerySchema,
@@ -154,7 +155,9 @@ import {
   createSyndicateFundSchema,
   renameSyndicateFundSchema,
   adjustSyndicateFundBalanceSchema,
-  syndicLotsQuerySchema
+  syndicLotsQuerySchema,
+  profileLotFilterQuerySchema,
+  incidentListQuerySchema
 } from '../lib/syndics/schemas';
 import { notifyChargeCall, notifyMeetingConvocation } from '../lib/syndics/notifications';
 import { hasMeetingConvocationBeenSent } from '../lib/syndics/meeting-convocation-status';
@@ -355,10 +358,14 @@ export const importSyndicLotsFromPropertiesHandler = asyncHandler(async (req: Re
 
   const parsed = importLotsFromPropertiesSchema.parse(req.body ?? {});
   const result = await importLotsFromPropertiesBySyndicate(tenantId, syndicateId, parsed.propertyIds);
+  // Mêmes avertissements non bloquants que la création d'un lot : chaque lot importé pèse 1 tantième,
+  // la somme peut s'écarter du total de référence de la copropriété.
+  const warnings = result.created.length > 0 ? await computeLotSharesWarnings(tenantId, syndicateId) : [];
 
   res.status(201).json({
     success: true,
-    data: result
+    data: result,
+    warnings
   });
 });
 
@@ -568,9 +575,10 @@ export const listChargeCallBatchesHandler = asyncHandler(async (req: Request, re
     throw badRequest('TenantId manquant pour la liste des batches');
   }
 
+  const criteria = chargeCallBatchListQuerySchema.parse(req.query ?? {});
   const batches = await listChargeCallBatchesBySyndicate(tenantId, syndicateId, {
-    status: req.query.status as any,
-    period: typeof req.query.period === 'string' ? req.query.period : undefined
+    status: criteria.status,
+    period: criteria.period
   });
 
   res.json({
@@ -595,6 +603,9 @@ export const createChargeCallBatchHandler = asyncHandler(async (req: Request, re
   const batch = await createChargeCallBatchBySyndicate(tenantId, syndicateId, {
     label: parsed.label,
     period: parsed.period,
+    // Bornes de periode saisies (facultatives) : sans elles, deduites du libelle.
+    periodStart: parsed.periodStart,
+    periodEnd: parsed.periodEnd,
     dueDate: parsed.dueDate,
     batchType: parsed.batchType,
     budgetId: parsed.budgetId,
@@ -1945,7 +1956,7 @@ export const listLotOwnerProfilesHandler = asyncHandler(async (req: Request, res
   if (!tenantId) {
     throw badRequest('TenantId manquant pour la liste des profils proprietaires');
   }
-  const lotId = typeof req.query.lotId === 'string' ? req.query.lotId : undefined;
+  const { lotId } = profileLotFilterQuerySchema.parse({ lotId: req.query.lotId });
   const [profiles, incompleteLots] = await Promise.all([
     listLotOwnerProfilesBySyndicate(tenantId, syndicateId, lotId),
     listIncompleteOwnerSharesBySyndicate(tenantId, syndicateId)
@@ -1990,7 +2001,7 @@ export const listLotTenantProfilesHandler = asyncHandler(async (req: Request, re
   if (!tenantId) {
     throw badRequest('TenantId manquant pour la liste des profils locataires');
   }
-  const lotId = typeof req.query.lotId === 'string' ? req.query.lotId : undefined;
+  const { lotId } = profileLotFilterQuerySchema.parse({ lotId: req.query.lotId });
   const profiles = await listLotTenantProfilesBySyndicate(tenantId, syndicateId, lotId);
   res.json({ success: true, data: profiles });
 });
@@ -2031,7 +2042,9 @@ export const listIncidentsHandler = asyncHandler(async (req: Request, res: Respo
   if (!tenantId) {
     throw badRequest('TenantId manquant pour la liste des incidents');
   }
-  const incidents = await listIncidentsBySyndicate(tenantId, syndicateId);
+  // `?status=` : le service web l'envoie (listSyndicIncidents) ; il était ignoré ici.
+  const { status } = incidentListQuerySchema.parse({ status: req.query.status });
+  const incidents = await listIncidentsBySyndicate(tenantId, syndicateId, status ? { status } : undefined);
   res.json({ success: true, data: incidents });
 });
 

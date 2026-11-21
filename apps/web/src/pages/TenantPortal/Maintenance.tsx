@@ -28,6 +28,7 @@ import {
   UserOutlined,
   CalendarOutlined
 } from '@ant-design/icons';
+import { ReadOnlyBanner, isReadOnlyLeases } from './readOnly';
 import MaintenanceTicketModal from '../../components/TenantPortal/MaintenanceTicketModal';
 import {
   AttachmentList,
@@ -112,12 +113,10 @@ interface TicketDetails {
     created_at: string;
     authorUser: {
       fullName: string | null;
-      email: string;
     } | null;
     authorContact: {
       firstName: string | null;
       lastName: string | null;
-      email: string;
     } | null;
   }>;
 }
@@ -136,7 +135,11 @@ export default function TenantMaintenance() {
   const [commentLoading, setCommentLoading] = useState(false);
 
   // Plusieurs baux actifs (H29) : sélecteur, comme sur « Mon bail ».
-  const [leases, setLeases] = useState<Array<{ id: string; leaseNumber: string; propertyAddress: string }>>([]);
+  const [leases, setLeases] = useState<
+    Array<{ id: string; leaseNumber: string; propertyAddress: string; status?: string }>
+  >([]);
+  // H4 : bail terminé ou suspendu => pas de nouvelle demande ni de commentaire.
+  const readOnly = isReadOnlyLeases(leases);
   const [selectedLeaseId, setSelectedLeaseId] = useState<string | undefined>(undefined);
 
   useEffect(() => {
@@ -147,6 +150,7 @@ export default function TenantMaintenance() {
           id: string;
           leaseNumber: string;
           propertyAddress: string;
+          status?: string;
         }>;
         setLeases(liste);
         if (liste.length > 1) {
@@ -343,10 +347,14 @@ export default function TenantMaintenance() {
           <Title level={2}>{t('Maintenance')}</Title>
           <Text type="secondary">{t('Gérez vos demandes de maintenance')}</Text>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalVisible(true)}>
-          {t('Nouvelle demande')}
-        </Button>
+        {readOnly ? null : (
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalVisible(true)}>
+            {t('Nouvelle demande')}
+          </Button>
+        )}
       </div>
+
+      {readOnly ? <ReadOnlyBanner /> : null}
 
       {leases.length > 1 && (
         <Select
@@ -542,10 +550,10 @@ export default function TenantMaintenance() {
                           comment.author_type === 'TENANT'
                             ? comment.authorContact
                               ? `${comment.authorContact.firstName || ''} ${comment.authorContact.lastName || ''}`.trim() ||
-                                comment.authorContact.email
+                                t('Locataire')
                               : t('Locataire')
                             : comment.authorUser
-                              ? comment.authorUser.fullName || comment.authorUser.email
+                              ? comment.authorUser.fullName || t('Gestionnaire')
                               : t('Gestionnaire')
                         }
                         description={
@@ -565,7 +573,7 @@ export default function TenantMaintenance() {
               )}
 
               {/* Add Comment Form (T101) */}
-              <div style={{ marginTop: 16 }}>
+              <div style={{ marginTop: 16 }} hidden={readOnly}>
                 <TextArea
                   rows={3}
                   placeholder={t('Ajouter un commentaire...')}
