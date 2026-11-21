@@ -1,6 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Button, Card, Pagination, Select, Space, Tag, Tooltip, Typography } from 'antd';
-import { formatMoney, ListSearch, MoneyValue, SkeletonTable, StateBlock } from '../../components/primitives';
+import {
+  formatMoney,
+  ListSearch,
+  MoneyValue,
+  namedPageItemRender,
+  SkeletonTable,
+  StateBlock
+} from '../../components/primitives';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion } from '../../utils/list-search';
@@ -318,6 +325,7 @@ export const SyndicMonthlyTracking: React.FC = () => {
               pageSize={local.pageSize}
               total={local.total}
               showSizeChanger={false}
+              itemRender={namedPageItemRender(local.page)}
               onChange={page => local.setPage(page)}
               style={{ marginTop: 16, textAlign: 'end' }}
             />

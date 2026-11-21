@@ -8,7 +8,7 @@ import { useFormFieldModes } from '../../hooks/useFormFieldModes';
 import { createSyndicate, deleteSyndicate, listSyndicates } from '../../services/syndic-service';
 import { listMandatingAgencies, MandatingAgency } from '../../services/document-branding-service';
 import { CreateSyndicateRequest, Syndicate } from '../../types/syndic-types';
-import { ListSearch, PageHeader, StateBlock, useConfirmAction } from '../../components/primitives';
+import { ListSearch, namedPageItemRender, PageHeader, StateBlock, useConfirmAction } from '../../components/primitives';
 import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion, SearchOption } from '../../utils/list-search';
 import { localizedList } from '../../i18n/localized';
@@ -281,6 +281,7 @@ export const SyndicsList: React.FC = () => {
                   pageSize={PAGE_SIZE}
                   total={local.total}
                   onChange={page => local.setPage(page)}
+                  itemRender={namedPageItemRender(local.page)}
                   showSizeChanger={false}
                 />
               </div>

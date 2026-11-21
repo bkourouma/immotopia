@@ -182,7 +182,8 @@ describe('SyndicFinances — actions du fonds en vue carte (< 992 px)', () => {
     expect(within(carte).queryByRole('menuitem', { name: 'Renommer' })).not.toBeInTheDocument();
     await user.click(within(ligne).getByRole('button', { name: 'Renommer' }));
 
-    expect(await screen.findByText('Renommer le fonds')).toBeInTheDocument();
+    // Titre de la modale et bouton de confirmation portent le même libellé : on vise la boîte de dialogue.
+    expect(await screen.findByRole('dialog', { name: 'Renommer le fonds' })).toBeInTheDocument();
   });
 
   it("permet d'ouvrir l'historique des mouvements depuis la carte (action secondaire, derriere « Autres actions »)", async () => {

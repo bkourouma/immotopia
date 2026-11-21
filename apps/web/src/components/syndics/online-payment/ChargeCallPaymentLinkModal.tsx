@@ -256,7 +256,9 @@ export const ChargeCallPaymentLinkModal: React.FC<ChargeCallPaymentLinkModalProp
       <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
         {canEdit ? (
           created ? (
-            <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
+            // `key` : sans lui React réutilise les boutons de l'autre vue, et « Créer un autre lien »
+            // hérite un instant du voyant de chargement de « Créer le lien ».
+            <Space key="created" orientation="vertical" size="middle" style={{ width: '100%' }}>
               <Alert
                 type="warning"
                 showIcon
@@ -291,7 +293,7 @@ export const ChargeCallPaymentLinkModal: React.FC<ChargeCallPaymentLinkModalProp
               </div>
             </Space>
           ) : (
-            <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
+            <Space key="form" orientation="vertical" size="middle" style={{ width: '100%' }}>
               <Text strong>{t('Comment transmettre le lien ?')}</Text>
               <Paragraph type="secondary" style={{ margin: 0 }}>
                 {t(
