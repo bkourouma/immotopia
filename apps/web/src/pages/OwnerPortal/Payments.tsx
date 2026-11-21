@@ -1,21 +1,21 @@
 import React, { useState } from 'react';
-import { Card, Row, Col, Typography, Spin, Alert, Tag, Space, Button } from 'antd';
+import { App, Row, Col, Tag, Space, Button } from 'antd';
 import { DollarOutlined, EyeOutlined, SyncOutlined } from '@ant-design/icons';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { ownerPortalService } from '../../services/ownerPortalService';
 import type { OwnerPortalPagination } from '../../services/ownerPortalService';
 import { StatCard } from '../../components/OwnerPortal/StatCard';
 import { PaymentDetailsModal } from '../../components/OwnerPortal/PaymentDetailsModal';
-import { Table } from '../../components/primitives';
+import { DataCard, DataView, PageHeader, SkeletonStats } from '../../components/primitives';
 import { useListSearch } from '../../hooks/useListSearch';
 import { STALE_TIME } from '../../lib/query-keys';
 import { collectAllPages } from '../../utils/table-export/collect';
 import { useOwnerPropertyOptions } from './useOwnerPropertyOptions';
+import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
 
 import { formatFcfa } from '../../i18n/format';
-const { Title, Text } = Typography;
 
 interface PaymentListItem {
   id: string;
@@ -70,7 +70,7 @@ const getMethodLabel = (method: string) => {
 
 export default function Payments() {
   const { options: propertyOptions } = useOwnerPropertyOptions();
-  const [actionError, setActionError] = useState<string | null>(null);
+  const { message } = App.useApp();
   const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(null);
   const [paymentDetails, setPaymentDetails] = useState<any>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
@@ -122,16 +122,15 @@ export default function Payments() {
     placeholderData: keepPreviousData
   });
 
-  const error: string | null =
-    actionError ||
-    (queryError ? (queryError as any).response?.data?.message || t('Erreur lors du chargement des paiements') : null);
+  const error: string | null = queryError
+    ? (queryError as any).response?.data?.message || t('Erreur lors du chargement des paiements')
+    : null;
   const payments = data?.payments ?? [];
   const total = data?.pagination?.total ?? payments.length;
 
   const handleViewDetails = async (paymentId: string) => {
     try {
       setDetailsLoading(true);
-      setActionError(null);
       setSelectedPaymentId(paymentId);
       const response = await ownerPortalService.getPaymentDetails(paymentId);
       if (response.data?.success && response.data?.data?.payment) {
@@ -139,14 +138,14 @@ export default function Payments() {
         setDetailsModalVisible(true);
       }
     } catch (err: any) {
-      setActionError(err.response?.data?.message || t('Erreur lors du chargement des détails'));
+      message.error(err.response?.data?.message || t('Impossible de charger les détails de ce paiement. Réessayez.'));
     } finally {
       setDetailsLoading(false);
     }
   };
 
   // Pas de tri d'en-tête : l'API ne trie pas et le tri antd ne porterait que sur la page reçue.
-  const columns = [
+  const columns: ColumnsType<PaymentListItem> = [
     {
       title: t('Propriété'),
       dataIndex: 'propertyAddress',
@@ -200,53 +199,45 @@ export default function Payments() {
     }
   ];
 
-  if (isPending && !data) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <Spin size="large" tip={t('Chargement des paiements...')} />
-      </div>
-    );
-  }
-
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      {/* Page Header */}
-      <div className="it-toolbar">
-        <div>
-          <Title level={2}>{t('Paiements')}</Title>
-          <Text type="secondary">{t('Historique des paiements reçus')}</Text>
-        </div>
-        <Button
-          icon={<SyncOutlined />}
-          onClick={() => refetch()}
-          loading={isFetching}
-          aria-label={t('Rafraîchir les paiements')}
-        >
-          {t('Actualiser')}
-        </Button>
-      </div>
+      <PageHeader
+        title={t('Paiements')}
+        subtitle={t('Historique des paiements reçus')}
+        extra={
+          <Button
+            icon={<SyncOutlined />}
+            onClick={() => refetch()}
+            loading={isFetching}
+            aria-label={t('Rafraîchir les paiements')}
+          >
+            {t('Actualiser')}
+          </Button>
+        }
+      />
 
-      {/* Summary Cards (T107) : calculées par le serveur sur toutes les lignes filtrées */}
+      {/* Le montant encaissé ouvre la page ; les compteurs suivent, deux par ligne sur telephone. */}
+      {isPending && !data && <SkeletonStats rows={4} aria-label={t('Chargement des paiements')} />}
       {data?.summary && (
         <Row gutter={[16, 16]}>
-          <Col xs={24} sm={12} lg={6}>
+          <Col xs={24} lg={12}>
             <StatCard
               helpId="portails.proprietaire.paiements.indicateurs"
-              title={t('Total')}
-              value={data.summary.total.toString()}
-              icon={<DollarOutlined style={{ color: '#1890ff' }} />}
-              valueStyle={{ fontSize: 18 }}
-            />
-          </Col>
-          <Col xs={24} sm={12} lg={6}>
-            <StatCard
               title={t('Montant total')}
               value={formatCurrency(data.summary.totalAmount)}
               icon={<DollarOutlined style={{ color: '#52c41a' }} />}
               valueStyle={{ fontSize: 18, color: '#52c41a' }}
             />
           </Col>
-          <Col xs={24} sm={12} lg={6}>
+          <Col xs={12} lg={4}>
+            <StatCard
+              title={t('Total')}
+              value={data.summary.total.toString()}
+              icon={<DollarOutlined style={{ color: '#1890ff' }} />}
+              valueStyle={{ fontSize: 18 }}
+            />
+          </Col>
+          <Col xs={12} lg={4}>
             <StatCard
               title={t('Ce mois')}
               value={data.summary.thisMonth.toString()}
@@ -254,7 +245,7 @@ export default function Payments() {
               valueStyle={{ fontSize: 18 }}
             />
           </Col>
-          <Col xs={24} sm={12} lg={6}>
+          <Col xs={12} lg={4}>
             <StatCard
               title={t('Cette année')}
               value={data.summary.thisYear.toString()}
@@ -265,38 +256,50 @@ export default function Payments() {
         </Row>
       )}
 
-      {/* Payments Table (T106) */}
-      <Card title={t('Historique des paiements')}>
-        {error && (
-          <Alert
-            message={t('Erreur')}
-            description={error}
-            type="error"
-            showIcon
-            style={{ marginBottom: 'var(--space-4)' }}
-          />
-        )}
-        <Table
-          helpId="portails.proprietaire.paiements.tableau"
-          aria-label={t('Historique des paiements')}
-          search={search.searchProps}
-          exportFilename={t('Historique des paiements')}
-          exportFetchAll={() =>
+      {/* Historique : tableau sur grand ecran, cartes sur telephone (T106). */}
+      <DataView<PaymentListItem>
+        helpId="portails.proprietaire.paiements.tableau"
+        aria-label={t('Historique des paiements')}
+        {...search.dataViewProps}
+        search={search.searchProps}
+        items={payments}
+        total={total}
+        loading={isPending}
+        isReloading={isFetching && !isPending}
+        error={error}
+        errorCause={queryError}
+        onRetry={() => void refetch()}
+        emptyDescription={t('Aucun paiement trouvé')}
+        export={{
+          filename: t('Historique des paiements'),
+          fetchAll: () =>
             collectAllPages<PaymentListItem>(async (page, limit) => {
               const response = await ownerPortalService.getPayments({ ...search.filterParams, page, limit });
               const result = response.data?.data as PaymentsData | undefined;
               return { items: result?.payments ?? [], total: result?.pagination?.total ?? 0 };
             })
-          }
-          scroll={{ x: 'max-content' }}
-          columns={columns}
-          dataSource={payments}
-          rowKey="id"
-          loading={isFetching}
-          pagination={search.tablePagination(total)}
-          locale={search.isFiltered ? undefined : { emptyText: t('Aucun paiement trouvé') }}
-        />
-      </Card>
+        }}
+        columns={columns}
+        rowKey={row => row.id}
+        renderCard={row => (
+          <DataCard
+            title={row.propertyAddress}
+            subtitle={row.tenantName}
+            status={getStatusTag(row.status)}
+            highlight={formatCurrency(row.amount)}
+            fields={[
+              { label: t('Date'), value: dayjs(row.date).format('DD/MM/YYYY HH:mm') },
+              { label: t('Méthode'), value: getMethodLabel(row.method) }
+            ]}
+            primaryAction={{
+              label: t('Détails'),
+              icon: <EyeOutlined />,
+              onClick: () => handleViewDetails(row.id),
+              loading: detailsLoading && selectedPaymentId === row.id
+            }}
+          />
+        )}
+      />
 
       {/* Payment Details Modal (T108) */}
       <PaymentDetailsModal

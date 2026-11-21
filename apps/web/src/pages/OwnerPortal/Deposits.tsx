@@ -1,15 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Row, Col, Typography, Spin, Alert, Tag, Space, Button, Modal, Empty } from 'antd';
+import { App, Row, Col, Spin, Tag, Space, Button, Modal } from 'antd';
 import { DollarOutlined, WalletOutlined, EyeOutlined, SyncOutlined } from '@ant-design/icons';
 import { ownerPortalService } from '../../services/ownerPortalService';
 import { StatCard } from '../../components/OwnerPortal/StatCard';
-import { Table } from '../../components/primitives';
+import {
+  DataCard,
+  DataView,
+  PageHeader,
+  SkeletonList,
+  SkeletonStats,
+  StateBlock,
+  Table
+} from '../../components/primitives';
 import { useDepositsSearch } from './search/useDepositsSearch';
+import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
 
 import { formatFcfa } from '../../i18n/format';
-const { Title, Text } = Typography;
 
 interface DepositListItem {
   id: string;
@@ -78,6 +86,7 @@ const getMovementTypeLabel = (type: string) => {
 };
 
 export default function Deposits() {
+  const { message } = App.useApp();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<DepositsData | null>(null);
@@ -118,7 +127,7 @@ export default function Deposits() {
         setMovementsModalVisible(true);
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || t('Erreur lors du chargement des mouvements'));
+      message.error(err.response?.data?.message || t('Impossible de charger les mouvements de ce dépôt. Réessayez.'));
     } finally {
       setMovementsLoading(false);
     }
@@ -160,7 +169,7 @@ export default function Deposits() {
     }
   ];
 
-  const columns = [
+  const columns: ColumnsType<DepositListItem> = [
     {
       title: t('Propriété'),
       dataIndex: 'propertyAddress',
@@ -212,26 +221,11 @@ export default function Deposits() {
     }
   ];
 
-  if (loading && !data) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <Spin size="large" tip={t('Chargement des dépôts de garantie...')} />
-      </div>
-    );
-  }
-
-  if (error) {
-    return <Alert message={t('Erreur')} description={error} type="error" showIcon />;
-  }
-
-  return (
-    <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      {/* Page Header */}
-      <div className="it-toolbar">
-        <div>
-          <Title level={2}>{t('Dépôts de garantie')}</Title>
-          <Text type="secondary">{t('Suivi des dépôts de garantie de vos propriétés')}</Text>
-        </div>
+  const header = (
+    <PageHeader
+      title={t('Dépôts de garantie')}
+      subtitle={t('Suivi des dépôts de garantie de vos propriétés')}
+      extra={
         <Button
           icon={<SyncOutlined />}
           onClick={loadDeposits}
@@ -240,7 +234,37 @@ export default function Deposits() {
         >
           {t('Actualiser')}
         </Button>
-      </div>
+      }
+    />
+  );
+
+  if (loading && !data) {
+    return (
+      <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        {header}
+        <SkeletonStats rows={4} aria-label={t('Chargement des dépôts de garantie')} />
+        <SkeletonList rows={3} aria-label={t('Chargement des dépôts de garantie')} />
+      </Space>
+    );
+  }
+
+  if (error) {
+    return (
+      <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        {header}
+        <StateBlock
+          variant="error"
+          title={t('Impossible de charger les dépôts de garantie')}
+          description={error}
+          actions={[{ label: t('Réessayer'), onClick: loadDeposits, primary: true }]}
+        />
+      </Space>
+    );
+  }
+
+  return (
+    <Space direction="vertical" size="large" style={{ width: '100%' }}>
+      {header}
 
       {/* Summary Cards (T117) */}
       {data?.summary && (
@@ -281,24 +305,37 @@ export default function Deposits() {
         </Row>
       )}
 
-      {/* Deposits Table (T116) */}
-      <Card title={t('Liste des dépôts de garantie')}>
-        {data && data.deposits.length > 0 ? (
-          <Table
-            helpId="portails.proprietaire.cautions.tableau"
-            aria-label={t('Liste des dépôts de garantie')}
-            exportFilename={t('Liste des dépôts de garantie')}
-            exportFetchAll={local.exportAll}
-            scroll={{ x: 'max-content' }}
-            columns={columns}
-            {...local.tableProps}
-            rowKey="id"
-            loading={loading}
-          />
-        ) : (
-          <Empty description={t('Aucun dépôt de garantie trouvé')} />
-        )}
-      </Card>
+      {/* Deposits (T116) : tableau sur grand ecran, cartes sur telephone */}
+      {data && data.deposits.length > 0 ? (
+        <DataView<DepositListItem>
+          helpId="portails.proprietaire.cautions.tableau"
+          aria-label={t('Liste des dépôts de garantie')}
+          {...local.dataViewProps}
+          export={{ filename: t('Liste des dépôts de garantie'), fetchAll: local.exportAll }}
+          columns={columns}
+          rowKey={row => row.id}
+          renderCard={row => (
+            <DataCard
+              title={row.propertyAddress}
+              subtitle={row.tenantName}
+              status={getStatusTag(row.status)}
+              highlight={formatCurrency(row.currentHeldAmount)}
+              fields={[
+                { label: t('Montant du dépôt'), value: formatCurrency(row.depositAmount) },
+                { label: t('Montant retenu'), value: formatCurrency(row.withheldAmount) }
+              ]}
+              primaryAction={{
+                label: t('Mouvements'),
+                icon: <EyeOutlined />,
+                onClick: () => handleViewMovements(row.id),
+                loading: movementsLoading && selectedDepositId === row.id
+              }}
+            />
+          )}
+        />
+      ) : (
+        <StateBlock variant="empty" description={t('Aucun dépôt de garantie trouvé')} />
+      )}
 
       {/* Movements Modal (T118) */}
       <Modal
@@ -333,7 +370,7 @@ export default function Deposits() {
             size="small"
           />
         ) : (
-          <Empty description={t('Aucun mouvement trouvé')} />
+          <StateBlock variant="empty" description={t('Aucun mouvement trouvé')} />
         )}
       </Modal>
     </Space>

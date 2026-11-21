@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { App, Card, Form, Input, Select, Button, Space, Typography, Spin, Alert } from 'antd';
+import { App, Card, Form, Input, Select, Button, Space, Alert } from 'antd';
 import { ArrowLeftOutlined, SaveOutlined } from '@ant-design/icons';
 import { tenantMaintenanceService } from '../../../services/maintenance-service';
 import {
@@ -10,9 +10,10 @@ import {
   TicketDetail
 } from '../../../types/maintenance-types';
 import { useAuth } from '../../../hooks/useAuth';
+import { onAntFormValidationFailed } from '../../../lib/antFormFailure';
+import { PageHeader, SkeletonDetail } from '../../../components/primitives';
 import { t } from '../../../i18n/t';
 
-const { Title } = Typography;
 const { TextArea } = Input;
 const { Option } = Select;
 
@@ -130,8 +131,8 @@ export const EditTicket: React.FC = () => {
   if (loadingTicket) {
     return (
       <>
-        <div style={{ padding: '24px', textAlign: 'center' }}>
-          <Spin size="large" />
+        <div style={{ padding: '24px' }}>
+          <SkeletonDetail aria-label={t('Chargement du ticket')} />
         </div>
       </>
     );
@@ -189,7 +190,10 @@ export const EditTicket: React.FC = () => {
           </Button>
 
           <Card>
-            <Title level={2}>{t('Modifier le ticket de maintenance')}</Title>
+            <PageHeader
+              title={t('Modifier le ticket de maintenance')}
+              subtitle={t('Seuls les champs modifiés sont enregistrés.')}
+            />
 
             <Alert
               message={t('Information')}
@@ -201,7 +205,13 @@ export const EditTicket: React.FC = () => {
               style={{ marginBottom: 24 }}
             />
 
-            <Form form={form} layout="vertical" onFinish={handleSubmit} style={{ maxWidth: 800 }}>
+            <Form
+              form={form}
+              layout="vertical"
+              onFinish={handleSubmit}
+              onFinishFailed={onAntFormValidationFailed(form)}
+              style={{ maxWidth: 800 }}
+            >
               <Form.Item
                 name="title"
                 label={t('Titre')}
@@ -260,15 +270,26 @@ export const EditTicket: React.FC = () => {
                 <TextArea rows={3} placeholder={t("Ex: Salle de bain principale, sous l'évier")} />
               </Form.Item>
 
-              <Form.Item>
-                <Space>
-                  <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={loading}>
-                    {t('Enregistrer les modifications')}
-                  </Button>
-                  <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/maintenance/${ticketId}`)}>
-                    {t('Annuler')}
-                  </Button>
-                </Space>
+              <Form.Item style={{ marginBottom: 0 }}>
+                <div
+                  style={{
+                    position: 'sticky',
+                    bottom: 0,
+                    zIndex: 10,
+                    padding: '12px 0',
+                    background: 'var(--color-bg-container, #fff)',
+                    borderTop: '1px solid var(--color-border-secondary, #f0f0f0)'
+                  }}
+                >
+                  <Space wrap>
+                    <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={loading}>
+                      {t('Enregistrer les modifications')}
+                    </Button>
+                    <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/maintenance/${ticketId}`)}>
+                      {t('Annuler')}
+                    </Button>
+                  </Space>
+                </div>
               </Form.Item>
             </Form>
           </Card>

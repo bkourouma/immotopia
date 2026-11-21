@@ -30,7 +30,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { getMyStatement } from '../../services/finance-service';
 import type { ThirdPartyMovementLine } from '../../types/finance-types';
 import { natureLabel } from '../finance/Releve';
-import { MoneyValue, StateBlock, SkeletonTable, Table } from '../../components/primitives';
+import { MoneyValue, PageHeader, StateBlock, SkeletonTable, Table } from '../../components/primitives';
 import { collectAllPages } from '../../utils/table-export/collect';
 import { useEcheancesSearch, useHistoriqueSearch, useOngletPaiements, useReleveSearch } from './search/paymentsSearch';
 import { useSelectionEcheances } from './search/useSelectionEcheances';
@@ -47,7 +47,7 @@ import { HelpButton, HelpSectionTitle, helpAnchor } from '../../help';
 
 import { activeLocale, dateFormat } from '../../i18n/format';
 import { formatMontantLocatif } from '../../lib/rental-labels';
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 interface InstallmentItem {
   id: string;
@@ -744,9 +744,8 @@ export default function TenantPayments() {
         <Space>
           {isPayable(record) && (
             <Button
-              type="primary"
               size="small"
-              icon={<DollarOutlined />}
+              icon={<DollarOutlined aria-hidden />}
               onClick={() => {
                 setDeclarationFor(record);
                 setDeclarationModalVisible(true);
@@ -763,6 +762,11 @@ export default function TenantPayments() {
     }
   ];
 
+  const ouvrirDeclaration = () => {
+    setDeclarationFor(null);
+    setDeclarationModalVisible(true);
+  };
+
   const selectedLeaseId = selectedInstallmentIds
     .map(id => leaseByInstallmentId[id] ?? data?.installments.find(item => item.id === id)?.leaseId)
     .find((id): id is string => Boolean(id));
@@ -770,14 +774,28 @@ export default function TenantPayments() {
 
   if (ongletActif === 'echeances' && loading && !data) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <Spin size="large" tip={t('Chargement des échéances...')} />
+      <div>
+        <PageHeader
+          title={t('Paiements et échéances')}
+          subtitle={t("Suivez vos échéances et l'historique de vos paiements")}
+        />
+        <SkeletonTable rows={5} columns={5} aria-label={t('Chargement des échéances...')} />
       </div>
     );
   }
 
   if (ongletActif === 'echeances' && error && !data) {
-    return <Alert message={t('Erreur')} description={error} type="error" showIcon />;
+    return (
+      <div>
+        <PageHeader title={t('Paiements et échéances')} />
+        <StateBlock
+          variant="error"
+          title={t('Impossible de charger vos échéances')}
+          description={t('Vérifiez votre connexion puis réessayez.')}
+          actions={[{ label: t('Réessayer'), onClick: () => void loadInstallments(), primary: true }]}
+        />
+      </div>
+    );
   }
 
   return (
@@ -799,36 +817,33 @@ export default function TenantPayments() {
         />
       ) : null}
 
-      {/* Page Header */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          // Sur un ecran etroit le titre et le bouton se chevauchaient : on
-          // autorise le passage a la ligne plutot que la compression.
-          flexWrap: 'wrap',
-          gap: 16
-        }}
-      >
-        <div style={{ minWidth: 0 }}>
-          <Title level={2} style={{ marginBottom: 4 }}>
-            {t('Paiements et échéances')}
-          </Title>
-          <Text type="secondary">{t("Suivez vos échéances et l'historique de vos paiements")}</Text>
-        </div>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => {
-            setDeclarationFor(null);
-            setDeclarationModalVisible(true);
-          }}
-          {...helpAnchor('paiements-declarer')}
-        >
-          {t('Déclarer un paiement')}
-        </Button>
-      </div>
+      {/* Un seul bouton primaire : « Payer en ligne » quand il est proposé, sinon la déclaration. */}
+      <PageHeader
+        title={t('Paiements et échéances')}
+        subtitle={t("Suivez vos échéances et l'historique de vos paiements")}
+        primaryAction={
+          availability?.available
+            ? undefined
+            : {
+                label: t('Déclarer un paiement'),
+                icon: <PlusOutlined aria-hidden />,
+                onClick: ouvrirDeclaration,
+                helpAnchor: 'paiements-declarer'
+              }
+        }
+        extra={
+          availability?.available ? (
+            <Button
+              icon={<PlusOutlined aria-hidden />}
+              onClick={ouvrirDeclaration}
+              style={{ minHeight: 44 }}
+              {...helpAnchor('paiements-declarer')}
+            >
+              {t('Déclarer un paiement')}
+            </Button>
+          ) : undefined
+        }
+      />
 
       <TenantPaymentAccountsSection
         suggestedReason={suggestedReason}
@@ -841,7 +856,7 @@ export default function TenantPayments() {
       {/* Summary Cards (T054) */}
       {ongletActif === 'echeances' && data?.summary && (
         <Row gutter={[16, 16]}>
-          <Col xs={24} sm={12} lg={6}>
+          <Col xs={12} lg={6}>
             <Card>
               <Statistic
                 title={
@@ -852,7 +867,7 @@ export default function TenantPayments() {
               />
             </Card>
           </Col>
-          <Col xs={24} sm={12} lg={6}>
+          <Col xs={12} lg={6}>
             <Card>
               <Statistic
                 title={t('Payées')}
@@ -862,7 +877,7 @@ export default function TenantPayments() {
               />
             </Card>
           </Col>
-          <Col xs={24} sm={12} lg={6}>
+          <Col xs={12} lg={6}>
             <Card>
               <Statistic
                 title={t('En attente')}
@@ -872,7 +887,7 @@ export default function TenantPayments() {
               />
             </Card>
           </Col>
-          <Col xs={24} sm={12} lg={6}>
+          <Col xs={12} lg={6}>
             <Card>
               <Statistic
                 title={t('En retard')}
@@ -973,6 +988,7 @@ export default function TenantPayments() {
                       <HelpButton helpId="portails.locataire.paiements.paiement-en-ligne" size="small" />
                       <Button
                         type="primary"
+                        size="large"
                         icon={<CreditCardOutlined aria-hidden />}
                         disabled={selectedInstallmentIds.length === 0}
                         loading={payingOnline}
@@ -1067,10 +1083,15 @@ export default function TenantPayments() {
                 >
                   {paymentHistoryError ? (
                     <Alert
-                      message={t('Erreur')}
+                      message={t("Impossible de charger l'historique")}
                       description={paymentHistoryError}
                       type="error"
                       showIcon
+                      action={
+                        <Button size="small" onClick={() => void loadPaymentHistory()}>
+                          {t('Réessayer')}
+                        </Button>
+                      }
                       style={{ marginBottom: 16 }}
                     />
                   ) : null}
@@ -1246,8 +1267,14 @@ export default function TenantPayments() {
                         }}
                       />
                     </div>
+                  ) : paymentHistoryLoading ? (
+                    <SkeletonTable rows={5} columns={5} aria-label={t("Chargement de l'historique...")} />
                   ) : (
-                    <Empty description={t('Aucun paiement trouvé')} />
+                    <StateBlock
+                      variant="empty"
+                      title={t('Aucun paiement trouvé')}
+                      description={t('Vos paiements apparaîtront ici dès leur enregistrement.')}
+                    />
                   )}
                 </Card>
 

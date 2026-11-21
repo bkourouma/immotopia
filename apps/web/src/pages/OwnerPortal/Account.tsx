@@ -10,7 +10,15 @@ import {
   type OwnerPayout,
   type PayoutMethod
 } from '../../services/owner-portal-account-service';
-import { DataCard, DataView, MoneyValue, SkeletonList, SkeletonStats, StateBlock } from '../../components/primitives';
+import {
+  DataCard,
+  DataView,
+  MoneyValue,
+  PageHeader,
+  SkeletonList,
+  SkeletonStats,
+  StateBlock
+} from '../../components/primitives';
 import { AccountTabs } from './search/AccountTabs';
 import { useAccountSearch } from './search/useAccountSearch';
 import { t } from '../../i18n/t';
@@ -111,9 +119,27 @@ export default function Account() {
   });
   const { payoutsSearch, movementsSearch } = useAccountSearch(compte, PAYOUT_METHOD_LABELS, MOVEMENT_TYPE_LABELS);
 
+  const header = (
+    <PageHeader
+      title={t('Mon compte')}
+      subtitle={t("Compte courant tenu par l'agence pour vos biens.")}
+      extra={
+        <Button
+          icon={<SyncOutlined />}
+          onClick={() => void refetch()}
+          loading={isFetching}
+          aria-label={t('Actualiser')}
+        >
+          {t('Actualiser')}
+        </Button>
+      }
+    />
+  );
+
   if (isPending) {
     return (
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        {header}
         <SkeletonStats rows={1} />
         <SkeletonStats rows={5} />
         <SkeletonList rows={3} />
@@ -123,11 +149,14 @@ export default function Account() {
 
   if (error || !compte) {
     return (
-      <StateBlock
-        variant="error"
-        description={t('Impossible de charger votre compte.')}
-        actions={[{ label: t('Réessayer'), onClick: () => void refetch(), primary: true }]}
-      />
+      <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        {header}
+        <StateBlock
+          variant="error"
+          description={t('Impossible de charger votre compte.')}
+          actions={[{ label: t('Réessayer'), onClick: () => void refetch(), primary: true }]}
+        />
+      </Space>
     );
   }
 
@@ -180,20 +209,7 @@ export default function Account() {
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      <div className="it-toolbar">
-        <div>
-          <Title level={2}>{t('Mon compte')}</Title>
-          <Text type="secondary">{t("Compte courant tenu par l'agence pour vos biens.")}</Text>
-        </div>
-        <Button
-          icon={<SyncOutlined />}
-          onClick={() => void refetch()}
-          loading={isFetching}
-          aria-label={t('Actualiser')}
-        >
-          {t('Actualiser')}
-        </Button>
-      </div>
+      {header}
 
       {/* En-tête : la phrase, jamais un nombre nu. */}
       <Card>
@@ -214,7 +230,7 @@ export default function Account() {
 
       {/* Indicateurs : ce qui compose le solde (retenue à la source et dépôt conservé compris). */}
       <Row gutter={[16, 16]}>
-        <Col xs={24} sm={12} lg={8}>
+        <Col xs={12} lg={8}>
           <Card>
             <Text type="secondary">{t('Loyers encaissés')}</Text>
             <div style={{ marginTop: 4 }}>
@@ -222,7 +238,7 @@ export default function Account() {
             </div>
           </Card>
         </Col>
-        <Col xs={24} sm={12} lg={8}>
+        <Col xs={12} lg={8}>
           <Card>
             <Text type="secondary">{t('Honoraires de gestion')}</Text>
             <div style={{ marginTop: 4 }}>
@@ -230,7 +246,7 @@ export default function Account() {
             </div>
           </Card>
         </Col>
-        <Col xs={24} sm={12} lg={8}>
+        <Col xs={12} lg={8}>
           <Card>
             <Text type="secondary">{t('TVA sur honoraires')}</Text>
             <div style={{ marginTop: 4 }}>
@@ -238,7 +254,7 @@ export default function Account() {
             </div>
           </Card>
         </Col>
-        <Col xs={24} sm={12} lg={8}>
+        <Col xs={12} lg={8}>
           <Card>
             <Text type="secondary">{t('Dépenses')}</Text>
             <div style={{ marginTop: 4 }}>
@@ -246,7 +262,7 @@ export default function Account() {
             </div>
           </Card>
         </Col>
-        <Col xs={24} sm={12} lg={8}>
+        <Col xs={12} lg={8}>
           <Card>
             <Text type="secondary">{t('Reversements reçus')}</Text>
             <div style={{ marginTop: 4 }}>
@@ -256,7 +272,7 @@ export default function Account() {
         </Col>
         {/* Du solde : ces trois lignes ferment l'équation avec les cinq précédentes. */}
         {extraTotals.withholdingTax !== 0 && (
-          <Col xs={24} sm={12} lg={8}>
+          <Col xs={12} lg={8}>
             <Card>
               <Text type="secondary">{t('Retenue à la source')}</Text>
               <div style={{ marginTop: 4 }}>
@@ -266,7 +282,7 @@ export default function Account() {
           </Col>
         )}
         {extraTotals.depositRetained !== 0 && (
-          <Col xs={24} sm={12} lg={8}>
+          <Col xs={12} lg={8}>
             <Card>
               <Text type="secondary">{t('Dépôt de garantie conservé')}</Text>
               <div style={{ marginTop: 4 }}>
@@ -276,7 +292,7 @@ export default function Account() {
           </Col>
         )}
         {extraTotals.otherMovements !== 0 && (
-          <Col xs={24} sm={12} lg={8}>
+          <Col xs={12} lg={8}>
             <Card>
               <Text type="secondary">{t('Autres mouvements')}</Text>
               <div style={{ marginTop: 4 }}>

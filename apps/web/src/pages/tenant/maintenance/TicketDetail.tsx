@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { App, Card, Typography, Space, Button, Spin, Divider, Input, Popconfirm } from 'antd';
+import { App, Card, Typography, Space, Button, Divider, Input } from 'antd';
 import { ArrowLeftOutlined, SendOutlined } from '@ant-design/icons';
 import { TicketStatusBadge } from '../../../components/maintenance/TicketStatusBadge';
 import { TicketTimeline } from '../../../components/maintenance/TicketTimeline';
@@ -10,6 +10,7 @@ import { tenantMaintenanceService } from '../../../services/maintenance-service'
 import { TicketDetail as TicketDetailType, MaintenanceTicketStatus } from '../../../types/maintenance-types';
 import { useAuth } from '../../../hooks/useAuth';
 import { formatTicketDate } from '../../../utils/date-utils';
+import { ConfirmAction, PageHeader, SkeletonDetail, StateBlock } from '../../../components/primitives';
 import { t } from '../../../i18n/t';
 import { HelpSectionTitle } from '../../../help';
 import { localizedRecord } from '../../../i18n/localized';
@@ -41,6 +42,7 @@ export const TicketDetail: React.FC = () => {
 
   const [ticket, setTicket] = useState<TicketDetailType | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [commentContent, setCommentContent] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
   const [canceling, setCanceling] = useState(false);
@@ -55,6 +57,7 @@ export const TicketDetail: React.FC = () => {
     if (!effectiveTenantId || !ticketId) return;
 
     setLoading(true);
+    setLoadError(false);
     try {
       const response = await tenantMaintenanceService.getTicket(effectiveTenantId, ticketId);
       if (response.success) {
@@ -62,6 +65,7 @@ export const TicketDetail: React.FC = () => {
       }
     } catch (error) {
       console.error('Error loading ticket:', error);
+      setLoadError(true);
       message.error(t('Erreur lors du chargement du ticket'));
     } finally {
       setLoading(false);
@@ -103,19 +107,25 @@ export const TicketDetail: React.FC = () => {
 
   if (loading) {
     return (
-      <>
-        <Spin size="large" style={{ display: 'block', textAlign: 'center', padding: '50px' }} />
-      </>
+      <div style={{ padding: '24px' }}>
+        <SkeletonDetail aria-label={t('Chargement du ticket')} />
+      </div>
     );
   }
 
-  if (!ticket) {
+  if (loadError || !ticket) {
     return (
-      <>
-        <Card>
-          <Text>{t('Ticket introuvable')}</Text>
-        </Card>
-      </>
+      <div style={{ padding: '24px' }}>
+        <StateBlock
+          variant={loadError ? 'error' : 'empty'}
+          title={loadError ? undefined : t('Ticket introuvable')}
+          description={loadError ? undefined : t("Ce ticket n'existe plus ou n'est pas accessible.")}
+          actions={[
+            ...(loadError ? [{ label: t('Réessayer'), onClick: loadTicket, primary: true }] : []),
+            { label: t('Retour à la liste'), onClick: () => navigate(`/tenant/${effectiveTenantId}/maintenance`) }
+          ]}
+        />
+      </div>
     );
   }
 
@@ -131,20 +141,16 @@ export const TicketDetail: React.FC = () => {
 
           <Card>
             <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-              <div className="it-toolbar it-toolbar--start">
-                <div>
-                  <Title level={3} style={{ margin: 0 }}>
-                    {ticket.title}
-                  </Title>
-                  <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
-                    {t('Créé le')} {formattedCreatedDate}
-                  </Text>
-                </div>
-                <HelpSectionTitle
-                  title={<TicketStatusBadge status={ticket.status} />}
-                  helpId="commercial.maintenance.detail.statut"
-                />
-              </div>
+              <PageHeader
+                title={ticket.title}
+                subtitle={`${t('Créé le')} ${formattedCreatedDate}`}
+                extra={
+                  <HelpSectionTitle
+                    title={<TicketStatusBadge status={ticket.status} />}
+                    helpId="commercial.maintenance.detail.statut"
+                  />
+                }
+              />
 
               <div>
                 <Text strong>{t('Catégorie:')} </Text>
@@ -177,16 +183,18 @@ export const TicketDetail: React.FC = () => {
               )}
 
               {ticket.status === MaintenanceTicketStatus.DECLARED && (
-                <Popconfirm
-                  title={t('Êtes-vous sûr de vouloir annuler ce ticket ?')}
+                <ConfirmAction
+                  title={t('Annuler le ticket « {{title}} » ?', { title: ticket.title })}
+                  description={t('Le ticket passera au statut Annulé.')}
+                  okText={t('Oui, annuler le ticket')}
+                  cancelText={t('Non, le garder')}
+                  danger
                   onConfirm={handleCancelTicket}
-                  okText={t('Oui')}
-                  cancelText={t('Non')}
                 >
                   <Button danger loading={canceling}>
                     {t('Annuler le ticket')}
                   </Button>
-                </Popconfirm>
+                </ConfirmAction>
               )}
 
               <Divider />
@@ -227,6 +235,7 @@ export const TicketDetail: React.FC = () => {
                   <TextArea
                     rows={4}
                     placeholder={t('Ajouter un commentaire...')}
+                    aria-label={t('Ajouter un commentaire')}
                     value={commentContent}
                     onChange={e => setCommentContent(e.target.value)}
                   />

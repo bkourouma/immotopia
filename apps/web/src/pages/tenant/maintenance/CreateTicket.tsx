@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { App, Card, Form, Input, Select, Button, Space, Typography, Spin } from 'antd';
+import { App, Card, Form, Input, Select, Button, Space, Typography } from 'antd';
 import { ArrowLeftOutlined, SaveOutlined } from '@ant-design/icons';
 import { FileUploader } from '../../../components/maintenance/FileUploader';
 import { tenantMaintenanceService } from '../../../services/maintenance-service';
@@ -12,6 +12,7 @@ import {
 import { listProperties, Property } from '../../../services/property-service';
 import { useAuth } from '../../../hooks/useAuth';
 import { onAntFormValidationFailed } from '../../../lib/antFormFailure';
+import { PageHeader } from '../../../components/primitives';
 import { t } from '../../../i18n/t';
 import { HelpSectionTitle, helpAnchor } from '../../../help';
 
@@ -177,7 +178,10 @@ export const CreateTicket: React.FC = () => {
           </Button>
 
           <Card>
-            <Title level={2}>{t('Créer un ticket de maintenance')}</Title>
+            <PageHeader
+              title={t('Créer un ticket de maintenance')}
+              subtitle={t('Les champs sans mention « optionnel » sont obligatoires.')}
+            />
 
             <Form
               form={form}
@@ -186,6 +190,10 @@ export const CreateTicket: React.FC = () => {
               onFinishFailed={onAntFormValidationFailed(form)}
               style={{ maxWidth: 800 }}
             >
+              <Title level={4} style={{ marginTop: 0 }}>
+                {t('Bien concerné')}
+              </Title>
+
               <Form.Item
                 {...helpAnchor('maintenance-bien')}
                 name="propertyId"
@@ -205,6 +213,8 @@ export const CreateTicket: React.FC = () => {
                   notFoundContent={propertiesLoading ? t('Chargement…') : t('Aucun bien trouvé')}
                 />
               </Form.Item>
+
+              <Title level={4}>{t('Le problème')}</Title>
 
               <Form.Item
                 {...helpAnchor('maintenance-titre')}
@@ -250,6 +260,7 @@ export const CreateTicket: React.FC = () => {
                 {...helpAnchor('maintenance-description')}
                 name="description"
                 label={t('Description')}
+                extra={t('Dites ce qui se passe, depuis quand et à quel endroit.')}
                 rules={[
                   { required: true, message: t('Veuillez saisir une description') },
                   { min: 10, message: t('La description doit contenir au moins 10 caractères') },
@@ -267,6 +278,8 @@ export const CreateTicket: React.FC = () => {
                 <TextArea rows={3} placeholder={t("Ex: Salle de bain principale, sous l'évier")} />
               </Form.Item>
 
+              <Title level={4}>{t('Pièces jointes')}</Title>
+
               <Form.Item
                 {...helpAnchor('maintenance-pieces-jointes')}
                 label={
@@ -279,19 +292,30 @@ export const CreateTicket: React.FC = () => {
                 <FileUploader onFilesChange={setUploadedFiles} maxFiles={10} maxSize={5} />
               </Form.Item>
 
-              <Form.Item>
-                <Space>
-                  <Button
-                    type="primary"
-                    htmlType="submit"
-                    icon={<SaveOutlined />}
-                    loading={loading}
-                    {...helpAnchor('maintenance-creer')}
-                  >
-                    {t('Créer le ticket')}
-                  </Button>
-                  <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/maintenance`)}>{t('Annuler')}</Button>
-                </Space>
+              <Form.Item style={{ marginBottom: 0 }}>
+                <div
+                  style={{
+                    position: 'sticky',
+                    bottom: 0,
+                    zIndex: 10,
+                    padding: '12px 0',
+                    background: 'var(--color-bg-container, #fff)',
+                    borderTop: '1px solid var(--color-border-secondary, #f0f0f0)'
+                  }}
+                >
+                  <Space wrap>
+                    <Button
+                      type="primary"
+                      htmlType="submit"
+                      icon={<SaveOutlined />}
+                      loading={loading}
+                      {...helpAnchor('maintenance-creer')}
+                    >
+                      {t('Créer le ticket')}
+                    </Button>
+                    <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/maintenance`)}>{t('Annuler')}</Button>
+                  </Space>
+                </div>
               </Form.Item>
             </Form>
           </Card>

@@ -1,21 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-  App,
-  Card,
-  Row,
-  Col,
-  Typography,
-  Spin,
-  Alert,
-  Descriptions,
-  Tag,
-  List,
-  Button,
-  Space,
-  Empty,
-  Divider,
-  Select
-} from 'antd';
+import { App, Card, Row, Col, Typography, Descriptions, Tag, List, Button, Space, Empty, Divider, Select } from 'antd';
 import {
   FileTextOutlined,
   UserOutlined,
@@ -28,6 +12,7 @@ import { tenantPortalService } from '../../services/tenantPortalService';
 import { t } from '../../i18n/t';
 import { HelpSectionTitle } from '../../help';
 import { filenameFromDisposition } from '../../utils/save-blob';
+import { PageHeader, SkeletonDetail, StateBlock } from '../../components/primitives';
 
 import { activeLocale } from '../../i18n/format';
 import { formatMontantLocatif } from '../../lib/rental-labels';
@@ -167,10 +152,10 @@ export default function TenantLease() {
 
   const getBillingFrequencyLabel = (frequency: string) => {
     const labels: Record<string, string> = {
-      MONTHLY: 'Mensuel',
-      QUARTERLY: 'Trimestriel',
-      SEMIANNUAL: 'Semestriel',
-      ANNUAL: 'Annuel'
+      MONTHLY: t('Mensuel'),
+      QUARTERLY: t('Trimestriel'),
+      SEMIANNUAL: t('Semestriel'),
+      ANNUAL: t('Annuel')
     };
     return labels[frequency] || frequency;
   };
@@ -178,12 +163,12 @@ export default function TenantLease() {
   const getDocumentTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
       LEASE_CONTRACT: t('Contrat de bail'),
-      LEASE_ADDENDUM: 'Avenant',
+      LEASE_ADDENDUM: t('Avenant'),
       RENT_RECEIPT: t('Quittance de loyer'),
-      RENT_QUITTANCE: 'Quittance',
+      RENT_QUITTANCE: t('Quittance'),
       DEPOSIT_RECEIPT: t('Reçu de dépôt'),
       STATEMENT: t('Relevé'),
-      OTHER: 'Autre'
+      OTHER: t('Autre')
     };
     return labels[type] || type;
   };
@@ -228,6 +213,7 @@ export default function TenantLease() {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
+      message.success(t('Document téléchargé avec succès'));
     } catch (err: any) {
       console.error('Error downloading document:', err);
       message.error(t('Erreur lors du téléchargement du document'));
@@ -237,32 +223,36 @@ export default function TenantLease() {
   // Au changement de bail, le sélecteur et l'ancien bail restent affichés pendant le rechargement.
   if (loading && !data) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <Spin size="large" tip={t('Chargement des détails du bail...')} />
+      <div>
+        <PageHeader title={t('Mon bail')} subtitle={t('Détails complets de votre contrat de location')} />
+        <SkeletonDetail aria-label={t('Chargement des détails du bail...')} />
       </div>
     );
   }
 
-  if (error) {
-    return <Alert message={t('Erreur')} description={error} type="error" showIcon />;
-  }
-
-  if (!data) {
-    return <Empty description={t('Aucune donnée disponible')} />;
+  if (error || !data) {
+    return (
+      <div>
+        <PageHeader title={t('Mon bail')} />
+        <StateBlock
+          variant="error"
+          title={t('Impossible de charger votre bail')}
+          description={t('Vérifiez votre connexion puis réessayez.')}
+          actions={[{ label: t('Réessayer'), onClick: loadLeaseDetails, primary: true }]}
+        />
+      </div>
+    );
   }
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      {/* Page Header */}
-      <div>
-        <Title level={2}>{t('Mon bail')}</Title>
-        <Text type="secondary">{t('Détails complets de votre contrat de location')}</Text>
-      </div>
+      <PageHeader title={t('Mon bail')} subtitle={t('Détails complets de votre contrat de location')} />
 
       {leases.length > 1 && (
         <Select
           aria-label={t('Bail')}
-          style={{ minWidth: 280, maxWidth: '100%' }}
+          size="large"
+          style={{ minWidth: 240, maxWidth: '100%' }}
           value={selectedLeaseId ?? data.lease.id}
           onChange={value => setSelectedLeaseId(value)}
           options={leases.map(lease => ({

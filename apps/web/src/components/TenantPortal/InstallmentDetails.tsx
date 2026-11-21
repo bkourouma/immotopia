@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Descriptions, Typography, Spin, Alert, Tag, Space, Card, Empty, Row, Col } from 'antd';
+import { Descriptions, Typography, Tag, Space, Card, Empty, Row, Col } from 'antd';
 import { DollarOutlined, CalendarOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import { tenantPortalService } from '../../services/tenantPortalService';
-import { Table } from '../primitives';
+import { SkeletonDetail, StateBlock, Table } from '../primitives';
 import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
 
@@ -147,24 +147,29 @@ export default function InstallmentDetails({ installmentId }: InstallmentDetails
   };
 
   if (loading) {
+    return <SkeletonDetail aria-label={t('Chargement des détails...')} />;
+  }
+
+  if (error || !data) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
-        <Spin size="large" tip={t('Chargement des détails...')} />
-      </div>
+      <StateBlock
+        variant="error"
+        title={t("Impossible de charger le détail de l'échéance")}
+        description={t('Vérifiez votre connexion puis réessayez.')}
+        actions={[{ label: t('Réessayer'), onClick: loadInstallmentDetails, primary: true }]}
+      />
     );
-  }
-
-  if (error) {
-    return <Alert message={t('Erreur')} description={error} type="error" showIcon />;
-  }
-
-  if (!data) {
-    return <Empty description={t('Aucune donnée disponible')} />;
   }
 
   const { installment } = data;
   if (!installment) {
-    return <Empty description={t('Échéance introuvable')} />;
+    return (
+      <StateBlock
+        variant="empty"
+        title={t('Échéance introuvable')}
+        description={t("Cette échéance n'existe plus ou ne vous concerne pas.")}
+      />
+    );
   }
 
   // Items table columns

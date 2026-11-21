@@ -12,7 +12,7 @@ import {
   type PatrimoineValuationHistoryEntry,
   type PatrimoineWork
 } from '../../services/owner-portal-patrimoine-service';
-import { ListSearch, StateBlock, Table, formatMoney } from '../../components/primitives';
+import { ListSearch, PageHeader, StateBlock, Table, formatMoney } from '../../components/primitives';
 import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion } from '../../utils/list-search';
 import {
@@ -421,19 +421,11 @@ export default function PatrimoinePropertyDetails() {
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      <div>
-        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/owner/patrimoine')} style={{ marginBottom: 16 }}>
-          {t('Retour')}
-        </Button>
-        <Title level={2}>{property.title}</Title>
-        <Text type="secondary">{property.address}</Text>
-        {property.city && (
-          <>
-            <br />
-            <Text type="secondary">{property.city}</Text>
-          </>
-        )}
-      </div>
+      <PageHeader
+        title={property.title}
+        subtitle={[property.address, property.city].filter(Boolean).join(' · ')}
+        breadcrumbs={[{ label: t('Mon patrimoine'), to: '/owner/patrimoine' }, { label: t('Détail') }]}
+      />
 
       <Card
         title={<HelpSectionTitle title={t('Quote-part')} helpId="portails.proprietaire.patrimoine-detail.quote-part" />}

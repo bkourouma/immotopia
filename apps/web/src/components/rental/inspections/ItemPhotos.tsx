@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { App, Button, Space, Upload } from 'antd';
 import { CameraOutlined, CloseCircleFilled } from '@ant-design/icons';
+import { ConfirmAction } from '../../primitives';
 import { InspectionPhoto } from '../../../services/lease-inspections-service';
 import { InspectionPhotoImage } from './InspectionPhotoImage';
 import { t } from '../../../i18n/t';
@@ -69,20 +70,39 @@ export const ItemPhotos: React.FC<ItemPhotosProps> = ({
             alt={photo.caption || photo.fileName}
           />
           {!readOnly && (
-            <CloseCircleFilled
-              role="button"
-              aria-label={t('Supprimer la photo')}
-              onClick={() => (deletingId ? undefined : handleDelete(photo.id))}
-              style={{
-                position: 'absolute',
-                top: -6,
-                insetInlineEnd: -6,
-                color: '#f5222d',
-                background: '#fff',
-                borderRadius: '50%',
-                cursor: deletingId ? 'not-allowed' : 'pointer'
-              }}
-            />
+            <ConfirmAction
+              title={t('Supprimer cette photo ?')}
+              description={t('La photo sera retirée de l’état des lieux.')}
+              okText={t('Supprimer')}
+              danger
+              disabled={deletingId !== null}
+              onConfirm={() => handleDelete(photo.id)}
+            >
+              {/* Zone tactile de 44 px autour d'une icône de 20 px. */}
+              <button
+                type="button"
+                aria-label={t('Supprimer la photo')}
+                disabled={deletingId !== null}
+                style={{
+                  position: 'absolute',
+                  top: -12,
+                  insetInlineEnd: -12,
+                  width: 44,
+                  height: 44,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  border: 0,
+                  background: 'transparent',
+                  padding: 0,
+                  cursor: deletingId ? 'not-allowed' : 'pointer'
+                }}
+              >
+                <CloseCircleFilled
+                  style={{ fontSize: 20, color: '#f5222d', background: '#fff', borderRadius: '50%' }}
+                />
+              </button>
+            </ConfirmAction>
           )}
         </div>
       ))}

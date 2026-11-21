@@ -1,19 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Card,
-  Row,
-  Col,
-  Typography,
-  Spin,
-  Alert,
-  Tag,
-  Space,
-  Statistic,
-  Descriptions,
-  Empty,
-  Select,
-  Button
-} from 'antd';
+import { Card, Row, Col, Typography, Tag, Space, Statistic, Descriptions, Empty, Select, Button } from 'antd';
 import {
   DollarOutlined,
   CalendarOutlined,
@@ -22,14 +8,14 @@ import {
   CloseCircleOutlined
 } from '@ant-design/icons';
 import { tenantPortalService } from '../../services/tenantPortalService';
-import { Table } from '../../components/primitives';
+import { PageHeader, SkeletonDetail, StateBlock, Table } from '../../components/primitives';
 import { useDepositSearch } from './search/depositSearch';
 import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
 import { HelpSectionTitle } from '../../help';
 
 import { deviseAffichee, formatMontantLocatif } from '../../lib/rental-labels';
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 interface DepositMovement {
   id: string;
@@ -125,7 +111,8 @@ export default function TenantDeposit() {
     leases.length > 1 ? (
       <Select
         aria-label={t('Bail')}
-        style={{ minWidth: 280, maxWidth: '100%' }}
+        size="large"
+        style={{ minWidth: 240, maxWidth: '100%' }}
         value={selectedLeaseId ?? data?.deposit?.lease.id ?? leases.find(lease => lease.isDefault)?.id ?? leases[0].id}
         onChange={value => setSelectedLeaseId(value)}
         options={leases.map(lease => ({
@@ -172,32 +159,39 @@ export default function TenantDeposit() {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <Spin size="large" tip={t('Chargement des informations du dépôt...')} />
+      <div>
+        <PageHeader title={t('Dépôt de garantie')} subtitle={t('Informations sur votre dépôt de garantie')} />
+        <SkeletonDetail aria-label={t('Chargement des informations du dépôt...')} />
       </div>
     );
   }
 
   if (error) {
     return (
-      <Space direction="vertical" size="large" style={{ width: '100%' }}>
+      <div>
+        <PageHeader title={t('Dépôt de garantie')} />
         {leaseSelector}
-        <Alert message={t('Erreur')} description={error} type="error" showIcon />
-        <Button onClick={() => setRetryKey(key => key + 1)}>{t('Réessayer')}</Button>
-      </Space>
+        <StateBlock
+          variant="error"
+          title={t('Impossible de charger votre dépôt de garantie')}
+          description={t('Vérifiez votre connexion puis réessayez.')}
+          actions={[{ label: t('Réessayer'), onClick: () => setRetryKey(key => key + 1), primary: true }]}
+        />
+      </div>
     );
   }
 
   if (!data || !data.deposit) {
     return (
-      <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        <div>
-          <Title level={2}>{t('Dépôt de garantie')}</Title>
-          <Text type="secondary">{t('Informations sur votre dépôt de garantie')}</Text>
-        </div>
+      <div>
+        <PageHeader title={t('Dépôt de garantie')} subtitle={t('Informations sur votre dépôt de garantie')} />
         {leaseSelector}
-        <Empty description={t('Aucun dépôt de garantie trouvé')} />
-      </Space>
+        <StateBlock
+          variant="empty"
+          title={t('Aucun dépôt de garantie trouvé')}
+          description={t("Aucun dépôt n'est enregistré pour ce bail pour le moment.")}
+        />
+      </div>
     );
   }
 
@@ -207,11 +201,11 @@ export default function TenantDeposit() {
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       {/* Page Header */}
-      <div>
-        <Title level={2}>{t('Dépôt de garantie')}</Title>
-        <Text type="secondary">{t('Informations détaillées sur votre dépôt de garantie')}</Text>
-      </div>
-      {leaseSelector}
+      <PageHeader
+        title={t('Dépôt de garantie')}
+        subtitle={t('Informations détaillées sur votre dépôt de garantie')}
+        extra={leaseSelector}
+      />
 
       {/* Deposit Summary Cards (T081) */}
       <Row gutter={[16, 16]}>

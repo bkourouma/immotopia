@@ -56,7 +56,7 @@ const CARACTERES_ADMIS = new RegExp('^[\\d\\s.,\\u066B\\u202F\\u00A0\\u0660-\\u0
 /** Avance tolérée sur l'horloge du serveur et ancienneté maximale de `paidAt` (contrat §1.1). */
 const PAID_AT_FUTURE_TOLERANCE_MINUTES = 10;
 const PAID_AT_MAX_AGE_DAYS = 90;
-const TOUCH_TARGET = 40;
+const TOUCH_TARGET = 44;
 
 type AiField = 'operator' | 'amount' | 'paidAt' | 'reference' | 'payerPhone';
 
@@ -413,6 +413,7 @@ export default function PaymentDeclarationModal({
                 rules={[{ required: true, message: t('Le bail concerné est requis') }]}
               >
                 <Select
+                  size="large"
                   showSearch
                   optionFilterProp="label"
                   placeholder={t('Sélectionner le bail')}
@@ -426,6 +427,7 @@ export default function PaymentDeclarationModal({
 
             <Form.Item label={t('Mode de paiement')} name="paymentMethod">
               <Select
+                size="large"
                 aria-label={t('Mode de paiement')}
                 options={allowedMethods.map(m => ({ value: m, label: paymentMethodLabel(m) }))}
                 onChange={() => {
@@ -454,6 +456,7 @@ export default function PaymentDeclarationModal({
                   rules={[{ required: true, message: t('Choisissez le numéro vers lequel vous avez payé') }]}
                 >
                   <Select
+                    size="large"
                     placeholder={t('Sélectionner le numéro')}
                     options={receivingNumbers.map(n => ({
                       value: n.id,
@@ -469,6 +472,7 @@ export default function PaymentDeclarationModal({
                   rules={[{ required: true, message: t("L'opérateur mobile est requis") }]}
                 >
                   <Select
+                    size="large"
                     placeholder={t("Sélectionner l'opérateur")}
                     options={OPERATORS.map(op => ({ value: op, label: operatorLabel(op) }))}
                   />

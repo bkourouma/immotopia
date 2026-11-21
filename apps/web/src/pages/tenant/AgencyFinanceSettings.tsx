@@ -13,7 +13,6 @@ import {
   Radio,
   Row,
   Space,
-  Spin,
   Switch,
   Typography
 } from 'antd';
@@ -25,7 +24,7 @@ import {
   getAgencyFinanceSettings,
   updateAgencyFinanceSettings
 } from '../../services/agency-finance-settings-service';
-import { formatMoney } from '../../components/primitives';
+import { formatMoney, PageHeader, SkeletonDetail, StateBlock } from '../../components/primitives';
 import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { FeeTermsFields } from '../../components/settings/FeeTermsFields';
 import { useMyMenuAccess, useOwnAssetsOnly } from '../../hooks/useMenuAccess';
@@ -145,24 +144,18 @@ export const AgencyFinanceSettings: React.FC = () => {
 
   if (loading || !features.ready || !permissionsReady) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', minHeight: 300, alignItems: 'center' }}>
-        <Spin size="large" />
+      <div style={{ padding: 16 }}>
+        <SkeletonDetail aria-label={t('Chargement des paramètres financiers')} />
       </div>
     );
   }
 
   if (error && !settings) {
     return (
-      <Alert
-        type="error"
-        showIcon
-        message={t('Erreur')}
+      <StateBlock
+        variant="error"
         description={error}
-        action={
-          <Button size="small" onClick={() => void load()}>
-            {t('Réessayer')}
-          </Button>
-        }
+        actions={[{ label: t('Réessayer'), onClick: () => void load(), primary: true }]}
       />
     );
   }
@@ -184,16 +177,14 @@ export const AgencyFinanceSettings: React.FC = () => {
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      <div>
-        <Title level={2} style={{ margin: 0 }}>
-          {t('Paramètres financiers')}
-        </Title>
-        <Text type="secondary">
-          {rental
+      <PageHeader
+        title={t('Paramètres financiers')}
+        subtitle={
+          rental
             ? t('Fiscalité, honoraires de gestion et comptes comptables utilisés par les relevés de gérance.')
-            : t('Fiscalité et comptes comptables de la caisse.')}
-        </Text>
-      </div>
+            : t('Fiscalité et comptes comptables de la caisse.')
+        }
+      />
 
       {settings?.isDefault && rental ? (
         <Alert
@@ -475,7 +466,9 @@ export const AgencyFinanceSettings: React.FC = () => {
           <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={saving} size="large">
             {t('Enregistrer')}
           </Button>
-        ) : null}
+        ) : (
+          <Text type="secondary">{t('Ces paramètres sont en lecture seule pour votre rôle.')}</Text>
+        )}
       </Form>
 
       {/* Cartes indépendantes du formulaire ci-dessus : chacune gère son propre

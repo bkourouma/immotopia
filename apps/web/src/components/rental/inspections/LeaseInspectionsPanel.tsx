@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, App, Button, Col, Row, Space, Spin } from 'antd';
+import { Alert, App, Button, Col, Row, Space } from 'antd';
+import { SkeletonDetail, StateBlock } from '../../primitives';
 import {
   createInspection,
   InspectionTemplate,
@@ -126,11 +127,18 @@ export const LeaseInspectionsPanel: React.FC<LeaseInspectionsPanelProps> = ({
   };
 
   if (loading) {
-    return <Spin />;
+    return <SkeletonDetail />;
   }
 
   if (error && !inspections) {
-    return <Alert type="error" showIcon message={error} />;
+    return (
+      <StateBlock
+        variant="error"
+        title={t('Impossible de charger les états des lieux')}
+        description={error}
+        actions={[{ label: t('Réessayer'), onClick: () => void load(), primary: true }]}
+      />
+    );
   }
 
   if (view.mode === 'edit') {
@@ -187,7 +195,11 @@ export const LeaseInspectionsPanel: React.FC<LeaseInspectionsPanelProps> = ({
         </Col>
       </Row>
 
-      {entry && exit && <Button onClick={() => setCompareOpen(true)}>{t('Comparer entrée et sortie')}</Button>}
+      {entry && exit && (
+        <Button style={{ minHeight: 44 }} onClick={() => setCompareOpen(true)}>
+          {t('Comparer entrée et sortie')}
+        </Button>
+      )}
 
       <StartInspectionModal
         open={startType !== null}

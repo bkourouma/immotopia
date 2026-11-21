@@ -1,16 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { App, Card, Button, Tag, Space, Popconfirm, Alert, Empty, Typography } from 'antd';
+import { App, Card, Button, Tag, Space, Empty, Typography } from 'antd';
 import { MailOutlined, PlusOutlined, ReloadOutlined, CloseOutlined } from '@ant-design/icons';
 import { resendInvitation, revokeInvitation } from '../../services/invitation-service';
 import apiClient from '../../utils/api-client';
 import type { ColumnsType } from 'antd/es/table';
-import { Table } from '../../components/primitives';
+import { ConfirmAction, PageHeader, StateBlock, Table } from '../../components/primitives';
 import { useLocalListSearch } from '../../utils/list-search';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 interface Invitation {
   id: string;
@@ -164,24 +164,37 @@ export const InvitationsList: React.FC = () => {
           <Space>
             {canAct && (
               <>
-                <Popconfirm
-                  title={t("Renvoyer l'invitation")}
-                  description={t('Êtes-vous sûr de vouloir renvoyer cette invitation ?')}
+                <ConfirmAction
+                  title={t("Renvoyer l'invitation à {{email}} ?", { email: record.email })}
                   onConfirm={() => handleResend(record.id)}
-                  okText={t('Oui')}
+                  okText={t('Oui, renvoyer')}
                   cancelText={t('Non')}
                 >
-                  <Button type="text" icon={<ReloadOutlined />} title={t('Renvoyer')} />
-                </Popconfirm>
-                <Popconfirm
-                  title={t("Révoquer l'invitation")}
-                  description={t('Êtes-vous sûr de vouloir révoquer cette invitation ?')}
+                  <Button
+                    type="text"
+                    icon={<ReloadOutlined />}
+                    title={t('Renvoyer')}
+                    aria-label={t("Renvoyer l'invitation à {{email}}", { email: record.email })}
+                    style={{ minWidth: 44, minHeight: 44 }}
+                  />
+                </ConfirmAction>
+                <ConfirmAction
+                  title={t("Révoquer l'invitation de {{email}} ?", { email: record.email })}
+                  description={t('Le lien reçu ne fonctionnera plus. Vous pourrez réinviter cette personne.')}
                   onConfirm={() => handleRevoke(record.id)}
-                  okText={t('Oui')}
+                  okText={t('Oui, révoquer')}
                   cancelText={t('Non')}
+                  danger
                 >
-                  <Button type="text" danger icon={<CloseOutlined />} title={t('Révoquer')} />
-                </Popconfirm>
+                  <Button
+                    type="text"
+                    danger
+                    icon={<CloseOutlined />}
+                    title={t('Révoquer')}
+                    aria-label={t("Révoquer l'invitation de {{email}}", { email: record.email })}
+                    style={{ minWidth: 44, minHeight: 44 }}
+                  />
+                </ConfirmAction>
               </>
             )}
           </Space>
@@ -194,27 +207,22 @@ export const InvitationsList: React.FC = () => {
     <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         {/* Header */}
-        <div className="it-toolbar it-toolbar--start">
-          <div>
-            <Title level={2} style={{ margin: 0 }}>
-              {t('Invitations')}
-            </Title>
-            <Text type="secondary">{t('Gérez les invitations envoyées aux collaborateurs')}</Text>
-          </div>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate(`/tenant/${tenantId}/invite`)}>
-            {t('Nouvelle invitation')}
-          </Button>
-        </div>
+        <PageHeader
+          title={t('Invitations')}
+          subtitle={t('Gérez les invitations envoyées aux collaborateurs')}
+          primaryAction={{
+            label: t('Nouvelle invitation'),
+            icon: <PlusOutlined />,
+            onClick: () => navigate(`/tenant/${tenantId}/invite`)
+          }}
+        />
 
         {/* Error Message */}
         {error && (
-          <Alert
-            message={t('Erreur')}
+          <StateBlock
+            variant="error"
             description={error}
-            type="error"
-            showIcon
-            closable
-            onClose={() => setError(null)}
+            actions={[{ label: t('Réessayer'), onClick: loadInvitations, primary: true }]}
           />
         )}
 

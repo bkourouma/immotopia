@@ -1,17 +1,25 @@
 import React, { useEffect, useState } from 'react';
-import { Button, Card, Col, Row, Space, Typography } from 'antd';
+import { Button, Col, Row, Space, Typography } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { BankOutlined, GoldOutlined, RiseOutlined, SyncOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { ownerPortalPatrimoineService } from '../../services/owner-portal-patrimoine-service';
 import type { PatrimoineOverview, PatrimoineSummaryProperty } from '../../services/owner-portal-patrimoine-service';
 import { StatCard } from '../../components/OwnerPortal/StatCard';
-import { StateBlock, Table, formatMoney } from '../../components/primitives';
+import {
+  DataCard,
+  DataView,
+  PageHeader,
+  SkeletonList,
+  SkeletonStats,
+  StateBlock,
+  formatMoney
+} from '../../components/primitives';
 import { usePatrimoineSearch } from './search/usePatrimoineSearch';
 import { DASH, deviseAffichee, formatPercent, sharePercentLabel } from './owner-patrimoine-labels';
 import { t } from '../../i18n/t';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 /** 404 (`NotFoundError`) : vue masquée par l'agence — pas une erreur à afficher comme telle. */
 function isHiddenOrNotFound(error: unknown): boolean {
@@ -55,28 +63,49 @@ export default function Patrimoine() {
 
   const local = usePatrimoineSearch(data?.properties);
 
+  const header = (
+    <PageHeader
+      title={t('Mon patrimoine')}
+      subtitle={t('Valorisation, rendements et emprunts de vos biens')}
+      extra={
+        <Button icon={<SyncOutlined />} onClick={() => void load()} loading={loading} aria-label={t('Actualiser')}>
+          {t('Actualiser')}
+        </Button>
+      }
+    />
+  );
+
   if (loading && !data) {
-    return <StateBlock variant="loading" />;
+    return (
+      <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        {header}
+        <SkeletonStats rows={4} aria-label={t('Chargement du patrimoine')} />
+        <SkeletonList rows={3} aria-label={t('Chargement du patrimoine')} />
+      </Space>
+    );
   }
 
   if (hidden) {
     return (
-      <StateBlock variant="empty" title={t('Vue indisponible')} description={t("Cette vue n'est pas disponible.")} />
+      <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        {header}
+        <StateBlock variant="empty" title={t('Vue indisponible')} description={t("Cette vue n'est pas disponible.")} />
+      </Space>
     );
   }
 
-  if (error) {
+  if (error || !data) {
     return (
-      <StateBlock
-        variant="error"
-        description={error}
-        actions={[{ label: t('Réessayer'), onClick: () => void load(), primary: true }]}
-      />
+      <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        {header}
+        <StateBlock
+          variant="error"
+          title={t('Impossible de charger votre patrimoine')}
+          description={error ?? undefined}
+          actions={[{ label: t('Réessayer'), onClick: () => void load(), primary: true }]}
+        />
+      </Space>
     );
-  }
-
-  if (!data) {
-    return <StateBlock variant="empty" />;
   }
 
   const { sections, summary, properties } = data;
@@ -173,15 +202,7 @@ export default function Patrimoine() {
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      <div className="it-toolbar">
-        <div>
-          <Title level={2}>{t('Mon patrimoine')}</Title>
-          <Text type="secondary">{t('Valorisation, rendements et emprunts de vos biens')}</Text>
-        </div>
-        <Button icon={<SyncOutlined />} onClick={() => void load()} loading={loading} aria-label={t('Actualiser')}>
-          {t('Actualiser')}
-        </Button>
-      </div>
+      {header}
 
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} lg={6}>
@@ -241,22 +262,58 @@ export default function Patrimoine() {
         )}
       </Row>
 
-      <Card title={t('Vos biens')}>
-        {properties.length > 0 ? (
-          <Table
-            helpId="portails.proprietaire.patrimoine.biens"
-            aria-label={t('Vos biens')}
-            exportFilename={t('Vos biens')}
-            exportFetchAll={local.exportAll}
-            scroll={{ x: 'max-content' }}
-            columns={columns}
-            {...local.tableProps}
-            rowKey="id"
-          />
-        ) : (
-          <StateBlock variant="empty" description={t('Aucun bien avec des données de patrimoine.')} />
-        )}
-      </Card>
+      {properties.length > 0 ? (
+        <DataView<PatrimoineSummaryProperty>
+          helpId="portails.proprietaire.patrimoine.biens"
+          aria-label={t('Vos biens')}
+          {...local.dataViewProps}
+          export={{ filename: t('Vos biens'), fetchAll: local.exportAll }}
+          scrollX={1100}
+          columns={columns}
+          rowKey={record => record.id}
+          renderCard={record => (
+            <DataCard
+              title={record.title}
+              subtitle={record.address}
+              highlight={
+                sections.valuation && record.valuation
+                  ? formatMoney(record.valuation.estimatedValue, {
+                      currency: deviseAffichee(record.valuation.currency)
+                    })
+                  : undefined
+              }
+              fields={[
+                { label: t('Quote-part'), value: sharePercentLabel(record.ownerSharePercent) },
+                ...(sections.yield
+                  ? [
+                      { label: t('Rendement brut'), value: formatPercent(record.yield?.grossYield) },
+                      { label: t('Rendement net'), value: formatPercent(record.yield?.netYield) }
+                    ]
+                  : []),
+                ...(sections.loans
+                  ? [
+                      {
+                        label: t('Capital restant dû'),
+                        value: record.loanSummary
+                          ? formatMoney(record.loanSummary.remainingCapital, {
+                              currency: deviseAffichee(summary.currency)
+                            })
+                          : DASH
+                      }
+                    ]
+                  : [])
+              ]}
+              onOpen={() => navigate(`/owner/patrimoine/${record.id}`)}
+              primaryAction={{
+                label: t('Voir le détail'),
+                onClick: () => navigate(`/owner/patrimoine/${record.id}`)
+              }}
+            />
+          )}
+        />
+      ) : (
+        <StateBlock variant="empty" description={t('Aucun bien avec des données de patrimoine.')} />
+      )}
     </Space>
   );
 }

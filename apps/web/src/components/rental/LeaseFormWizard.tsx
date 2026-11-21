@@ -1,6 +1,19 @@
 import { contactDisplayNameWithEmail } from '../../utils/contact-display';
 import React, { useState, useEffect, useRef } from 'react';
-import { Form, Input, Select, Button, Row, Col, Alert, InputNumber, DatePicker, Space } from 'antd';
+import {
+  Form,
+  Input,
+  Select,
+  Button,
+  Row,
+  Col,
+  Alert,
+  InputNumber,
+  DatePicker,
+  Space,
+  Descriptions,
+  Typography
+} from 'antd';
 import dayjs, { Dayjs } from 'dayjs';
 import {
   CreateLeaseRequest,
@@ -14,6 +27,7 @@ import { listContacts, CrmContact } from '../../services/crm-service';
 import { montantSaisiProps, saisieNombreProps } from '../../utils/montant-saisi';
 import { erreursFinancieres, erreursPenalites } from './lease-form-validation';
 import { StepRail } from '../primitives/StepRail';
+import { formatMoney } from '../primitives/MoneyValue';
 import { useOwnAssetsOnly } from '../../hooks/useMenuAccess';
 import { t } from '../../i18n/t';
 import { formatsSaisieDate } from './lease-date-formats';
@@ -22,6 +36,14 @@ import { HelpButton, helpAnchor } from '../../help';
 
 import { activeLocale } from '../../i18n/format';
 const { TextArea } = Input;
+const { Text } = Typography;
+
+const FREQUENCE_LIBELLE: Record<string, () => string> = {
+  [RentalBillingFrequency.MONTHLY]: () => t('Mensuel'),
+  [RentalBillingFrequency.QUARTERLY]: () => t('Trimestriel'),
+  [RentalBillingFrequency.SEMIANNUAL]: () => t('Semestriel'),
+  [RentalBillingFrequency.ANNUAL]: () => t('Annuel')
+};
 
 /** Étape logique (0 à 4) où se saisit chaque champ que le serveur peut refuser. */
 const ETAPE_DU_CHAMP: Record<string, number> = {
@@ -443,6 +465,21 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
     return titleWithBuilding;
   };
 
+  // Durée affichée sous les dates : simple lecture des deux dates saisies.
+  const dureeBail = (() => {
+    if (!formData.startDate || !formData.endDate || formData.endDate <= formData.startDate) return '';
+    const debut = dayjs(formData.startDate);
+    const fin = dayjs(formData.endDate).add(1, 'day');
+    const mois = fin.diff(debut, 'month', true);
+    if (Number.isInteger(mois)) return t('{{n}} mois', { n: mois });
+    return t('{{n}} jours', { n: dayjs(formData.endDate).diff(debut, 'day') + 1 });
+  })();
+
+  // Loyer + charges : somme des deux montants saisis, aucune autre règle.
+  const totalLoyerCharges =
+    (Number(parseNumber(formData.rentAmount || '0')) || 0) +
+    (Number(parseNumber(formData.serviceChargeAmount || '0')) || 0);
+
   // Step 1: Informations générales
   const step1Component = (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -510,6 +547,12 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
           </Form.Item>
         </Col>
       </Row>
+
+      {dureeBail && (
+        <Text type="secondary" role="status" data-testid="lease-duration">
+          {t('Durée du bail : {{duree}}', { duree: dureeBail })}
+        </Text>
+      )}
 
       <Row gutter={16}>
         <Col xs={24} md={12}>
@@ -685,6 +728,30 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
           />
         </Form.Item>
       </Col>
+
+      <Col xs={24}>
+        <Alert
+          type="info"
+          showIcon={false}
+          data-testid="lease-rent-total"
+          message={
+            <Space direction="vertical" size={2}>
+              <span>
+                {t('Loyer + charges : {{total}}', {
+                  total: formatMoney(totalLoyerCharges, { currency: formData.currency })
+                })}
+              </span>
+              <Text type="secondary">
+                {t('Dépôt de garantie : {{depot}}', {
+                  depot: formatMoney(Number(parseNumber(formData.securityDepositAmount || '0')) || 0, {
+                    currency: formData.currency
+                  })
+                })}
+              </Text>
+            </Space>
+          }
+        />
+      </Col>
     </Row>
   );
 
@@ -774,15 +841,61 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
   );
 
   // Step 5: Notes
+  const locataireChoisi = clients.find(c => c.id === formData.primaryRenterClientId);
+  const proprietaireChoisi = clients.find(c => c.id === formData.ownerClientId);
+  const dateAffichee = (iso: string) => (iso ? dayjs(iso).format('DD/MM/YYYY') : '—');
   const step5Component = (
-    <Form.Item label={t('Notes')}>
-      <TextArea
-        value={formData.notes}
-        onChange={e => handleChange('notes', e.target.value)}
-        rows={6}
-        placeholder={t('Ajoutez des notes ou commentaires concernant ce bail...')}
-      />
-    </Form.Item>
+    <Space direction="vertical" size="large" style={{ width: '100%' }}>
+      <Form.Item label={t('Notes')} style={{ marginBottom: 0 }}>
+        <TextArea
+          value={formData.notes}
+          onChange={e => handleChange('notes', e.target.value)}
+          rows={6}
+          placeholder={t('Ajoutez des notes ou commentaires concernant ce bail...')}
+        />
+      </Form.Item>
+
+      <div data-testid="lease-recap" aria-label={t('Récapitulatif du bail')} role="group">
+        <Text strong>{t('Récapitulatif avant création')}</Text>
+        <Descriptions column={1} size="small" bordered style={{ marginTop: 8 }}>
+          <Descriptions.Item label={t('Propriété')}>
+            {selectedProperty ? getPropertyOptionLabel(selectedProperty) : '—'}
+          </Descriptions.Item>
+          <Descriptions.Item label={t('Locataire principal')}>
+            {locataireChoisi ? contactDisplayNameWithEmail(locataireChoisi) : '—'}
+          </Descriptions.Item>
+          {!ownAssetsOnly && (
+            <Descriptions.Item label={t('Propriétaire')}>
+              {proprietaireChoisi ? contactDisplayNameWithEmail(proprietaireChoisi) : '—'}
+            </Descriptions.Item>
+          )}
+          <Descriptions.Item label={t('Période')}>
+            {formData.endDate
+              ? t('Du {{debut}} au {{fin}}', {
+                  debut: dateAffichee(formData.startDate),
+                  fin: dateAffichee(formData.endDate)
+                })
+              : t('À partir du {{debut}} (sans date de fin)', { debut: dateAffichee(formData.startDate) })}
+            {dureeBail ? ` (${dureeBail})` : ''}
+          </Descriptions.Item>
+          {!isSaleOnly && (
+            <>
+              <Descriptions.Item label={t('Loyer + charges')}>
+                {formatMoney(totalLoyerCharges, { currency: formData.currency })}{' '}
+                <Text type="secondary">
+                  ({FREQUENCE_LIBELLE[formData.billingFrequency]?.() ?? formData.billingFrequency})
+                </Text>
+              </Descriptions.Item>
+              <Descriptions.Item label={t('Dépôt de garantie')}>
+                {formatMoney(Number(parseNumber(formData.securityDepositAmount || '0')) || 0, {
+                  currency: formData.currency
+                })}
+              </Descriptions.Item>
+            </>
+          )}
+        </Descriptions>
+      </div>
+    </Space>
   );
 
   // Check if a step is valid based on form data and errors
@@ -836,7 +949,7 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
     },
     {
       title: t('Parties impliquées'),
-      shortTitle: 'Parties',
+      shortTitle: t('Parties'),
       invalid: !getStepValidity(stepIndices[1])
     },
     ...(isSaleOnly
@@ -844,12 +957,12 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
       : [
           {
             title: t('Informations financières'),
-            shortTitle: 'Finances',
+            shortTitle: t('Finances'),
             invalid: !getStepValidity(stepIndices[2])
           }
         ]),
     ...(isSaleOnly ? [] : [{ title: t('Pénalités'), shortTitle: t('Pénalités') }]),
-    { title: t('Notes'), shortTitle: 'Notes' }
+    { title: lease ? t('Notes') : t('Notes et récapitulatif'), shortTitle: t('Notes') }
   ];
 
   const stepComponents = [step1Component, step2Component, step3Component, step4Component, step5Component];

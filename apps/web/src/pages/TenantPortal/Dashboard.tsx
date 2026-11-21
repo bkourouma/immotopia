@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, Row, Col, Statistic, Typography, Spin, Alert, Space, Tag, List, Empty, Button } from 'antd';
+import { Card, Row, Col, Statistic, Typography, Space, Tag, List, Empty, Button } from 'antd';
 import {
   HomeOutlined,
   DollarOutlined,
@@ -16,10 +16,11 @@ import { tenantPortalService } from '../../services/tenantPortalService';
 import { getOnlinePaymentAvailability } from '../../services/payment-gateway-service';
 import { t } from '../../i18n/t';
 import { HelpSectionTitle, helpAnchor } from '../../help';
+import { PageHeader, SkeletonDetail, StateBlock } from '../../components/primitives';
 
 import { activeLocale } from '../../i18n/format';
 import { formatMontantLocatif } from '../../lib/rental-labels';
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 interface DashboardData {
   /** Présent seulement avec plusieurs baux actifs : un résumé par bail. */
@@ -145,152 +146,82 @@ export default function TenantDashboard() {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <Spin size="large" tip={t('Chargement du tableau de bord...')} />
+      <div>
+        <PageHeader title={t('Tableau de bord')} subtitle={t("Vue d'ensemble de votre situation locative")} />
+        <SkeletonDetail aria-label={t('Chargement du tableau de bord...')} />
       </div>
     );
   }
 
-  if (error) {
-    return <Alert message={t('Erreur')} description={error} type="error" showIcon />;
+  if (error || !data) {
+    return (
+      <div>
+        <PageHeader title={t('Tableau de bord')} />
+        <StateBlock
+          variant="error"
+          title={t('Impossible de charger votre tableau de bord')}
+          description={t('Vérifiez votre connexion puis réessayez.')}
+          actions={[{ label: t('Réessayer'), onClick: loadDashboard, primary: true }]}
+        />
+      </div>
+    );
   }
 
-  if (!data) {
-    return <Empty description={t('Aucune donnée disponible')} />;
-  }
+  const peutPayerEnLigne = Boolean(onlinePaymentAvailability?.available) && data.currentBalance > 0;
+  const enRetard = (data.overdueInstallmentsCount ?? 0) > 0;
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      {/* Page Header */}
-      <div
-        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}
-      >
-        <div>
-          <Title level={2}>{t('Tableau de bord')}</Title>
-          <Text type="secondary">{t("Vue d'ensemble de votre situation locative")}</Text>
-        </div>
-        {onlinePaymentAvailability?.available && data.currentBalance > 0 ? (
-          <Button
-            type="primary"
-            icon={<CreditCardOutlined aria-hidden />}
-            onClick={() => navigate('/tenant/payments')}
-            {...helpAnchor('locataire-payer-en-ligne')}
-          >
-            {t('Payer en ligne')}
-          </Button>
-        ) : null}
-      </div>
-
-      {/* Plusieurs baux actifs (BUG-2026-11-04-049) : solde et retards par bail, cumulés plus bas. */}
-      {data.leases && data.leases.length > 1 ? (
-        <Card
-          title={
-            <>
-              <HomeOutlined /> {t('Vos baux')}
-            </>
-          }
-        >
-          <List
-            rowKey="id"
-            dataSource={data.leases}
-            renderItem={bail => (
-              <List.Item>
-                <List.Item.Meta title={<Text strong>{bail.leaseNumber}</Text>} description={bail.propertyAddress} />
-                <Space size="middle" wrap>
-                  <Text>{formatCurrency(bail.balance)}</Text>
-                  {bail.overdueInstallmentsCount > 0 ? (
-                    <Tag color="error">
-                      {t('En retard')} : {bail.overdueInstallmentsCount}
-                    </Tag>
-                  ) : null}
-                </Space>
-              </List.Item>
-            )}
-          />
-        </Card>
-      ) : null}
-
-      {/* Lease Overview Card (T028) */}
-      <Card
-        title={
-          <>
-            <HomeOutlined />{' '}
-            <HelpSectionTitle title={t('Informations du bail')} helpId="portails.locataire.accueil.bail" />
-          </>
-        }
-      >
-        <Row gutter={16}>
-          <Col xs={24} sm={12} md={8}>
-            <Text type="secondary">{t('Adresse')}</Text>
-            <div style={{ marginTop: 4 }}>
-              <Text strong>{data.lease.propertyAddress}</Text>
-            </div>
-          </Col>
-          <Col xs={24} sm={12} md={8}>
-            <Text type="secondary">{t('Loyer mensuel')}</Text>
-            <div style={{ marginTop: 4 }}>
-              <Text strong>{formatCurrency(data.lease.monthlyRent)}</Text>
-            </div>
-          </Col>
-          <Col xs={24} sm={12} md={8}>
-            <Text type="secondary">{t('Charges')}</Text>
-            <div style={{ marginTop: 4 }}>
-              <Text strong>{formatCurrency(data.lease.serviceCharges)}</Text>
-            </div>
-          </Col>
-          <Col xs={24} sm={12} md={8} style={{ marginTop: 16 }}>
-            <Text type="secondary">{t('Date de début')}</Text>
-            <div style={{ marginTop: 4 }}>
-              <Text>{formatDate(data.lease.startDate)}</Text>
-            </div>
-          </Col>
-          <Col xs={24} sm={12} md={8} style={{ marginTop: 16 }}>
-            <Text type="secondary">{t('Date de fin')}</Text>
-            <div style={{ marginTop: 4 }}>
-              <Text>{data.lease.endDate ? formatDate(data.lease.endDate) : t('Non définie')}</Text>
-            </div>
-          </Col>
-          <Col xs={24} sm={12} md={8} style={{ marginTop: 16 }}>
-            <Text type="secondary">{t('Statut')}</Text>
-            <div style={{ marginTop: 4 }}>{getStatusTag(data.lease.status)}</div>
-          </Col>
-        </Row>
-      </Card>
-
-      {/* Stats Cards Row */}
-      <Row gutter={[16, 16]}>
-        {/* Overdue Installments Card (T029) */}
-        <Col xs={24} sm={12} lg={8}>
-          <Card {...helpAnchor('locataire-retard')}>
-            <Statistic
-              title={
-                <HelpSectionTitle title={t('Retard des échéances')} helpId="portails.locataire.accueil.indicateurs" />
+      <PageHeader
+        title={t('Tableau de bord')}
+        subtitle={t("Vue d'ensemble de votre situation locative")}
+        primaryAction={
+          peutPayerEnLigne
+            ? {
+                label: t('Payer en ligne'),
+                icon: <CreditCardOutlined aria-hidden />,
+                onClick: () => navigate('/tenant/payments'),
+                helpAnchor: 'locataire-payer-en-ligne'
               }
-              value={data.overdueInstallmentsCount ?? 0}
-              prefix={<WarningOutlined style={{ color: data.overdueInstallmentsCount > 0 ? '#ff4d4f' : '#d9d9d9' }} />}
-              valueStyle={{ color: data.overdueInstallmentsCount > 0 ? '#ff4d4f' : '#000000' }}
+            : undefined
+        }
+      />
+
+      {/* En tête : ce que le locataire vient chercher, solde puis prochaine échéance. */}
+      <Row gutter={[16, 16]}>
+        <Col xs={24} md={12} lg={8}>
+          <Card>
+            <Statistic
+              title={t('Solde à régler')}
+              value={formatCurrency(Math.max(data.currentBalance ?? 0, 0))}
+              prefix={<DollarOutlined aria-hidden />}
+              valueStyle={{ color: data.currentBalance > 0 ? '#ff4d4f' : '#52c41a' }}
             />
             <Text type="secondary" style={{ fontSize: 12 }}>
-              {data.overdueInstallmentsCount === 0
-                ? t('Aucune échéance en retard')
-                : data.overdueInstallmentsCount === 1
-                  ? t('1 échéance en retard')
-                  : t('{{overdueInstallmentsCount}} échéances en retard', {
-                      overdueInstallmentsCount: data.overdueInstallmentsCount
-                    })}
+              {data.currentBalance > 0 ? t('Montant actuellement dû') : t('Vous êtes à jour')}
             </Text>
+            {!peutPayerEnLigne && data.currentBalance > 0 ? (
+              <div style={{ marginTop: 8 }}>
+                <Button
+                  type="link"
+                  style={{ paddingInline: 0, minHeight: 44 }}
+                  onClick={() => navigate('/tenant/payments')}
+                >
+                  {t('Voir mes échéances')}
+                </Button>
+              </div>
+            ) : null}
           </Card>
         </Col>
 
-        {/* Next Installment Card (T030) */}
-        <Col xs={24} sm={12} lg={8}>
+        <Col xs={24} md={12} lg={8}>
           <Card {...helpAnchor('locataire-prochaine-echeance')}>
             {data.nextInstallment ? (
               <>
                 <Statistic
                   title={t('Prochaine échéance')}
                   value={formatCurrency(data.nextInstallment.amount)}
-                  prefix={<CalendarOutlined style={{ color: '#1890ff' }} />}
+                  prefix={<CalendarOutlined aria-hidden style={{ color: '#1890ff' }} />}
                   valueStyle={{ color: '#1890ff' }}
                 />
                 <div style={{ marginTop: 8 }}>
@@ -314,7 +245,7 @@ export default function TenantDashboard() {
                 <Statistic
                   title={t('Prochaine échéance')}
                   value={0}
-                  prefix={<CalendarOutlined style={{ color: '#d9d9d9' }} />}
+                  prefix={<CalendarOutlined aria-hidden style={{ color: '#d9d9d9' }} />}
                   valueStyle={{ color: '#d9d9d9' }}
                 />
                 <Text type="secondary" style={{ fontSize: 12 }}>
@@ -325,32 +256,59 @@ export default function TenantDashboard() {
           </Card>
         </Col>
 
-        {/* Deposit Info Card (T031) */}
-        <Col xs={24} sm={12} lg={8}>
-          <Card>
+        <Col xs={24} md={12} lg={8}>
+          <Card {...helpAnchor('locataire-retard')}>
             <Statistic
-              title={t('Dépôt de garantie')}
-              value={formatCurrency(data.depositInfo.collectedAmount)}
-              prefix={
-                <SafetyOutlined style={{ color: data.depositInfo.status === 'COLLECTED' ? '#52c41a' : '#722ed1' }} />
+              title={
+                <HelpSectionTitle title={t('Retard des échéances')} helpId="portails.locataire.accueil.indicateurs" />
               }
-              valueStyle={{ color: data.depositInfo.status === 'COLLECTED' ? '#52c41a' : '#722ed1' }}
-              suffix={data.depositInfo.amount > 0 ? ` / ${formatCurrency(data.depositInfo.amount)}` : ''}
+              value={data.overdueInstallmentsCount ?? 0}
+              prefix={<WarningOutlined aria-hidden style={{ color: enRetard ? '#ff4d4f' : '#d9d9d9' }} />}
+              valueStyle={{ color: enRetard ? '#ff4d4f' : undefined }}
             />
             <Text type="secondary" style={{ fontSize: 12 }}>
-              {data.depositInfo.status === 'COLLECTED'
-                ? t('Dépôt effectué')
-                : data.depositInfo.status === 'PARTIAL'
-                  ? t('Montant versé / Montant total')
-                  : data.depositInfo.amount > 0
-                    ? t('Montant versé / Montant total')
-                    : t('Aucun dépôt configuré')}
+              {data.overdueInstallmentsCount === 0
+                ? t('Aucune échéance en retard')
+                : data.overdueInstallmentsCount === 1
+                  ? t('1 échéance en retard')
+                  : t('{{overdueInstallmentsCount}} échéances en retard', {
+                      overdueInstallmentsCount: data.overdueInstallmentsCount
+                    })}
             </Text>
           </Card>
         </Col>
       </Row>
 
-      {/* Recent Payments and Maintenance Summary Row */}
+      {/* Plusieurs baux actifs (BUG-2026-11-04-049) : solde et retards par bail, cumulés plus haut. */}
+      {data.leases && data.leases.length > 1 ? (
+        <Card
+          title={
+            <>
+              <HomeOutlined aria-hidden /> {t('Vos baux')}
+            </>
+          }
+        >
+          <List
+            rowKey="id"
+            dataSource={data.leases}
+            renderItem={bail => (
+              <List.Item>
+                <List.Item.Meta title={<Text strong>{bail.leaseNumber}</Text>} description={bail.propertyAddress} />
+                <Space size="middle" wrap>
+                  <Text>{formatCurrency(bail.balance)}</Text>
+                  {bail.overdueInstallmentsCount > 0 ? (
+                    <Tag color="error">
+                      {t('En retard')} : {bail.overdueInstallmentsCount}
+                    </Tag>
+                  ) : null}
+                </Space>
+              </List.Item>
+            )}
+          />
+        </Card>
+      ) : null}
+
+      {/* Paiements récents et maintenance */}
       <Row gutter={[16, 16]}>
         {/* Recent Payments List (T032) */}
         <Col xs={24} lg={12}>
@@ -358,13 +316,13 @@ export default function TenantDashboard() {
             {...helpAnchor('locataire-paiements-recents')}
             title={
               <>
-                <WalletOutlined />{' '}
+                <WalletOutlined aria-hidden />{' '}
                 <HelpSectionTitle title={t('Paiements récents')} helpId="portails.locataire.accueil.paiements" />
               </>
             }
             extra={
               <Text type="secondary" style={{ fontSize: 12 }}>
-                5 derniers
+                {t('5 derniers')}
               </Text>
             }
           >
@@ -397,30 +355,35 @@ export default function TenantDashboard() {
           <Card
             title={
               <>
-                <ToolOutlined />{' '}
+                <ToolOutlined aria-hidden />{' '}
                 <HelpSectionTitle title={t('Résumé maintenance')} helpId="portails.locataire.accueil.maintenance" />
               </>
             }
+            extra={
+              <Button type="link" style={{ minHeight: 44 }} onClick={() => navigate('/tenant/maintenance')}>
+                {t('Voir mes demandes')}
+              </Button>
+            }
           >
-            <Row gutter={16}>
-              <Col xs={24} sm={12}>
+            <Row gutter={[16, 16]}>
+              <Col xs={12}>
                 <Statistic title={t('Total')} value={data.maintenanceTickets.total} valueStyle={{ fontSize: 24 }} />
               </Col>
-              <Col xs={24} sm={12}>
+              <Col xs={12}>
                 <Statistic
                   title={t('Ouverts')}
                   value={data.maintenanceTickets.open}
                   valueStyle={{ color: '#faad14', fontSize: 24 }}
                 />
               </Col>
-              <Col xs={24} sm={12} style={{ marginTop: 16 }}>
+              <Col xs={12}>
                 <Statistic
                   title={t('En cours')}
                   value={data.maintenanceTickets.inProgress}
                   valueStyle={{ color: '#1890ff', fontSize: 24 }}
                 />
               </Col>
-              <Col xs={24} sm={12} style={{ marginTop: 16 }}>
+              <Col xs={12}>
                 <Statistic
                   title={t('Résolus')}
                   value={data.maintenanceTickets.resolved}
@@ -431,6 +394,76 @@ export default function TenantDashboard() {
           </Card>
         </Col>
       </Row>
+
+      {/* Dépôt de garantie */}
+      <Card>
+        <Statistic
+          title={t('Dépôt de garantie')}
+          value={formatCurrency(data.depositInfo.collectedAmount)}
+          prefix={
+            <SafetyOutlined
+              aria-hidden
+              style={{ color: data.depositInfo.status === 'COLLECTED' ? '#52c41a' : '#722ed1' }}
+            />
+          }
+          valueStyle={{ color: data.depositInfo.status === 'COLLECTED' ? '#52c41a' : '#722ed1' }}
+          suffix={data.depositInfo.amount > 0 ? ` / ${formatCurrency(data.depositInfo.amount)}` : ''}
+        />
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          {data.depositInfo.status === 'COLLECTED'
+            ? t('Dépôt effectué')
+            : data.depositInfo.amount > 0
+              ? t('Montant versé / Montant total')
+              : t('Aucun dépôt configuré')}
+        </Text>
+      </Card>
+
+      {/* Informations du bail : utiles mais rarement consultées, donc après l'essentiel. */}
+      <Card
+        title={
+          <>
+            <HomeOutlined aria-hidden />{' '}
+            <HelpSectionTitle title={t('Informations du bail')} helpId="portails.locataire.accueil.bail" />
+          </>
+        }
+      >
+        <Row gutter={[16, 16]}>
+          <Col xs={24} sm={12} md={8}>
+            <Text type="secondary">{t('Adresse')}</Text>
+            <div style={{ marginTop: 4 }}>
+              <Text strong>{data.lease.propertyAddress}</Text>
+            </div>
+          </Col>
+          <Col xs={12} sm={12} md={8}>
+            <Text type="secondary">{t('Loyer mensuel')}</Text>
+            <div style={{ marginTop: 4 }}>
+              <Text strong>{formatCurrency(data.lease.monthlyRent)}</Text>
+            </div>
+          </Col>
+          <Col xs={12} sm={12} md={8}>
+            <Text type="secondary">{t('Charges')}</Text>
+            <div style={{ marginTop: 4 }}>
+              <Text strong>{formatCurrency(data.lease.serviceCharges)}</Text>
+            </div>
+          </Col>
+          <Col xs={12} sm={12} md={8}>
+            <Text type="secondary">{t('Date de début')}</Text>
+            <div style={{ marginTop: 4 }}>
+              <Text>{formatDate(data.lease.startDate)}</Text>
+            </div>
+          </Col>
+          <Col xs={12} sm={12} md={8}>
+            <Text type="secondary">{t('Date de fin')}</Text>
+            <div style={{ marginTop: 4 }}>
+              <Text>{data.lease.endDate ? formatDate(data.lease.endDate) : t('Non définie')}</Text>
+            </div>
+          </Col>
+          <Col xs={12} sm={12} md={8}>
+            <Text type="secondary">{t('Statut')}</Text>
+            <div style={{ marginTop: 4 }}>{getStatusTag(data.lease.status)}</div>
+          </Col>
+        </Row>
+      </Card>
     </Space>
   );
 }

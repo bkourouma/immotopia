@@ -1,19 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Select, Space, Typography, Spin, Alert, Empty, Row, Col, DatePicker, Tag, Button } from 'antd';
+import { Button, Card, Col, DatePicker, Row, Select, Space, Typography } from 'antd';
 import { DollarOutlined, CalendarOutlined, SyncOutlined } from '@ant-design/icons';
 import { ownerPortalService } from '../../services/ownerPortalService';
 import { StatCard } from '../../components/OwnerPortal/StatCard';
 import { RevenueChart } from '../../components/OwnerPortal/RevenueChart';
-import { Table } from '../../components/primitives';
+import { DataCard, DataView, PageHeader, SkeletonDetail, SkeletonStats, StateBlock } from '../../components/primitives';
 import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion } from '../../utils/list-search';
+import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
 import { HelpSectionTitle } from '../../help';
 
 import { formatFcfa } from '../../i18n/format';
-const { Title, Text } = Typography;
-const { Option } = Select;
+const { Text } = Typography;
 const { RangePicker } = DatePicker;
 
 interface RevenueSummaryData {
@@ -111,7 +111,7 @@ export default function Revenues() {
     text: TEXTE_RECHERCHE
   });
 
-  const propertyTableColumns = [
+  const propertyTableColumns: ColumnsType<RevenueByPropertyData> = [
     {
       title: t('Propriété'),
       dataIndex: 'propertyAddress',
@@ -130,38 +130,29 @@ export default function Revenues() {
     }
   ];
 
-  if (loading) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <Spin size="large" tip={t('Chargement des revenus...')} />
-      </div>
-    );
-  }
-
-  if (error) {
-    return <Alert message={t('Erreur')} description={error} type="error" showIcon />;
-  }
+  const initialLoading = loading && !summary;
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      {/* Page Header */}
-      <div className="it-toolbar">
-        <div>
-          <Title level={2}>{t('Revenus')}</Title>
-          <Text type="secondary">{t('Analyse de vos revenus locatifs')}</Text>
-        </div>
-        <Button
-          icon={<SyncOutlined />}
-          onClick={loadRevenueData}
-          loading={loading}
-          aria-label={t('Rafraîchir les revenus')}
-        >
-          {t('Actualiser')}
-        </Button>
-      </div>
+      <PageHeader
+        title={t('Revenus')}
+        subtitle={t('Analyse de vos revenus locatifs')}
+        extra={
+          <Button
+            icon={<SyncOutlined />}
+            onClick={loadRevenueData}
+            loading={loading}
+            aria-label={t('Rafraîchir les revenus')}
+          >
+            {t('Actualiser')}
+          </Button>
+        }
+      />
+
+      {initialLoading && !error && <SkeletonStats rows={4} aria-label={t('Chargement des revenus')} />}
 
       {/* Revenue Summary Cards (T084) */}
-      {summary && (
+      {summary && !error && (
         <Row gutter={[16, 16]}>
           <Col xs={24} sm={12} lg={6}>
             <StatCard
@@ -208,76 +199,87 @@ export default function Revenues() {
               value={dateRange}
               onChange={dates => setDateRange(dates as [dayjs.Dayjs | null, dayjs.Dayjs | null])}
               format="DD/MM/YYYY"
+              aria-label={t('Période')}
             />
           </div>
           <div className="it-filters__field">
             <Text strong>{t('Année (revenus mensuels)')}</Text>
             <Select
-              showSearch
-              optionFilterProp="children"
               style={{ width: 150 }}
               value={selectedYear}
+              aria-label={t('Année (revenus mensuels)')}
               onChange={value => setSelectedYear(value)}
-            >
-              {yearOptions.map(year => (
-                <Option key={year} value={year}>
-                  {year}
-                </Option>
-              ))}
-            </Select>
+              options={yearOptions.map(year => ({ value: year, label: String(year) }))}
+            />
           </div>
         </div>
       </Card>
 
-      {/* Revenue by Month Chart (T085) */}
-      <Card
-        title={
-          <HelpSectionTitle
-            helpId="portails.proprietaire.revenus.graphique"
+      {error ? (
+        <StateBlock
+          variant="error"
+          title={t('Impossible de charger les revenus')}
+          description={error}
+          actions={[{ label: t('Réessayer'), onClick: loadRevenueData, primary: true }]}
+        />
+      ) : initialLoading ? (
+        <SkeletonDetail aria-label={t('Chargement des revenus')} />
+      ) : (
+        <>
+          {/* Revenue by Month Chart (T085) */}
+          <Card
             title={
-              <Space>
-                <CalendarOutlined />
-                <span>
-                  {t('Revenus par mois (')}
-                  {selectedYear})
-                </span>
-              </Space>
-            }
-          />
-        }
-      >
-        {revenuesByMonth.length > 0 ? (
-          <RevenueChart data={revenuesByMonth} type="line" dataKey="revenue" xAxisKey="monthName" />
-        ) : (
-          <Empty description={t('Aucune donnée disponible pour cette année')} />
-        )}
-      </Card>
-
-      {/* Revenue by Property Chart (T086) */}
-      <Card
-        title={<HelpSectionTitle title={t('Revenus par propriété')} helpId="portails.proprietaire.revenus.par-bien" />}
-      >
-        {revenuesByProperty.length > 0 ? (
-          <>
-            <RevenueChart data={revenuesByProperty} type="bar" dataKey="revenue" xAxisKey="propertyAddress" />
-            {/* Revenue by Property Table (T087) */}
-            <div style={{ marginTop: 24 }}>
-              <Table
-                helpId="portails.proprietaire.revenus.tableau"
-                aria-label={t('Revenus par propriété')}
-                {...local.tableProps}
-                exportFilename={t('Revenus par propriété')}
-                exportFetchAll={local.exportAll}
-                scroll={{ x: 'max-content' }}
-                columns={propertyTableColumns}
-                rowKey="propertyId"
+              <HelpSectionTitle
+                helpId="portails.proprietaire.revenus.graphique"
+                title={
+                  <Space>
+                    <CalendarOutlined />
+                    <span>{t('Revenus par mois ({{annee}})', { annee: selectedYear })}</span>
+                  </Space>
+                }
               />
-            </div>
-          </>
-        ) : (
-          <Empty description={t('Aucune donnée disponible')} />
-        )}
-      </Card>
+            }
+          >
+            {revenuesByMonth.length > 0 ? (
+              <RevenueChart data={revenuesByMonth} type="line" dataKey="revenue" xAxisKey="monthName" />
+            ) : (
+              <StateBlock variant="empty" description={t('Aucun revenu enregistré pour cette année.')} />
+            )}
+          </Card>
+
+          {/* Revenue by Property (T086, T087) : graphique, puis tableau (cartes sur telephone) */}
+          <Card
+            title={
+              <HelpSectionTitle title={t('Revenus par propriété')} helpId="portails.proprietaire.revenus.par-bien" />
+            }
+          >
+            {revenuesByProperty.length > 0 ? (
+              <>
+                <RevenueChart data={revenuesByProperty} type="bar" dataKey="revenue" xAxisKey="propertyAddress" />
+                <div style={{ marginTop: 24 }}>
+                  <DataView<RevenueByPropertyData>
+                    helpId="portails.proprietaire.revenus.tableau"
+                    aria-label={t('Revenus par propriété')}
+                    {...local.dataViewProps}
+                    export={{ filename: t('Revenus par propriété'), fetchAll: local.exportAll }}
+                    columns={propertyTableColumns}
+                    rowKey={row => row.propertyId}
+                    renderCard={row => (
+                      <DataCard
+                        title={row.propertyAddress}
+                        highlight={formatCurrency(row.revenue)}
+                        fields={[{ label: t('Nombre de paiements'), value: String(row.paymentCount) }]}
+                      />
+                    )}
+                  />
+                </div>
+              </>
+            ) : (
+              <StateBlock variant="empty" description={t('Aucun revenu enregistré sur cette période.')} />
+            )}
+          </Card>
+        </>
+      )}
     </Space>
   );
 }

@@ -9,7 +9,6 @@ import {
   Col,
   Typography,
   Alert,
-  Spin,
   Descriptions,
   Empty,
   Tabs,
@@ -31,6 +30,7 @@ import { ListSearch, Table } from '../../components/primitives';
 import { listPagination, noResults, useLeaseDetailsSearch, useLeaseTabs } from './search/useLeaseDetailsSearch';
 import { t } from '../../i18n/t';
 import { HelpSectionTitle } from '../../help';
+import { PageHeader, SkeletonDetail, StateBlock } from '../../components/primitives';
 
 import { activeLocale, formatFcfa } from '../../i18n/format';
 const { Title, Text } = Typography;
@@ -209,28 +209,32 @@ export default function LeaseDetails() {
     }
   };
 
-  if (loading) {
+  const leasesCrumb = { label: t('Mes baux'), to: '/owner/leases' };
+
+  if (loading && !data) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <Spin size="large" tip={t('Chargement des détails...')} />
-      </div>
+      <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        <PageHeader title={t('Bail')} breadcrumbs={[leasesCrumb, { label: t('Détail') }]} />
+        <SkeletonDetail aria-label={t('Chargement des détails')} />
+      </Space>
     );
   }
 
-  if (error) {
+  if (error || !data) {
     return (
-      <Alert
-        message={t('Erreur')}
-        description={error}
-        type="error"
-        showIcon
-        action={<Button onClick={() => navigate('/owner/leases')}>{t('Retour à la liste')}</Button>}
-      />
+      <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        <PageHeader title={t('Bail')} breadcrumbs={[leasesCrumb, { label: t('Détail') }]} />
+        <StateBlock
+          variant="error"
+          title={t('Impossible de charger ce bail')}
+          description={error ?? undefined}
+          actions={[
+            { label: t('Réessayer'), onClick: () => void loadLeaseDetails(), primary: true },
+            { label: t('Retour à la liste'), onClick: () => navigate('/owner/leases') }
+          ]}
+        />
+      </Space>
     );
-  }
-
-  if (!data) {
-    return <Empty description={t('Aucune donnée disponible')} />;
   }
 
   const installmentColumns = [
@@ -278,16 +282,11 @@ export default function LeaseDetails() {
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      {/* Header */}
-      <div>
-        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/owner/leases')} style={{ marginBottom: 16 }}>
-          {t('Retour')}
-        </Button>
-        <Title level={2}>
-          {t('Bail')} {data.lease.lease_number}
-        </Title>
-        <Text type="secondary">{data.lease.property.address}</Text>
-      </div>
+      <PageHeader
+        title={`${t('Bail')} ${data.lease.lease_number}`}
+        subtitle={data.lease.property.address}
+        breadcrumbs={[leasesCrumb, { label: t('Détail') }]}
+      />
 
       <Tabs {...tabsProps}>
         {/* T067: Lease Information Section */}
