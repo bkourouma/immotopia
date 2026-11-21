@@ -51,7 +51,8 @@ export const AccountingLedgerTab: React.FC<AccountingTabProps> = ({
     data: ledger,
     isLoading,
     isFetching,
-    error
+    error,
+    refetch
   } = useQuery({
     queryKey: accountingKey(tenantId, syndicId, 'grand-livre', { accountId, ...search.apiParams }),
     queryFn: () =>
@@ -145,7 +146,18 @@ export const AccountingLedgerTab: React.FC<AccountingTabProps> = ({
         <Empty description={t('Choisissez un compte pour afficher son grand livre.')} />
       ) : (
         <>
-          {error ? <Alert type="error" showIcon message={t('Impossible de charger la comptabilité')} /> : null}
+          {error ? (
+            <Alert
+              type="error"
+              showIcon
+              message={t('Impossible de charger la comptabilité')}
+              action={
+                <Button size="small" onClick={() => void refetch()}>
+                  {t('Réessayer')}
+                </Button>
+              }
+            />
+          ) : null}
           {ledger ? (
             <Row gutter={[16, 16]}>
               <Col xs={24} md={6}>

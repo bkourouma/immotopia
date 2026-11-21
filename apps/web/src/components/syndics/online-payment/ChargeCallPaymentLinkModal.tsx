@@ -90,6 +90,7 @@ export const ChargeCallPaymentLinkModal: React.FC<ChargeCallPaymentLinkModalProp
   const [submitting, setSubmitting] = useState(false);
   const [outcome, setOutcome] = useState<Outcome>(null);
   const [created, setCreated] = useState<CopyResult | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const [links, setLinks] = useState<ChargeCallPaymentLinkSummary[]>([]);
   const [linksLoading, setLinksLoading] = useState(true);
@@ -117,6 +118,7 @@ export const ChargeCallPaymentLinkModal: React.FC<ChargeCallPaymentLinkModalProp
   useEffect(() => {
     setCreated(null);
     setOutcome(null);
+    setCopied(false);
   }, [open, tenantId, syndicId, charge.id]);
 
   const ttl = Number.isInteger(ttlDays) && ttlDays >= 1 && ttlDays <= 30 ? ttlDays : DEFAULT_LINK_TTL_DAYS;
@@ -125,6 +127,7 @@ export const ChargeCallPaymentLinkModal: React.FC<ChargeCallPaymentLinkModalProp
     setSubmitting(true);
     setOutcome(null);
     setCreated(null);
+    setCopied(false);
     try {
       const result = await createChargeCallPaymentLink(tenantId, syndicId, charge.id, {
         delivery,
@@ -149,8 +152,10 @@ export const ChargeCallPaymentLinkModal: React.FC<ChargeCallPaymentLinkModalProp
 
   const copy = async () => {
     if (!created) return;
-    if (await copyToClipboard(created.url)) message.success(t('Lien de paiement copié dans le presse-papiers.'));
-    else message.warning(t('Copie impossible : sélectionnez le lien et copiez-le manuellement.'));
+    if (await copyToClipboard(created.url)) {
+      setCopied(true);
+      message.success(t('Lien de paiement copié dans le presse-papiers.'));
+    } else message.warning(t('Copie impossible : sélectionnez le lien et copiez-le manuellement.'));
   };
 
   const revoke = async (linkId: string) => {
@@ -235,7 +240,7 @@ export const ChargeCallPaymentLinkModal: React.FC<ChargeCallPaymentLinkModalProp
       // Un clic à côté pendant que l'URL est affichée la perdrait : le lien resterait actif sans que personne
       // n'en connaisse le jeton. La croix et « Fermer » restent disponibles.
       mask={{ closable: !created }}
-      width={760}
+      width="min(760px, calc(100vw - 32px))"
       title={
         <HelpSectionTitle
           title={t('Lien de paiement · appel {{period}}', { period: charge.period })}
@@ -257,6 +262,7 @@ export const ChargeCallPaymentLinkModal: React.FC<ChargeCallPaymentLinkModalProp
                 showIcon
                 title={t('Ce lien ne sera plus affiché après la fermeture de cette fenêtre.')}
               />
+              <Text strong>{t('Dernière étape : transmettez ce lien au copropriétaire')}</Text>
               <Space.Compact style={{ width: '100%' }}>
                 <Input
                   readOnly
@@ -269,6 +275,11 @@ export const ChargeCallPaymentLinkModal: React.FC<ChargeCallPaymentLinkModalProp
                   {t('Copier')}
                 </Button>
               </Space.Compact>
+              {copied ? (
+                <Text type="success" role="status">
+                  {t('Lien copié : collez-le dans WhatsApp, un SMS ou un e-mail.')}
+                </Text>
+              ) : null}
               <Paragraph type="secondary" style={{ margin: 0 }}>
                 {t('Montant dû : {{amount}} — expire le {{date}}', {
                   amount: createdAmount,
@@ -281,6 +292,7 @@ export const ChargeCallPaymentLinkModal: React.FC<ChargeCallPaymentLinkModalProp
             </Space>
           ) : (
             <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
+              <Text strong>{t('Comment transmettre le lien ?')}</Text>
               <Paragraph type="secondary" style={{ margin: 0 }}>
                 {t(
                   'Le copropriétaire paie le reste dû de cet appel par Mobile Money, sans se connecter. Le montant est recalculé au moment du paiement et n’apparaît pas dans le lien.'
@@ -309,7 +321,7 @@ export const ChargeCallPaymentLinkModal: React.FC<ChargeCallPaymentLinkModalProp
               )}
               {outcome ? <Alert type={outcome.type} showIcon title={outcome.text} /> : null}
               <div>
-                <Button type="primary" loading={submitting} onClick={() => void submit()}>
+                <Button type="primary" loading={submitting} disabled={submitting} onClick={() => void submit()}>
                   {delivery === 'SEND' ? t('Envoyer le lien') : t('Créer le lien')}
                 </Button>
               </div>

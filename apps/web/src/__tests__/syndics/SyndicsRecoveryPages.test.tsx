@@ -36,6 +36,8 @@ vi.mock('antd', async () => {
   // importActual reaches the real module from inside a hoisted mock factory;
   // a plain dynamic import here deadlocks the module graph.
   const React = await vi.importActual<typeof import('react')>('react');
+  // Composants que la liste en cartes (DataView, DataCard, StateBlock, squelettes) ajoute à ceux simulés ci-dessous.
+  const actualAntd = await vi.importActual<Record<string, unknown>>('antd');
   const passthrough =
     (Tag: keyof JSX.IntrinsicElements = 'div') =>
     ({ children, ...props }: any) =>
@@ -106,6 +108,7 @@ vi.mock('antd', async () => {
     notification: { open() {}, success() {}, error() {}, warning() {}, info() {} }
   };
   return {
+    ...actualAntd,
     ...antdMock,
     App: { useApp: () => appApi },
     // Aucun palier actif : le rendu par defaut des tests est le mobile.

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Button, DatePicker, InputNumber, Modal, Radio, Select, Space, Typography } from 'antd';
+import { Alert, App, Button, DatePicker, InputNumber, Modal, Radio, Select, Space, Typography } from 'antd';
 import dayjs, { Dayjs } from 'dayjs';
 import { printReceipts } from '../../services/syndic-receipt-service';
 import { describeDownloadError, logDownloadError, readDownloadErrorBody } from '../../utils/download-error';
@@ -8,6 +8,7 @@ import { ReceiptKind, SyndicateLot } from '../../types/syndic-types';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { t } from '../../i18n/t';
 import { HelpSectionTitle } from '../../help';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 
 import { localizedList } from '../../i18n/localized';
 const { RangePicker } = DatePicker;
@@ -65,6 +66,8 @@ const GridPreview: React.FC<{ cols: number; rows: number }> = ({ cols, rows }) =
  * paramètres, pour ne pas fuir de mémoire.
  */
 export const PrintReceiptsModal: React.FC<PrintReceiptsModalProps> = ({ open, tenantId, syndicId, lots, onClose }) => {
+  const { message } = App.useApp();
+  const { isMobile } = useBreakpoint();
   const [range, setRange] = useState<[Dayjs, Dayjs] | null>(null);
   const [kind, setKind] = useState<PrintKind>('QUITTANCE');
   const [scope, setScope] = useState<Scope>('ALL');
@@ -172,6 +175,7 @@ export const PrintReceiptsModal: React.FC<PrintReceiptsModalProps> = ({ open, te
     try {
       const { blob, filename } = await printReceipts(tenantId, syndicId, query);
       saveBlob(blob, filename);
+      message.success(t('Impression groupée téléchargée : {{filename}}', { filename }));
     } catch (err) {
       setError(await messageForError(err, t("Le téléchargement de l'impression groupée a échoué.")));
     } finally {
@@ -200,6 +204,7 @@ export const PrintReceiptsModal: React.FC<PrintReceiptsModalProps> = ({ open, te
       }}
       footer={null}
       width={760}
+      style={isMobile ? { top: 16 } : undefined}
     >
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
         {error ? <Alert type="error" message={error} showIcon /> : null}
@@ -211,6 +216,7 @@ export const PrintReceiptsModal: React.FC<PrintReceiptsModalProps> = ({ open, te
               aria-label={t('Période')}
               format="DD/MM/YYYY"
               value={range}
+              style={isMobile ? { width: '100%' } : undefined}
               onChange={value => setRange(value && value[0] && value[1] ? [value[0], value[1]] : null)}
             />
             <Button onClick={() => applyShortcut(dayjs().startOf('month'), dayjs().endOf('month'))}>
@@ -246,7 +252,8 @@ export const PrintReceiptsModal: React.FC<PrintReceiptsModalProps> = ({ open, te
               <Select
                 showSearch
                 optionFilterProp="label"
-                style={{ minWidth: 220 }}
+                aria-label={t('Lot ou copropriétaire à imprimer')}
+                style={{ minWidth: 220, width: isMobile ? '100%' : undefined }}
                 placeholder={t('Choisir un lot')}
                 options={lotOptions}
                 value={lotId}
@@ -298,6 +305,14 @@ export const PrintReceiptsModal: React.FC<PrintReceiptsModalProps> = ({ open, te
             {t('Télécharger')}
           </Button>
         </Space>
+
+        {!canSubmit ? (
+          <Text type="secondary">
+            {range
+              ? t('Choisissez le lot à imprimer.')
+              : t('Choisissez une période pour activer l’aperçu et le téléchargement.')}
+          </Text>
+        ) : null}
 
         {previewUrl ? (
           <iframe

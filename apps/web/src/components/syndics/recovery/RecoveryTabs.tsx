@@ -2,7 +2,7 @@ import React from 'react';
 import { Button, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
-import { MoneyValue, formatMoney } from '../../primitives';
+import { DataCard, MoneyValue, formatMoney } from '../../primitives';
 import {
   listLatePaymentPenaltiesPage,
   listPaymentRemindersPage,
@@ -18,7 +18,7 @@ import { dateFormat } from '../../../i18n/format';
 import { t } from '../../../i18n/t';
 import { formatLotLabel } from '../../../utils/syndic-lot-label';
 import { paymentScheduleStatusLabel, reminderChannelLabel } from '../labels';
-import { reminderFailureLabel } from '../reminder-failure';
+import { reminderFailureAction, reminderFailureLabel } from '../reminder-failure';
 import { useSyndicLotOptions } from '../finances/lot-options';
 import { recoveryKeys } from './query-keys';
 import { ServerListTab } from './ServerListTab';
@@ -102,6 +102,28 @@ export const RemindersTab: React.FC<TabProps> = ({ tenantId, syndicId }) => {
       rowKey="id"
       exportFilename={t('Historique relances')}
       emptyText={t('Aucune relance envoyée pour cette copropriété.')}
+      scrollX={900}
+      renderCard={item => (
+        <DataCard
+          title={formatLotLabel(item.lot, item.lotId)}
+          aria-label={formatLotLabel(item.lot, item.lotId)}
+          subtitle={ownerLabel(item.lot?.owner)}
+          status={<Tag>{reminderStatusLabels[item.status] ?? item.status}</Tag>}
+          fields={[
+            { label: t('Niveau'), value: item.reminderLevel },
+            { label: t('Canal'), value: reminderChannelLabel(item.channel) },
+            { label: t('Envoyé le'), value: dayjs(item.sentAt).format(dateFormat('dateTime')) },
+            ...(item.status === 'FAILED'
+              ? [
+                  { label: t('Cause'), value: reminderFailureLabel(item.failureCode, item.failureMessage) || '-' },
+                  ...(reminderFailureAction(item.failureCode)
+                    ? [{ label: t('À faire'), value: reminderFailureAction(item.failureCode) }]
+                    : [])
+                ]
+              : [])
+          ]}
+        />
+      )}
       helpId="syndic.recouvrement.relances"
     />
   );
@@ -168,7 +190,7 @@ export const PenaltiesTab: React.FC<TabProps & { onWaive: (penalty: LatePaymentP
           <Text type="secondary">-</Text>
         ) : (
           <Button size="small" onClick={() => onWaive(item)}>
-            {t('Remise')}
+            {t('Accorder une remise')}
           </Button>
         )
     }
@@ -186,6 +208,21 @@ export const PenaltiesTab: React.FC<TabProps & { onWaive: (penalty: LatePaymentP
       rowKey="id"
       exportFilename={t('Pénalités de retard')}
       emptyText={t('Aucune pénalité de retard pour cette copropriété.')}
+      scrollX={800}
+      renderCard={item => (
+        <DataCard
+          title={formatLotLabel(item.lot, item.lotId)}
+          aria-label={formatLotLabel(item.lot, item.lotId)}
+          subtitle={ownerLabel(item.lot?.owner)}
+          status={item.waived ? <Tag color="orange">{t('Remise')}</Tag> : <Tag color="red">{t('Active')}</Tag>}
+          highlight={<MoneyValue value={item.penaltyAmount} />}
+          fields={[
+            { label: t('Jours retard'), value: item.daysLate },
+            { label: t('Taux'), value: `${item.penaltyRate}%` }
+          ]}
+          primaryAction={item.waived ? undefined : { label: t('Accorder une remise'), onClick: () => onWaive(item) }}
+        />
+      )}
       helpId="syndic.recouvrement.penalites"
     />
   );
@@ -259,6 +296,24 @@ export const SchedulesTab: React.FC<TabProps> = ({ tenantId, syndicId }) => {
       rowKey="id"
       exportFilename={t('Échéanciers')}
       emptyText={t('Aucun échéancier pour cette copropriété.')}
+      scrollX={900}
+      renderCard={item => (
+        <DataCard
+          title={formatLotLabel(item.lot, item.lotId)}
+          aria-label={formatLotLabel(item.lot, item.lotId)}
+          subtitle={ownerLabel(item.lot?.owner)}
+          status={<Tag>{paymentScheduleStatusLabel(item.status)}</Tag>}
+          highlight={<MoneyValue value={item.totalAmount} />}
+          fields={[
+            { label: t('Appel'), value: item.chargeCall?.period || '-' },
+            { label: t('Accord'), value: dayjs(item.agreedAt).format(dateFormat('short')) },
+            ...(item.instalments || []).map((inst, index) => ({
+              label: t('Échéance #{{value}}', { value: index + 1 }),
+              value: `${dayjs(inst.dueDate).format(dateFormat('short'))} · ${formatMoney(inst.amount)}`
+            }))
+          ]}
+        />
+      )}
       helpId="syndic.recouvrement.echeanciers"
     />
   );

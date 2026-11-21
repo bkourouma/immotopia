@@ -214,7 +214,8 @@ describe('Meetings pages', () => {
     renderWithRoute('/tenant/tenant-1/syndics/syndic-1/assemblees');
 
     expect(await screen.findByText('Assemblées générales')).toBeTruthy();
-    expect(await screen.findByText(/meeting-1|ORDINARY/)).toBeTruthy();
+    // Liste en cartes (rendu mobile par défaut en jsdom) : le type s'affiche en clair.
+    expect(await screen.findByText(/Ordinaire/)).toBeTruthy();
   });
 
   it('renders meeting detail with quorum and resolutions', async () => {

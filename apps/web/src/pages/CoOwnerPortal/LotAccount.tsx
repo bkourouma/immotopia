@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Button, Card, DatePicker, Space, Typography } from 'antd';
-import { ArrowLeftOutlined, DownloadOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, DownloadOutlined, WalletOutlined } from '@ant-design/icons';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import type { ColumnsType } from 'antd/es/table';
@@ -17,6 +17,7 @@ import {
   type CoOwnerTransaction,
   type CoOwnerTransactionType
 } from '../../services/coowner-portal-service';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { useListSearch } from '../../hooks/useListSearch';
 import type { SearchCriterion } from '../../utils/list-search';
 import { saveBlob } from '../../utils/save-blob';
@@ -34,6 +35,7 @@ function isoDayOf(value: Dayjs | null | undefined): string | undefined {
 function StatementDownload({ lotId, lotNumber }: { lotId: string; lotNumber: string }) {
   const [range, setRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   const [loading, setLoading] = useState(false);
+  const { isMobile } = useBreakpoint();
 
   const download = async () => {
     setLoading(true);
@@ -47,6 +49,7 @@ function StatementDownload({ lotId, lotNumber }: { lotId: string; lotNumber: str
         t('Relevé lot {{lotNumber}}.pdf', { lotNumber })
       );
       saveBlob(blob, filename);
+      feedback.success(t('Relevé du lot {{lotNumber}} téléchargé.', { lotNumber }));
     } catch (error) {
       feedback.error(await blobErrorMessage(error, t('Téléchargement impossible.')));
     } finally {
@@ -64,7 +67,12 @@ function StatementDownload({ lotId, lotNumber }: { lotId: string; lotNumber: str
           onChange={value => setRange(value as [Dayjs | null, Dayjs | null] | null)}
           aria-label={t('Période du relevé')}
         />
-        <Button icon={<DownloadOutlined />} loading={loading} onClick={() => void download()}>
+        <Button
+          icon={<DownloadOutlined />}
+          loading={loading}
+          onClick={() => void download()}
+          style={isMobile ? { minHeight: 44 } : undefined}
+        >
           {t('Télécharger mon relevé (PDF)')}
         </Button>
       </Space>
@@ -145,7 +153,11 @@ export default function CoOwnerLotAccount() {
   });
 
   const back = (
-    <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/copropriete')}>
+    <Button
+      icon={<ArrowLeftOutlined />}
+      onClick={() => navigate('/copropriete')}
+      style={{ minHeight: 44, alignSelf: 'flex-start' }}
+    >
       {t('Mes lots')}
     </Button>
   );
@@ -232,6 +244,16 @@ export default function CoOwnerLotAccount() {
               <BalanceDirectionTag direction={solde.direction} />
             </Space>
             <Text type="secondary">{balanceDirectionHint(solde.direction)}</Text>
+            {solde.direction === 'DEBITEUR' ? (
+              <Button
+                type="primary"
+                icon={<WalletOutlined aria-hidden />}
+                style={{ minHeight: 44 }}
+                onClick={() => navigate('/copropriete/appels')}
+              >
+                {t('Voir et régler mes appels de charges')}
+              </Button>
+            ) : null}
           </Space>
         ) : (
           <Text type="secondary">{t("Aucun compte n'est encore ouvert pour ce lot.")}</Text>

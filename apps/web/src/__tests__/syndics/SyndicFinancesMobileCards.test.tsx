@@ -162,7 +162,7 @@ describe('SyndicFinances — actions du fonds en vue carte (< 992 px)', () => {
     await user.click(within(carte).getByRole('button', { name: 'Ajuster le solde' }));
     await user.type(await screen.findByLabelText('Montant'), '10000');
     await user.type(screen.getByLabelText('Motif'), 'Avance de trésorerie');
-    await user.click(screen.getByRole('button', { name: 'Appliquer' }));
+    await user.click(screen.getByRole('button', { name: 'Appliquer l’ajustement' }));
 
     await waitFor(() => expect(adjustSyndicateFundBalance).toHaveBeenCalled());
     expect(

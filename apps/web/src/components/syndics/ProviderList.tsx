@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { Avatar, Space, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { MailOutlined, PhoneOutlined } from '@ant-design/icons';
-import { Table } from '../primitives';
+import { DataCard, DataView } from '../primitives';
 import { MaintenanceContract, ServiceProvider } from '../../types/syndic-types';
 import { localizedList } from '../../i18n/localized';
 import { useLocalListSearch } from '../../utils/list-search';
@@ -72,6 +72,8 @@ const ACCESSEURS = {
 export interface ProviderListProps {
   providers: ProviderWithContracts[];
   loading?: boolean;
+  /** Proposition affichée quand l'agence n'a encore aucun prestataire. */
+  onCreate?: () => void;
   /** Colonne d'actions propre à l'écran appelant (ex. Modifier/Supprimer). */
   renderActions?: (provider: ProviderWithContracts) => React.ReactNode;
 }
@@ -82,7 +84,7 @@ export interface ProviderListProps {
  * d'URL « pr ». Le critère « Contrat » sépare ceux qui ont un contrat avec
  * CETTE copropriété des autres.
  */
-export const ProviderList: React.FC<ProviderListProps> = ({ providers, loading = false, renderActions }) => {
+export const ProviderList: React.FC<ProviderListProps> = ({ providers, loading = false, onCreate, renderActions }) => {
   // Sous contrat actif d'abord (puis nombre de contrats), puis ordre alphabétique.
   const sorted = useMemo(
     () =>
@@ -198,22 +200,58 @@ export const ProviderList: React.FC<ProviderListProps> = ({ providers, loading =
       title: t('Actions'),
       key: 'actions',
       align: 'end',
+      exportable: false,
       render: (_: unknown, provider) => renderActions(provider)
     });
   }
 
   return (
-    <Table<ProviderWithContracts>
-      {...local.tableProps}
+    <DataView<ProviderWithContracts>
+      {...local.dataViewProps}
       helpId="syndic.prestataires.tableau"
       aria-label={t('Prestataires')}
-      exportFilename={t('Prestataires')}
-      exportFetchAll={local.exportAll}
-      rowKey="id"
+      export={{ filename: t('Prestataires'), fetchAll: local.exportAll }}
+      rowKey={provider => provider.id}
       columns={columns}
       loading={loading}
-      locale={local.isFiltered ? undefined : { emptyText: t('Aucun prestataire') }}
-      scroll={{ x: 'max-content' }}
+      emptyDescription={t('Aucun prestataire')}
+      emptyAction={onCreate ? { label: t('Nouveau prestataire'), onClick: onCreate } : undefined}
+      scrollX={760}
+      renderCard={provider => {
+        const { active, ended } = contractsSummary(provider);
+        return (
+          <DataCard
+            title={provider.name}
+            subtitle={provider.specialty || t('Spécialité non renseignée')}
+            status={
+              active === 0 && ended === 0 ? (
+                <Tag>{t('Aucun contrat')}</Tag>
+              ) : active > 0 ? (
+                <Tag color="green">{active === 1 ? t('1 actif') : t('{{count}} actifs', { count: active })}</Tag>
+              ) : (
+                <Tag>{ended === 1 ? t('1 terminé') : t('{{count}} terminés', { count: ended })}</Tag>
+              )
+            }
+            fields={[
+              ...(provider.phone
+                ? [{ label: t('Téléphone'), value: <a href={`tel:${provider.phone}`}>{provider.phone}</a> }]
+                : []),
+              ...(provider.email
+                ? [{ label: t('Email'), value: <a href={`mailto:${provider.email}`}>{provider.email}</a> }]
+                : []),
+              ...(active > 0 && ended > 0
+                ? [
+                    {
+                      label: t('Contrats terminés'),
+                      value: ended === 1 ? t('1 terminé') : t('{{count}} terminés', { count: ended })
+                    }
+                  ]
+                : []),
+              ...(renderActions ? [{ label: t('Actions'), value: renderActions(provider) }] : [])
+            ]}
+          />
+        );
+      }}
     />
   );
 };

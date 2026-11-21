@@ -7,19 +7,18 @@ import {
   Card,
   Checkbox,
   DatePicker,
-  Empty,
   Form,
   Input,
   Modal,
   Select,
   Space,
   TimePicker,
-  Tag,
-  Typography
+  Tag
 } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { Table } from '../../components/primitives';
+import { DataCard, DataView, PageHeader } from '../../components/primitives';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { meetingStatusLabels, meetingTypeLabels } from '../../components/syndics/labels';
 import { MeetingStatusActions } from '../../components/syndics/MeetingStatusActions';
 import { describeConvocation, meetingStatusColors } from '../../components/syndics/meeting-governance';
@@ -39,7 +38,6 @@ import { HelpSectionTitle } from '../../help';
 import { useFormFieldModes } from '../../hooks/useFormFieldModes';
 
 import { localizedList } from '../../i18n/localized';
-const { Paragraph, Title } = Typography;
 
 function newIdempotencyKey(): string {
   try {
@@ -80,6 +78,8 @@ export const SyndicMeetings: React.FC = () => {
   const fingerprintRef = useRef<string | null>(null);
   const submittingRef = useRef(false);
   const [form] = Form.useForm();
+  const { isMobile } = useBreakpoint();
+  const [summaryValues, setSummaryValues] = useState<{ date?: dayjs.Dayjs; start?: dayjs.Dayjs } | null>(null);
   const fm = useFormFieldModes('syndic.assemblee-creation');
 
   const criteria: SearchCriterion[] = [
@@ -233,6 +233,7 @@ export const SyndicMeetings: React.FC = () => {
       }
       setOpen(false);
       form.resetFields();
+      setSummaryValues(null);
       await loadMeetings();
     } catch (err: any) {
       const status = err.response?.status as number | undefined;
@@ -272,24 +273,39 @@ export const SyndicMeetings: React.FC = () => {
       : describeConvocation(convocation.result)
     : null;
 
+  const openMeeting = (item: GeneralMeeting) =>
+    navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}/assemblees/${item.id}`);
+
+  const meetingActions = (item: GeneralMeeting) => (
+    <Space wrap>
+      <Button size="small" onClick={() => openMeeting(item)}>
+        {t('Voir détails')}
+      </Button>
+      <MeetingStatusActions
+        size="small"
+        status={item.status}
+        loading={changingStatusId === item.id}
+        onChange={status => handleStatusChange(item.id, status)}
+      />
+    </Space>
+  );
+
+  const summaryText =
+    summaryValues?.date && summaryValues?.start
+      ? t('Récapitulatif : le {{date}} à {{heure}}', {
+          date: dayjs(summaryValues.date).format('DD/MM/YYYY'),
+          heure: dayjs(summaryValues.start).format('HH:mm')
+        })
+      : null;
+
   return (
     <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-          <Space direction="vertical" size={4}>
-            <Title level={2} style={{ margin: 0 }}>
-              {t('Assemblées générales')}
-            </Title>
-            <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-              {t('Planifiez, suivez les résolutions et centralisez les votes.')}
-            </Paragraph>
-          </Space>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
-            {t('Nouvelle assemblée')}
-          </Button>
-        </div>
-
-        {error ? <Alert type="error" message={error} showIcon /> : null}
+        <PageHeader
+          title={t('Assemblées générales')}
+          subtitle={t('Planifiez, suivez les résolutions et centralisez les votes.')}
+          primaryAction={{ label: t('Nouvelle assemblée'), icon: <PlusOutlined />, onClick: () => setOpen(true) }}
+        />
 
         {convocationSummary ? (
           <Alert
@@ -312,37 +328,47 @@ export const SyndicMeetings: React.FC = () => {
         ) : null}
 
         <Card title={t('Liste des assemblées')}>
-          <Table<GeneralMeeting>
+          <DataView<GeneralMeeting>
             helpId="syndic.assemblees.tableau"
-            loading={loading}
-            dataSource={meetings}
+            {...search.dataViewProps}
             search={search.searchProps}
             aria-label={t('Liste des assemblées')}
-            exportFilename={t('Liste des assemblées')}
-            exportFetchAll={() =>
-              collectAllPages<GeneralMeeting>(async (page, limit) => {
-                const result = await listMeetingsPage(effectiveTenantId!, syndicId!, {
-                  ...search.filterParams,
-                  page,
-                  limit
-                });
-                return { items: result.items, total: result.pagination.total };
-              })
-            }
-            pagination={search.tablePagination(total)}
-            locale={
-              search.isFiltered
-                ? undefined
-                : {
-                    emptyText: (
-                      <Empty
-                        description={t('Aucune assemblée pour le moment : créez-en une avec « Nouvelle assemblée ».')}
-                      />
-                    )
-                  }
-            }
-            scroll={{ x: 'max-content' }}
-            rowKey="id"
+            items={meetings}
+            total={total}
+            loading={loading && meetings.length === 0 && !error}
+            isReloading={loading && meetings.length > 0}
+            error={error}
+            onRetry={() => void loadMeetings()}
+            emptyDescription={t('Aucune assemblée pour le moment : créez-en une avec « Nouvelle assemblée ».')}
+            export={{
+              filename: t('Liste des assemblées'),
+              fetchAll: () =>
+                collectAllPages<GeneralMeeting>(async (page, limit) => {
+                  const result = await listMeetingsPage(effectiveTenantId!, syndicId!, {
+                    ...search.filterParams,
+                    page,
+                    limit
+                  });
+                  return { items: result.items, total: result.pagination.total };
+                })
+            }}
+            rowKey={item => item.id}
+            renderCard={item => {
+              const day = dayjs(item.scheduledAt).format('DD/MM/YYYY HH:mm');
+              const typeLabel = t(meetingTypeLabels[item.type] ?? item.type);
+              return (
+                <DataCard
+                  aria-label={`${typeLabel} — ${day}`}
+                  title={typeLabel}
+                  subtitle={day}
+                  status={<Tag color={meetingStatusColors[item.status]}>{meetingStatusLabels[item.status]}</Tag>}
+                  fields={[
+                    { label: t('Lieu'), value: item.location || t('Non renseigné') },
+                    { label: t('Actions'), value: meetingActions(item) }
+                  ]}
+                />
+              );
+            }}
             columns={[
               {
                 title: t('Type'),
@@ -385,22 +411,7 @@ export const SyndicMeetings: React.FC = () => {
               {
                 title: t('Actions'),
                 key: 'actions',
-                render: (_: unknown, item: GeneralMeeting) => (
-                  <Space wrap>
-                    <Button
-                      size="small"
-                      onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}/assemblees/${item.id}`)}
-                    >
-                      {t('Voir détails')}
-                    </Button>
-                    <MeetingStatusActions
-                      size="small"
-                      status={item.status}
-                      loading={changingStatusId === item.id}
-                      onChange={status => handleStatusChange(item.id, status)}
-                    />
-                  </Space>
-                )
+                render: (_: unknown, item: GeneralMeeting) => meetingActions(item)
               }
             ]}
           />
@@ -418,8 +429,19 @@ export const SyndicMeetings: React.FC = () => {
         okButtonProps={{ disabled: submitting }}
         cancelButtonProps={{ disabled: submitting }}
         maskClosable={!submitting}
+        // Plein écran sur téléphone : le clavier et les sélecteurs d'heure ne débordent plus.
+        width={isMobile ? '100%' : 520}
+        style={isMobile ? { top: 0, maxWidth: '100vw', paddingBottom: 0 } : undefined}
+        afterOpenChange={visible => {
+          if (visible) document.getElementById('date')?.focus();
+        }}
       >
-        <Form form={form} layout="vertical" initialValues={{ type: 'ORDINARY', sendConvocation: false }}>
+        <Form
+          form={form}
+          layout="vertical"
+          onValuesChange={(_changed, all) => setSummaryValues({ date: all?.date, start: all?.startTime })}
+          initialValues={{ type: 'ORDINARY', sendConvocation: false }}
+        >
           <Form.Item label={t('Type')} name="type" rules={[{ required: true, message: t('Le type est obligatoire') }]}>
             <Select showSearch optionFilterProp="label" options={meetingTypeOptions} />
           </Form.Item>
@@ -453,6 +475,11 @@ export const SyndicMeetings: React.FC = () => {
               <Input />
             </Form.Item>
           )}
+          {summaryText ? (
+            <div role="status" aria-live="polite" style={{ marginBottom: 16 }}>
+              {summaryText}
+            </div>
+          ) : null}
           {fm.isVisible('sendConvocation') && (
             <Form.Item
               name="sendConvocation"

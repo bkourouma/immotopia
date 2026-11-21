@@ -1,4 +1,8 @@
-import { reminderExclusionLabel, reminderFailureLabel } from '../../components/syndics/reminder-failure';
+import {
+  reminderExclusionLabel,
+  reminderFailureAction,
+  reminderFailureLabel
+} from '../../components/syndics/reminder-failure';
 
 describe('reminderFailureLabel', () => {
   it('traduit chaque code connu', () => {
@@ -26,5 +30,18 @@ describe('reminderExclusionLabel', () => {
   it('retombe sur le libellé fourni ou le motif brut', () => {
     expect(reminderExclusionLabel('X', 'Libellé API')).toBe('Libellé API');
     expect(reminderExclusionLabel('X')).toBe('X');
+  });
+});
+
+describe('reminderFailureAction', () => {
+  it('dit quoi faire pour les causes que l’agent peut corriger', () => {
+    expect(reminderFailureAction('NO_EMAIL')).toContain('adresse e-mail');
+    expect(reminderFailureAction('NO_OWNER')).toContain('Rattachez');
+    expect(reminderFailureAction('TIMEOUT')).toContain('Relancez');
+  });
+
+  it('reste vide pour un code inconnu ou absent', () => {
+    expect(reminderFailureAction('WEIRD')).toBe('');
+    expect(reminderFailureAction(null)).toBe('');
   });
 });

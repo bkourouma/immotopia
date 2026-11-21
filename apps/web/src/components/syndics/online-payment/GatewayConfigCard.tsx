@@ -208,7 +208,7 @@ export const GatewayConfigCard: React.FC<GatewayConfigCardProps> = ({
         <Alert
           type="error"
           showIcon
-          message={t('Erreur')}
+          message={t('Impossible de charger le compte de paiement')}
           description={loadError}
           action={
             <Button size="small" onClick={() => void load()}>
@@ -244,9 +244,11 @@ export const GatewayConfigCard: React.FC<GatewayConfigCardProps> = ({
       }
       extra={
         settings.usable ? (
-          <Tag color="success">{t('Paiement en ligne actif')}</Tag>
+          <Tag color="success" icon={<CheckCircleOutlined aria-hidden />}>
+            {t('Paiement en ligne actif')}
+          </Tag>
         ) : (
-          <Tag>{t('Paiement en ligne non utilisable')}</Tag>
+          <Tag icon={<CloseCircleOutlined aria-hidden />}>{t('Paiement en ligne non utilisable')}</Tag>
         )
       }
     >
@@ -255,6 +257,22 @@ export const GatewayConfigCard: React.FC<GatewayConfigCardProps> = ({
           'Chaque copropriété encaisse sur son propre compte marchand PaySecureHub. Sans configuration active et complète, les copropriétaires ne voient pas le bouton « Payer », même si l’agence a son propre compte.'
         )}
       </Paragraph>
+
+      {!settings.usable ? (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message={t('Pour ouvrir le paiement en ligne aux copropriétaires')}
+          description={
+            <ol style={{ margin: 0, paddingInlineStart: 20 }}>
+              <li>{t('Choisissez le mode : « Simulateur » pour essayer, « Réel » pour encaisser vraiment.')}</li>
+              <li>{t('En mode « Réel », renseignez l’identifiant marchand et la clé API reçus de PaySecureHub.')}</li>
+              <li>{t('Activez le paiement en ligne, enregistrez, puis lancez « Tester la connexion ».')}</li>
+            </ol>
+          }
+        />
+      ) : null}
 
       {!settings.encryptionAvailable ? (
         <Alert
@@ -349,6 +367,13 @@ export const GatewayConfigCard: React.FC<GatewayConfigCardProps> = ({
                   </Button>
                 ) : null}
               </Space.Compact>
+              <Tag
+                style={{ marginInlineEnd: 8 }}
+                color={settings.apiKeyConfigured ? 'success' : 'default'}
+                icon={settings.apiKeyConfigured ? <CheckCircleOutlined aria-hidden /> : undefined}
+              >
+                {settings.apiKeyConfigured ? t('Clé enregistrée') : t('Aucune clé enregistrée')}
+              </Tag>
               <Text type="secondary" style={{ fontSize: 12 }}>
                 {t("La clé enregistrée n'est jamais réaffichée. Laisser ce champ inactif la conserve inchangée.")}
               </Text>
@@ -359,7 +384,7 @@ export const GatewayConfigCard: React.FC<GatewayConfigCardProps> = ({
         {canEditSettings ? (
           <Space wrap>
             <Button type="primary" htmlType="submit" loading={saving}>
-              {t('Enregistrer')}
+              {t('Enregistrer les paramètres')}
             </Button>
             <Button icon={<ReloadOutlined aria-hidden />} onClick={() => void handleTest()} loading={testing}>
               {t('Tester la connexion')}

@@ -1,9 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { App, Button, Col, Form, Input, InputNumber, Modal, Row, Select, Space, Tabs, Typography } from 'antd';
+import { Alert, App, Button, Col, Form, Input, InputNumber, Modal, Row, Select, Space, Tabs, Typography } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { DataCard, DataView, MoneyValue, StatCard } from '../../components/primitives';
+import { DataCard, DataView, formatMoney, MoneyValue, StatCard } from '../../components/primitives';
 import { FundMovementsDrawer } from '../../components/syndics/FundMovementsDrawer';
 import { ChargeCallsTab } from '../../components/syndics/finances/ChargeCallsTab';
 import { OverdueTab } from '../../components/syndics/finances/OverdueTab';
@@ -24,6 +24,8 @@ import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
 import { displayCurrency } from '../../utils/syndic-currency';
 import { HelpSectionTitle } from '../../help';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { montantSaisiProps } from '../../utils/montant-saisi';
 
 const { Paragraph, Title } = Typography;
 
@@ -58,6 +60,7 @@ function buildFundRows(summary: FinanceSummary | undefined): FundRow[] {
  */
 export const SyndicFinances: React.FC = () => {
   const { message } = App.useApp();
+  const { isMobile } = useBreakpoint();
   const queryClient = useQueryClient();
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
   const [activeTab, setActiveTab] = useTabParam<FinanceTab>(FINANCE_TABS, 'fonds');
@@ -99,7 +102,12 @@ export const SyndicFinances: React.FC = () => {
 
   const handleCreateFund = async () => {
     if (!effectiveTenantId || !syndicId) return;
-    const values = await fundForm.validateFields();
+    let values;
+    try {
+      values = await fundForm.validateFields();
+    } catch {
+      return;
+    }
     setFundSubmitting(true);
     try {
       await createSyndicateFund(effectiveTenantId, syndicId, {
@@ -107,7 +115,7 @@ export const SyndicFinances: React.FC = () => {
         initialBalance: values.initialBalance ?? 0,
         currency: values.currency || 'XOF'
       });
-      message.success(t('Fonds créé'));
+      message.success(t('Fonds « {{name}} » créé', { name: values.name }));
       setFundModalOpen(false);
       fundForm.resetFields();
       await refreshSummary();
@@ -120,11 +128,16 @@ export const SyndicFinances: React.FC = () => {
 
   const handleRenameFund = async () => {
     if (!effectiveTenantId || !syndicId || !renameTarget) return;
-    const values = await renameForm.validateFields();
+    let values;
+    try {
+      values = await renameForm.validateFields();
+    } catch {
+      return;
+    }
     setRenameSubmitting(true);
     try {
       await renameSyndicateFund(effectiveTenantId, syndicId, renameTarget.id, { name: values.name });
-      message.success(t('Fonds renommé'));
+      message.success(t('Fonds renommé en « {{name}} »', { name: values.name }));
       setRenameTarget(null);
       await refreshSummary();
     } catch (err: any) {
@@ -136,7 +149,12 @@ export const SyndicFinances: React.FC = () => {
 
   const handleAdjustFund = async () => {
     if (!effectiveTenantId || !syndicId || !adjustTarget) return;
-    const values = await adjustForm.validateFields();
+    let values;
+    try {
+      values = await adjustForm.validateFields();
+    } catch {
+      return;
+    }
     setAdjustSubmitting(true);
     try {
       const isExpense = values.kind === 'EXPENSE';
@@ -310,7 +328,7 @@ export const SyndicFinances: React.FC = () => {
             </Paragraph>
           </Space>
 
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setFundModalOpen(true)}>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setFundModalOpen(true)} block={isMobile}>
             {t('Nouveau fonds')}
           </Button>
         </div>
@@ -379,7 +397,7 @@ export const SyndicFinances: React.FC = () => {
         open={fundModalOpen}
         onCancel={() => setFundModalOpen(false)}
         onOk={() => void handleCreateFund()}
-        okText={t('Créer')}
+        okText={t('Créer le fonds')}
         cancelText={t('Annuler')}
         confirmLoading={fundSubmitting}
       >
@@ -389,12 +407,12 @@ export const SyndicFinances: React.FC = () => {
             name="name"
             rules={[{ required: true, message: t('Le nom du fonds est obligatoire') }]}
           >
-            <Input placeholder={t('Compte courant')} />
+            <Input autoFocus placeholder={t('Compte courant')} />
           </Form.Item>
           <Row gutter={12}>
             <Col xs={24} md={12}>
               <Form.Item label={t('Solde initial')} name="initialBalance">
-                <InputNumber min={0} style={{ width: '100%' }} />
+                <InputNumber min={0} {...montantSaisiProps} addonAfter="FCFA" style={{ width: '100%' }} />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
@@ -415,7 +433,7 @@ export const SyndicFinances: React.FC = () => {
         open={Boolean(renameTarget)}
         onCancel={() => setRenameTarget(null)}
         onOk={() => void handleRenameFund()}
-        okText={t('Enregistrer')}
+        okText={t('Renommer le fonds')}
         cancelText={t('Annuler')}
         confirmLoading={renameSubmitting}
       >
@@ -425,7 +443,7 @@ export const SyndicFinances: React.FC = () => {
             name="name"
             rules={[{ required: true, message: t('Le nom du fonds est obligatoire') }]}
           >
-            <Input />
+            <Input autoFocus />
           </Form.Item>
         </Form>
       </Modal>
@@ -435,7 +453,7 @@ export const SyndicFinances: React.FC = () => {
         open={Boolean(adjustTarget)}
         onCancel={() => setAdjustTarget(null)}
         onOk={() => void handleAdjustFund()}
-        okText={t('Appliquer')}
+        okText={t('Appliquer l’ajustement')}
         cancelText={t('Annuler')}
         confirmLoading={adjustSubmitting}
       >
@@ -445,7 +463,11 @@ export const SyndicFinances: React.FC = () => {
           </Paragraph>
         ) : null}
         <Form form={adjustForm} layout="vertical" initialValues={{ kind: 'ADJUSTMENT', direction: 'CREDIT' }}>
-          <Form.Item label={t('Nature du mouvement')} name="kind" rules={[{ required: true }]}>
+          <Form.Item
+            label={t('Nature du mouvement')}
+            name="kind"
+            rules={[{ required: true, message: t('Choisissez la nature du mouvement') }]}
+          >
             <Select
               options={[
                 { label: t('Ajustement'), value: 'ADJUSTMENT' },
@@ -458,7 +480,11 @@ export const SyndicFinances: React.FC = () => {
           </Form.Item>
           <Form.Item noStyle dependencies={['kind']}>
             {({ getFieldValue }) => (
-              <Form.Item label={t('Direction')} name="direction" rules={[{ required: true }]}>
+              <Form.Item
+                label={t('Direction')}
+                name="direction"
+                rules={[{ required: true, message: t('Choisissez crédit ou débit') }]}
+              >
                 <Select
                   showSearch
                   optionFilterProp="label"
@@ -474,16 +500,40 @@ export const SyndicFinances: React.FC = () => {
           <Form.Item
             label={t('Montant')}
             name="amount"
-            rules={[{ required: true, message: t('Le montant est obligatoire') }]}
+            rules={[{ required: true, message: t('Indiquez le montant de l’ajustement') }]}
           >
-            <InputNumber min={1} style={{ width: '100%' }} />
+            <InputNumber min={1} {...montantSaisiProps} addonAfter="FCFA" style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item
             label={t('Motif')}
             name="reason"
-            rules={[{ required: true, message: t('Le motif est obligatoire') }]}
+            rules={[{ required: true, message: t('Indiquez le motif de l’ajustement') }]}
           >
             <Input.TextArea rows={2} />
+          </Form.Item>
+          <Form.Item noStyle shouldUpdate>
+            {({ getFieldValue }) => {
+              const amount = Number(getFieldValue('amount') ?? 0);
+              if (!adjustTarget || !amount) return null;
+              const isDebit = getFieldValue('kind') === 'EXPENSE' || getFieldValue('direction') === 'DEBIT';
+              const next = adjustTarget.balance + (isDebit ? -amount : amount);
+              return (
+                <Alert
+                  type={next < 0 ? 'warning' : 'info'}
+                  showIcon
+                  message={t('Nouveau solde : {{balance}}', { balance: formatMoney(next) })}
+                  description={
+                    next < 0
+                      ? t('Le solde du fonds deviendra négatif (avance de trésorerie).')
+                      : t('{{current}} {{sign}} {{amount}}', {
+                          current: formatMoney(adjustTarget.balance),
+                          sign: isDebit ? '−' : '+',
+                          amount: formatMoney(amount)
+                        })
+                  }
+                />
+              );
+            }}
           </Form.Item>
         </Form>
       </Modal>

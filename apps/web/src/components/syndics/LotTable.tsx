@@ -2,7 +2,7 @@
 import { Link } from 'react-router-dom';
 import { Button, Popconfirm, Space, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { Table, MoneyValue, formatMoney } from '../primitives';
+import { DataView, DataCard, MoneyValue, formatMoney, useConfirmAction } from '../primitives';
 import type { LotTypeRates } from '../../services/syndic-lot-type-rates-service';
 import { SyndicateLot } from '../../types/syndic-types';
 import { useLocalListSearch } from '../../utils/list-search';
@@ -172,6 +172,11 @@ const ACCESSEURS = {
   active: (lot: SyndicateLot) => lot.generalShares !== 0
 };
 
+/** Le hook de confirmation n'est requis que par les cartes mobiles : le tableau de bureau n'en dépend pas. */
+const WithConfirm: React.FC<{ children: (confirm: ReturnType<typeof useConfirmAction>) => React.ReactNode }> = ({
+  children
+}) => <>{children(useConfirmAction())}</>;
+
 interface LotTableProps {
   lots: SyndicateLot[];
   /** Préfixe d'URL de la recherche (sans point) : à poser quand l'écran porte un autre tableau filtrable. */
@@ -179,6 +184,7 @@ interface LotTableProps {
   /** Nom accessible de la zone de recherche (défaut : « Rechercher dans les lots »). */
   ariaLabel?: string;
   loading?: boolean;
+  /** Conservé pour compatibilité : le tableau devient une liste de cartes sous 992 px, sans défilement à signaler. */
   showMobileHint?: boolean;
   /** Barème par type de lot : alimente la colonne « Montant du barème » ; absent, la colonne est masquée. */
   lotTypeRates?: LotTypeRates;
@@ -203,6 +209,8 @@ interface LotTableProps {
   onReactivate?: (lot: SyndicateLot) => void;
   /** Fin d'une affectation locataire (après confirmation dans la table). */
   onEndTenantAssignment?: (lot: SyndicateLot, assignment: TenantAssignment) => void;
+  /** Création d'un lot : propose l'action dans l'état vide (aucun lot, aucun critère). */
+  onCreate?: () => void;
 }
 
 export const LotTable: React.FC<LotTableProps> = ({
@@ -210,7 +218,6 @@ export const LotTable: React.FC<LotTableProps> = ({
   paramPrefix,
   ariaLabel,
   loading = false,
-  showMobileHint = false,
   lotTypeRates,
   portalManageHref,
   declaredPendingLotIds,
@@ -223,7 +230,8 @@ export const LotTable: React.FC<LotTableProps> = ({
   onAssignTenant,
   onDeactivate,
   onReactivate,
-  onEndTenantAssignment
+  onEndTenantAssignment,
+  onCreate
 }) => {
   // Le champ libre cherche ce que les colonnes affichent (les libellés dépendent des annuaires reçus en props).
   const searchText = useMemo(
@@ -482,28 +490,136 @@ export const LotTable: React.FC<LotTableProps> = ({
       : [])
   ];
 
+  // Mobile : une carte par lot, avec les mêmes informations et les mêmes actions que le tableau.
+  const buildCard = (lot: SyndicateLot, confirmAction: ReturnType<typeof useConfirmAction>) => {
+    const tenants = mergeTenants(lot);
+    const portalLabel = portalAccessLabel(lot);
+    const rate = lotTypeRates?.[lot.lotType];
+    const secondaryActions: NonNullable<React.ComponentProps<typeof DataCard>['secondaryActions']> = [];
+    if (onEdit) {
+      secondaryActions.push({ key: 'edit', label: t('Modifier'), onClick: () => onEdit(lot) });
+    }
+    if (onAssignTenant) {
+      secondaryActions.push({ key: 'tenant', label: t('Ajouter un locataire'), onClick: () => onAssignTenant(lot) });
+    }
+    if (onEndTenantAssignment) {
+      for (const entry of tenants) {
+        const { assignment } = entry;
+        if (!assignment) continue;
+        secondaryActions.push({
+          key: `end-${entry.key}`,
+          label: t('Mettre fin à l’affectation de {{name}}', { name: entry.name }),
+          onClick: () =>
+            confirmAction({
+              title: t("Mettre fin à l'affectation de ce locataire ?"),
+              description: t("Le locataire ne sera plus rattaché à ce lot. L'historique est conservé."),
+              okText: t('Mettre fin'),
+              onConfirm: () => onEndTenantAssignment(lot, assignment)
+            })
+        });
+      }
+    }
+    if (onDeactivate && lot.generalShares > 0) {
+      secondaryActions.push({
+        key: 'deactivate',
+        label: t('Désactiver'),
+        onClick: () =>
+          confirmAction({
+            title: t('Désactiver le lot {{lot}} ?', { lot: lot.lotNumber }),
+            description: t(
+              'Le lot ne participera plus aux répartitions de charges ni aux votes. Ses données sont conservées et vous pourrez le réactiver.'
+            ),
+            okText: t('Désactiver'),
+            onConfirm: () => onDeactivate(lot)
+          })
+      });
+    }
+    if (onReactivate && lot.generalShares === 0) {
+      secondaryActions.push({ key: 'reactivate', label: t('Réactiver'), onClick: () => onReactivate(lot) });
+    }
+    if (onDelete) {
+      secondaryActions.push({
+        key: 'delete',
+        danger: true,
+        label: t('Supprimer'),
+        onClick: () =>
+          confirmAction({
+            title: t('Supprimer le lot {{lot}} ?', { lot: lot.lotNumber }),
+            description: t('Action définitive. Impossible si le lot a des appels, paiements ou reçus.'),
+            okText: t('Supprimer'),
+            danger: true,
+            onConfirm: () => onDelete(lot)
+          })
+      });
+    }
+
+    return (
+      <DataCard
+        aria-label={t('Lot {{lot}}', { lot: lot.lotNumber })}
+        title={lot.lotNumber}
+        subtitle={getLotTypeLabel(lot.lotType) ?? lot.lotType}
+        highlight={t('{{shares}} tantièmes', { shares: lot.generalShares })}
+        status={
+          lot.generalShares === 0 || declaredPendingLotIds?.has(lot.id) ? (
+            <Space size={4} wrap>
+              {lot.generalShares === 0 ? <Tag>{t('Inactif')}</Tag> : null}
+              {declaredPendingLotIds?.has(lot.id) ? <Tag color="processing">{t('Paiement déclaré')}</Tag> : null}
+            </Space>
+          ) : undefined
+        }
+        fields={[
+          { label: t('Propriétaire'), value: lotOwnerLabel(lot, ownerLabelById, ownerLabelByEmail) },
+          ...(rate !== undefined ? [{ label: t('Montant du barème'), value: <MoneyValue value={rate} /> }] : []),
+          ...(lot.specialShares ? [{ label: t('Tantièmes spéciaux'), value: lot.specialShares }] : []),
+          ...(portalLabel
+            ? [
+                {
+                  label: t('Portail'),
+                  value: (
+                    <Space size={6} wrap>
+                      <Tag color={portalAccessColors[lot.portalAccess?.status ?? 'NONE']}>{portalLabel}</Tag>
+                      {portalManageHref ? (
+                        <Link
+                          to={portalManageHref}
+                          aria-label={t("Gérer l'accès au portail du lot {{lot}}", { lot: lot.lotNumber })}
+                        >
+                          {t("Gérer l'accès")}
+                        </Link>
+                      ) : null}
+                    </Space>
+                  )
+                }
+              ]
+            : []),
+          {
+            label: t('Locataire'),
+            value: tenants.length > 0 ? tenants.map(entry => entry.name).join(', ') : t('Non renseigné')
+          },
+          { label: t('Bien lié'), value: lotPropertyLabel(lot, propertyLabelById) }
+        ]}
+        primaryAction={onViewAccount ? { label: t('Compte'), onClick: () => onViewAccount(lot) } : undefined}
+        secondaryActions={secondaryActions.length > 0 ? secondaryActions : undefined}
+      />
+    );
+  };
+
+  const renderCard = (lot: SyndicateLot) => <WithConfirm>{confirmAction => buildCard(lot, confirmAction)}</WithConfirm>;
+
   return (
-    <div>
-      <Table
-        {...local.tableProps}
+    <div className="lot-table">
+      <DataView<SyndicateLot>
+        {...local.dataViewProps}
         helpId="syndic.lots.tableau"
         aria-label={t('Tableau des lots')}
-        exportFilename={t('Lots')}
-        exportFetchAll={local.exportAll}
-        className="lot-table"
-        rowKey="id"
-        size="middle"
+        export={{ filename: t('Lots'), fetchAll: local.exportAll }}
+        rowKey={lot => lot.id}
         columns={columns}
         loading={loading}
-        locale={local.isFiltered ? undefined : { emptyText: t('Aucun lot enregistré') }}
-        scroll={{ x: 1400 }}
-        sticky
+        scrollX={1400}
+        emptyDescription={t('Aucun lot enregistré. Créez le premier lot ou importez vos biens existants.')}
+        emptyAction={onCreate ? { label: t('Nouveau lot'), onClick: onCreate } : undefined}
+        renderCard={renderCard}
       />
-      {showMobileHint ? (
-        <Text type="secondary" style={{ fontSize: 12 }}>
-          {t('Faites défiler horizontalement en bas du tableau pour voir toutes les colonnes.')}
-        </Text>
-      ) : null}
     </div>
   );
 };

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, Space, Tabs, Typography } from 'antd';
+import { Alert, Space, Tabs } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { getSyndicCreditor } from '../../services/syndic-direct-debit-service';
 import { SyndicCreditorCard } from '../../components/syndics/direct-debit/SyndicCreditorCard';
@@ -8,11 +8,10 @@ import { SyndicRemittancesCard } from '../../components/syndics/direct-debit/Syn
 import { SYNDIC_DD_KEYS } from '../../components/syndics/direct-debit/keys';
 import { apiErrorMessage } from '../../components/rental/direct-debit/direct-debit-shared';
 import { useTabParam } from '../../components/syndics/finances/url-params';
+import { PageHeader } from '../../components/primitives';
 import { STALE_TIME } from '../../lib/query-keys';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
-
-const { Title, Paragraph } = Typography;
 
 const DD_TABS = ['compte', 'mandats', 'remises'] as const;
 
@@ -41,16 +40,12 @@ export const SyndicDirectDebit: React.FC = () => {
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      <Space direction="vertical" size={4}>
-        <Title level={2} style={{ margin: 0 }}>
-          {t('Prélèvements')}
-        </Title>
-        <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-          {t(
-            'Prélèvement bancaire des appels de charges : compte du syndicat, mandats des copropriétaires et remises.'
-          )}
-        </Paragraph>
-      </Space>
+      <PageHeader
+        title={t('Prélèvements')}
+        subtitle={t(
+          'Prélèvement bancaire des appels de charges : compte du syndicat, mandats des copropriétaires et remises.'
+        )}
+      />
 
       <Tabs
         activeKey={tab}

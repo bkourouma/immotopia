@@ -13,6 +13,10 @@ import apiClient from '../../utils/api-client';
 // propriétaire, (b) le formulaire de lot de `<SyndicLots>` propose « Bien
 // lié » avant « Numéro de lot » et son sélecteur n'affiche que le bien.
 
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));
+
 vi.mock('../../utils/api-client', () => ({
   __esModule: true,
   default: {

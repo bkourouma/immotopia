@@ -1,9 +1,9 @@
 import React, { useMemo } from 'react';
-import { Alert, Button, Card, Space, Tag, Typography } from 'antd';
+import { Button, Card, Space, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { EyeOutlined } from '@ant-design/icons';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { formatMoney, Table } from '../../primitives';
+import { DataCard, DataView, formatMoney } from '../../primitives';
 import {
   SyndicDeclarationRow,
   ListDeclarationsQuery,
@@ -123,6 +123,7 @@ export const DeclarationsTable: React.FC<DeclarationsTableProps> = ({
   const {
     data,
     isFetching,
+    isPending,
     error: queryError,
     refetch
   } = useQuery({
@@ -134,6 +135,52 @@ export const DeclarationsTable: React.FC<DeclarationsTableProps> = ({
   const items = data?.items ?? [];
   const counts: Counts = { ...EMPTY_COUNTS, ...data?.counts };
   const error = queryError ? apiErrorMessage(queryError, t('Impossible de charger les paiements déclarés')) : null;
+
+  /** Statut en texte (jamais la couleur seule) + alertes de la file (retard, doublon, lecture IA). */
+  const statusTags = (row: SyndicDeclarationRow) => (
+    <Space size={4} wrap>
+      <Tag color={STATUS_COLOR[row.status]}>{statusLabel(row.status)}</Tag>
+      {row.status === 'PENDING' && row.overdue ? <Tag color="red">{t('En retard')}</Tag> : null}
+      {row.status === 'PENDING' && hasDuplicateSuspicion(row) ? (
+        <Tag color="orange">{t('Doublon suspecté')}</Tag>
+      ) : null}
+      {row.status === 'PENDING' && row.aiPrefilled ? <Tag color="blue">{t('Lue par IA')}</Tag> : null}
+    </Space>
+  );
+
+  /** Carte mobile : le résumé à vérifier avant décision (qui, quoi, combien) et « Examiner » en action unique. */
+  const renderCard = (row: SyndicDeclarationRow) => (
+    <DataCard
+      title={row.declaredBy.name}
+      subtitle={formatDateTime(row.createdAt)}
+      highlight={
+        <Space direction="vertical" size={0} style={{ textAlign: 'end' }}>
+          <strong>{formatMoney(row.amount)}</strong>
+          {row.acceptedAmount !== null && row.acceptedAmount !== row.amount ? (
+            <Text type="warning" style={{ fontSize: 12 }}>
+              {t('retenu : {{montant}}', { montant: formatMoney(row.acceptedAmount) })}
+            </Text>
+          ) : null}
+        </Space>
+      }
+      status={statusTags(row)}
+      onOpen={() => onOpen(row)}
+      fields={[
+        { label: t('Lot(s)'), value: row.lines.map(line => line.lot.lotNumber).join(', ') || '—' },
+        {
+          label: t('Numéro de réception'),
+          value: `${operatorLabel(row.receivingNumber.operator)} · ${formatPhone(row.receivingNumber.phoneNumber)}`
+        },
+        { label: t('Référence'), value: row.transactionReference ?? '—' },
+        { label: t('Paiement du'), value: formatDateTime(row.paidAt) }
+      ]}
+      primaryAction={{
+        label: row.status === 'PENDING' ? t('Examiner et décider') : t('Examiner'),
+        icon: <EyeOutlined aria-hidden />,
+        onClick: () => onOpen(row)
+      }}
+    />
+  );
 
   const columns: ColumnsType<SyndicDeclarationRow> = [
     {
@@ -147,7 +194,10 @@ export const DeclarationsTable: React.FC<DeclarationsTableProps> = ({
       key: 'declaredBy',
       render: (_: unknown, row) => (
         <Space size={4} wrap>
-          <span>{row.declaredBy.name}</span>
+          {/* Le nom ouvre la déclaration (remplace le clic sur la ligne, que la liste adaptative ne porte plus). */}
+          <Button type="link" size="small" style={{ paddingInline: 0 }} onClick={() => onOpen(row)}>
+            {row.declaredBy.name}
+          </Button>
           {row.declaredBy.type === 'MANAGER' ? <Tag>{t('Gestionnaire')}</Tag> : null}
         </Space>
       )
@@ -207,16 +257,7 @@ export const DeclarationsTable: React.FC<DeclarationsTableProps> = ({
     {
       title: t('Statut'),
       key: 'status',
-      render: (_: unknown, row) => (
-        <Space size={4} wrap>
-          <Tag color={STATUS_COLOR[row.status]}>{statusLabel(row.status)}</Tag>
-          {row.status === 'PENDING' && row.overdue ? <Tag color="red">{t('En retard')}</Tag> : null}
-          {row.status === 'PENDING' && hasDuplicateSuspicion(row) ? (
-            <Tag color="orange">{t('Doublon suspecté')}</Tag>
-          ) : null}
-          {row.status === 'PENDING' && row.aiPrefilled ? <Tag color="blue">{t('Lue par IA')}</Tag> : null}
-        </Space>
-      )
+      render: (_: unknown, row) => statusTags(row)
     },
     {
       title: t('Actions'),
@@ -253,44 +294,37 @@ export const DeclarationsTable: React.FC<DeclarationsTableProps> = ({
         <Tag color="orange">{`${t('Doublon suspecté')} ${counts.suspectedDuplicate}`}</Tag>
       </Space>
 
-      {error ? (
-        <Alert
-          type="error"
-          showIcon
-          style={{ marginBottom: 16 }}
-          message={error}
-          action={
-            <Button size="small" onClick={() => void refetch()}>
-              {t('Réessayer')}
-            </Button>
-          }
-        />
-      ) : null}
-
-      <Table<SyndicDeclarationRow>
+      <DataView<SyndicDeclarationRow>
+        {...search.dataViewProps}
         aria-label={t('Paiements déclarés')}
         helpId="syndic.paiements.declares"
         search={search.searchProps}
-        exportFilename={t('Paiements déclarés')}
-        exportFetchAll={() =>
-          collectAllPages<SyndicDeclarationRow>(async (page, limit) => {
-            const response = await listSyndicDeclarations(
-              tenantId,
-              syndicId,
-              withDefaultStatus({ ...search.filterParams, page, limit })
-            );
-            return { items: response.items, total: response.pagination.total };
-          })
-        }
-        rowKey="id"
-        size="middle"
-        loading={isFetching}
+        export={{
+          filename: t('Paiements déclarés'),
+          fetchAll: () =>
+            collectAllPages<SyndicDeclarationRow>(async (page, limit) => {
+              const response = await listSyndicDeclarations(
+                tenantId,
+                syndicId,
+                withDefaultStatus({ ...search.filterParams, page, limit })
+              );
+              return { items: response.items, total: response.pagination.total };
+            })
+        }}
+        rowKey={row => row.id}
+        items={items}
+        total={data?.pagination.total ?? 0}
+        loading={isPending}
+        isReloading={isFetching}
+        error={error}
+        onRetry={() => void refetch()}
+        errorCause={queryError}
         columns={columns}
-        dataSource={items}
-        scroll={{ x: 'max-content' }}
-        locale={search.isFiltered ? undefined : { emptyText: t('Aucun paiement déclaré') }}
-        onRow={row => ({ onClick: () => onOpen(row), style: { cursor: 'pointer' } })}
-        pagination={search.tablePagination(data?.pagination.total ?? 0)}
+        scrollX={1100}
+        emptyDescription={t(
+          'Aucun paiement déclaré à traiter. Les copropriétaires déclarent leurs transferts depuis leur portail ; vous pouvez aussi déclarer pour eux.'
+        )}
+        renderCard={renderCard}
       />
     </Card>
   );

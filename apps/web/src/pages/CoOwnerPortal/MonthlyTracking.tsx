@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Card, Row, Col, Select, Space, Tooltip, Typography } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { formatMoney, MoneyValue, SkeletonList, StateBlock } from '../../components/primitives';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { HelpSectionTitle } from '../../help';
 import { t } from '../../i18n/t';
 import { localizedRecord } from '../../i18n/localized';
@@ -86,6 +87,7 @@ function isBeforeOwnership(year: number, month: number, visibleSince: string | n
 export default function CoOwnerMonthlyTracking() {
   const [lotId, setLotId] = useState<string | undefined>(undefined);
   const [year, setYear] = useState(() => new Date().getFullYear());
+  const { isMobile } = useBreakpoint();
 
   const lots = useQuery({ queryKey: ['coowner-portal', 'lots'], staleTime: 30_000, queryFn: () => listMyLots() });
 
@@ -123,9 +125,9 @@ export default function CoOwnerMonthlyTracking() {
         <Text type="secondary">{t('Mois par mois, pour un lot : réglé, partiel, dû ou en retard.')}</Text>
       </div>
 
-      <Space wrap size="middle">
+      <Space wrap size="middle" style={isMobile ? { width: '100%' } : undefined}>
         <Select
-          style={{ minWidth: 200 }}
+          style={{ minWidth: 200, width: isMobile ? '100%' : undefined, minHeight: isMobile ? 44 : undefined }}
           placeholder={t('Choisir un lot')}
           options={lotOptions}
           value={lotId}
@@ -133,7 +135,7 @@ export default function CoOwnerMonthlyTracking() {
           aria-label={t('Lot')}
         />
         <Select
-          style={{ minWidth: 120 }}
+          style={{ minWidth: 120, width: isMobile ? '100%' : undefined, minHeight: isMobile ? 44 : undefined }}
           value={year}
           onChange={value => setYear(value)}
           options={yearRange(new Date().getFullYear(), ownedSinceYear).map(candidate => ({
@@ -194,7 +196,44 @@ export default function CoOwnerMonthlyTracking() {
               />
             }
           >
-            <div style={{ overflowX: 'auto' }}>
+            {isMobile ? (
+              <div
+                role="list"
+                aria-label={t('Mois de l’exercice')}
+                style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}
+              >
+                {tracking.data.months.map((cell, index) => {
+                  const beforeOwnership = isBeforeOwnership(tracking.data.year, cell.month, tracking.data.visibleSince);
+                  const config = STATUS_CONFIG[cell.status];
+                  const tooltip = beforeOwnership
+                    ? t('Avant votre acquisition')
+                    : t('{{label}} — dû {{due}}, réglé {{paid}}', {
+                        label: config.label,
+                        due: formatMoney(cell.due, { currency }),
+                        paid: formatMoney(cell.paid, { currency })
+                      });
+                  return (
+                    <div
+                      key={cell.month}
+                      role="listitem"
+                      aria-label={`${monthLabels()[index]} : ${tooltip}`}
+                      style={{
+                        backgroundColor: beforeOwnership ? 'var(--surface-disabled, #f5f5f5)' : config.color,
+                        color: beforeOwnership ? 'var(--text-disabled, #bbb)' : config.textColor,
+                        borderRadius: 8,
+                        padding: '8px 6px',
+                        textAlign: 'center',
+                        minHeight: 56
+                      }}
+                    >
+                      <div style={{ fontSize: 12 }}>{monthLabels()[index]}</div>
+                      <div style={{ fontWeight: 600 }}>{beforeOwnership ? '·' : config.label}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+            <div style={{ overflowX: 'auto', display: isMobile ? 'none' : undefined }}>
               <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 640 }}>
                 <thead>
                   <tr>

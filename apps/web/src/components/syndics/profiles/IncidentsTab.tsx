@@ -1,9 +1,10 @@
 import React, { useMemo } from 'react';
-import { Button, Select, Space, Tag, Typography } from 'antd';
+import { Button, Collapse, Select, Space, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { EditOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { MoneyValue, Table } from '../../primitives';
+import { DataCard, DataView, MoneyValue, Table } from '../../primitives';
+import { useBreakpoint } from '../../../hooks/useBreakpoint';
 import { useFormFieldModes } from '../../../hooks/useFormFieldModes';
 import { LinkedProviderInvoices } from '../LinkedProviderInvoices';
 import type { Property } from '../../../types/property-types';
@@ -24,6 +25,14 @@ import {
   INCIDENT_URGENCIES,
   incidentStatusColors
 } from './profile-labels';
+
+/** Couleur du tag d'urgence : le texte reste affiché, la couleur n'est qu'un repère. */
+const urgencyColors: Record<string, string> = {
+  LOW: 'default',
+  MEDIUM: 'gold',
+  HIGH: 'orange',
+  CRITICAL: 'red'
+};
 
 /** Incident enrichi des champs que lisent le tableau et la recherche. */
 interface IncidentRow extends SyndicateIncident {
@@ -70,6 +79,8 @@ interface IncidentsTabProps {
   onAssignProvider: (incidentId: string, providerId: string | undefined) => void;
   onEdit: (incident: SyndicateIncident) => void;
   onAddImputation: (incident: SyndicateIncident) => void;
+  /** Proposition affichée quand la copropriété n'a encore aucun incident. */
+  onCreate?: () => void;
 }
 
 /**
@@ -89,8 +100,10 @@ export const IncidentsTab: React.FC<IncidentsTabProps> = ({
   assigningProviderIncidentId,
   onAssignProvider,
   onEdit,
-  onAddImputation
+  onAddImputation,
+  onCreate
 }) => {
+  const { isDesktop } = useBreakpoint();
   const providerFm = useFormFieldModes('syndic.incident-modification');
   const providersById = useMemo(() => new Map(providers.map(provider => [provider.id, provider])), [providers]);
 
@@ -187,7 +200,7 @@ export const IncidentsTab: React.FC<IncidentsTabProps> = ({
       title: t('Urgence'),
       dataIndex: 'urgency',
       width: 90,
-      render: (value: string) => getIncidentUrgencyLabel(value)
+      render: (value: string) => <Tag color={urgencyColors[value] || 'default'}>{getIncidentUrgencyLabel(value)}</Tag>
     },
     {
       title: t('Description'),
@@ -250,16 +263,149 @@ export const IncidentsTab: React.FC<IncidentsTabProps> = ({
       width: 220,
       render: (_, row) => (
         <Space wrap>
-          <Button size="small" icon={<EditOutlined />} onClick={() => onEdit(row)}>
+          <Button
+            size="small"
+            icon={<EditOutlined />}
+            aria-label={t("Modifier l'incident du lot {{lot}}", { lot: row.lotNumber || '-' })}
+            onClick={() => onEdit(row)}
+          >
             {t("Modifier l'incident")}
           </Button>
-          <Button size="small" onClick={() => onAddImputation(row)}>
+          <Button
+            size="small"
+            aria-label={t("Ajouter une imputation à l'incident du lot {{lot}}", { lot: row.lotNumber || '-' })}
+            onClick={() => onAddImputation(row)}
+          >
             {t('Ajouter imputation')}
           </Button>
         </Space>
       )
     }
   ];
+
+  /** Détail d'un incident : imputations et factures liées (ligne dépliée, ou volet de la carte). */
+  const renderDetail = (incident: IncidentRow) => (
+    <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+      <Table
+        helpId="syndic.profils.imputations"
+        // Sous-tableau d'une ligne dépliée : pas d'export propre.
+        exportable={false}
+        scroll={{ x: 'max-content' }}
+        rowKey="id"
+        dataSource={incident.imputations || []}
+        pagination={false}
+        size="small"
+        locale={{ emptyText: t('Aucune imputation pour cet incident.') }}
+        columns={[
+          {
+            title: t('Type'),
+            dataIndex: 'imputationType',
+            render: (value: string) => getImputationTypeLabel(value)
+          },
+          {
+            title: t('Montant'),
+            dataIndex: 'amount',
+            align: 'end',
+            render: (value: number | string) => <MoneyValue value={value} />
+          },
+          {
+            title: t('Lot'),
+            render: (_, row) => {
+              const lot = row.lot || (row.lotId ? lotsById[row.lotId] : undefined);
+              const lotReference = lot?.property?.internalReference || lot?.lotNumber || '';
+              const propertyByReference = lotReference
+                ? propertiesByInternalReference[lotReference.trim().toUpperCase()]
+                : undefined;
+              return getLotDisplayName(lot, propertyByReference);
+            }
+          },
+          {
+            title: t('Notes'),
+            dataIndex: 'notes',
+            render: (value: string | undefined | null) => value || '-'
+          },
+          {
+            title: t('Créé le'),
+            dataIndex: 'createdAt',
+            render: (value: string) => dayjs(value).format(dateFormat('dateTime'))
+          }
+        ]}
+      />
+      <div>
+        <Typography.Text strong>{t('Factures liées')}</Typography.Text>
+        <LinkedProviderInvoices tenantId={tenantId} syndicId={syndicId} incidentId={incident.id} />
+      </div>
+    </Space>
+  );
+
+  // Sous 992 px : cartes (le tableau et sa ligne dépliable ne tiennent pas sur téléphone).
+  if (!isDesktop) {
+    return (
+      <DataView<IncidentRow>
+        {...local.dataViewProps}
+        helpId="syndic.profils.incidents"
+        aria-label={t('Incidents et imputations')}
+        export={{ filename: t('Incidents et imputations'), fetchAll: local.exportAll }}
+        rowKey={row => row.id}
+        loading={loading}
+        columns={columns}
+        emptyDescription={t('Aucun incident pour cette copropriété.')}
+        emptyAction={onCreate ? { label: t('Nouvel incident'), onClick: onCreate } : undefined}
+        renderCard={row => (
+          <DataCard
+            title={`${getIncidentTypeLabel(row.incidentType)}${row.lotNumber ? ` · ${row.lotNumber}` : ''}`}
+            subtitle={row.description}
+            status={
+              <Tag color={incidentStatusColors[row.status] || 'default'}>{getIncidentStatusLabel(row.status)}</Tag>
+            }
+            fields={[
+              {
+                label: t('Urgence'),
+                value: <Tag color={urgencyColors[row.urgency] || 'default'}>{getIncidentUrgencyLabel(row.urgency)}</Tag>
+              },
+              {
+                label: t('Signalé le'),
+                value: row.reportedAt ? dayjs(row.reportedAt).format(dateFormat('short')) : '-'
+              },
+              { label: t('Imputations'), value: row.imputationCount },
+              {
+                label: t('Prestataire'),
+                value: !providerFm.isVisible('providerId') ? (
+                  row.providerName || '—'
+                ) : (
+                  <Select
+                    allowClear={!providerFm.isRequired('providerId', false)}
+                    showSearch
+                    style={{ width: '100%', minHeight: 44 }}
+                    placeholder={t('Aucun prestataire')}
+                    optionFilterProp="label"
+                    value={row.providerId || undefined}
+                    loading={assigningProviderIncidentId === row.id}
+                    disabled={assigningProviderIncidentId === row.id}
+                    options={providerOptions}
+                    onChange={value => onAssignProvider(row.id, value)}
+                  />
+                )
+              },
+              {
+                label: t('Détail'),
+                value: (
+                  <Collapse
+                    ghost
+                    size="small"
+                    destroyOnHidden
+                    items={[{ key: 'detail', label: t('Imputations et factures liées'), children: renderDetail(row) }]}
+                  />
+                )
+              }
+            ]}
+            primaryAction={{ label: t("Modifier l'incident"), onClick: () => onEdit(row) }}
+            secondaryActions={[{ key: 'impute', label: t('Ajouter imputation'), onClick: () => onAddImputation(row) }]}
+          />
+        )}
+      />
+    );
+  }
 
   return (
     <Table<IncidentRow>
@@ -273,59 +419,7 @@ export const IncidentsTab: React.FC<IncidentsTabProps> = ({
       columns={columns}
       locale={local.isFiltered ? undefined : { emptyText: t('Aucun incident pour cette copropriété.') }}
       expandable={{
-        expandedRowRender: incident => (
-          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-            <Table
-              helpId="syndic.profils.imputations"
-              // Sous-tableau d'une ligne dépliée : pas d'export propre.
-              exportable={false}
-              scroll={{ x: 'max-content' }}
-              rowKey="id"
-              dataSource={incident.imputations || []}
-              pagination={false}
-              size="small"
-              locale={{ emptyText: t('Aucune imputation pour cet incident.') }}
-              columns={[
-                {
-                  title: t('Type'),
-                  dataIndex: 'imputationType',
-                  render: (value: string) => getImputationTypeLabel(value)
-                },
-                {
-                  title: t('Montant'),
-                  dataIndex: 'amount',
-                  align: 'end',
-                  render: (value: number | string) => <MoneyValue value={value} />
-                },
-                {
-                  title: t('Lot'),
-                  render: (_, row) => {
-                    const lot = row.lot || (row.lotId ? lotsById[row.lotId] : undefined);
-                    const lotReference = lot?.property?.internalReference || lot?.lotNumber || '';
-                    const propertyByReference = lotReference
-                      ? propertiesByInternalReference[lotReference.trim().toUpperCase()]
-                      : undefined;
-                    return getLotDisplayName(lot, propertyByReference);
-                  }
-                },
-                {
-                  title: t('Notes'),
-                  dataIndex: 'notes',
-                  render: (value: string | undefined | null) => value || '-'
-                },
-                {
-                  title: t('Créé le'),
-                  dataIndex: 'createdAt',
-                  render: (value: string) => dayjs(value).format(dateFormat('dateTime'))
-                }
-              ]}
-            />
-            <div>
-              <Typography.Text strong>{t('Factures liées')}</Typography.Text>
-              <LinkedProviderInvoices tenantId={tenantId} syndicId={syndicId} incidentId={incident.id} />
-            </div>
-          </Space>
-        ),
+        expandedRowRender: renderDetail,
         rowExpandable: () => true
       }}
     />

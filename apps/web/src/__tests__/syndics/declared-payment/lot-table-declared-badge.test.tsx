@@ -16,6 +16,10 @@ const lot = (id: string, lotNumber: string) =>
     tenantAssignments: []
   }) as unknown as SyndicateLot;
 
+vi.mock('../../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));
+
 describe('LotTable : pastille des paiements déclarés', () => {
   it('marque seulement les lots visés', () => {
     render(

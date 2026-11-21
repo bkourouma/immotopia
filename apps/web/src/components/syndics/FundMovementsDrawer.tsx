@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Drawer, Spin, Tag, Typography } from 'antd';
+import { Alert, Button, Drawer, Spin, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { MoneyValue } from '../primitives/MoneyValue';
@@ -10,17 +10,19 @@ import { FundMovement } from '../../types/syndic-types';
 import { dateFormat } from '../../i18n/format';
 import { t } from '../../i18n/t';
 import { displayCurrency } from '../../utils/syndic-currency';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 
 const { Text } = Typography;
 
-const SOURCE_LABELS: Record<FundMovement['sourceType'], string> = {
+// Résolu à chaque rendu : une constante de module graverait la langue active à l'import.
+const sourceLabels = (): Record<FundMovement['sourceType'], string> => ({
   MANUAL_ADJUSTMENT: t('Ajustement manuel'),
   PROVIDER_PAYMENT: t('Paiement prestataire'),
   PROVIDER_PAYMENT_REVERSAL: t('Annulation de paiement prestataire'),
   OPENING: t("Solde d'ouverture"),
   CHARGE_PAYMENT: t('Paiement de charges'),
   MANUAL_EXPENSE: t('Dépense')
-};
+});
 
 interface FundMovementsDrawerProps {
   tenantId: string;
@@ -43,6 +45,7 @@ export const FundMovementsDrawer: React.FC<FundMovementsDrawerProps> = ({ tenant
   const [currency, setCurrency] = useState<string | undefined>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { isMobile } = useBreakpoint();
 
   useEffect(() => {
     setPage(1);
@@ -107,7 +110,7 @@ export const FundMovementsDrawer: React.FC<FundMovementsDrawerProps> = ({ tenant
       title: t('Origine'),
       dataIndex: 'sourceType',
       key: 'sourceType',
-      render: (value: FundMovement['sourceType']) => SOURCE_LABELS[value] || value
+      render: (value: FundMovement['sourceType']) => sourceLabels()[value] || value
     }
   ];
 
@@ -116,9 +119,23 @@ export const FundMovementsDrawer: React.FC<FundMovementsDrawerProps> = ({ tenant
       title={fund ? t('Mouvements du fonds « {{name}} »', { name: fund.name }) : t('Mouvements du fonds')}
       open={Boolean(fund)}
       onClose={onClose}
-      width={640}
+      width={isMobile ? '100%' : 640}
     >
-      {error ? <Alert type="error" message={error} showIcon /> : null}
+      {error ? (
+        <Alert
+          type="error"
+          message={error}
+          showIcon
+          style={{ marginBottom: 12 }}
+          action={
+            fund ? (
+              <Button size="small" onClick={() => void load(fund.id)}>
+                {t('Réessayer')}
+              </Button>
+            ) : undefined
+          }
+        />
+      ) : null}
       {loading && items.length === 0 ? (
         <div style={{ padding: 24, textAlign: 'center' }}>
           <Spin size="large" />
@@ -135,6 +152,7 @@ export const FundMovementsDrawer: React.FC<FundMovementsDrawerProps> = ({ tenant
             })
           }
           rowKey="id"
+          scroll={{ x: 'max-content' }}
           loading={loading}
           dataSource={items}
           columns={columns}

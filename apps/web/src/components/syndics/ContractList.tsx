@@ -1,9 +1,10 @@
 import React, { useMemo } from 'react';
-import { Tag, Typography } from 'antd';
+import { Collapse, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { MoneyValue } from '../primitives/MoneyValue';
-import { Table } from '../primitives';
+import { DataCard, DataView, Table } from '../primitives';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { MaintenanceContract } from '../../types/syndic-types';
 import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion } from '../../utils/list-search';
@@ -47,6 +48,7 @@ interface ContractListProps {
 
 export const ContractList: React.FC<ContractListProps> = ({ contracts, loading = false, tenantId, syndicId }) => {
   const renewalWindowDays = 45;
+  const { isDesktop } = useBreakpoint();
 
   // Prestataires présents dans la liste : la liste arrive en entier (bornée par la copropriété).
   const providerOptions = useMemo(() => {
@@ -116,6 +118,64 @@ export const ContractList: React.FC<ContractListProps> = ({ contracts, loading =
   ];
 
   const showLinkedInvoices = Boolean(tenantId && syndicId);
+
+  // Sous 992 px : cartes (le tableau et sa ligne dépliable ne tiennent pas sur téléphone).
+  if (!isDesktop) {
+    return (
+      <DataView<MaintenanceContract>
+        {...local.dataViewProps}
+        helpId="syndic.prestataires.contrats"
+        aria-label={t('Contrats de maintenance')}
+        export={{ filename: t('Contrats de maintenance'), fetchAll: local.exportAll }}
+        rowKey={contract => contract.id}
+        columns={columns}
+        loading={loading}
+        emptyDescription={t('Aucun contrat de maintenance')}
+        renderCard={contract => (
+          <DataCard
+            title={contract.nature}
+            subtitle={contract.provider?.name || contract.providerId}
+            status={<Tag color={statusColor[contract.status]}>{contractStatusLabels[contract.status]}</Tag>}
+            highlight={contract.annualAmount ? <MoneyValue value={contract.annualAmount} /> : undefined}
+            fields={[
+              { label: t('Début'), value: dayjs(contract.startDate).format('DD/MM/YYYY') },
+              {
+                label: t('Fin'),
+                value: contract.endDate ? dayjs(contract.endDate).format('DD/MM/YYYY') : t('Sans fin')
+              },
+              ...(showLinkedInvoices
+                ? [
+                    {
+                      label: t('Factures liées'),
+                      value: (
+                        <Collapse
+                          ghost
+                          size="small"
+                          destroyOnHidden
+                          items={[
+                            {
+                              key: 'invoices',
+                              label: t('Voir les factures liées'),
+                              children: (
+                                <LinkedProviderInvoices
+                                  tenantId={tenantId!}
+                                  syndicId={syndicId!}
+                                  contractId={contract.id}
+                                />
+                              )
+                            }
+                          ]}
+                        />
+                      )
+                    }
+                  ]
+                : [])
+            ]}
+          />
+        )}
+      />
+    );
+  }
 
   return (
     <Table

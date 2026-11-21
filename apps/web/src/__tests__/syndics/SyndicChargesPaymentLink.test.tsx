@@ -271,3 +271,8 @@ describe('SyndicCharges — lien de paiement d’un appel', () => {
     expect(screen.queryByDisplayValue(/JETON-EN-CLAIR/)).not.toBeInTheDocument();
   });
 });
+
+// Les écrans « charges » et « budgets » basculent en cartes sous 992 px : ici on teste la disposition tableau.
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));

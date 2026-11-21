@@ -42,6 +42,7 @@ export const MeetingConvocationWord: React.FC<MeetingConvocationWordProps> = ({
     try {
       const { blob, filename } = await downloadMeetingConvocationWord(tenantId, syndicId, meetingId, lotId);
       saveBlob(blob, filename);
+      message.success(t('Convocation téléchargée : {{filename}}', { filename }));
     } catch (err) {
       message.error(await describeDownloadError(err));
     } finally {
@@ -50,10 +51,11 @@ export const MeetingConvocationWord: React.FC<MeetingConvocationWordProps> = ({
   };
 
   return (
-    <Space>
+    <Space wrap>
       <Select
         showSearch
         optionFilterProp="label"
+        aria-label={t('Lot destinataire de la convocation')}
         placeholder={t('Choisir un lot')}
         style={{ minWidth: 200 }}
         value={lotId}

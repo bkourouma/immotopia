@@ -3,7 +3,7 @@ import { App, Alert, Button, Card, Space, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { SafetyCertificateOutlined, SyncOutlined } from '@ant-design/icons';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { MoneyValue, Table, formatMoney } from '../../primitives';
+import { DataCard, DataView, MoneyValue, formatMoney } from '../../primitives';
 import {
   CheckoutOrigin,
   OnlineCheckoutStatus,
@@ -92,6 +92,7 @@ export const CheckoutsTable: React.FC<CheckoutsTableProps> = ({
   const {
     data,
     isFetching,
+    isPending,
     error: queryError,
     refetch
   } = useQuery({
@@ -130,6 +131,75 @@ export const CheckoutsTable: React.FC<CheckoutsTableProps> = ({
   };
 
   const totalCount = STATUS_ORDER.reduce((sum, status) => sum + (counts[status] ?? 0), 0);
+
+  /** Statut en texte + motif de la mise en revue ou de l'échec. */
+  const statusBlock = (row: SyndicOnlineCheckoutRow) => (
+    <Space direction="vertical" size={0}>
+      <Tag color={STATUS_COLOR[row.status]}>{statusLabel(row.status)}</Tag>
+      {row.status === 'REVIEW' && row.reviewReason ? (
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          {row.reviewReason}
+        </Text>
+      ) : null}
+      {row.failureMessage && row.status !== 'REVIEW' ? (
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          {row.failureMessage}
+        </Text>
+      ) : null}
+    </Space>
+  );
+
+  /** Carte mobile : « Trancher » en action principale pour un paiement à traiter, « Vérifier » sinon. */
+  const renderCard = (row: SyndicOnlineCheckoutRow) => {
+    const verifiable = canEdit && (row.status === 'PENDING' || row.status === 'REVIEW');
+    const decidable = canEdit && row.status === 'REVIEW';
+    const verifyItem = {
+      key: 'verify',
+      icon: <SyncOutlined aria-hidden />,
+      label: t('Vérifier'),
+      onClick: () => void handleVerify(row)
+    };
+    return (
+      <DataCard
+        title={row.codePaiement}
+        subtitle={`${formatDateTime(row.createdAt)}${row.mode === 'SIMULATOR' ? ` · ${t('Simulateur')}` : ''}`}
+        highlight={<MoneyValue value={row.amount} currency={displayCurrency(row.currency)} />}
+        status={statusBlock(row)}
+        fields={[
+          { label: t('Lot'), value: row.lot.lotNumber },
+          { label: t('Payeur'), value: row.payer?.name ?? t('Fiche introuvable') },
+          { label: t('Appels'), value: row.chargeCalls.map(call => call.period).join(', ') || '—' },
+          {
+            label: t('Origine'),
+            value: row.providerServiceName
+              ? `${originLabel(row.origin)} · ${row.providerServiceName}`
+              : originLabel(row.origin)
+          },
+          ...(row.receivedAmount !== null && row.receivedAmount !== row.amount
+            ? [
+                {
+                  label: t('Reçu'),
+                  value: formatMoney(row.receivedAmount, { currency: displayCurrency(row.currency) })
+                }
+              ]
+            : [])
+        ]}
+        primaryAction={
+          decidable
+            ? { label: t('Trancher'), icon: <SafetyCertificateOutlined aria-hidden />, onClick: () => onDecide(row) }
+            : verifiable
+              ? {
+                  label: t('Vérifier'),
+                  icon: <SyncOutlined aria-hidden />,
+                  loading: verifyingId === row.id,
+                  onClick: () => void handleVerify(row)
+                }
+              : undefined
+        }
+        secondaryActions={decidable ? [verifyItem] : undefined}
+      />
+    );
+  };
 
   const columns: ColumnsType<SyndicOnlineCheckoutRow> = [
     {
@@ -199,21 +269,7 @@ export const CheckoutsTable: React.FC<CheckoutsTableProps> = ({
     {
       title: t('Statut'),
       key: 'status',
-      render: (_: unknown, row) => (
-        <Space direction="vertical" size={0}>
-          <Tag color={STATUS_COLOR[row.status]}>{statusLabel(row.status)}</Tag>
-          {row.status === 'REVIEW' && row.reviewReason ? (
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {row.reviewReason}
-            </Text>
-          ) : null}
-          {row.failureMessage && row.status !== 'REVIEW' ? (
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {row.failureMessage}
-            </Text>
-          ) : null}
-        </Space>
-      )
+      render: (_: unknown, row) => statusBlock(row)
     },
     {
       title: t('Actions'),
@@ -276,43 +332,37 @@ export const CheckoutsTable: React.FC<CheckoutsTableProps> = ({
         ))}
       </Space>
 
-      {error ? (
-        <Alert
-          type="error"
-          showIcon
-          style={{ marginBottom: 16 }}
-          message={error}
-          action={
-            <Button size="small" onClick={() => void refetch()}>
-              {t('Réessayer')}
-            </Button>
-          }
-        />
-      ) : null}
-
-      <Table<SyndicOnlineCheckoutRow>
+      <DataView<SyndicOnlineCheckoutRow>
+        {...search.dataViewProps}
         aria-label={t('Paiements en ligne')}
         helpId="syndic.paiements.en-ligne"
         search={search.searchProps}
-        exportFilename={t('Paiements en ligne')}
-        exportFetchAll={() =>
-          collectAllPages<SyndicOnlineCheckoutRow>(async (page, limit) => {
-            const response = await listSyndicOnlineCheckouts(
-              tenantId,
-              syndicId,
-              toQuery({ ...search.filterParams, page, limit })
-            );
-            return { items: response.items, total: response.pagination.total };
-          })
-        }
-        rowKey="id"
-        size="middle"
-        loading={isFetching}
+        export={{
+          filename: t('Paiements en ligne'),
+          fetchAll: () =>
+            collectAllPages<SyndicOnlineCheckoutRow>(async (page, limit) => {
+              const response = await listSyndicOnlineCheckouts(
+                tenantId,
+                syndicId,
+                toQuery({ ...search.filterParams, page, limit })
+              );
+              return { items: response.items, total: response.pagination.total };
+            })
+        }}
+        rowKey={row => row.id}
+        items={items}
+        total={data?.pagination.total ?? 0}
+        loading={isPending}
+        isReloading={isFetching}
+        error={error}
+        onRetry={() => void refetch()}
+        errorCause={queryError}
         columns={columns}
-        dataSource={items}
-        scroll={{ x: 'max-content' }}
-        locale={search.isFiltered ? undefined : { emptyText: t('Aucun paiement en ligne') }}
-        pagination={search.tablePagination(data?.pagination.total ?? 0)}
+        scrollX={1100}
+        emptyDescription={t(
+          'Aucun paiement en ligne pour le moment. Ils apparaissent ici dès qu’un copropriétaire règle un appel de charges en ligne.'
+        )}
+        renderCard={renderCard}
       />
     </Card>
   );

@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { App, Alert, Button, Drawer, Empty, Form, Input, Space, Spin, Tooltip, Typography } from 'antd';
+import { App, Alert, Button, Drawer, Form, Input, Space, Spin, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined } from '@ant-design/icons';
 import { useAuth } from '../../hooks/useAuth';
 import { useFormFieldModes } from '../../hooks/useFormFieldModes';
-import { Table, useConfirmAction } from '../../components/primitives';
+import { PageHeader, StateBlock, Table, useConfirmAction } from '../../components/primitives';
 import { BrandingImageField } from '../../components/documents/BrandingImageField';
 import {
   createMandatingAgency,
@@ -24,7 +24,7 @@ import type { SearchCriterion } from '../../utils/list-search';
 import { t } from '../../i18n/t';
 import { HelpSectionTitle } from '../../help';
 
-const { Paragraph, Text, Title } = Typography;
+const { Text } = Typography;
 
 // Accesseurs stables (hors du composant) : le filtrage reste mémoïsé.
 const TEXTE_RECHERCHE = [
@@ -176,7 +176,7 @@ export const SyndicMandatingAgencies: React.FC = () => {
   const handleDelete = (agency: MandatingAgency) => {
     if (!effectiveTenantId) return;
     confirmAction({
-      title: t('Supprimer cette agence mandante ?'),
+      title: t('Supprimer l’agence mandante « {{name}} » ?', { name: agency.name }),
       description: t('Cette action est définitive. Ses copropriétés doivent être détachées au préalable.'),
       okText: t('Supprimer'),
       danger: true,
@@ -185,7 +185,7 @@ export const SyndicMandatingAgencies: React.FC = () => {
         setDeletingId(agency.id);
         try {
           await deleteMandatingAgency(effectiveTenantId, agency.id);
-          message.success(t('Agence mandante supprimée'));
+          message.success(t('Agence mandante « {{name}} » supprimée', { name: agency.name }));
           await loadAgencies();
         } catch (err: any) {
           message.error(
@@ -317,30 +317,40 @@ export const SyndicMandatingAgencies: React.FC = () => {
   return (
     <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-          <div>
-            <Title level={2} style={{ marginBottom: 8 }}>
-              {t('Agences mandantes')}
-            </Title>
-            <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-              {t(
-                'Agences pour le compte desquelles ce cabinet gère des copropriétés. Les documents portent leur logo, leur signature et leur cachet.'
-              )}
-            </Paragraph>
-          </div>
-          <Button type="primary" icon={<PlusOutlined />} onClick={openCreateDrawer}>
-            {t('Nouvelle agence mandante')}
-          </Button>
-        </div>
+        <PageHeader
+          title={t('Agences mandantes')}
+          subtitle={t(
+            'Agences pour le compte desquelles ce cabinet gère des copropriétés. Les documents portent leur logo, leur signature et leur cachet.'
+          )}
+          primaryAction={{ label: t('Nouvelle agence mandante'), icon: <PlusOutlined />, onClick: openCreateDrawer }}
+        />
 
-        {error ? <Alert type="error" message={error} showIcon /> : null}
+        {error ? (
+          <Alert
+            type="error"
+            message={error}
+            showIcon
+            action={
+              <Button size="small" onClick={() => void loadAgencies()}>
+                {t('Réessayer')}
+              </Button>
+            }
+          />
+        ) : null}
 
         {loading ? (
           <div style={{ minHeight: 240, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Spin size="large" />
           </div>
         ) : items.length === 0 ? (
-          <Empty description={t('Aucune agence mandante enregistrée')} />
+          <StateBlock
+            variant="empty"
+            title={t('Aucune agence mandante enregistrée')}
+            description={t(
+              'Ajoutez une agence mandante pour que les documents de ses copropriétés portent son logo, sa signature et son cachet.'
+            )}
+            actions={[{ label: t('Ajouter une agence mandante'), onClick: openCreateDrawer, primary: true }]}
+          />
         ) : (
           <Table<MandatingAgency>
             {...local.tableProps}
@@ -363,7 +373,7 @@ export const SyndicMandatingAgencies: React.FC = () => {
         }
         open={drawerOpen}
         onClose={closeDrawer}
-        width={480}
+        width="min(480px, 100vw)"
         destroyOnClose
         extra={
           <Space>
@@ -376,7 +386,7 @@ export const SyndicMandatingAgencies: React.FC = () => {
       >
         <Form form={form} layout="vertical">
           <Form.Item label={t('Nom')} name="name" rules={[{ required: true, message: t('Le nom est obligatoire') }]}>
-            <Input />
+            <Input autoFocus />
           </Form.Item>
           {fm.isVisible('legalName') && (
             <Form.Item

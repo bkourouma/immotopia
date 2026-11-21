@@ -54,7 +54,7 @@ export const LiveResolutionsPanel: React.FC<LiveResolutionsPanelProps> = ({
               <Text type="secondary">
                 {majorityRuleLabel(rule)} — {majorityRuleHint(rule)}
               </Text>
-              <Text>
+              <Text role="status" aria-live="polite">
                 {t('Participation : {{voted}} lot(s) sur {{total}}', {
                   voted: resolution.ballotCount,
                   total: totalLots
@@ -87,7 +87,7 @@ export const LiveResolutionsPanel: React.FC<LiveResolutionsPanelProps> = ({
                 {canControlVotes && resolution.voteStatus !== 'OPEN' ? (
                   <Button
                     type="primary"
-                    size="small"
+                    style={{ minHeight: 44 }}
                     loading={busy}
                     disabled={busyResolutionId !== null}
                     onClick={() => onOpen(resolution.id)}
@@ -98,18 +98,20 @@ export const LiveResolutionsPanel: React.FC<LiveResolutionsPanelProps> = ({
                 {canControlVotes && resolution.voteStatus === 'OPEN' ? (
                   <Popconfirm
                     title={t('Clore le vote ?')}
-                    description={t('Le résultat sera affiché aux copropriétaires connectés.')}
+                    description={t(
+                      'Plus aucune voix ne sera prise en compte pour cette résolution et le résultat sera affiché aux copropriétaires connectés. Vous pourrez rouvrir le vote si besoin.'
+                    )}
                     okText={t('Clore le vote')}
                     cancelText={t('Annuler')}
                     onConfirm={() => onClose(resolution.id)}
                   >
-                    <Button danger size="small" loading={busy} disabled={busyResolutionId !== null}>
+                    <Button danger style={{ minHeight: 44 }} loading={busy} disabled={busyResolutionId !== null}>
                       {t('Clore le vote')}
                     </Button>
                   </Popconfirm>
                 ) : null}
                 {showManualEntry ? (
-                  <Button size="small" onClick={onManualEntry}>
+                  <Button style={{ minHeight: 44 }} onClick={onManualEntry}>
                     {t('Saisir un vote')}
                   </Button>
                 ) : null}
