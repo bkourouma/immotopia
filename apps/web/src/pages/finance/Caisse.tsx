@@ -40,7 +40,7 @@ import type { StatusTone } from '../../components/primitives';
 import { dateFormat } from '../../i18n/format';
 import { t } from '../../i18n/t';
 import { localizedRecord } from '../../i18n/localized';
-import { montantSaisiProps } from '../../utils/montant-saisi';
+import { montantSaisiProps, saisieNombreProps } from '../../utils/montant-saisi';
 import { TreasuryAccountSelector } from '../../components/finance/TreasuryAccountSelector';
 import { useAuth } from '../../hooks/useAuth';
 import { useMyMenuAccess } from '../../hooks/useMenuAccess';
@@ -789,7 +789,7 @@ export const Caisse: React.FC = () => {
 
             {sansBilletage ? (
               <div>
-                <label htmlFor="caisse-montant-compte">{t('Montant compté')}</label>
+                <label htmlFor="caisse-montant-compte">{t('Montant compté (FCFA)')}</label>
                 <InputNumber
                   id="caisse-montant-compte"
                   size="large"
@@ -821,6 +821,7 @@ export const Caisse: React.FC = () => {
                       min={0}
                       step={1}
                       style={{ width: 120 }}
+                      {...saisieNombreProps(0)}
                       value={compteurs[valeur] ?? undefined}
                       onChange={n =>
                         setCompteurs(precedent => ({ ...precedent, [valeur]: typeof n === 'number' ? n : undefined }))

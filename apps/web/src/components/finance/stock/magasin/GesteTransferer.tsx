@@ -210,6 +210,10 @@ export const GesteTransferer: React.FC<GesteProps> = ({
             aria-label={t('Quantité transférée')}
             unit={article?.unit}
             min={0}
+            autoFocus
+            onPressEnter={() => {
+              if (quantite !== null && quantite > 0) setEtape('demandeur');
+            }}
             value={quantite}
             onChange={setQuantite}
           />

@@ -56,7 +56,7 @@ import { TreasuryAccountSelector } from '../../components/finance/TreasuryAccoun
 import { SupplierSelect } from '../../components/finance/SupplierSelect';
 import type { TreasuryPaymentMethod } from '../../components/finance/TreasuryAccountSelector';
 import { montantCalcule, montantVerrouille } from '../../utils/ligne-quantite-prix';
-import { montantSaisiProps } from '../../utils/montant-saisi';
+import { montantSaisiProps, saisieNombreProps } from '../../utils/montant-saisi';
 import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion } from '../../utils/list-search';
 import { localizedList } from '../../i18n/localized';
@@ -1202,6 +1202,7 @@ export const FactureFournisseur: React.FC = () => {
                     style={{ width: 120 }}
                     value={ligne.quantity ?? undefined}
                     onChange={value => modifierLigne(ligne.id, { quantity: (value as number | null) ?? null })}
+                    {...saisieNombreProps(3)}
                   />
                   <InputNumber
                     aria-label={t('Prix unitaire')}

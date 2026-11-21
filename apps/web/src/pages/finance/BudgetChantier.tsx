@@ -36,7 +36,7 @@ import { HelpButton, HelpSectionTitle } from '../../help';
 import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion } from '../../utils/list-search';
 import { montantCalcule, montantVerrouille } from '../../utils/ligne-quantite-prix';
-import { montantSaisiProps } from '../../utils/montant-saisi';
+import { montantSaisiProps, saisieNombreProps } from '../../utils/montant-saisi';
 import { BudgetAlertThreshold } from '../../components/finance/BudgetAlertThreshold';
 
 import { activeLocale } from '../../i18n/format';
@@ -685,6 +685,7 @@ export const BudgetChantier: React.FC = () => {
                 />
                 <InputNumber
                   aria-label={t('Quantité')}
+                  {...saisieNombreProps(2)}
                   placeholder={t('Quantité')}
                   min={0}
                   style={{ width: 120 }}
@@ -864,6 +865,7 @@ export const BudgetChantier: React.FC = () => {
                             />
                             <InputNumber
                               aria-label={t('Quantité')}
+                              {...saisieNombreProps(2)}
                               placeholder={t('Quantité')}
                               // Jamais négative : c'est le prix unitaire qui porte le
                               // signe d'un écart en baisse (voir `ecartDeLaLigne`).

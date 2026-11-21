@@ -176,6 +176,17 @@ describe('StockQuantityInput — une cible de 48 px sur téléphone (rec040-06)'
     expect(cadre.className).not.toMatch(/ant-input-number-lg/);
     expect(cadre.style.fontSize).toBe('16px');
   });
+
+  it('prend le focus à l’ouverture et valide sur Entrée quand l’écran le demande', () => {
+    const valider = vi.fn();
+    render(
+      <StockQuantityInput id="quantite-focus" autoFocus value={3} onChange={() => undefined} onPressEnter={valider} />
+    );
+    const saisie = document.getElementById('quantite-focus') as HTMLInputElement;
+    expect(document.activeElement).toBe(saisie);
+    fireEvent.keyDown(saisie, { key: 'Enter', code: 'Enter', keyCode: 13 });
+    expect(valider).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('StockQuantityCell — une quantité masquée n’est jamais un zéro', () => {
