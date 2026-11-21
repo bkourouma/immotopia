@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { Alert, Button, Space, Tag } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
-import { Table } from '../../primitives';
+import { DataCard, DataView } from '../../primitives';
 import type { Property } from '../../../types/property-types';
 import type { IncompleteOwnerShares, LotOwnerProfile, SyndicateLot } from '../../../types/syndic-types';
 import { useLocalListSearch } from '../../../utils/list-search';
@@ -51,6 +51,8 @@ interface OwnerProfilesTabProps {
   revokingProfileId: string | null;
   onInvite: (profile: LotOwnerProfile) => void;
   onRevoke: (profile: LotOwnerProfile) => void;
+  /** Proposition affichée quand la copropriété n'a encore aucun profil propriétaire. */
+  onCreate?: () => void;
 }
 
 /** Un profil propriétaire est « actuel » s'il est actif et que sa fin est vide ou à venir. */
@@ -74,7 +76,8 @@ export const OwnerProfilesTab: React.FC<OwnerProfilesTabProps> = ({
   invitingProfileId,
   revokingProfileId,
   onInvite,
-  onRevoke
+  onRevoke,
+  onCreate
 }) => {
   const rows = useMemo<OwnerRow[]>(() => {
     const incompleteLotIds = new Set(incompleteShares.map(item => item.lotId));
@@ -199,16 +202,46 @@ export const OwnerProfilesTab: React.FC<OwnerProfilesTabProps> = ({
             .join(' ; ')}
         />
       ) : null}
-      <Table<OwnerRow>
-        {...local.tableProps}
+      <DataView<OwnerRow>
+        {...local.dataViewProps}
         helpId="syndic.profils.proprietaires"
-        exportFilename={t('Profils propriétaires')}
-        exportFetchAll={local.exportAll}
-        scroll={{ x: 'max-content' }}
-        rowKey="id"
+        aria-label={t('Profils propriétaires')}
+        export={{ filename: t('Profils propriétaires'), fetchAll: local.exportAll }}
+        rowKey={row => row.id}
         loading={loading}
         columns={columns}
-        locale={local.isFiltered ? undefined : { emptyText: t('Aucun profil propriétaire pour cette copropriété.') }}
+        scrollX={860}
+        emptyDescription={t('Aucun profil propriétaire pour cette copropriété.')}
+        emptyAction={onCreate ? { label: t('Profil propriétaire'), onClick: onCreate } : undefined}
+        renderCard={row => (
+          <DataCard
+            title={row.contactName}
+            subtitle={row.lotLabel}
+            status={row.situation === 'current' ? <Tag color="green">{t('Actuel')}</Tag> : <Tag>{t('Ancien')}</Tag>}
+            fields={[
+              { label: t('Part (%)'), value: row.ownershipPercentage },
+              { label: t('Depuis'), value: dayjs(row.ownedSince).format(dateFormat('short')) },
+              {
+                label: t('Portail'),
+                value: row.portalAccessEnabled ? <Tag color="green">{t('Actif')}</Tag> : <Tag>{t('Inactif')}</Tag>
+              }
+            ]}
+            primaryAction={
+              row.isActive === false
+                ? undefined
+                : {
+                    label: t('Inviter au portail'),
+                    onClick: () => onInvite(row),
+                    loading: invitingProfileId === row.id
+                  }
+            }
+            secondaryActions={
+              row.portalAccessEnabled
+                ? [{ key: 'revoke', label: t("Révoquer l'accès"), danger: true, onClick: () => onRevoke(row) }]
+                : undefined
+            }
+          />
+        )}
       />
     </>
   );

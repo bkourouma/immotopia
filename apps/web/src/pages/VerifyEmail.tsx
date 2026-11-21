@@ -9,6 +9,7 @@ export const VerifyEmail: React.FC = () => {
   const [status, setStatus] = useState<'loading' | 'success' | 'error' | 'resend'>('loading');
   const [message, setMessage] = useState('');
   const [email, setEmail] = useState('');
+  const [isResending, setIsResending] = useState(false);
 
   useEffect(() => {
     const token = searchParams.get('token');
@@ -44,6 +45,9 @@ export const VerifyEmail: React.FC = () => {
       return;
     }
 
+    // Un seul envoi à la fois : évite les doubles clics qui multiplient les e-mails.
+    if (isResending) return;
+    setIsResending(true);
     try {
       await resendVerification(email);
       setStatus('resend');
@@ -52,13 +56,15 @@ export const VerifyEmail: React.FC = () => {
       );
     } catch (error: any) {
       setMessage(error.response?.data?.message || t("Une erreur est survenue lors de l'envoi de l'email."));
+    } finally {
+      setIsResending(false);
     }
   };
 
   if (status === 'loading') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
+        <div className="text-center" role="status" aria-live="polite">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
           <p className="mt-4 text-gray-600">{t('Vérification de votre email en cours...')}</p>
         </div>
@@ -76,7 +82,7 @@ export const VerifyEmail: React.FC = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <h2 className="mt-4 text-xl font-semibold text-gray-900">{t('Email vérifié !')}</h2>
+            <h1 className="mt-4 text-xl font-semibold text-gray-900">{t('Email vérifié !')}</h1>
             <p className="mt-2 text-sm text-gray-600">{message}</p>
             <button
               onClick={() => navigate('/login')}
@@ -100,11 +106,16 @@ export const VerifyEmail: React.FC = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </div>
-            <h2 className="mt-4 text-xl font-semibold text-gray-900">{t('Erreur de vérification')}</h2>
-            <p className="mt-2 text-sm text-red-600">{message}</p>
+            <h1 className="mt-4 text-xl font-semibold text-gray-900">{t('Erreur de vérification')}</h1>
+            <p role="alert" className="mt-2 text-sm text-red-600">
+              {message}
+            </p>
+            <p className="mt-2 text-sm text-gray-600">
+              {t('Le lien est peut-être expiré. Saisissez votre adresse pour en recevoir un nouveau.')}
+            </p>
 
             <form onSubmit={handleResend} className="mt-6">
-              <div>
+              <div className="text-start">
                 <label htmlFor="email" className="block text-sm font-medium text-gray-700">
                   {t('Adresse email')}
                 </label>
@@ -114,15 +125,21 @@ export const VerifyEmail: React.FC = () => {
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   required
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
+                  autoComplete="email"
+                  inputMode="email"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  className="mt-1 block w-full min-h-[44px] px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
                   placeholder={t('vous@example.com')}
                 />
               </div>
               <button
                 type="submit"
-                className="mt-4 w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
+                disabled={isResending}
+                aria-busy={isResending}
+                className="mt-4 w-full flex justify-center items-center min-h-[44px] py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {t("Renvoyer l'email de vérification")}
+                {isResending ? t('Envoi en cours...') : t("Renvoyer l'email de vérification")}
               </button>
             </form>
 
@@ -148,7 +165,7 @@ export const VerifyEmail: React.FC = () => {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h2 className="mt-4 text-xl font-semibold text-gray-900">{t('Email envoyé')}</h2>
+          <h1 className="mt-4 text-xl font-semibold text-gray-900">{t('Email envoyé')}</h1>
           <p className="mt-2 text-sm text-gray-600">{message}</p>
           <button
             onClick={() => navigate('/login')}

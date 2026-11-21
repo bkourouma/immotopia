@@ -1,5 +1,23 @@
 ﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { App, Alert, Button, Card, Form, Input, InputNumber, Modal, Select, Space, Tabs, Tag, Typography } from 'antd';
+import {
+  App,
+  Alert,
+  Button,
+  Card,
+  Col,
+  Form,
+  Input,
+  InputNumber,
+  Modal,
+  Row,
+  Select,
+  Space,
+  Tabs,
+  Tag,
+  Typography
+} from 'antd';
+import type { MenuProps } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
 import {
   CheckOutlined,
   DeleteOutlined,
@@ -9,7 +27,14 @@ import {
   UndoOutlined
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { formatMoney, MoneyValue, Table } from '../../components/primitives';
+import { DataCard, formatMoney, MoneyValue, Table } from '../../components/primitives';
+import {
+  FormSection,
+  ResponsiveList,
+  useModalLayout
+} from '../../components/syndics/charge-allocation/ChargeFormLayout';
+import { montantSaisiProps } from '../../utils/montant-saisi';
+import { displayCurrency } from '../../utils/syndic-currency';
 import {
   assignBudgetLineFund,
   createBudget,
@@ -69,6 +94,17 @@ const budgetStatusColors: Record<SyndicateBudget['status'], string> = {
   REVISED: 'orange',
   CLOSED: 'red'
 };
+
+/** Écart budget - réalisé : la couleur ne porte jamais seule le sens, un dépassement est dit en toutes lettres. */
+function GapValue({ gap }: { gap: number }) {
+  const over = gap < 0;
+  return (
+    <span style={{ color: over ? 'var(--color-error-text, #cf1322)' : undefined }}>
+      <MoneyValue value={gap} />
+      {over ? <span> · {t('dépassement')}</span> : null}
+    </span>
+  );
+}
 
 /** Réalisé complet d'un poste : factures + incidents (repli sur les factures seules si l'API ne le fournit pas). */
 export function lineActualTotal(line: Pick<BudgetLineItem, 'amountActual' | 'actualTotal'>): number {
@@ -217,12 +253,17 @@ export const SyndicBudgets: React.FC = () => {
   const [savingLineId, setSavingLineId] = useState<string | null>(null);
 
   const fm = useFormFieldModes('syndic.budget');
+  const modalLayout = useModalLayout(640);
+  const linesLayout = useModalLayout(720);
   const [budgetForm] = Form.useForm();
   const watchedBudgetLines = Form.useWatch('lines', budgetForm) as BudgetLineFormValue[] | undefined;
   const budgetFormTotal = sumFormLines(watchedBudgetLines);
+  const watchedBudgetCurrency = Form.useWatch('currency', budgetForm) as string | undefined;
   const [generateForm] = Form.useForm();
+  const watchedGeneratePeriods = Form.useWatch('periodsPerYear', generateForm) as number | undefined;
   const periodTouched = useRef(false);
   const [batchForm] = Form.useForm();
+  const watchedBatchCurrency = Form.useWatch('currency', batchForm) as string | undefined;
 
   // Chaque onglet ne charge que ses données (et les recharge à chaque entrée dans l'onglet) :
   // budgets (+ fonds) ; lots pour la répartition ; campagnes d'appels.
@@ -600,6 +641,243 @@ export const SyndicBudgets: React.FC = () => {
     }
   };
 
+  // Aperçu de la génération : le budget annuel découpé comme le dit l'aide du champ « Répartir sur ».
+  const generatePeriods = Math.max(1, Number(watchedGeneratePeriods) || 1);
+  const generatePreview =
+    openGenerateModal && selectedBudget && Number(selectedBudget.totalAmount) > 0
+      ? {
+          total: Number(selectedBudget.totalAmount),
+          periods: generatePeriods,
+          perPeriod: Number(selectedBudget.totalAmount) / generatePeriods,
+          lots: selectedBudget.allocations?.length ?? 0,
+          currency: displayCurrency(selectedBudget.currency || 'XOF') ?? undefined
+        }
+      : null;
+
+  /** Ouvre la fenêtre « Générer appels » pour ce budget, avec les valeurs proposées par défaut. */
+  const openGenerateFor = (budget: SyndicateBudget) => {
+    setSelectedBudget(budget);
+    periodTouched.current = false;
+    setOpenGenerateModal(true);
+    generateForm.setFieldsValue({
+      label: t('Campagne {{fiscalYear}}', { fiscalYear: budget.fiscalYear }),
+      period: defaultChargeCallPeriod(budget.fiscalYear, 1, 1),
+      batchType: 'REGULAR',
+      currency: budget.currency || 'XOF',
+      periodsPerYear: 1,
+      periodIndex: 1
+    });
+  };
+
+  const budgetColumns: ColumnsType<SyndicateBudget> = [
+    { title: t('Exercice'), dataIndex: 'fiscalYear' },
+    { title: t('Libellé'), dataIndex: 'label' },
+    {
+      title: t('Montant'),
+      dataIndex: 'totalAmount',
+      align: 'end',
+      render: (value: number | string) => <MoneyValue value={value} />
+    },
+    {
+      title: t('Réalisé'),
+      key: 'actual',
+      align: 'end',
+      exportValue: (budget: SyndicateBudget) => budgetActualTotal(budget),
+      render: (_, budget) => <MoneyValue value={budgetActualTotal(budget)} />
+    },
+    {
+      title: t('Écart'),
+      key: 'gap',
+      align: 'end',
+      exportValue: (budget: SyndicateBudget) => Number(budget.totalAmount || 0) - budgetActualTotal(budget),
+      render: (_, budget) => <GapValue gap={Number(budget.totalAmount || 0) - budgetActualTotal(budget)} />
+    },
+    { title: t('Allocations'), render: (_, budget) => budget.allocations?.length || 0 },
+    {
+      title: t('Statut'),
+      dataIndex: 'status',
+      render: (status: SyndicateBudget['status']) => (
+        <Tag color={budgetStatusColors[status]}>{budgetStatusLabel(status)}</Tag>
+      )
+    },
+    {
+      title: t('Actions'),
+      exportable: false,
+      render: (_, budget) => {
+        const isClosed = budget.status === 'CLOSED';
+        return (
+          <Space wrap>
+            {(budget.status === 'DRAFT' || budget.status === 'REVISED') && (
+              <Button size="small" icon={<CheckOutlined />} onClick={() => void handleApproveBudget(budget.id)}>
+                {t('Approuver')}
+              </Button>
+            )}
+            {budget.status === 'APPROVED' && (
+              <Button size="small" icon={<UndoOutlined />} onClick={() => void handleReviseBudget(budget.id)}>
+                {t('Réviser')}
+              </Button>
+            )}
+            {(budget.status === 'APPROVED' || budget.status === 'REVISED') && (
+              <Button size="small" danger icon={<LockOutlined />} onClick={() => handleCloseBudget(budget)}>
+                {t('Clôturer')}
+              </Button>
+            )}
+            <Button size="small" disabled={isClosed} onClick={() => void handleRecompute(budget.id)}>
+              {t('Répartir')}
+            </Button>
+            <Button size="small" onClick={() => setLinesBudget(budget)}>
+              {t('Postes et fonds')}
+            </Button>
+            {!isClosed && (
+              <Button size="small" type="primary" onClick={() => openGenerateFor(budget)}>
+                {t('Générer appels')}
+              </Button>
+            )}
+          </Space>
+        );
+      }
+    }
+  ];
+
+  const allocationColumns: ColumnsType<BudgetAllocation> = [
+    {
+      title: t('Lot'),
+      render: (_, row) => buildLotDisplayName(row, row.lotId ? lotsById[row.lotId] : undefined)
+    },
+    {
+      title: t('Copropriétaires'),
+      render: (_, row) => buildLotOwnersLabel(row.lotId ? lotsById[row.lotId] : undefined)
+    },
+    {
+      title: t('Total alloué'),
+      dataIndex: 'totalAllocated',
+      align: 'end',
+      render: (value: number | string) => <MoneyValue value={value} />
+    },
+    {
+      title: t('Détail lignes'),
+      render: (_, row) =>
+        (row.breakdown || []).map(line => `${line.category}: ${formatMoney(line.allocated)}`).join(' | ') || '-'
+    }
+  ];
+
+  const batchColumns: ColumnsType<ChargeCallBatch> = [
+    { title: t('Libellé'), dataIndex: 'label' },
+    { title: t('Période'), dataIndex: 'period' },
+    {
+      title: t('Type'),
+      dataIndex: 'batchType',
+      render: (value: ChargeCallBatch['batchType']) => batchTypeLabel(value)
+    },
+    {
+      title: t('Échéance'),
+      dataIndex: 'dueDate',
+      render: (value: string) => dayjs(value).format('DD/MM/YYYY')
+    },
+    {
+      title: t('Montant'),
+      dataIndex: 'totalAmount',
+      align: 'end',
+      render: (value: number | string) => <MoneyValue value={value} />
+    },
+    { title: t('Charges'), render: (_, batch) => batch.chargeCalls?.length || 0 },
+    {
+      title: t('Statut'),
+      dataIndex: 'status',
+      render: (status: ChargeCallBatch['status']) => <Tag>{batchStatusLabel(status)}</Tag>
+    }
+  ];
+
+  /** Carte mobile d'un budget : l'action la plus probable en vue, le reste derrière « ⋮ ». */
+  const renderBudgetCard = (budget: SyndicateBudget) => {
+    const isClosed = budget.status === 'CLOSED';
+    const budgeted = Number(budget.totalAmount || 0);
+    const actual = budgetActualTotal(budget);
+    const canApprove = budget.status === 'DRAFT' || budget.status === 'REVISED';
+    const menu: NonNullable<MenuProps['items']> = [
+      ...(budget.status === 'APPROVED'
+        ? [
+            {
+              key: 'revise',
+              icon: <UndoOutlined />,
+              label: t('Réviser'),
+              onClick: () => void handleReviseBudget(budget.id)
+            }
+          ]
+        : []),
+      ...(budget.status === 'APPROVED' || budget.status === 'REVISED'
+        ? [
+            {
+              key: 'close',
+              icon: <LockOutlined />,
+              danger: true,
+              label: t('Clôturer'),
+              onClick: () => handleCloseBudget(budget)
+            }
+          ]
+        : []),
+      {
+        key: 'recompute',
+        label: t('Répartir'),
+        disabled: isClosed,
+        onClick: () => void handleRecompute(budget.id)
+      },
+      { key: 'lines', label: t('Postes et fonds'), onClick: () => setLinesBudget(budget) },
+      ...(canApprove ? [{ key: 'generate', label: t('Générer appels'), onClick: () => openGenerateFor(budget) }] : [])
+    ];
+    const primaryAction = canApprove
+      ? {
+          label: t('Approuver'),
+          icon: <CheckOutlined />,
+          onClick: () => void handleApproveBudget(budget.id),
+          loading: submitting
+        }
+      : !isClosed
+        ? { label: t('Générer appels'), onClick: () => openGenerateFor(budget) }
+        : { label: t('Postes et fonds'), onClick: () => setLinesBudget(budget) };
+    return (
+      <DataCard
+        title={budget.label}
+        subtitle={t('Exercice {{year}}', { year: budget.fiscalYear })}
+        highlight={<MoneyValue value={budgeted} />}
+        status={<Tag color={budgetStatusColors[budget.status]}>{budgetStatusLabel(budget.status)}</Tag>}
+        fields={[
+          { label: t('Réalisé'), value: <MoneyValue value={actual} /> },
+          { label: t('Écart'), value: <GapValue gap={budgeted - actual} /> },
+          { label: t('Allocations'), value: budget.allocations?.length || 0 }
+        ]}
+        primaryAction={primaryAction}
+        secondaryActions={menu}
+      />
+    );
+  };
+
+  const renderAllocationCard = (row: BudgetAllocation) => (
+    <DataCard
+      title={buildLotDisplayName(row, row.lotId ? lotsById[row.lotId] : undefined)}
+      subtitle={buildLotOwnersLabel(row.lotId ? lotsById[row.lotId] : undefined)}
+      highlight={<MoneyValue value={row.totalAllocated} />}
+      fields={(row.breakdown || []).map(line => ({
+        label: line.category,
+        value: <MoneyValue value={line.allocated} />
+      }))}
+    />
+  );
+
+  const renderBatchCard = (batch: ChargeCallBatch) => (
+    <DataCard
+      title={batch.label}
+      subtitle={batch.period}
+      highlight={<MoneyValue value={batch.totalAmount} />}
+      status={<Tag>{batchStatusLabel(batch.status)}</Tag>}
+      fields={[
+        { label: t('Type'), value: batchTypeLabel(batch.batchType) },
+        { label: t('Échéance'), value: dayjs(batch.dueDate).format('DD/MM/YYYY') },
+        { label: t('Charges'), value: batch.chargeCalls?.length || 0 }
+      ]}
+    />
+  );
+
   return (
     <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -612,8 +890,8 @@ export const SyndicBudgets: React.FC = () => {
               {t('Budget prévisionnel, répartitions et génération des appels de charges.')}
             </Paragraph>
           </Space>
-          <Space>
-            <Button icon={<PlusOutlined />} onClick={() => setOpenBudgetModal(true)}>
+          <Space wrap>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpenBudgetModal(true)}>
               {t('Nouveau budget')}
             </Button>
             <Button icon={<PlusOutlined />} onClick={() => setOpenBatchModal(true)}>
@@ -625,7 +903,20 @@ export const SyndicBudgets: React.FC = () => {
           </Space>
         </div>
 
-        {error ? <Alert type="error" message={error} showIcon /> : null}
+        {error ? (
+          <Alert
+            type="error"
+            showIcon
+            message={
+              <Space wrap size={8}>
+                <span>{error}</span>
+                <Button size="small" icon={<ReloadOutlined />} onClick={reload}>
+                  {t('Réessayer')}
+                </Button>
+              </Space>
+            }
+          />
+        ) : null}
 
         <Tabs
           activeKey={tab}
@@ -637,99 +928,32 @@ export const SyndicBudgets: React.FC = () => {
               label: t('Budgets'),
               children: (
                 <>
-                  <Table
-                    {...budgetSearch.tableProps}
-                    helpId="syndic.budgets.liste.tableau"
-                    aria-label={t('Budgets')}
-                    exportFilename={t('Budgets')}
-                    exportFetchAll={budgetSearch.exportAll}
-                    scroll={{ x: 'max-content' }}
-                    rowKey="id"
-                    loading={loading}
-                    columns={[
-                      { title: t('Exercice'), dataIndex: 'fiscalYear' },
-                      { title: t('Libellé'), dataIndex: 'label' },
-                      {
-                        title: t('Montant'),
-                        dataIndex: 'totalAmount',
-                        align: 'end',
-                        render: (value: number | string) => <MoneyValue value={value} />
-                      },
-                      { title: t('Allocations'), render: (_, budget) => budget.allocations?.length || 0 },
-                      {
-                        title: t('Statut'),
-                        dataIndex: 'status',
-                        render: (status: SyndicateBudget['status']) => (
-                          <Tag color={budgetStatusColors[status]}>{budgetStatusLabel(status)}</Tag>
-                        )
-                      },
-                      {
-                        title: t('Actions'),
-                        exportable: false,
-                        render: (_, budget) => {
-                          const isClosed = budget.status === 'CLOSED';
-                          return (
-                            <Space wrap>
-                              {(budget.status === 'DRAFT' || budget.status === 'REVISED') && (
-                                <Button
-                                  size="small"
-                                  icon={<CheckOutlined />}
-                                  onClick={() => void handleApproveBudget(budget.id)}
-                                >
-                                  {t('Approuver')}
-                                </Button>
-                              )}
-                              {budget.status === 'APPROVED' && (
-                                <Button
-                                  size="small"
-                                  icon={<UndoOutlined />}
-                                  onClick={() => void handleReviseBudget(budget.id)}
-                                >
-                                  {t('Réviser')}
-                                </Button>
-                              )}
-                              {(budget.status === 'APPROVED' || budget.status === 'REVISED') && (
-                                <Button
-                                  size="small"
-                                  danger
-                                  icon={<LockOutlined />}
-                                  onClick={() => handleCloseBudget(budget)}
-                                >
-                                  {t('Clôturer')}
-                                </Button>
-                              )}
-                              <Button size="small" disabled={isClosed} onClick={() => void handleRecompute(budget.id)}>
-                                {t('Répartir')}
-                              </Button>
-                              <Button size="small" onClick={() => setLinesBudget(budget)}>
-                                {t('Postes et fonds')}
-                              </Button>
-                              {!isClosed && (
-                                <Button
-                                  size="small"
-                                  type="primary"
-                                  onClick={() => {
-                                    setSelectedBudget(budget);
-                                    periodTouched.current = false;
-                                    setOpenGenerateModal(true);
-                                    generateForm.setFieldsValue({
-                                      label: t('Campagne {{fiscalYear}}', { fiscalYear: budget.fiscalYear }),
-                                      period: defaultChargeCallPeriod(budget.fiscalYear, 1, 1),
-                                      batchType: 'REGULAR',
-                                      currency: budget.currency || 'XOF',
-                                      periodsPerYear: 1,
-                                      periodIndex: 1
-                                    });
-                                  }}
-                                >
-                                  {t('Générer appels')}
-                                </Button>
-                              )}
-                            </Space>
-                          );
-                        }
-                      }
-                    ]}
+                  <ResponsiveList<SyndicateBudget>
+                    columns={budgetColumns}
+                    table={
+                      <Table
+                        {...budgetSearch.tableProps}
+                        helpId="syndic.budgets.liste.tableau"
+                        aria-label={t('Budgets')}
+                        exportFilename={t('Budgets')}
+                        exportFetchAll={budgetSearch.exportAll}
+                        scroll={{ x: 'max-content' }}
+                        rowKey="id"
+                        loading={loading}
+                        columns={budgetColumns}
+                      />
+                    }
+                    cards={{
+                      ...budgetSearch.dataViewProps,
+                      'aria-label': t('Budgets'),
+                      helpId: 'syndic.budgets.liste.tableau',
+                      export: { filename: t('Budgets'), fetchAll: budgetSearch.exportAll },
+                      isReloading: loading,
+                      loading,
+                      emptyDescription: t('Aucun budget pour le moment : créez le premier avec « Nouveau budget ».'),
+                      rowKey: row => row.id,
+                      renderCard: renderBudgetCard
+                    }}
                   />
                 </>
               )
@@ -740,43 +964,43 @@ export const SyndicBudgets: React.FC = () => {
               children: (
                 <>
                   {budgetFilterSelect ? <div style={{ marginBottom: 12 }}>{budgetFilterSelect}</div> : null}
-                  <Table
-                    {...allocationSearch.tableProps}
-                    helpId="syndic.budgets.liste.repartition"
-                    aria-label={t('Répartition des lots')}
-                    exportFilename={t('Répartition des lots')}
-                    exportFetchAll={allocationSearch.exportAll}
-                    scroll={{ x: 'max-content' }}
-                    rowKey="id"
-                    loading={loading}
-                    locale={
-                      allocationSearch.isFiltered
-                        ? undefined
-                        : { emptyText: t('Aucune allocation pour ce budget : cliquez sur Répartir pour la calculer.') }
+                  <ResponsiveList<BudgetAllocation>
+                    columns={allocationColumns}
+                    table={
+                      <Table
+                        {...allocationSearch.tableProps}
+                        helpId="syndic.budgets.liste.repartition"
+                        aria-label={t('Répartition des lots')}
+                        exportFilename={t('Répartition des lots')}
+                        exportFetchAll={allocationSearch.exportAll}
+                        scroll={{ x: 'max-content' }}
+                        rowKey="id"
+                        loading={loading}
+                        locale={
+                          allocationSearch.isFiltered
+                            ? undefined
+                            : {
+                                emptyText: t(
+                                  'Aucune allocation pour ce budget : cliquez sur Répartir pour la calculer.'
+                                )
+                              }
+                        }
+                        columns={allocationColumns}
+                      />
                     }
-                    columns={[
-                      {
-                        title: t('Lot'),
-                        render: (_, row) => buildLotDisplayName(row, row.lotId ? lotsById[row.lotId] : undefined)
-                      },
-                      {
-                        title: t('Copropriétaires'),
-                        render: (_, row) => buildLotOwnersLabel(row.lotId ? lotsById[row.lotId] : undefined)
-                      },
-                      {
-                        title: t('Total alloué'),
-                        dataIndex: 'totalAllocated',
-                        align: 'end',
-                        render: (value: number | string) => <MoneyValue value={value} />
-                      },
-                      {
-                        title: t('Détail lignes'),
-                        render: (_, row) =>
-                          (row.breakdown || [])
-                            .map(line => `${line.category}: ${formatMoney(line.allocated)}`)
-                            .join(' | ') || '-'
-                      }
-                    ]}
+                    cards={{
+                      ...allocationSearch.dataViewProps,
+                      'aria-label': t('Répartition des lots'),
+                      helpId: 'syndic.budgets.liste.repartition',
+                      export: { filename: t('Répartition des lots'), fetchAll: allocationSearch.exportAll },
+                      isReloading: loading,
+                      loading,
+                      emptyDescription: t(
+                        'Aucune allocation pour ce budget : ouvrez l’onglet Budgets et cliquez sur Répartir pour la calculer.'
+                      ),
+                      rowKey: row => row.id,
+                      renderCard: renderAllocationCard
+                    }}
                   />
                 </>
               )
@@ -787,41 +1011,34 @@ export const SyndicBudgets: React.FC = () => {
               children: (
                 <>
                   {budgetFilterSelect ? <div style={{ marginBottom: 12 }}>{budgetFilterSelect}</div> : null}
-                  <Table
-                    {...batchSearch.tableProps}
-                    helpId="syndic.budgets.liste.campagnes"
-                    aria-label={t("Campagnes d'appels")}
-                    exportFilename={t("Campagnes d'appels")}
-                    exportFetchAll={batchSearch.exportAll}
-                    scroll={{ x: 'max-content' }}
-                    rowKey="id"
-                    loading={loading}
-                    columns={[
-                      { title: t('Libellé'), dataIndex: 'label' },
-                      { title: t('Période'), dataIndex: 'period' },
-                      {
-                        title: t('Type'),
-                        dataIndex: 'batchType',
-                        render: (value: ChargeCallBatch['batchType']) => batchTypeLabel(value)
-                      },
-                      {
-                        title: t('Échéance'),
-                        dataIndex: 'dueDate',
-                        render: (value: string) => dayjs(value).format('DD/MM/YYYY')
-                      },
-                      {
-                        title: t('Montant'),
-                        dataIndex: 'totalAmount',
-                        align: 'end',
-                        render: (value: number | string) => <MoneyValue value={value} />
-                      },
-                      { title: t('Charges'), render: (_, batch) => batch.chargeCalls?.length || 0 },
-                      {
-                        title: t('Statut'),
-                        dataIndex: 'status',
-                        render: (status: ChargeCallBatch['status']) => <Tag>{batchStatusLabel(status)}</Tag>
-                      }
-                    ]}
+                  <ResponsiveList<ChargeCallBatch>
+                    columns={batchColumns}
+                    table={
+                      <Table
+                        {...batchSearch.tableProps}
+                        helpId="syndic.budgets.liste.campagnes"
+                        aria-label={t("Campagnes d'appels")}
+                        exportFilename={t("Campagnes d'appels")}
+                        exportFetchAll={batchSearch.exportAll}
+                        scroll={{ x: 'max-content' }}
+                        rowKey="id"
+                        loading={loading}
+                        columns={batchColumns}
+                      />
+                    }
+                    cards={{
+                      ...batchSearch.dataViewProps,
+                      'aria-label': t("Campagnes d'appels"),
+                      helpId: 'syndic.budgets.liste.campagnes',
+                      export: { filename: t("Campagnes d'appels"), fetchAll: batchSearch.exportAll },
+                      isReloading: loading,
+                      loading,
+                      emptyDescription: t(
+                        'Aucune campagne pour le moment : générez-la depuis un budget ou créez-en une avec « Nouvelle campagne ».'
+                      ),
+                      rowKey: row => row.id,
+                      renderCard: renderBatchCard
+                    }}
                   />
                 </>
               )
@@ -835,9 +1052,11 @@ export const SyndicBudgets: React.FC = () => {
         open={openBudgetModal}
         onCancel={closeBudgetModal}
         onOk={() => void handleCreateBudget()}
-        okText={t('Créer budget')}
+        okText={t('Créer le budget')}
         cancelText={t('Annuler')}
         confirmLoading={submitting}
+        mask={{ closable: false }}
+        {...modalLayout}
       >
         <Form
           form={budgetForm}
@@ -849,99 +1068,115 @@ export const SyndicBudgets: React.FC = () => {
             lines: [{}]
           }}
         >
-          <Form.Item label={t('Exercice')} name="fiscalYear" rules={[{ required: true }]}>
-            <InputNumber min={2020} max={2100} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item label={t('Libellé')} name="label" rules={[{ required: true, message: t('Libellé obligatoire') }]}>
-            <Input />
-          </Form.Item>
-          <Form.Item label={t('Clé de distribution')} name="distributionKey" rules={[{ required: true }]}>
-            <Select
-              showSearch
-              optionFilterProp="label"
-              options={[
-                { value: 'GENERAL_SHARES', label: t('Tantièmes généraux') },
-                { value: 'SPECIAL_SHARES', label: t('Tantièmes spéciaux') },
-                { value: 'EQUAL', label: t('Répartition égale') },
-                { value: 'MANUAL', label: t('Manuelle') }
-              ]}
-            />
-          </Form.Item>
-          <Form.Item label={t('Devise')} name="currency">
-            <Input />
-          </Form.Item>
-          <Typography.Text strong>{t('Postes du budget')}</Typography.Text>
-          <Form.List name="lines">
-            {(fields, { add, remove }) => (
-              <Space direction="vertical" size="small" style={{ width: '100%', marginTop: 8 }}>
-                {fields.map((field, index) => (
-                  <Card key={field.key} size="small" title={t('Poste {{n}}', { n: index + 1 })}>
-                    <Form.Item
-                      label={t('Catégorie')}
-                      name={[field.name, 'category']}
-                      rules={[{ required: true, whitespace: true, message: t('Catégorie obligatoire') }]}
-                    >
-                      <Input />
-                    </Form.Item>
-                    <Form.Item
-                      label={t('Description')}
-                      name={[field.name, 'description']}
-                      rules={[{ required: true, whitespace: true, message: t('Description obligatoire') }]}
-                    >
-                      <Input />
-                    </Form.Item>
-                    <Form.Item
-                      label={t('Montant prévu')}
-                      name={[field.name, 'amountForecast']}
-                      rules={[
-                        {
-                          validator: (_, value) =>
-                            Number(value) > 0
-                              ? Promise.resolve()
-                              : Promise.reject(new Error(t('Montant supérieur à 0 obligatoire')))
-                        }
-                      ]}
-                    >
-                      <InputNumber style={{ width: '100%' }} />
-                    </Form.Item>
-                    {fm.isVisible('lines[].fundId') && (funds.length > 0 || fm.isRequired('lines[].fundId', false)) ? (
+          <FormSection first title={t('Général')} hint={t('Exercice, libellé et clé de distribution du budget.')}>
+            <Form.Item label={t('Exercice')} name="fiscalYear" rules={[{ required: true }]}>
+              <InputNumber min={2020} max={2100} style={{ width: '100%' }} />
+            </Form.Item>
+            <Form.Item
+              label={t('Libellé')}
+              name="label"
+              rules={[{ required: true, message: t('Libellé obligatoire') }]}
+            >
+              <Input />
+            </Form.Item>
+            <Form.Item label={t('Clé de distribution')} name="distributionKey" rules={[{ required: true }]}>
+              <Select
+                showSearch
+                optionFilterProp="label"
+                options={[
+                  { value: 'GENERAL_SHARES', label: t('Tantièmes généraux') },
+                  { value: 'SPECIAL_SHARES', label: t('Tantièmes spéciaux') },
+                  { value: 'EQUAL', label: t('Répartition égale') },
+                  { value: 'MANUAL', label: t('Manuelle') }
+                ]}
+              />
+            </Form.Item>
+            <Form.Item label={t('Devise')} name="currency">
+              <Input />
+            </Form.Item>
+          </FormSection>
+          <FormSection
+            title={t('Postes du budget')}
+            hint={t('Chaque poste est une ligne de dépenses prévues ; le total se calcule seul.')}
+          >
+            <Form.List name="lines">
+              {(fields, { add, remove }) => (
+                <Space direction="vertical" size="small" style={{ width: '100%', marginTop: 8 }}>
+                  {fields.map((field, index) => (
+                    <Card key={field.key} size="small" title={t('Poste {{n}}', { n: index + 1 })}>
                       <Form.Item
-                        label={
-                          fm.isRequired('lines[].fundId', false)
-                            ? t('Fonds alimenté par ce poste')
-                            : t('Fonds alimenté par ce poste (optionnel)')
-                        }
-                        name={[field.name, 'fundId']}
+                        label={t('Catégorie')}
+                        name={[field.name, 'category']}
+                        rules={[{ required: true, whitespace: true, message: t('Catégorie obligatoire') }]}
+                      >
+                        <Input />
+                      </Form.Item>
+                      <Form.Item
+                        label={t('Description')}
+                        name={[field.name, 'description']}
+                        rules={[{ required: true, whitespace: true, message: t('Description obligatoire') }]}
+                      >
+                        <Input />
+                      </Form.Item>
+                      <Form.Item
+                        label={t('Montant prévu')}
+                        name={[field.name, 'amountForecast']}
                         rules={[
                           {
-                            required: fm.isRequired('lines[].fundId', false),
-                            message: t('Le fonds alimenté est obligatoire')
+                            validator: (_, value) =>
+                              Number(value) > 0
+                                ? Promise.resolve()
+                                : Promise.reject(new Error(t('Montant supérieur à 0 obligatoire')))
                           }
                         ]}
-                        extra={t('Le fonds recevra la part de ce poste dans chaque paiement de charges.')}
                       >
-                        <Select allowClear showSearch optionFilterProp="label" options={fundSelectOptions} />
+                        <InputNumber
+                          style={{ width: '100%' }}
+                          inputMode="numeric"
+                          suffix={displayCurrency(watchedBudgetCurrency || 'XOF') ?? undefined}
+                          {...montantSaisiProps}
+                        />
                       </Form.Item>
-                    ) : null}
-                    {fields.length > 1 ? (
-                      <Button danger size="small" icon={<DeleteOutlined />} onClick={() => remove(field.name)}>
-                        {t('Retirer le poste')}
-                      </Button>
-                    ) : null}
-                  </Card>
-                ))}
-                <Button icon={<PlusOutlined />} onClick={() => add({})}>
-                  {t('Ajouter un poste')}
-                </Button>
-              </Space>
-            )}
-          </Form.List>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 12 }}>
-            <Typography.Text strong>{t('Total du budget')}</Typography.Text>
-            <Typography.Text strong>
-              <MoneyValue value={budgetFormTotal} />
-            </Typography.Text>
-          </div>
+                      {fm.isVisible('lines[].fundId') &&
+                      (funds.length > 0 || fm.isRequired('lines[].fundId', false)) ? (
+                        <Form.Item
+                          label={
+                            fm.isRequired('lines[].fundId', false)
+                              ? t('Fonds alimenté par ce poste')
+                              : t('Fonds alimenté par ce poste (optionnel)')
+                          }
+                          name={[field.name, 'fundId']}
+                          rules={[
+                            {
+                              required: fm.isRequired('lines[].fundId', false),
+                              message: t('Le fonds alimenté est obligatoire')
+                            }
+                          ]}
+                          extra={t('Le fonds recevra la part de ce poste dans chaque paiement de charges.')}
+                        >
+                          <Select allowClear showSearch optionFilterProp="label" options={fundSelectOptions} />
+                        </Form.Item>
+                      ) : null}
+                      {fields.length > 1 ? (
+                        <Button danger size="small" icon={<DeleteOutlined />} onClick={() => remove(field.name)}>
+                          {t('Retirer le poste')}
+                        </Button>
+                      ) : null}
+                    </Card>
+                  ))}
+                  <Button icon={<PlusOutlined />} onClick={() => add({})}>
+                    {t('Ajouter un poste')}
+                  </Button>
+                </Space>
+              )}
+            </Form.List>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 12 }}>
+              <Typography.Text strong>{t('Total du budget')}</Typography.Text>
+              <Typography.Text strong>
+                <MoneyValue value={budgetFormTotal} />
+              </Typography.Text>
+            </div>
+          </FormSection>
         </Form>
       </Modal>
 
@@ -954,7 +1189,7 @@ export const SyndicBudgets: React.FC = () => {
         open={Boolean(linesBudget)}
         onCancel={() => setLinesBudget(null)}
         footer={null}
-        width={720}
+        {...linesLayout}
       >
         <Paragraph type="secondary">
           {t(
@@ -996,9 +1231,7 @@ export const SyndicBudgets: React.FC = () => {
                   <MoneyValue value={totalActual} />
                 </Table.Summary.Cell>
                 <Table.Summary.Cell index={3} align="end">
-                  <span style={{ color: totalGap < 0 ? 'var(--ant-color-error, #cf1322)' : undefined }}>
-                    <MoneyValue value={totalGap} />
-                  </span>
+                  <GapValue gap={totalGap} />
                 </Table.Summary.Cell>
                 <Table.Summary.Cell index={4} />
               </Table.Summary.Row>
@@ -1025,12 +1258,7 @@ export const SyndicBudgets: React.FC = () => {
               align: 'end',
               exportValue: (line: BudgetLineItem) => Number(line.amountForecast || 0) - lineActualTotal(line),
               render: (_, line: BudgetLineItem) => {
-                const gap = Number(line.amountForecast || 0) - lineActualTotal(line);
-                return (
-                  <span style={{ color: gap < 0 ? 'var(--ant-color-error, #cf1322)' : undefined }}>
-                    <MoneyValue value={gap} />
-                  </span>
-                );
+                return <GapValue gap={Number(line.amountForecast || 0) - lineActualTotal(line)} />;
               }
             },
             {
@@ -1066,102 +1294,157 @@ export const SyndicBudgets: React.FC = () => {
           setSelectedBudget(null);
         }}
         onOk={() => void handleGenerateFromBudget()}
-        okText={t('Générer')}
+        okText={t('Générer les appels')}
         cancelText={t('Annuler')}
         confirmLoading={submitting}
+        mask={{ closable: false }}
+        {...modalLayout}
       >
         <Form form={generateForm} layout="vertical" initialValues={{ periodsPerYear: 1, periodIndex: 1 }}>
-          <Form.Item label={t('Libellé de la campagne')} name="label" rules={[{ required: true }]}>
-            <Input />
-          </Form.Item>
-          <Form.Item noStyle dependencies={['periodsPerYear', 'periodIndex']}>
-            {({ getFieldValue }) => (
-              <Form.Item label={t('Période')} name="period" rules={[{ required: true }]}>
-                <Input
-                  placeholder={t('Ex : {{example}}', {
-                    example: defaultChargeCallPeriod(
-                      selectedBudget?.fiscalYear ?? new Date().getFullYear(),
-                      getFieldValue('periodsPerYear') || 1,
-                      getFieldValue('periodIndex') || 1
-                    )
-                  })}
-                  onChange={() => {
-                    periodTouched.current = true;
-                  }}
-                />
-              </Form.Item>
-            )}
-          </Form.Item>
-          <Form.Item label={t('Date échéance')} name="dueDate" rules={[{ required: true }]}>
-            <Input type="date" />
-          </Form.Item>
-          <Form.Item noStyle dependencies={['dueDate']}>
-            {({ getFieldValue }) => {
-              const due = getFieldValue('dueDate');
-              return due && dayjs(due).isValid() && dayjs(due).isBefore(dayjs(), 'day') ? (
-                <Alert
-                  type="warning"
-                  showIcon
-                  style={{ marginBottom: 12 }}
-                  message={t("L'échéance saisie est déjà passée : les appels seront immédiatement en retard.")}
-                />
-              ) : null;
-            }}
-          </Form.Item>
-          <Form.Item label={t('Type de campagne')} name="batchType" rules={[{ required: true }]}>
-            <Select
-              showSearch
-              optionFilterProp="label"
-              options={[
-                { value: 'REGULAR', label: t('Régulier') },
-                { value: 'EXCEPTIONAL', label: t('Exceptionnel') }
-              ]}
-            />
-          </Form.Item>
-          <Form.Item label={t('Devise')} name="currency">
-            <Input />
-          </Form.Item>
-          <Form.Item
-            label={t('Répartir sur')}
-            name="periodsPerYear"
-            tooltip={t(
-              "Découpe le montant annuel du budget en plusieurs appels égaux (le dernier absorbe l'arrondi). « 1 » reproduit le comportement précédent : un appel annuel unique."
-            )}
-            rules={[{ required: true }]}
+          <FormSection
+            first
+            title={t('Campagne')}
+            hint={
+              selectedBudget
+                ? t('Appels de charges tirés du budget « {{label}} ».', {
+                    label: `${selectedBudget.label} (${selectedBudget.fiscalYear})`
+                  })
+                : undefined
+            }
           >
-            <Select
-              onChange={(value: number) => {
-                generateForm.setFieldsValue({ periodIndex: 1 });
-                syncDefaultPeriod(value, 1);
-              }}
-              options={[
-                { value: 1, label: t('1 période (annuel)') },
-                { value: 2, label: t('2 périodes (semestriel)') },
-                { value: 4, label: t('4 périodes (trimestriel)') },
-                { value: 12, label: t('12 périodes (mensuel)') }
-              ]}
-            />
-          </Form.Item>
-          <Form.Item noStyle dependencies={['periodsPerYear']}>
-            {({ getFieldValue }) => {
-              const periodsPerYear = getFieldValue('periodsPerYear') || 1;
-              return (
-                <Form.Item
-                  label={t('Période n°')}
-                  name="periodIndex"
-                  tooltip={t('Quelle part générer maintenant, de 1 à la valeur choisie ci-dessus.')}
-                  rules={[{ required: true }]}
-                >
-                  <InputNumber
-                    min={1}
-                    max={periodsPerYear}
-                    style={{ width: '100%' }}
-                    onChange={value => syncDefaultPeriod(periodsPerYear, Number(value) || 1)}
+            <Form.Item label={t('Libellé de la campagne')} name="label" rules={[{ required: true }]}>
+              <Input autoFocus />
+            </Form.Item>
+            <Row gutter={12}>
+              <Col xs={24} md={12}>
+                <Form.Item label={t('Type de campagne')} name="batchType" rules={[{ required: true }]}>
+                  <Select
+                    showSearch
+                    optionFilterProp="label"
+                    options={[
+                      { value: 'REGULAR', label: t('Régulier') },
+                      { value: 'EXCEPTIONAL', label: t('Exceptionnel') }
+                    ]}
                   />
                 </Form.Item>
-              );
-            }}
-          </Form.Item>
+              </Col>
+              <Col xs={24} md={12}>
+                <Form.Item label={t('Devise')} name="currency">
+                  <Input />
+                </Form.Item>
+              </Col>
+            </Row>
+          </FormSection>
+
+          <FormSection
+            title={t('Découpage et échéance')}
+            hint={t('Combien de périodes dans l’année, laquelle générer maintenant, et quand elle doit être payée.')}
+          >
+            <Form.Item
+              label={t('Répartir sur')}
+              name="periodsPerYear"
+              tooltip={t(
+                "Découpe le montant annuel du budget en plusieurs appels égaux (le dernier absorbe l'arrondi). « 1 » reproduit le comportement précédent : un appel annuel unique."
+              )}
+              rules={[{ required: true }]}
+            >
+              <Select
+                onChange={(value: number) => {
+                  generateForm.setFieldsValue({ periodIndex: 1 });
+                  syncDefaultPeriod(value, 1);
+                }}
+                options={[
+                  { value: 1, label: t('1 période (annuel)') },
+                  { value: 2, label: t('2 périodes (semestriel)') },
+                  { value: 4, label: t('4 périodes (trimestriel)') },
+                  { value: 12, label: t('12 périodes (mensuel)') }
+                ]}
+              />
+            </Form.Item>
+            <Form.Item noStyle dependencies={['periodsPerYear']}>
+              {({ getFieldValue }) => {
+                const periodsPerYear = getFieldValue('periodsPerYear') || 1;
+                return (
+                  <Form.Item
+                    label={t('Période n°')}
+                    name="periodIndex"
+                    tooltip={t('Quelle part générer maintenant, de 1 à la valeur choisie ci-dessus.')}
+                    rules={[{ required: true }]}
+                  >
+                    <InputNumber
+                      min={1}
+                      max={periodsPerYear}
+                      style={{ width: '100%' }}
+                      onChange={value => syncDefaultPeriod(periodsPerYear, Number(value) || 1)}
+                    />
+                  </Form.Item>
+                );
+              }}
+            </Form.Item>
+            <Form.Item noStyle dependencies={['periodsPerYear', 'periodIndex']}>
+              {({ getFieldValue }) => (
+                <Form.Item label={t('Période')} name="period" rules={[{ required: true }]}>
+                  <Input
+                    placeholder={t('Ex : {{example}}', {
+                      example: defaultChargeCallPeriod(
+                        selectedBudget?.fiscalYear ?? new Date().getFullYear(),
+                        getFieldValue('periodsPerYear') || 1,
+                        getFieldValue('periodIndex') || 1
+                      )
+                    })}
+                    onChange={() => {
+                      periodTouched.current = true;
+                    }}
+                  />
+                </Form.Item>
+              )}
+            </Form.Item>
+            <Form.Item label={t('Date échéance')} name="dueDate" rules={[{ required: true }]}>
+              <Input type="date" />
+            </Form.Item>
+            <Form.Item noStyle dependencies={['dueDate']}>
+              {({ getFieldValue }) => {
+                const due = getFieldValue('dueDate');
+                return due && dayjs(due).isValid() && dayjs(due).isBefore(dayjs(), 'day') ? (
+                  <Alert
+                    type="warning"
+                    showIcon
+                    style={{ marginBottom: 12 }}
+                    message={t("L'échéance saisie est déjà passée : les appels seront immédiatement en retard.")}
+                  />
+                ) : null;
+              }}
+            </Form.Item>
+          </FormSection>
+
+          {generatePreview ? (
+            <div
+              role="status"
+              aria-live="polite"
+              aria-label={t('Aperçu avant génération')}
+              style={{
+                marginBlockStart: 'var(--space-4, 16px)',
+                padding: 'var(--space-3, 12px)',
+                borderRadius: 'var(--radius-md, 8px)',
+                background: 'var(--surface-sunken, rgba(0,0,0,0.03))',
+                border: '1px solid var(--border-subtle, rgba(0,0,0,0.08))'
+              }}
+            >
+              <div style={{ fontWeight: 600, marginBlockEnd: 4 }}>{t('Aperçu')}</div>
+              <div>
+                {t('Montant à appeler : environ {{amount}} ({{budget}} ÷ {{count}} période(s)).', {
+                  amount: formatMoney(generatePreview.perPeriod, { currency: generatePreview.currency }),
+                  budget: formatMoney(generatePreview.total, { currency: generatePreview.currency }),
+                  count: generatePreview.periods
+                })}
+              </div>
+              {generatePreview.lots > 0 ? (
+                <div>
+                  {t('Réparti entre {{count}} lot(s) selon la répartition du budget.', { count: generatePreview.lots })}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </Form>
       </Modal>
 
@@ -1170,36 +1453,74 @@ export const SyndicBudgets: React.FC = () => {
         open={openBatchModal}
         onCancel={() => setOpenBatchModal(false)}
         onOk={() => void handleCreateBatch()}
-        okText={t('Créer')}
+        okText={t('Créer la campagne')}
         cancelText={t('Annuler')}
         confirmLoading={submitting}
+        mask={{ closable: false }}
+        {...modalLayout}
       >
         <Form form={batchForm} layout="vertical" initialValues={{ batchType: 'EXCEPTIONAL', currency: 'XOF' }}>
-          <Form.Item label={t('Libellé')} name="label" rules={[{ required: true }]}>
-            <Input />
-          </Form.Item>
-          <Form.Item label={t('Période')} name="period" rules={[{ required: true }]}>
-            <Input />
-          </Form.Item>
-          <Form.Item label={t('Date échéance')} name="dueDate" rules={[{ required: true }]}>
-            <Input type="date" />
-          </Form.Item>
-          <Form.Item label={t('Montant total')} name="totalAmount" rules={[{ required: true }]}>
-            <InputNumber min={1} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item label={t('Type de campagne')} name="batchType" rules={[{ required: true }]}>
-            <Select
-              showSearch
-              optionFilterProp="label"
-              options={[
-                { value: 'REGULAR', label: t('Régulier') },
-                { value: 'EXCEPTIONAL', label: t('Exceptionnel') }
-              ]}
-            />
-          </Form.Item>
-          <Form.Item label={t('Devise')} name="currency">
-            <Input />
-          </Form.Item>
+          <FormSection
+            first
+            title={t('Campagne')}
+            hint={
+              filterBudget
+                ? t('Rattachée au budget « {{label}} » affiché.', {
+                    label: `${filterBudget.label} (${filterBudget.fiscalYear})`
+                  })
+                : t('Non rattachée à un budget.')
+            }
+          >
+            <Form.Item label={t('Libellé')} name="label" rules={[{ required: true }]}>
+              <Input autoFocus />
+            </Form.Item>
+            <Row gutter={12}>
+              <Col xs={24} md={12}>
+                <Form.Item label={t('Période')} name="period" rules={[{ required: true }]}>
+                  <Input />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={12}>
+                <Form.Item label={t('Type de campagne')} name="batchType" rules={[{ required: true }]}>
+                  <Select
+                    showSearch
+                    optionFilterProp="label"
+                    options={[
+                      { value: 'REGULAR', label: t('Régulier') },
+                      { value: 'EXCEPTIONAL', label: t('Exceptionnel') }
+                    ]}
+                  />
+                </Form.Item>
+              </Col>
+            </Row>
+          </FormSection>
+
+          <FormSection
+            title={t('Montant et échéance')}
+            hint={t('Le montant total appelé et sa date limite de paiement.')}
+          >
+            <Row gutter={12}>
+              <Col xs={24} md={12}>
+                <Form.Item label={t('Montant total')} name="totalAmount" rules={[{ required: true }]}>
+                  <InputNumber
+                    min={1}
+                    style={{ width: '100%' }}
+                    inputMode="numeric"
+                    suffix={displayCurrency(watchedBatchCurrency || 'XOF') ?? undefined}
+                    {...montantSaisiProps}
+                  />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={12}>
+                <Form.Item label={t('Devise')} name="currency">
+                  <Input />
+                </Form.Item>
+              </Col>
+            </Row>
+            <Form.Item label={t('Date échéance')} name="dueDate" rules={[{ required: true }]}>
+              <Input type="date" />
+            </Form.Item>
+          </FormSection>
         </Form>
       </Modal>
     </>

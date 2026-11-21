@@ -1,6 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Card, Pagination, Select, Space, Spin, Tag, Tooltip, Typography } from 'antd';
-import { formatMoney, ListSearch, MoneyValue, StateBlock } from '../../components/primitives';
+import { Alert, Button, Card, Pagination, Select, Space, Tag, Tooltip, Typography } from 'antd';
+import {
+  formatMoney,
+  ListSearch,
+  MoneyValue,
+  namedPageItemRender,
+  SkeletonTable,
+  StateBlock
+} from '../../components/primitives';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion } from '../../utils/list-search';
 import { getMonthlyTracking } from '../../services/syndic-lot-payment-service';
@@ -60,6 +68,14 @@ const STATUS_CONFIG: Record<MonthlyTrackingStatus, { color: string; textColor: s
     NONE: { color: 'transparent', textColor: 'var(--text-secondary, #999)', label: t('—') }
   }));
 
+/** Colonne du lot figée au défilement horizontal (propriétés logiques : suit le sens de lecture). */
+const STICKY_LOT: React.CSSProperties = {
+  position: 'sticky',
+  insetInlineStart: 0,
+  zIndex: 1,
+  background: 'var(--surface-card, #fff)'
+};
+
 /** Budget créé en dernier : celui que la page affiche tant qu'on n'en choisit pas un autre. */
 function latestCreatedBudget(budgets: SyndicateBudget[]): SyndicateBudget | null {
   return budgets.reduce<SyndicateBudget | null>(
@@ -80,6 +96,9 @@ const ACCESSEURS = {
 
 export const SyndicMonthlyTracking: React.FC = () => {
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
+  const { isMobile } = useBreakpoint();
+  // Incrémenté par « Réessayer » : relance le chargement de la grille.
+  const [reloadKey, setReloadKey] = useState(0);
   // Budget affiché : le dernier créé par défaut. Vide seulement quand la copropriété n'a aucun budget.
   const [budgetId, setBudgetId] = useState('');
   const [budgets, setBudgets] = useState<SyndicateBudget[]>([]);
@@ -135,7 +154,7 @@ export const SyndicMonthlyTracking: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [effectiveTenantId, syndicId, budgetsLoaded, budgetId]);
+  }, [effectiveTenantId, syndicId, budgetsLoaded, budgetId, reloadKey]);
 
   const budgetOptions = useMemo(
     () => budgets.map(budget => ({ value: budget.id, label: `${budget.label} (${budget.fiscalYear})` })),
@@ -183,11 +202,11 @@ export const SyndicMonthlyTracking: React.FC = () => {
         </Space>
 
         {budgetOptions.length > 0 ? (
-          <Space size={8}>
+          <Space size={8} wrap style={isMobile ? { width: '100%' } : undefined}>
             <Text>{t('Budget')}</Text>
             <Select
               aria-label={t('Budget')}
-              style={{ minWidth: 280 }}
+              style={isMobile ? { width: '100%', minWidth: 200 } : { minWidth: 280 }}
               showSearch
               optionFilterProp="label"
               value={budgetId}
@@ -199,20 +218,36 @@ export const SyndicMonthlyTracking: React.FC = () => {
         ) : null}
       </div>
 
-      {error ? <Alert type="error" message={error} showIcon /> : null}
+      {error ? (
+        <Alert
+          type="error"
+          message={error}
+          showIcon
+          action={
+            effectiveTenantId && syndicId ? (
+              <Button size="small" onClick={() => setReloadKey(key => key + 1)}>
+                {t('Réessayer')}
+              </Button>
+            ) : undefined
+          }
+        />
+      ) : null}
 
       {loading ? (
-        <div style={{ minHeight: 240, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Spin size="large" />
-        </div>
+        <SkeletonTable rows={6} columns={6} aria-label={t('Chargement du suivi mensuel')} />
       ) : (
         <Card title={<HelpSectionTitle title={t('Suivi mensuel')} helpId="syndic.suivi.liste.grille" />}>
           {lots.length > 0 || local.isFiltered ? <ListSearch {...local.searchProps} /> : null}
+          {isMobile && lots.length > 0 ? (
+            <Text type="secondary" style={{ display: 'block', margin: '8px 0' }}>
+              {t('Faites glisser la grille pour voir tous les mois ; le numéro de lot reste affiché.')}
+            </Text>
+          ) : null}
           <div style={{ overflowX: 'auto' }}>
             <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 900 }}>
               <thead>
                 <tr>
-                  <th style={{ textAlign: 'start', padding: 8, whiteSpace: 'nowrap' }}>{t('Lot')}</th>
+                  <th style={{ ...STICKY_LOT, textAlign: 'start', padding: 8, whiteSpace: 'nowrap' }}>{t('Lot')}</th>
                   <th style={{ textAlign: 'start', padding: 8, whiteSpace: 'nowrap' }}>{t('Copropriétaire')}</th>
                   {MONTH_LABELS.map(label => (
                     <th key={label} style={{ textAlign: 'center', padding: 8, minWidth: 72 }}>
@@ -225,7 +260,9 @@ export const SyndicMonthlyTracking: React.FC = () => {
               <tbody>
                 {local.pageItems.map(row => (
                   <tr key={row.lotId}>
-                    <td style={{ padding: 8, fontWeight: 600, whiteSpace: 'nowrap' }}>{row.lotNumber}</td>
+                    <td style={{ ...STICKY_LOT, padding: 8, fontWeight: 600, whiteSpace: 'nowrap' }}>
+                      {row.lotNumber}
+                    </td>
                     <td style={{ padding: 8, whiteSpace: 'nowrap' }}>{row.ownerName || t('Sans copropriétaire')}</td>
                     {row.months.map(cell => {
                       const config = STATUS_CONFIG[cell.status];
@@ -288,6 +325,7 @@ export const SyndicMonthlyTracking: React.FC = () => {
               pageSize={local.pageSize}
               total={local.total}
               showSizeChanger={false}
+              itemRender={namedPageItemRender(local.page)}
               onChange={page => local.setPage(page)}
               style={{ marginTop: 16, textAlign: 'end' }}
             />

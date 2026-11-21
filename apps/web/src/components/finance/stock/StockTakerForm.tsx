@@ -97,13 +97,13 @@ export const StockTakerForm: React.FC<StockTakerFormProps> = ({
           { min: 2, max: 120, message: t('Le nom compte de 2 à 120 caractères.') }
         ]}
       >
-        <Input maxLength={120} autoComplete="off" />
+        <Input maxLength={120} autoComplete="off" autoFocus style={{ fontSize: 16 }} />
       </Form.Item>
       <Form.Item name="teamOrCompany" label={t('Équipe ou entreprise')} rules={[{ max: 120 }]}>
-        <Input maxLength={120} autoComplete="off" />
+        <Input maxLength={120} autoComplete="off" style={{ fontSize: 16 }} />
       </Form.Item>
       <Form.Item name="phone" label={t('Téléphone')} rules={[{ max: 30 }]}>
-        <Input maxLength={30} inputMode="tel" autoComplete="off" />
+        <Input maxLength={30} inputMode="tel" autoComplete="off" style={{ fontSize: 16 }} />
       </Form.Item>
       {people.length > 0 ? (
         <Form.Item name="person" label={t('Lier à un employé ou un tâcheron')}>
@@ -130,7 +130,7 @@ export const StockTakerForm: React.FC<StockTakerFormProps> = ({
           message={t('Un preneur actif porte déjà ce nom dans cette équipe.')}
           action={
             onDuplicate ? (
-              <Button size="small" onClick={() => onDuplicate(duplicateId)}>
+              <Button onClick={() => onDuplicate(duplicateId)} style={{ minHeight: 44 }}>
                 {duplicateActionLabel ?? t('Choisir ce preneur')}
               </Button>
             ) : undefined

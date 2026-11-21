@@ -30,7 +30,7 @@ import {
 import type { StatusTone } from '../../components/primitives';
 import { t } from '../../i18n/t';
 import { montantCalcule, montantVerrouille } from '../../utils/ligne-quantite-prix';
-import { montantSaisiProps } from '../../utils/montant-saisi';
+import { montantSaisiProps, saisieNombreProps } from '../../utils/montant-saisi';
 import { CLE_DUPLICATION_BON, copieDuBon, lireDuplicationBon } from '../../utils/duplication-piece';
 import type { DuplicationBonDeCommande } from '../../utils/duplication-piece';
 
@@ -459,6 +459,7 @@ export const BonDeCommande: React.FC = () => {
                   style={{ width: 120 }}
                   value={ligne.quantity ?? undefined}
                   onChange={value => modifierLigne(ligne.id, { quantity: (value as number | null) ?? null })}
+                  {...saisieNombreProps(3)}
                 />
                 <InputNumber
                   aria-label={t('Prix unitaire')}

@@ -177,6 +177,6 @@ describe('SyndicMeetingProjection', () => {
     });
     await tick();
     expect(screen.getByText('Résidence Les Acacias')).toBeTruthy();
-    expect(screen.getByText('Connexion instable')).toBeTruthy();
+    expect(screen.getByText(/Connexion instable/)).toBeTruthy();
   });
 });

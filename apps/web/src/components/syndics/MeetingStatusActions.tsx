@@ -24,20 +24,25 @@ export const MeetingStatusActions: React.FC<MeetingStatusActionsProps> = ({
   if (status === 'PLANNED') {
     return (
       <Space wrap>
-        <Button
-          size={size}
-          type="primary"
-          loading={loading}
-          onClick={() => void onChange('IN_PROGRESS')}
-          {...helpAnchor('ag-ouvrir')}
+        <Popconfirm
+          title={t('Ouvrir la séance ?')}
+          description={t(
+            'La séance passe « En cours » : les votes peuvent être ouverts. Vous pourrez ensuite la clôturer, mais pas revenir à « Planifiée ».'
+          )}
+          okText={t('Ouvrir la séance')}
+          cancelText={t('Pas maintenant')}
+          onConfirm={() => onChange('IN_PROGRESS')}
         >
-          {t('Ouvrir la séance')}
-        </Button>
+          <Button size={size} type="primary" loading={loading} {...helpAnchor('ag-ouvrir')}>
+            {t('Ouvrir la séance')}
+          </Button>
+        </Popconfirm>
         <Popconfirm
           title={t("Annuler l'assemblée ?")}
-          description={t('Une assemblée annulée ne peut plus recevoir de vote.')}
-          okText={t('Oui')}
-          cancelText={t('Non')}
+          description={t("L'assemblée sera annulée définitivement : plus aucun vote ni modification ne sera possible.")}
+          okText={t("Annuler l'assemblée")}
+          okButtonProps={{ danger: true }}
+          cancelText={t('Conserver')}
           onConfirm={() => onChange('CANCELLED')}
         >
           <Button size={size} danger loading={loading}>
@@ -52,9 +57,11 @@ export const MeetingStatusActions: React.FC<MeetingStatusActionsProps> = ({
     return (
       <Popconfirm
         title={t('Clôturer la séance ?')}
-        description={t('Les votes seront figés et aucune résolution ne pourra plus être ajoutée.')}
-        okText={t('Oui')}
-        cancelText={t('Non')}
+        description={t(
+          'Les votes seront figés, les résultats enregistrés et aucune résolution ne pourra plus être ajoutée. Cette action est définitive.'
+        )}
+        okText={t('Clôturer la séance')}
+        cancelText={t('Pas maintenant')}
         onConfirm={() => onChange('COMPLETED')}
       >
         <Button size={size} type="primary" loading={loading}>

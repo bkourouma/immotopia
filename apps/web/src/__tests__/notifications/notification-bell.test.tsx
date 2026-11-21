@@ -86,6 +86,16 @@ describe('NotificationBell', () => {
     expect(await screen.findByRole('button', { name: /2 non lues/ })).toBeInTheDocument();
   });
 
+  it('propose de réessayer quand la liste ne se charge pas', async () => {
+    service.listMyNotifications.mockRejectedValueOnce(new Error('réseau'));
+    renderBell();
+    fireEvent.click(await screen.findByRole('button', { name: /non lues/ }));
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Réessayer' }));
+
+    expect(await screen.findByText('Nouveau ticket')).toBeInTheDocument();
+  });
+
   it('garde le compteur précédent quand la lecture échoue', async () => {
     service.getUnreadCount.mockResolvedValueOnce(2).mockRejectedValue(new Error('réseau'));
     renderBell();

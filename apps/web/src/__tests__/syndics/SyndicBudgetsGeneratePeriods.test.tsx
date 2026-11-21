@@ -114,7 +114,7 @@ describe('SyndicBudgets — répartition du budget sur plusieurs périodes (lot 
     fireEvent.change(await screen.findByLabelText('Date échéance', {}, { timeout: 15000 }), {
       target: { value: '2026-04-30' }
     });
-    fireEvent.click(await screen.findByRole('button', { name: 'Générer' }, { timeout: 15000 }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Générer les appels' }, { timeout: 15000 }));
 
     await waitFor(
       () =>
@@ -143,7 +143,7 @@ describe('SyndicBudgets — répartition du budget sur plusieurs périodes (lot 
     const periodIndexInput = (await screen.findByLabelText('Période n°', {}, { timeout: 15000 })) as HTMLInputElement;
     fireEvent.change(periodIndexInput, { target: { value: '2' } });
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Générer' }, { timeout: 15000 }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Générer les appels' }, { timeout: 15000 }));
 
     await waitFor(
       () =>
@@ -195,7 +195,7 @@ describe('SyndicBudgets — répartition du budget sur plusieurs périodes (lot 
     fireEvent.mouseDown(await screen.findByLabelText('Répartir sur'));
     fireEvent.click(await screen.findByText('2 périodes (semestriel)', {}, { timeout: 15000 }));
     fireEvent.change(await screen.findByLabelText('Période n°'), { target: { value: '2' } });
-    fireEvent.click(await screen.findByRole('button', { name: 'Générer' }, { timeout: 15000 }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Générer les appels' }, { timeout: 15000 }));
 
     await waitFor(
       () =>
@@ -230,3 +230,8 @@ describe('defaultChargeCallPeriod', () => {
     expect(defaultChargeCallPeriod(2026, 2, 2)).toBe('2026-S2');
   });
 });
+
+// Les écrans « charges » et « budgets » basculent en cartes sous 992 px : ici on teste la disposition tableau.
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));

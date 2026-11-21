@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { saisieNombreProps } from '../../utils/montant-saisi';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { App, Button, DatePicker, Input, InputNumber, Modal, Space, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -705,6 +706,7 @@ function Card_AjoutAssocie(props: {
             value={props.nomAssocie}
             onChange={event => props.setNomAssocie(event.target.value)}
             placeholder={t('Ex. Fatoumata Kouassi')}
+            onPressEnter={() => props.peutAjouter && !props.ajoutEnCours && props.onAjouter()}
           />
         </div>
         <div>
@@ -717,8 +719,11 @@ function Card_AjoutAssocie(props: {
             max={100}
             step={0.01}
             style={{ width: 140 }}
+            suffix="%"
             value={props.quotePart ?? undefined}
             onChange={value => props.setQuotePart((value as number | null) ?? null)}
+            onPressEnter={() => props.peutAjouter && !props.ajoutEnCours && props.onAjouter()}
+            {...saisieNombreProps(2)}
           />
         </div>
         <Button type="primary" loading={props.ajoutEnCours} disabled={!props.peutAjouter} onClick={props.onAjouter}>

@@ -162,7 +162,7 @@ describe('SyndicFinances — actions du fonds en vue carte (< 992 px)', () => {
     await user.click(within(carte).getByRole('button', { name: 'Ajuster le solde' }));
     await user.type(await screen.findByLabelText('Montant'), '10000');
     await user.type(screen.getByLabelText('Motif'), 'Avance de trésorerie');
-    await user.click(screen.getByRole('button', { name: 'Appliquer' }));
+    await user.click(screen.getByRole('button', { name: 'Appliquer l’ajustement' }));
 
     await waitFor(() => expect(adjustSyndicateFundBalance).toHaveBeenCalled());
     expect(
@@ -182,7 +182,8 @@ describe('SyndicFinances — actions du fonds en vue carte (< 992 px)', () => {
     expect(within(carte).queryByRole('menuitem', { name: 'Renommer' })).not.toBeInTheDocument();
     await user.click(within(ligne).getByRole('button', { name: 'Renommer' }));
 
-    expect(await screen.findByText('Renommer le fonds')).toBeInTheDocument();
+    // Titre de la modale et bouton de confirmation portent le même libellé : on vise la boîte de dialogue.
+    expect(await screen.findByRole('dialog', { name: 'Renommer le fonds' })).toBeInTheDocument();
   });
 
   it("permet d'ouvrir l'historique des mouvements depuis la carte (action secondaire, derriere « Autres actions »)", async () => {

@@ -262,6 +262,8 @@ export const SaisieArticles: React.FC<SaisieArticlesProps> = ({
             aria-label={mode === 'reception' ? t('Quantité reçue') : t('Quantité remise')}
             unit={unite}
             min={0}
+            autoFocus
+            onPressEnter={() => pret && enregistrerEdition()}
             value={edition.quantity}
             onChange={value => setEdition({ ...edition, quantity: value })}
           />

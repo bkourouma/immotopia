@@ -150,7 +150,7 @@ function StatusCell({ declaration, onChanged }: { declaration: CoOwnerDeclaratio
           danger
           onConfirm={cancel}
         >
-          <Button size="small" danger loading={cancelling} disabled={cancelling}>
+          <Button danger loading={cancelling} disabled={cancelling} style={{ minHeight: 44 }}>
             {t('Annuler la déclaration')}
           </Button>
         </ConfirmAction>

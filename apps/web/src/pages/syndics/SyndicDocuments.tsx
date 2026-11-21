@@ -16,6 +16,7 @@ import {
   Upload
 } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
+import { PageHeader } from '../../components/primitives';
 import { DocumentVault } from '../../components/syndics/DocumentVault';
 import { createSyndicDocument, listSyndicDocuments } from '../../services/syndic-service';
 import { SyndicateDocument } from '../../types/syndic-types';
@@ -25,7 +26,7 @@ import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
 import { HelpSectionTitle } from '../../help';
 
-const { Paragraph, Text, Title } = Typography;
+const { Text } = Typography;
 
 /** Types dont le document est destiné aux copropriétaires : la case « Visible » est cochée d'office. */
 const COOWNER_FACING_TYPES: ReadonlyArray<string> = ['REGULATION', 'GENERAL_MEETING_MINUTES'];
@@ -96,7 +97,7 @@ export const SyndicDocuments: React.FC = () => {
     const values = await form.validateFields().catch(() => null);
     if (!values) return;
     if (!selectedFile) {
-      message.error(t('Veuillez selectionner un fichier'));
+      message.error(t('Veuillez sélectionner le fichier à ajouter.'));
       return;
     }
     setSubmitting(true);
@@ -109,7 +110,15 @@ export const SyndicDocuments: React.FC = () => {
         // Case masquée : non envoyée, le serveur applique le défaut du type.
         visibleToCoOwners: fm.isVisible('visibleToCoOwners') ? visibleToCoOwners : undefined
       });
-      message.success(t('Document ajoute'));
+      message.success(
+        !fm.isVisible('visibleToCoOwners')
+          ? t('Document « {{title}} » ajouté au coffre.', { title: values.title })
+          : visibleToCoOwners
+            ? t('Document « {{title}} » ajouté : les copropriétaires le voient sur leur portail.', {
+                title: values.title
+              })
+            : t('Document « {{title}} » ajouté : visible uniquement par la gestion.', { title: values.title })
+      );
       form.resetFields();
       resetCreateForm();
       await loadDocuments();
@@ -123,21 +132,28 @@ export const SyndicDocuments: React.FC = () => {
   return (
     <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        <Space direction="vertical" size={4}>
-          <div className="it-toolbar">
-            <Title level={2} className="it-toolbar__title" style={{ margin: 0 }}>
-              {t('Coffre documentaire')}
-            </Title>
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpenCreate(true)}>
-              {t('Ajouter un document')}
-            </Button>
-          </div>
-          <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-            {t('Consultez les documents de copropriété et surveillez les expirations.')}
-          </Paragraph>
-        </Space>
+        <PageHeader
+          title={t('Coffre documentaire')}
+          subtitle={t('Consultez les documents de copropriété et surveillez les expirations.')}
+          primaryAction={{
+            label: t('Ajouter un document'),
+            icon: <PlusOutlined />,
+            onClick: () => setOpenCreate(true)
+          }}
+        />
 
-        {error ? <Alert type="error" message={error} showIcon /> : null}
+        {error ? (
+          <Alert
+            type="error"
+            message={error}
+            showIcon
+            action={
+              <Button size="small" onClick={() => void loadDocuments()}>
+                {t('Réessayer')}
+              </Button>
+            }
+          />
+        ) : null}
 
         {loading ? (
           <div style={{ minHeight: 280, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -161,7 +177,7 @@ export const SyndicDocuments: React.FC = () => {
         open={openCreate}
         onCancel={resetCreateForm}
         onOk={() => void handleCreateDocument()}
-        okText={t('Ajouter')}
+        okText={t('Ajouter le document')}
         cancelText={t('Annuler')}
         confirmLoading={submitting}
       >
@@ -171,7 +187,7 @@ export const SyndicDocuments: React.FC = () => {
             name="title"
             rules={[{ required: true, message: t('Le titre est obligatoire') }]}
           >
-            <Input />
+            <Input autoFocus />
           </Form.Item>
           <Form.Item label={t('Type')} name="type" rules={[{ required: true, message: t('Le type est obligatoire') }]}>
             <Select

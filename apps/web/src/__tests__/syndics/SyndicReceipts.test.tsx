@@ -342,7 +342,7 @@ describe('SyndicReceipts (lot S3, besoin 1)', () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: /Générer les quittances manquantes/ }));
 
-    const confirmButton = await screen.findByRole('button', { name: 'Générer' });
+    const confirmButton = await screen.findByRole('button', { name: 'Générer les quittances' });
     await user.click(confirmButton);
 
     await waitFor(() => expect(backfillMissingReceipts).toHaveBeenCalledTimes(2));

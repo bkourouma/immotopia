@@ -21,12 +21,12 @@ import {
 } from '../../services/syndic-online-payment-service';
 import { useTabParam } from '../../components/syndics/finances/url-params';
 import type { SyndicDeclarationRow } from '../../services/syndic-declared-payment-service';
-import { formatMoney } from '../../components/primitives';
+import { PageHeader, formatMoney } from '../../components/primitives';
 import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
 
-const { Title, Paragraph } = Typography;
+const { Title } = Typography;
 
 const PAYMENT_TABS = ['declarations', 'en-ligne', 'reversements'] as const;
 
@@ -133,14 +133,12 @@ export const SyndicOnlinePayments: React.FC = () => {
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      <Space direction="vertical" size={4}>
-        <Title level={2} style={{ margin: 0 }}>
-          {t('Paiements')}
-        </Title>
-        <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-          {t('Paiements des appels de charges : transferts mobile money déclarés, paiement en ligne, reversements.')}
-        </Paragraph>
-      </Space>
+      <PageHeader
+        title={t('Paiements')}
+        subtitle={t(
+          'Paiements des appels de charges : transferts mobile money déclarés, paiement en ligne, reversements.'
+        )}
+      />
 
       <Tabs
         activeKey={tab}
@@ -159,7 +157,11 @@ export const SyndicOnlinePayments: React.FC = () => {
                   onOpen={row => setOpenId(row.id)}
                   toolbarExtra={
                     canEdit ? (
-                      <Button icon={<PlusOutlined />} onClick={() => setThirdPartyOpen(true)}>
+                      <Button
+                        type="primary"
+                        icon={<PlusOutlined aria-hidden />}
+                        onClick={() => setThirdPartyOpen(true)}
+                      >
                         {t('Déclarer pour un copropriétaire')}
                       </Button>
                     ) : null

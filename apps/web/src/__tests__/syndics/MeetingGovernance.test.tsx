@@ -41,6 +41,17 @@ const mockMessage = { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: 
 
 // Le bouton « Exporter » des tableaux a ses propres tests (primitives/export-menu) : ici il est neutralisé.
 vi.mock('../../components/primitives/ExportMenu', () => ({ ExportMenu: () => null }));
+// Liste des AG en DataView : cartes par défaut en jsdom, tableau quand `bp.desktop` est vrai.
+const bp = vi.hoisted(() => ({ desktop: false }));
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({
+    screens: {},
+    active: bp.desktop ? 'lg' : 'xs',
+    isMobile: !bp.desktop,
+    isTablet: false,
+    isDesktop: bp.desktop
+  })
+}));
 
 vi.mock('antd', async () => {
   const React = await vi.importActual<typeof import('react')>('react');
@@ -87,7 +98,7 @@ vi.mock('antd', async () => {
     ),
     Checkbox: ({ children }: any) => <label>{children}</label>,
     Col: Wrap(),
-    DatePicker: () => <input />,
+    DatePicker: Object.assign(() => <input />, { RangePicker: () => <input /> }),
     TimePicker: () => <input />,
     Empty: ({ description }: any) => <div>{description}</div>,
     Form: FormComp,
@@ -301,12 +312,14 @@ function renderRoute(route: string) {
 describe('AG - statut, majorité et pouvoirs', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    bp.desktop = false;
     mockApi.patch.mockResolvedValue({ data: { success: true, data: {} } });
     mockApi.post.mockResolvedValue({ data: { success: true, data: {} } });
     mockApi.delete.mockResolvedValue({ data: { success: true, data: {} } });
   });
 
   it('ouvre une AG planifiée depuis la liste', async () => {
+    bp.desktop = true;
     mockApi.get.mockResolvedValue({
       data: {
         success: true,
@@ -321,7 +334,8 @@ describe('AG - statut, majorité et pouvoirs', () => {
             createdAt: '',
             updatedAt: ''
           }
-        ]
+        ],
+        pagination: { page: 1, limit: 20, total: 1, totalPages: 1 }
       }
     });
 

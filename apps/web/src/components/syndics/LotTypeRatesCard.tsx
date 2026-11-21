@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, App, Button, Card, InputNumber, Modal, Table, Typography } from 'antd';
+import { Alert, App, Button, Card, InputNumber, Modal, Space, Table, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { EditOutlined } from '@ant-design/icons';
@@ -150,7 +150,12 @@ export const LotTypeRatesCard: React.FC<LotTypeRatesCardProps> = ({ tenantId, sy
       </Typography.Paragraph>
 
       {loadFailed ? (
-        <Typography.Text type="secondary">{t('Le barème n’a pas pu être chargé pour le moment.')}</Typography.Text>
+        <Space style={{ marginBottom: 12 }} wrap>
+          <Typography.Text type="secondary">{t('Le barème n’a pas pu être chargé pour le moment.')}</Typography.Text>
+          <Button size="small" onClick={() => void load()}>
+            {t('Réessayer')}
+          </Button>
+        </Space>
       ) : null}
 
       {view?.isEmpty ? (
@@ -205,6 +210,8 @@ export const LotTypeRatesCard: React.FC<LotTypeRatesCardProps> = ({ tenantId, sy
               <span style={{ flex: '0 0 140px' }}>{getLotTypeLabel(type)}</span>
               <InputNumber
                 aria-label={getLotTypeLabel(type)}
+                autoFocus={type === LOT_TYPES[0]}
+                addonAfter="FCFA"
                 status={negativeRateTypes(draft).includes(type) ? 'error' : undefined}
                 style={{ flex: 1 }}
                 value={draft[type]}

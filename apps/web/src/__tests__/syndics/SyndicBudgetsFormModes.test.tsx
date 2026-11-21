@@ -63,8 +63,13 @@ describe('SyndicBudgets — champ réglable du fonds par poste', () => {
   it('obligatoire : message de validation, aucun appel API', async () => {
     formModes.current = { 'lines[].fundId': 'REQUIRED' };
     await openCreateModal();
-    fireEvent.click(screen.getByRole('button', { name: /Créer budget/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Créer le budget/ }));
     expect(await screen.findByText('Le fonds alimenté est obligatoire', {}, T)).toBeTruthy();
     await waitFor(() => expect(createBudget).not.toHaveBeenCalled());
   }, 120000);
 });
+
+// Les écrans « charges » et « budgets » basculent en cartes sous 992 px : ici on teste la disposition tableau.
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));

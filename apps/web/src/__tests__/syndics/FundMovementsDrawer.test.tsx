@@ -52,7 +52,15 @@ vi.mock('antd', async () => {
     ) : null;
 
   return {
-    Alert: ({ message }: any) => <div role="alert">{message}</div>,
+    Alert: ({ message, action }: any) => (
+      <div role="alert">
+        {message}
+        {action}
+      </div>
+    ),
+    Button: passthrough('button'),
+    // Aucun palier actif : le rendu par défaut des tests est le mobile.
+    Grid: { useBreakpoint: () => ({}) },
     Drawer,
     Spin: passthrough(),
     Table,
@@ -124,7 +132,10 @@ describe('FundMovementsDrawer', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole('alert').textContent).toBe('Fonds introuvable ou inaccessible pour cette copropriete');
+      expect(screen.getByRole('alert').textContent).toContain(
+        'Fonds introuvable ou inaccessible pour cette copropriete'
+      );
+      expect(screen.getByRole('button', { name: 'Réessayer' })).toBeTruthy();
     });
   });
 

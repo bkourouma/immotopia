@@ -4,7 +4,9 @@ import { BankOutlined, FilePdfOutlined, FileWordOutlined, LinkOutlined, WalletOu
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { MoneyValue } from '../primitives/MoneyValue';
-import { Table } from '../primitives';
+import { DataCard, DataView, Table } from '../primitives';
+import type { MenuProps } from 'antd';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 import type { ListSearchBinding } from '../../utils/list-search';
 import type { ExportFetchAllResult } from '../primitives/ExportMenu';
 import { ChargeCall, ChargeCallStatus } from '../../types/syndic-types';
@@ -138,7 +140,24 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
   search,
   helpId
 }) => {
+  const { isDesktop } = useBreakpoint();
   const fundNames = new Map((funds || []).map(fund => [fund.id, fund.name]));
+
+  /** Statut en texte (jamais la couleur seule) + pastille « Paiement déclaré » si un paiement attend validation. */
+  const statusTags = (item: ChargeCall) => {
+    const config = chargeCallStatusConfig[item.status];
+    const declaredPending = item.status !== 'PAID' && declaredPendingCallIds?.has(item.id);
+    return (
+      <>
+        <Tag color={config.color}>{config.label}</Tag>
+        {declaredPending ? (
+          <Tooltip title={t('Un copropriétaire a déclaré un paiement mobile money, en attente de votre validation.')}>
+            <Tag color="processing">{t('Paiement déclaré')}</Tag>
+          </Tooltip>
+        ) : null}
+      </>
+    );
+  };
   const columns: ColumnsType<ChargeCall> = [
     {
       title: t('Période'),
@@ -202,22 +221,7 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
       title: t('Statut'),
       dataIndex: 'status',
       key: 'status',
-      render: (value: ChargeCallStatus, item: ChargeCall) => {
-        const config = chargeCallStatusConfig[value];
-        const declaredPending = value !== 'PAID' && declaredPendingCallIds?.has(item.id);
-        return (
-          <>
-            <Tag color={config.color}>{config.label}</Tag>
-            {declaredPending ? (
-              <Tooltip
-                title={t('Un copropriétaire a déclaré un paiement mobile money, en attente de votre validation.')}
-              >
-                <Tag color="processing">{t('Paiement déclaré')}</Tag>
-              </Tooltip>
-            ) : null}
-          </>
-        );
-      }
+      render: (_value: ChargeCallStatus, item: ChargeCall) => statusTags(item)
     },
     ...(funds
       ? [
@@ -234,9 +238,9 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
           {
             title: t('Actions'),
             key: 'actions',
-            width: 130,
+            fixed: 'end' as const,
             render: (_: unknown, item: ChargeCall) => (
-              <Space size={4} wrap={false}>
+              <Space size={4} wrap>
                 {onRecordPayment ? (
                   <Tooltip title={t('Enregistrer un paiement')}>
                     <Button
@@ -284,6 +288,98 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
         ]
       : [])
   ];
+
+  /** Carte mobile : une action principale visible (paiement), le reste derrière « ⋮ ». */
+  const renderCard = (item: ChargeCall) => {
+    const isLate = dayjs(item.dueDate).isBefore(dayjs(), 'day') && item.status !== 'PAID';
+    const menu: NonNullable<MenuProps['items']> = [];
+    if (onDownloadNotice) {
+      menu.push({
+        key: 'pdf',
+        icon: <FilePdfOutlined />,
+        label: t("Avis d'appel (PDF)"),
+        onClick: () => onDownloadNotice(item)
+      });
+    }
+    if (onDownloadNoticeWord) {
+      menu.push({
+        key: 'word',
+        icon: <FileWordOutlined />,
+        label: t("Avis d'appel (Word)"),
+        onClick: () => onDownloadNoticeWord(item)
+      });
+    }
+    if (onAssignFund) {
+      menu.push({
+        key: 'fund',
+        icon: <BankOutlined />,
+        label: t('Affecter à un fonds'),
+        onClick: () => onAssignFund(item)
+      });
+    }
+    if (onPaymentLink && canOfferChargePaymentLink(item)) {
+      menu.push({
+        key: 'link',
+        icon: <LinkOutlined />,
+        label: t('Lien de paiement'),
+        onClick: () => onPaymentLink(item)
+      });
+    }
+    return (
+      <DataCard
+        title={item.period}
+        subtitle={buildLotLabel(item)}
+        highlight={<MoneyValue value={item.amount} />}
+        status={statusTags(item)}
+        fields={[
+          {
+            label: t('Échéance'),
+            value: (
+              <Text type={isLate ? 'danger' : undefined}>
+                {dayjs(item.dueDate).format(dateFormat('short'))}
+                {isLate ? ` · ${t('dépassée')}` : ''}
+              </Text>
+            )
+          },
+          { label: t('Payé'), value: <MoneyValue value={computePaidAmount(item)} /> },
+          { label: t('Reste'), value: <MoneyValue value={computeOutstandingAmount(item)} /> },
+          ...(item.fundId ? [{ label: t('Fonds'), value: fundNames.get(item.fundId) ?? t('Fonds') }] : []),
+          ...(item.isRecurring ? [{ label: t('Charge récurrente'), value: recurrenceLabel(item) }] : [])
+        ]}
+        primaryAction={
+          onRecordPayment && item.status !== 'PAID'
+            ? { label: t('Enregistrer un paiement'), icon: <WalletOutlined />, onClick: () => onRecordPayment(item) }
+            : undefined
+        }
+        secondaryActions={menu.length > 0 ? menu : undefined}
+      />
+    );
+  };
+
+  // Sous 992 px : cartes (pagination serveur seulement ; une liste locale garde le tableau).
+  if (!isDesktop && pagination) {
+    return (
+      <DataView<ChargeCall>
+        aria-label={t('Appels de charges')}
+        helpId={helpId}
+        columns={columns}
+        items={items}
+        total={pagination.total}
+        page={pagination.page}
+        pageSize={pagination.limit}
+        onPageChange={pagination.onChange}
+        loading={loading}
+        isReloading={loading}
+        search={search}
+        export={{ filename: t('Appels de charges'), fetchAll: exportFetchAll }}
+        emptyDescription={t(
+          'Aucun appel de charges pour le moment : créez le premier avec « Nouvel appel de charges ».'
+        )}
+        rowKey={item => item.id}
+        renderCard={renderCard}
+      />
+    );
+  }
 
   return (
     <Table

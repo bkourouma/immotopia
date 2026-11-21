@@ -135,3 +135,24 @@ describe('Notifications e-mail — droit d’écriture', () => {
     expect(screen.getByRole('button', { name: /Enregistrer/ })).not.toBeDisabled();
   });
 });
+
+describe('Notifications e-mail — confort d’usage', () => {
+  it('demande confirmation en nommant le modèle avant de le réinitialiser', async () => {
+    getMyMenuAccess.mockResolvedValue({ disabledMenuKeys: [], enabledMenuKeys: [], permissionKeys: null });
+    mount();
+    await waitFor(() => expect(screen.getByRole('switch')).not.toBeDisabled(), T);
+    fireEvent.click(screen.getByRole('button', { name: /Modifier/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Réinitialiser au modèle par défaut/ }, T));
+    expect(
+      await screen.findByText(/Réinitialiser le modèle « Paiement reçu » pour Propriétaire/, undefined, T)
+    ).toBeTruthy();
+  });
+
+  it('propose « Réessayer » quand le chargement de la liste échoue', async () => {
+    getMyMenuAccess.mockResolvedValue({ disabledMenuKeys: [], enabledMenuKeys: [], permissionKeys: null });
+    listEmail.mockRejectedValueOnce(new Error('réseau'));
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: /Réessayer/ }, T));
+    expect(await screen.findByRole('switch', undefined, T)).toBeTruthy();
+  });
+});

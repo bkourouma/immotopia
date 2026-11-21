@@ -41,6 +41,7 @@ export function ConversationList({
                 width: '100%',
                 gap: 8,
                 padding: '10px 12px',
+                minHeight: 56,
                 textAlign: 'start',
                 border: 0,
                 borderBottom: '1px solid rgba(128,128,128,0.2)',

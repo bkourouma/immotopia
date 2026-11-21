@@ -87,7 +87,7 @@ describe('SyndicRecovery — champs réglables', () => {
   it('pénalité, jours obligatoires : message, aucun appel API', async () => {
     formModes.current = { daysLate: 'REQUIRED' };
     const dialog = await openModal(/Appliquer pénalité/);
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Appliquer' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Appliquer la pénalité' }));
     expect(await within(dialog).findByText('Les jours de retard sont obligatoires', {}, T)).toBeTruthy();
     expect(createLatePaymentPenalty).not.toHaveBeenCalled();
   }, 60000);
@@ -101,8 +101,8 @@ describe('SyndicRecovery — champs réglables', () => {
   it('échéancier, date obligatoire : message, aucun appel API', async () => {
     formModes.current = { agreedAt: 'REQUIRED' };
     const dialog = await openModal(/Créer échéancier/);
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Créer' }));
-    expect(await within(dialog).findByText('La date d accord est obligatoire', {}, T)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Créer l’échéancier' }));
+    expect(await within(dialog).findByText('Indiquez la date de l’accord', {}, T)).toBeTruthy();
     expect(createPaymentSchedule).not.toHaveBeenCalled();
   }, 60000);
 });

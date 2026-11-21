@@ -379,6 +379,10 @@ const Comptage: React.FC<ComptageProps> = ({
           aria-label={t('Quantité comptée')}
           unit={article?.unit ?? existante?.itemUnit}
           min={0}
+          autoFocus
+          onPressEnter={() => {
+            if (saisie.quantite !== null && saisie.quantite >= 0 && !envoi.enCours) void enregistrerLigne();
+          }}
           value={saisie.quantite}
           onChange={valeur => setSaisie({ ...saisie, quantite: valeur })}
         />

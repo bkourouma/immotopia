@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { saisieNombreProps } from '../../utils/montant-saisi';
 import { useParams } from 'react-router-dom';
 import { App, Alert, Button, Col, DatePicker, InputNumber, Modal, Radio, Row, Select, Space, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -727,9 +728,10 @@ export const RetenuesDeGarantie: React.FC = () => {
               min={0.01}
               max={99.99}
               step={0.5}
-              precision={2}
+              suffix="%"
               value={taux ?? undefined}
               onChange={valeur => setTaux((valeur as number | null) ?? null)}
+              {...saisieNombreProps(2)}
             />
             <Text type="secondary" style={{ fontSize: 'var(--font-size-sm)' }}>
               {t('Strictement entre 0 et 100. Cent pour cent ne serait pas une garantie.')}

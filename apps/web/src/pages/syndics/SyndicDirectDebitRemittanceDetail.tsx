@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Alert, Typography } from 'antd';
+import { Alert } from 'antd';
 import {
   cancelSyndicRemittance,
   exportSyndicRemittance,
@@ -20,11 +20,10 @@ import {
 } from '../../components/rental/direct-debit/RemittanceDetailView';
 import { SYNDIC_DD_KEYS } from '../../components/syndics/direct-debit/keys';
 import { useSyndicDirectDebitRights } from '../../components/syndics/direct-debit/useSyndicDirectDebitRights';
+import { PageHeader } from '../../components/primitives';
 import { detailKey } from '../../lib/query-keys';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
-
-const { Title } = Typography;
 
 /**
  * Détail d'une remise de copropriété (spec 042, P4, §9.6) : le même écran que
@@ -70,15 +69,17 @@ export const SyndicDirectDebitRemittanceDetail: React.FC = () => {
       invalidateKey={SYNDIC_DD_KEYS.remittancesPrefix(tenantId)}
       canManage={canManage}
       renderHeader={remittance => (
-        <div style={{ marginBottom: 16 }}>
+        <>
           <Link to={`/tenant/${tenantId}/syndics/${syndicId}/prelevements`}>{t('Retour aux prélèvements')}</Link>
-          <Title level={3} style={{ marginTop: 8, marginBottom: 0 }}>
-            {remittance ? remittance.reference : t('Remise de prélèvements')}
-          </Title>
-          {remittance?.syndicate && (
-            <Typography.Text type="secondary">{`${remittance.syndicate.name} · ${remittance.creditor.label}`}</Typography.Text>
-          )}
-        </div>
+          <div style={{ marginBlockStart: 8 }}>
+            <PageHeader
+              title={remittance ? remittance.reference : t('Remise de prélèvements')}
+              subtitle={
+                remittance?.syndicate ? `${remittance.syndicate.name} · ${remittance.creditor.label}` : undefined
+              }
+            />
+          </div>
+        </>
       )}
     />
   );

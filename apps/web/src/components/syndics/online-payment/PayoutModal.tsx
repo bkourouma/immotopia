@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Alert, DatePicker, Input, InputNumber, Modal, Select, Space, Typography } from 'antd';
 import dayjs, { Dayjs } from 'dayjs';
 import { formatMoney } from '../../primitives';
+import { useBreakpoint } from '../../../hooks/useBreakpoint';
+import { montantSaisiProps } from '../../../utils/montant-saisi';
 import { RecordGatewayPayoutResult, recordSyndicGatewayPayout } from '../../../services/syndic-online-payment-service';
 import { t } from '../../../i18n/t';
 import { HelpSectionTitle } from '../../../help';
@@ -40,6 +42,7 @@ export const PayoutModal: React.FC<PayoutModalProps> = ({
   onClose,
   onRecorded
 }) => {
+  const { isMobile } = useBreakpoint();
   const fm = useFormFieldModes('syndic.reversement-paiement-en-ligne');
   const [accountNumber, setAccountNumber] = useState<string>(accounts[0]?.accountNumber ?? '5525');
   const [amount, setAmount] = useState<number | null>(null);
@@ -99,10 +102,12 @@ export const PayoutModal: React.FC<PayoutModalProps> = ({
       title={<HelpSectionTitle title={t('Enregistrer un reversement')} helpId="syndic.paiements.reversement" />}
       onCancel={onClose}
       onOk={() => void submit()}
-      okText={t('Enregistrer')}
+      okText={t('Enregistrer le reversement')}
       cancelText={t('Annuler')}
       okButtonProps={{ disabled: !valid, loading: submitting }}
       destroyOnClose
+      width={isMobile ? '100%' : 520}
+      style={isMobile ? { top: 0, maxWidth: '100vw', paddingBottom: 0 } : undefined}
     >
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         <Paragraph type="secondary" style={{ marginBottom: 0 }}>
@@ -138,6 +143,10 @@ export const PayoutModal: React.FC<PayoutModalProps> = ({
           </label>
           <InputNumber
             id="payout-amount"
+            {...montantSaisiProps}
+            addonAfter="FCFA"
+            inputMode="numeric"
+            autoFocus
             style={{ display: 'block', marginTop: 8, width: '100%' }}
             min={0}
             max={Math.max(collectionBalance, 0)}
@@ -195,6 +204,20 @@ export const PayoutModal: React.FC<PayoutModalProps> = ({
             />
           </div>
         )}
+
+        {valid && amount !== null ? (
+          <Alert
+            type="info"
+            showIcon
+            message={t('Vous allez reverser {{montant}} depuis le compte {{account}}.', {
+              montant: formatMoney(amount),
+              account: accountNumber
+            })}
+            description={t('Solde du compte après reversement : {{montant}}.', {
+              montant: formatMoney(collectionBalance - amount)
+            })}
+          />
+        ) : null}
 
         {error ? <Alert type="error" showIcon message={error} /> : null}
       </Space>

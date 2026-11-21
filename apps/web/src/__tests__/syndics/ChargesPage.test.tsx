@@ -363,7 +363,7 @@ describe('SyndicCharges page', () => {
 
     renderWithRoute();
 
-    const createButton = await screen.findByText('Créer');
+    const createButton = await screen.findByText("Créer l'appel de charges");
     fireEvent.click(createButton);
 
     await waitFor(() => {
@@ -381,3 +381,8 @@ describe('SyndicCharges page', () => {
     expect(mockMessageSuccess).toHaveBeenCalled();
   });
 });
+
+// Les écrans « charges » et « budgets » basculent en cartes sous 992 px : ici on teste la disposition tableau.
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));

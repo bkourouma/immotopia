@@ -39,7 +39,7 @@ export type { DataViewProps, DataViewExport } from './DataView';
 export { ExportMenu } from './ExportMenu';
 export type { ExportMenuProps, ExportFetchAllResult } from './ExportMenu';
 
-export { Table } from './Table';
+export { Table, namedPageItemRender } from './Table';
 export type { ExportableTableProps } from './Table';
 
 export { DataCard } from './DataCard';

@@ -26,6 +26,19 @@ vi.mock(
   async () => (await import('../../__tests__/syndics/charges-form-modes-mock')).formModesModule
 );
 
+// Le tableau des appels passe en cartes sous 992 px (jsdom : aucun palier actif) :
+// seul le test « ouverte depuis un appel » vise la ligne du tableau : il passe en desktop.
+const breakpointState = vi.hoisted(() => ({ desktop: false }));
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({
+    screens: {},
+    active: breakpointState.desktop ? 'lg' : 'xs',
+    isMobile: !breakpointState.desktop,
+    isTablet: false,
+    isDesktop: breakpointState.desktop
+  })
+}));
+
 vi.mock('../../services/syndic-service', () => ({
   getSyndicate: (...args: unknown[]) => getSyndicate(...args),
   listSyndicateLots: (...args: unknown[]) => listSyndicateLots(...args),
@@ -157,6 +170,7 @@ const targetOpenCall = {
 
 describe('LotPaymentModal — paiement par lot (lot S2)', () => {
   beforeEach(() => {
+    breakpointState.desktop = false;
     vi.clearAllMocks();
     getSyndicate.mockResolvedValue({
       id: 'syndic-1',
@@ -214,6 +228,7 @@ describe('LotPaymentModal — paiement par lot (lot S2)', () => {
       currency: 'XOF'
     });
 
+    breakpointState.desktop = true;
     renderWithRoute();
 
     // Le bouton de la ligne du tableau (pas celui, générique, de l'en-tête) :

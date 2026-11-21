@@ -20,6 +20,10 @@ import apiClient from '../../utils/api-client';
  * l'API, et renvoie vers « Profils et incidents » pour inviter ou révoquer.
  */
 
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));
+
 vi.mock('../../utils/api-client', () => ({
   __esModule: true,
   default: {

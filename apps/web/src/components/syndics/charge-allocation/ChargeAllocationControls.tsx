@@ -50,6 +50,7 @@ export const AllocationMethodRadio: React.FC<{
     <Radio.Group
       optionType="button"
       buttonStyle="solid"
+      block
       value={value}
       onChange={event => onChange?.(event.target.value as ChargeAllocationMethod)}
       options={[
