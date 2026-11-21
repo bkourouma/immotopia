@@ -264,7 +264,12 @@ export async function listOwnerAccounts(tenantId: string) {
         movements: { orderBy: { movementDate: 'desc' }, take: 1, select: { movementDate: true } }
       }
     }),
-    prisma.ownerPayout.findMany({ where: { tenantId, status: 'VALIDATED' }, orderBy: { paidAt: 'desc' } })
+    // Plusieurs reversements le même jour portent le même `paidAt` : on départage
+    // par création puis par numéro, pour que le premier soit bien le dernier.
+    prisma.ownerPayout.findMany({
+      where: { tenantId, status: 'VALIDATED' },
+      orderBy: [{ paidAt: 'desc' }, { createdAt: 'desc' }, { year: 'desc' }, { sequence: 'desc' }]
+    })
   ]);
   const accountByOwner = new Map(accounts.map(a => [a.tenantClientId, a]));
   const lastPayoutByOwner = new Map<string, (typeof payouts)[number]>();

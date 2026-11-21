@@ -1508,6 +1508,7 @@
   "L'assistant IA n'est pas activé.": "The AI assistant is not enabled.",
   "L'assistant IA n'est pas disponible pour ce compte.": "The AI assistant is not available for this account.",
   "L'assistant ne peut pas répondre à cette demande.": "The assistant cannot answer this request.",
+  "L'e-mail n'a pas pu être envoyé. Réessayez ou vérifiez la configuration d'envoi.": "The email could not be sent. Try again or check the sending configuration.",
   "L’écart correspond au prévisionnel moins le réalisé. Un écart négatif indique un dépassement.": "The variance is the budgeted amount minus actual expenditure. A negative variance indicates overspending.",
   "L’écart est le budget révisé moins l’engagé selon le tableau de bord du chantier.": "The variance is the revised budget minus committed costs, as shown in the construction dashboard.",
   "L'échéance du mois n'existe plus.": "The installment for the month no longer exists.",

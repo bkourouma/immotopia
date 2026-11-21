@@ -124,8 +124,13 @@ export const OwnerStatementDetailPage: React.FC = () => {
 
       {/* Taux nul ET aucun honoraire : rien n'était paramétré. Un taux nul avec
           des honoraires veut seulement dire que les baux du relevé n'ont pas
-          tous le même taux. */}
-      {statement && !legacy && statement.managementFeeRate === null && Number(statement.totalManagementFees) === 0 ? (
+          tous le même taux. Sans aucun encaissement, il n'y a rien à déduire :
+          pas d'alerte. */}
+      {statement &&
+      !legacy &&
+      statement.managementFeeRate === null &&
+      Number(statement.totalManagementFees) === 0 &&
+      Number(statement.totalRevenue) > 0 ? (
         <Alert
           type="info"
           showIcon

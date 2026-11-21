@@ -67,3 +67,19 @@ describe('sendOwnerStatement : statut', () => {
     expect(ownerStatementUpdate.mock.calls[0][0].data.status).toBe('SENT');
   });
 });
+
+describe("sendOwnerStatement : échec d'envoi de l'e-mail (BUG-005)", () => {
+  it('lève une erreur typée 502 et ne marque pas le relevé envoyé', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { emailService } = require('../../src/services/email-service');
+    emailService.sendEmail.mockRejectedValueOnce(new Error('SMTP connect ECONNREFUSED'));
+    ownerStatementFindFirst.mockResolvedValue(statement('DRAFT'));
+
+    await expect(sendOwnerStatement('s1', 't1')).rejects.toMatchObject({
+      name: 'AppError',
+      statusCode: 502,
+      message: "L'e-mail n'a pas pu être envoyé. Réessayez ou vérifiez la configuration d'envoi."
+    });
+    expect(ownerStatementUpdate).not.toHaveBeenCalled();
+  });
+});

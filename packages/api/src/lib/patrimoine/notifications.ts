@@ -2,7 +2,7 @@ import { LoanStatus, PropertyDocumentType, RentalLeaseStatus, WorkProgramStatus 
 import { prisma } from '../../utils/database';
 import { logger } from '../../utils/logger';
 import { t } from '../../i18n';
-import { ConflictError } from '../../middleware/error-middleware';
+import { AppError, ConflictError } from '../../middleware/error-middleware';
 import { EMAIL_NOTIFICATION_DEFAULT_TEMPLATES } from '../../constants/email-notification-default-templates';
 import { getEmailNotificationConfig } from '../../services/email-notification-config-service';
 import { emailService } from '../../services/email-service';
@@ -854,20 +854,31 @@ export async function sendOwnerStatement(statementId: string, tenantId: string) 
   const subjectTemplate = normalizeOwnerStatementTemplateText(config.subjectOverride || defaults.subject);
   const bodyTemplate = normalizeOwnerStatementTemplateText(config.bodyHtmlOverride || defaults.bodyHtml);
 
-  await emailService.sendEmail({
-    to: owner.email,
-    subject: applyTemplate(subjectTemplate, plainVariables),
-    html: applyTemplate(bodyTemplate, htmlVariables),
-    // Pas de `tenantId` d'envoi (l'identite d'expediteur ne change pas) : l'agence va au journal seul.
-    journal: {
-      key: eventKey,
-      tenantId: statement.tenantId,
-      // Corps court et non financier : jamais le texte du releve.
-      body: t('Relevé propriétaire {{period}}', { period: statement.period }),
-      recipient: { contactId: owner.id, email: owner.email },
-      relatedEntity: { type: 'OwnerStatement', id: statement.id }
-    }
-  });
+  // Un échec d'envoi (SMTP) laisse le relevé en l'état : on lève une erreur
+  // typée 502 plutôt qu'un 500 générique, et on ne marque rien d'envoyé.
+  const emailSendFailed = () =>
+    new AppError(t("L'e-mail n'a pas pu être envoyé. Réessayez ou vérifiez la configuration d'envoi."), 502);
+  let emailResult: Awaited<ReturnType<typeof emailService.sendEmail>> | undefined;
+  try {
+    emailResult = await emailService.sendEmail({
+      to: owner.email,
+      subject: applyTemplate(subjectTemplate, plainVariables),
+      html: applyTemplate(bodyTemplate, htmlVariables),
+      // Pas de `tenantId` d'envoi (l'identite d'expediteur ne change pas) : l'agence va au journal seul.
+      journal: {
+        key: eventKey,
+        tenantId: statement.tenantId,
+        // Corps court et non financier : jamais le texte du releve.
+        body: t('Relevé propriétaire {{period}}', { period: statement.period }),
+        recipient: { contactId: owner.id, email: owner.email },
+        relatedEntity: { type: 'OwnerStatement', id: statement.id }
+      }
+    });
+  } catch (error) {
+    logger.error('sendOwnerStatement: email send failed', { statementId, tenantId, error });
+    throw emailSendFailed();
+  }
+  if (emailResult?.sent === false) throw emailSendFailed();
 
   const whatsappSent = await sendWhatsappNotification({
     tenantId: statement.tenantId,
