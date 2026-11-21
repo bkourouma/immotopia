@@ -1,17 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Space, Typography, Spin, Alert, Empty, Row, Col, Button, Pagination } from 'antd';
+import { Space, Row, Col, Button, Pagination } from 'antd';
 import { BankOutlined, HomeOutlined, ToolOutlined, SyncOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { ownerPortalService } from '../../services/ownerPortalService';
 import { PropertyCard } from '../../components/OwnerPortal/PropertyCard';
 import { StatCard } from '../../components/OwnerPortal/StatCard';
-import { ListSearch, StateBlock } from '../../components/primitives';
+import { ListSearch, PageHeader, SkeletonList, SkeletonStats, StateBlock } from '../../components/primitives';
 import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion } from '../../utils/list-search';
 import { t } from '../../i18n/t';
-import { HelpButton } from '../../help';
-
-const { Title, Text } = Typography;
 
 interface PropertyItem {
   id: string;
@@ -130,46 +127,55 @@ export default function Properties() {
     defaultPageSize: PAGE_SIZE
   });
 
-  if (loading) {
+  const header = (
+    <PageHeader
+      title={t('Mes propriétés')}
+      subtitle={t('Gérez votre portefeuille immobilier')}
+      helpId="portails.proprietaire.biens.liste"
+      extra={
+        <Button
+          icon={<SyncOutlined />}
+          onClick={loadProperties}
+          loading={loading}
+          aria-label={t('Rafraîchir les propriétés')}
+        >
+          {t('Actualiser')}
+        </Button>
+      }
+    />
+  );
+
+  if (loading && !data) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <Spin size="large" tip={t('Chargement des propriétés...')} />
-      </div>
+      <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        {header}
+        <SkeletonStats rows={4} aria-label={t('Chargement des propriétés')} />
+        <SkeletonList rows={3} aria-label={t('Chargement des propriétés')} />
+      </Space>
     );
   }
 
-  if (error) {
-    return <Alert message={t('Erreur')} description={error} type="error" showIcon />;
-  }
-
-  if (!data) {
-    return <Empty description={t('Aucune propriété disponible')} />;
+  if (error || !data) {
+    return (
+      <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        {header}
+        <StateBlock
+          variant="error"
+          title={t('Impossible de charger vos propriétés')}
+          description={error ?? undefined}
+          actions={[{ label: t('Réessayer'), onClick: loadProperties, primary: true }]}
+        />
+      </Space>
+    );
   }
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      {/* Page Header */}
-      <div className="it-toolbar">
-        <div>
-          <Title level={2}>{t('Mes propriétés')}</Title>
-          <Text type="secondary">{t('Gérez votre portefeuille immobilier')}</Text>
-        </div>
-        <Space>
-          <HelpButton helpId="portails.proprietaire.biens.liste" />
-          <Button
-            icon={<SyncOutlined />}
-            onClick={loadProperties}
-            loading={loading}
-            aria-label={t('Rafraîchir les propriétés')}
-          >
-            {t('Actualiser')}
-          </Button>
-        </Space>
-      </div>
+      {header}
 
       {/* Portfolio Summary Cards (T036) */}
       <Row gutter={[16, 16]}>
-        <Col xs={24} sm={12} lg={6}>
+        <Col xs={12} lg={6}>
           <StatCard
             helpId="portails.proprietaire.biens.indicateurs"
             title={t('Total')}
@@ -178,7 +184,7 @@ export default function Properties() {
             valueStyle={{ fontSize: 24 }}
           />
         </Col>
-        <Col xs={24} sm={12} lg={6}>
+        <Col xs={12} lg={6}>
           <StatCard
             title={t('Louées')}
             value={data.summary.rented}
@@ -186,7 +192,7 @@ export default function Properties() {
             valueStyle={{ fontSize: 24, color: '#52c41a' }}
           />
         </Col>
-        <Col xs={24} sm={12} lg={6}>
+        <Col xs={12} lg={6}>
           <StatCard
             title={t('Disponibles')}
             value={data.summary.available}
@@ -194,7 +200,7 @@ export default function Properties() {
             valueStyle={{ fontSize: 24, color: '#1890ff' }}
           />
         </Col>
-        <Col xs={24} sm={12} lg={6}>
+        <Col xs={12} lg={6}>
           <StatCard
             title={t('En maintenance')}
             value={data.summary.inMaintenance}
@@ -236,7 +242,7 @@ export default function Properties() {
             actions={[{ label: t('Effacer les critères'), onClick: local.clear, primary: true }]}
           />
         ) : (
-          <Empty description={t('Aucune propriété disponible')} />
+          <StateBlock variant="empty" description={t('Aucune propriété disponible')} />
         )}
       </div>
     </Space>

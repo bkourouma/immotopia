@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Alert, Button, Drawer, Form, Input, InputNumber, Select, Space } from 'antd';
+import { useBreakpoint } from '../../../hooks/useBreakpoint';
+import { useConfirmAction } from '../../primitives';
 import { useQuery } from '@tanstack/react-query';
 import type { FormInstance } from 'antd';
 import {
@@ -28,6 +30,7 @@ import {
 import { apiErrorMessage, serverFieldErrors, todayIso } from './asset-format';
 import { valuationMethodLabel } from '../patrimoine-labels';
 import { HelpButton, HelpSectionTitle, helpAnchor } from '../../../help';
+import { moneyInputProps, submitOnEnter } from './form-helpers';
 
 const { TextArea } = Input;
 
@@ -99,7 +102,11 @@ function knownPath(path: string[], assetClass: AssetClass): boolean {
 }
 
 /** Reçoit `id`, `value` et `onChange` de `Form.Item` et les transmet au champ réel. */
-function DetailInput({ spec, ...props }: { spec: AssetFieldSpec } & Record<string, unknown>) {
+function DetailInput({
+  spec,
+  currency,
+  ...props
+}: { spec: AssetFieldSpec; currency?: string } & Record<string, unknown>) {
   if (spec.type === 'select') return <Select {...props} options={spec.options} allowClear={!spec.required} />;
   if (spec.type === 'date') return <Input {...props} type="date" />;
   if (spec.type === 'text') {
@@ -107,12 +114,21 @@ function DetailInput({ spec, ...props }: { spec: AssetFieldSpec } & Record<strin
   }
   // Pas de `min`/`max` sur le champ : Ant Design les rabattrait en silence à la
   // sortie du champ, et la saisie invalide ne serait plus signalée à l'utilisateur.
-  return <InputNumber {...props} style={{ width: '100%' }} precision={spec.type === 'integer' ? 0 : undefined} />;
+  return (
+    <InputNumber
+      {...props}
+      style={{ width: '100%' }}
+      precision={spec.type === 'integer' ? 0 : undefined}
+      {...(spec.money ? moneyInputProps(currency) : {})}
+      {...(spec.type === 'percent' ? { suffix: '%' } : {})}
+    />
+  );
 }
 
 function ClassField({ spec }: { spec: AssetFieldSpec }) {
   const form = Form.useFormInstance();
   const value = Form.useWatch(['details', spec.name], form);
+  const currency = Form.useWatch('currency', form);
   const warning = spec.warning?.(value) ?? null;
   return (
     <Form.Item
@@ -137,7 +153,7 @@ function ClassField({ spec }: { spec: AssetFieldSpec }) {
         }
       ]}
     >
-      <DetailInput spec={spec} />
+      <DetailInput spec={spec} currency={currency} />
     </Form.Item>
   );
 }
@@ -149,6 +165,16 @@ function ClassFields({ assetClass }: { assetClass: AssetClass }) {
         <ClassField key={spec.name} spec={spec} />
       ))}
     </>
+  );
+}
+
+/** Groupe de champs avec un court titre (même présentation que la valorisation initiale). */
+function FormSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
+      <legend style={{ fontWeight: 600, marginBottom: 'var(--space-2)' }}>{title}</legend>
+      {children}
+    </fieldset>
   );
 }
 
@@ -243,6 +269,7 @@ function ValuationFields() {
   const form = Form.useFormInstance();
   const method = Form.useWatch(['initialValuation', 'method'], form);
   const amount = Form.useWatch(['initialValuation', 'estimatedValue'], form);
+  const currency = Form.useWatch('currency', form);
   // Une expertise sans source est refusée par le serveur ; sans montant, aucune valorisation n'est créée.
   const sourceRequired = method === 'EXPERT_APPRAISAL' && typeof amount === 'number';
   return (
@@ -254,7 +281,7 @@ function ValuationFields() {
         />
       </legend>
       <Form.Item name={['initialValuation', 'estimatedValue']} label={t('Valeur estimée')}>
-        <InputNumber style={{ width: '100%' }} />
+        <InputNumber style={{ width: '100%' }} {...moneyInputProps(currency)} />
       </Form.Item>
       <Form.Item name={['initialValuation', 'valuatedAt']} label={t('Date de la valeur')}>
         <Input type="date" />
@@ -357,6 +384,8 @@ export const AssetFormDrawer: React.FC<AssetFormDrawerProps> = ({
   onSaved
 }) => {
   const [form] = Form.useForm<FormValues>();
+  const { isMobile } = useBreakpoint();
+  const confirm = useConfirmAction();
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   // Palier gratuit atteint (409 FREE_TIER_LIMIT) : message dédié, saisie conservée.
@@ -366,6 +395,7 @@ export const AssetFormDrawer: React.FC<AssetFormDrawerProps> = ({
   // Le serveur refuse (409) de changer la devise d'un actif qui a déjà des
   // lignes dans une autre devise : valeur courante ou dettes adossées.
   const currencyLocked = editing && (Boolean(asset?.currentValue) || (asset?.outstandingDebtXof ?? 0) > 0);
+  const currentCurrency = Form.useWatch('currency', form) ?? asset?.currency ?? 'XOF';
   const linked = useMemo(() => linkedPropertyIds ?? [], [linkedPropertyIds]);
 
   useEffect(() => {
@@ -426,21 +456,38 @@ export const AssetFormDrawer: React.FC<AssetFormDrawerProps> = ({
     }
   };
 
+  /** Fermer sans enregistrer : demande confirmation seulement si quelque chose a été saisi. */
+  const requestClose = () => {
+    if (submitting) return;
+    if (!form.isFieldsTouched()) {
+      onClose();
+      return;
+    }
+    confirm({
+      title: t('Abandonner la saisie ?'),
+      description: t("Ce que vous avez saisi n'a pas été enregistré."),
+      okText: t('Abandonner'),
+      cancelText: t('Continuer la saisie'),
+      danger: true,
+      onConfirm: onClose
+    });
+  };
+
   return (
     <Drawer
       open={open}
-      size={520}
+      size={isMobile ? '100%' : 520}
       title={
         <HelpSectionTitle
           title={editing ? t('Modifier un actif') : t('Ajouter un actif')}
           helpId="patrimoine.actifs.formulaire"
         />
       }
-      onClose={onClose}
+      onClose={requestClose}
       destroyOnHidden
       footer={
         <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
-          <Button onClick={onClose}>{t('Annuler')}</Button>
+          <Button onClick={requestClose}>{t('Annuler')}</Button>
           <Button type="primary" loading={submitting} onClick={handleSubmit} {...helpAnchor('actifs-form-creer')}>
             {editing ? t('Enregistrer') : t("Créer l'actif")}
           </Button>
@@ -469,46 +516,55 @@ export const AssetFormDrawer: React.FC<AssetFormDrawerProps> = ({
         />
       )}
       {errorMessage && <Alert type="error" showIcon title={errorMessage} style={{ marginBottom: 'var(--space-3)' }} />}
-      <Form form={form} layout="vertical" initialValues={initialValues(asset)}>
-        <div {...helpAnchor('actifs-form-classe')}>
-          <Form.Item
-            name="assetClass"
-            label={t("Classe d'actif")}
-            extra={<HelpButton size="small" helpId="patrimoine.actifs.classes" />}
-            rules={[{ required: true }]}
-          >
-            <Select
-              disabled={editing}
-              options={assetClassOptions()}
-              onChange={() => form.setFieldValue('details', {})}
-            />
+      <Form
+        form={form}
+        layout="vertical"
+        initialValues={initialValues(asset)}
+        onKeyDown={submitOnEnter(handleSubmit, submitting)}
+      >
+        <FormSection title={t('Identité')}>
+          <div {...helpAnchor('actifs-form-classe')}>
+            <Form.Item
+              name="assetClass"
+              label={t("Classe d'actif")}
+              extra={<HelpButton size="small" helpId="patrimoine.actifs.classes" />}
+              rules={[{ required: true }]}
+            >
+              <Select
+                disabled={editing}
+                options={assetClassOptions()}
+                onChange={() => form.setFieldValue('details', {})}
+              />
+            </Form.Item>
+          </div>
+          {editing && asset?.assetClass === 'REAL_ESTATE' && (
+            <p>
+              {t('Bien lié : {{bien}}', { bien: asset.property?.internalReference ?? assetClassLabel('REAL_ESTATE') })}
+            </p>
+          )}
+          {!editing && assetClass === 'REAL_ESTATE' && (
+            <RealEstatePicker tenantId={tenantId} linkedPropertyIds={linked} />
+          )}
+          <div {...helpAnchor('actifs-form-nom')}>
+            <Form.Item
+              name="name"
+              label={t("Nom de l'actif")}
+              rules={[{ required: true, whitespace: true, message: t("Le nom de l'actif est requis") }]}
+            >
+              <Input maxLength={160} autoFocus />
+            </Form.Item>
+          </div>
+          <ClassFields assetClass={assetClass} />
+        </FormSection>
+        <FormSection title={t('Acquisition')}>
+          <CurrencyFields form={form} locked={currencyLocked} />
+          <Form.Item name="acquisitionCost" label={t("Coût d'acquisition")}>
+            <InputNumber style={{ width: '100%' }} min={0} {...moneyInputProps(currentCurrency)} />
           </Form.Item>
-        </div>
-        {editing && asset?.assetClass === 'REAL_ESTATE' && (
-          <p>
-            {t('Bien lié : {{bien}}', { bien: asset.property?.internalReference ?? assetClassLabel('REAL_ESTATE') })}
-          </p>
-        )}
-        {!editing && assetClass === 'REAL_ESTATE' && (
-          <RealEstatePicker tenantId={tenantId} linkedPropertyIds={linked} />
-        )}
-        <div {...helpAnchor('actifs-form-nom')}>
-          <Form.Item
-            name="name"
-            label={t("Nom de l'actif")}
-            rules={[{ required: true, whitespace: true, message: t("Le nom de l'actif est requis") }]}
-          >
-            <Input maxLength={160} />
+          <Form.Item name="acquisitionDate" label={t("Date d'acquisition")}>
+            <Input type="date" />
           </Form.Item>
-        </div>
-        <ClassFields assetClass={assetClass} />
-        <CurrencyFields form={form} locked={currencyLocked} />
-        <Form.Item name="acquisitionCost" label={t("Coût d'acquisition")}>
-          <InputNumber style={{ width: '100%' }} min={0} />
-        </Form.Item>
-        <Form.Item name="acquisitionDate" label={t("Date d'acquisition")}>
-          <Input type="date" />
-        </Form.Item>
+        </FormSection>
         <Form.Item name="notes" label={t('Notes')}>
           <TextArea rows={3} maxLength={2000} />
         </Form.Item>

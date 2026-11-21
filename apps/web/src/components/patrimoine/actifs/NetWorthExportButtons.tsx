@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { App, Button, Space } from 'antd';
-import { FileExcelOutlined, FilePdfOutlined } from '@ant-design/icons';
+import { App, Button, Dropdown, Space } from 'antd';
+import type { MenuProps } from 'antd';
+import { DownloadOutlined, FileExcelOutlined, FilePdfOutlined } from '@ant-design/icons';
 import {
   downloadNetWorthExport,
   type NetWorthExportFormat
@@ -27,7 +28,7 @@ async function exportErrorMessage(error: unknown, fallback: string): Promise<str
   return fallback;
 }
 
-/** Boutons « Exporter en PDF » / « Exporter en Excel » de la situation patrimoniale. */
+/** Menu « Exporter » de la situation patrimoniale : PDF ou Excel (un seul bouton, même sur téléphone). */
 export const NetWorthExportButtons: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const { message } = App.useApp();
   const [loading, setLoading] = useState<NetWorthExportFormat | null>(null);
@@ -44,24 +45,18 @@ export const NetWorthExportButtons: React.FC<{ tenantId: string }> = ({ tenantId
     }
   };
 
+  const items: MenuProps['items'] = [
+    { key: 'pdf', icon: <FilePdfOutlined />, label: t('Exporter en PDF'), onClick: () => exporter('pdf') },
+    { key: 'xlsx', icon: <FileExcelOutlined />, label: t('Exporter en Excel'), onClick: () => exporter('xlsx') }
+  ];
+
   return (
-    <Space wrap style={{ marginBottom: 'var(--space-4)' }}>
-      <Button
-        icon={<FilePdfOutlined />}
-        loading={loading === 'pdf'}
-        disabled={loading !== null}
-        onClick={() => exporter('pdf')}
-      >
-        {t('Exporter en PDF')}
-      </Button>
-      <Button
-        icon={<FileExcelOutlined />}
-        loading={loading === 'xlsx'}
-        disabled={loading !== null}
-        onClick={() => exporter('xlsx')}
-      >
-        {t('Exporter en Excel')}
-      </Button>
+    <Space size="small">
+      <Dropdown menu={{ items }} trigger={['click']} placement="bottomRight" disabled={loading !== null}>
+        <Button icon={<DownloadOutlined />} loading={loading !== null}>
+          {t('Exporter')}
+        </Button>
+      </Dropdown>
       <HelpButton size="small" helpId="patrimoine.valeur-nette.exports" />
     </Space>
   );

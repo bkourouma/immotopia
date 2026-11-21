@@ -6,13 +6,12 @@ import {
   Card,
   Checkbox,
   Col,
+  Collapse,
   Empty,
   List,
-  Modal,
   Popconfirm,
   Row,
   Space,
-  Spin,
   Switch,
   Tabs,
   Tag,
@@ -48,14 +47,14 @@ import type { MenuCatalogEntry } from '../../navigation/menu-catalog';
 import type { PersonaId } from '../../navigation/model';
 import { getNavigation } from '../../navigation/model';
 import { getPermissionLabelFr, getPermissionGroupLabelFr, getRoleLabelFr } from '../../constants/permissions-labels';
-import { ListSearch } from '../../components/primitives';
+import { ListSearch, PageHeader, SkeletonDetail, StateBlock, useConfirmAction } from '../../components/primitives';
 import { useLocalListSearch } from '../../utils/list-search';
 import { MenuTenantSelect, MenuScopeChoice, sameMenuScope } from '../../components/admin/MenuTenantSelect';
 import { t } from '../../i18n/t';
 import { HelpButton, HelpSectionTitle, helpAnchor } from '../../help';
 import { localizedRecord } from '../../i18n/localized';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 /**
  * Admin › Rôles et permissions.
@@ -125,6 +124,7 @@ const SCOPE_TAGS: Record<ManagedRole['scope'], { color: string; label: string }>
 const LOCKED_MENU_KEYS = new Set(['super-admin.administration', 'super-admin.administration.admin-roles']);
 
 export const RolesPermissions: React.FC = () => {
+  const confirmAction = useConfirmAction();
   const [roles, setRoles] = useState<Role[]>([]);
   const [permissions, setPermissions] = useState<Permission[]>([]);
   const [menuAccess, setMenuAccess] = useState<MenuAccessMap>({});
@@ -132,6 +132,10 @@ export const RolesPermissions: React.FC = () => {
 
   /** Permissions du rôle sélectionné, par identifiant (grille) et par clé (défauts de menus). */
   const [rolePermissionIds, setRolePermissionIds] = useState<Set<string>>(new Set());
+  /** Dernière version enregistrée des permissions : sert à détecter les modifications. */
+  const [savedPermissionIds, setSavedPermissionIds] = useState<Set<string>>(new Set());
+  const [closedGroups, setClosedGroups] = useState<string[]>([]);
+  const [initToken, setInitToken] = useState(0);
   const [rolePermissionKeys, setRolePermissionKeys] = useState<Set<string> | null>(null);
   const [loadingRole, setLoadingRole] = useState(false);
 
@@ -212,7 +216,7 @@ export const RolesPermissions: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [initToken]);
 
   /** Les rôles de plateforme se règlent sans agence ; tous les autres exigent un choix. */
   const needsTenant = !!selectedRole && selectedRole.scope !== 'PLATFORM';
@@ -264,6 +268,7 @@ export const RolesPermissions: React.FC = () => {
     // tous ses menus sont ouverts par défaut.
     if (!selectedRole.id) {
       setRolePermissionIds(new Set());
+      setSavedPermissionIds(new Set());
       setRolePermissionKeys(null);
       return;
     }
@@ -275,6 +280,7 @@ export const RolesPermissions: React.FC = () => {
       .then(role => {
         if (cancelled) return;
         setRolePermissionIds(new Set(role.permissions?.map(p => p.id) ?? []));
+        setSavedPermissionIds(new Set(role.permissions?.map(p => p.id) ?? []));
         setRolePermissionKeys(new Set(role.permissions?.map(p => p.key) ?? []));
       })
       .catch((err: any) => {
@@ -318,6 +324,25 @@ export const RolesPermissions: React.FC = () => {
     [savedMenuMap, menuDraft]
   );
 
+  const permsDirty = useMemo(
+    () =>
+      rolePermissionIds.size !== savedPermissionIds.size ||
+      Array.from(rolePermissionIds).some(id => !savedPermissionIds.has(id)),
+    [rolePermissionIds, savedPermissionIds]
+  );
+  const anyDirty = menusDirty || permsDirty;
+
+  // Garde de sortie : fermer l'onglet avec des réglages non enregistrés demande confirmation.
+  useEffect(() => {
+    if (!anyDirty) return undefined;
+    const avertir = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', avertir);
+    return () => window.removeEventListener('beforeunload', avertir);
+  }, [anyDirty]);
+
   const menuCounts = useMemo(() => {
     const keys = Object.keys(menuDraft);
     return { enabled: keys.filter(key => menuDraft[key]).length, total: keys.length };
@@ -329,19 +354,51 @@ export const RolesPermissions: React.FC = () => {
       setChoice(next);
       return;
     }
-    Modal.confirm({
+    confirmAction({
       title: t('Abandonner les modifications ?'),
-      content: t("Les menus modifiés ne sont pas enregistrés : changer d'agence les fera perdre."),
+      description: t("Les menus modifiés ne sont pas enregistrés : changer d'agence les fera perdre."),
       okText: t("Changer d'agence"),
       cancelText: t('Rester'),
-      onOk: () => setChoice(next)
+      danger: true,
+      onConfirm: () => setChoice(next)
+    });
+  };
+
+  // Recharger la page efface les réglages non enregistrés : on demande d'abord.
+  const handleReload = () => {
+    if (!anyDirty) {
+      window.location.reload();
+      return;
+    }
+    confirmAction({
+      title: t('Abandonner les modifications ?'),
+      description: t('Les réglages modifiés ne sont pas enregistrés : recharger la page les fera perdre.'),
+      okText: t('Recharger'),
+      cancelText: t('Rester'),
+      danger: true,
+      onConfirm: () => window.location.reload()
     });
   };
 
   const handleSelectRole = (role: ManagedRole) => {
-    setSelectedKey(role.key);
-    setSuccess(null);
-    setError(null);
+    if (role.key === selectedKey) return;
+    const select = () => {
+      setSelectedKey(role.key);
+      setSuccess(null);
+      setError(null);
+    };
+    if (!anyDirty) {
+      select();
+      return;
+    }
+    confirmAction({
+      title: t('Abandonner les modifications ?'),
+      description: t('Les réglages modifiés ne sont pas enregistrés : changer de rôle les fera perdre.'),
+      okText: t('Changer de rôle'),
+      cancelText: t('Rester'),
+      danger: true,
+      onConfirm: select
+    });
   };
 
   /**
@@ -421,6 +478,7 @@ export const RolesPermissions: React.FC = () => {
       await updateRolePermissions(selectedRole.id, Array.from(rolePermissionIds));
       const updated = await getRole(selectedRole.id);
       setRolePermissionIds(new Set(updated.permissions?.map(p => p.id) ?? []));
+      setSavedPermissionIds(new Set(updated.permissions?.map(p => p.id) ?? []));
       setRolePermissionKeys(new Set(updated.permissions?.map(p => p.key) ?? []));
       setRoles(prev => prev.map(r => (r.id === updated.id ? { ...r, ...updated } : r)));
       setSuccess(t('Permissions mises à jour avec succès.'));
@@ -498,12 +556,15 @@ export const RolesPermissions: React.FC = () => {
   });
 
   if (loading) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 256 }}>
-        <Spin size="large" />
-      </div>
-    );
+    return <SkeletonDetail />;
   }
+
+  if (error && roles.length === 0) {
+    return <StateBlock variant="error" description={error} onRetry={() => setInitToken(n => n + 1)} />;
+  }
+
+  const permissionGroupKeys = Object.keys(groupedPermissions);
+  const openGroupKeys = permissionGroupKeys.filter(key => !closedGroups.includes(key));
 
   const personaLabel = selectedRole?.persona ? getNavigation()[selectedRole.persona].label : null;
 
@@ -566,6 +627,7 @@ export const RolesPermissions: React.FC = () => {
                 return (
                   <Col xs={24} md={12} key={child.menuKey}>
                     <Checkbox
+                      style={{ minHeight: 32 }}
                       checked={Boolean(menuDraft[child.menuKey])}
                       // Une sous-entrée sous un parent éteint n'est atteignable
                       // par aucun chemin : la laisser cochable serait un leurre.
@@ -609,7 +671,7 @@ export const RolesPermissions: React.FC = () => {
           <Tag color={SCOPE_TAGS[selectedRole.scope].color}>{SCOPE_TAGS[selectedRole.scope].label}</Tag>
           {!awaitingTenant && (
             <Badge
-              count={`${menuCounts.enabled}/${menuCounts.total} actifs`}
+              count={t('{{enabled}}/{{total}} actifs', { enabled: menuCounts.enabled, total: menuCounts.total })}
               style={{ background: 'var(--ant-color-fill-secondary, #f0f0f0)', color: 'rgba(0,0,0,0.65)' }}
             />
           )}
@@ -621,7 +683,8 @@ export const RolesPermissions: React.FC = () => {
         </Space>
       }
       extra={
-        <Space>
+        <Space wrap>
+          {menusDirty && <Text type="warning">{t('Modifications non enregistrées')}</Text>}
           {hasOwnSetting && (
             <Popconfirm
               title={t('Revenir au défaut ?')}
@@ -630,7 +693,9 @@ export const RolesPermissions: React.FC = () => {
               cancelText={t('Annuler')}
               onConfirm={handleRevertToDefault}
             >
-              <Button loading={resetting}>{t('Revenir au défaut')}</Button>
+              <Button loading={resetting} style={{ minHeight: 44 }}>
+                {t('Revenir au défaut')}
+              </Button>
             </Popconfirm>
           )}
           <Popconfirm
@@ -642,7 +707,9 @@ export const RolesPermissions: React.FC = () => {
             cancelText={t('Annuler')}
             onConfirm={handleResetMenus}
           >
-            <Button icon={<UndoOutlined />}>{t('Valeurs par défaut')}</Button>
+            <Button icon={<UndoOutlined />} style={{ minHeight: 44 }}>
+              {t('Valeurs par défaut')}
+            </Button>
           </Popconfirm>
           <Button
             type="primary"
@@ -650,6 +717,7 @@ export const RolesPermissions: React.FC = () => {
             onClick={handleSaveMenus}
             loading={savingMenus}
             disabled={!menusDirty || awaitingTenant}
+            style={{ minHeight: 44 }}
           >
             {t('Enregistrer')}
           </Button>
@@ -689,9 +757,7 @@ export const RolesPermissions: React.FC = () => {
         {awaitingTenant ? (
           <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('Choisissez une agence pour régler ses menus.')} />
         ) : loadingRole || loadingMenuAccess ? (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: 32 }}>
-            <Spin />
-          </div>
+          <SkeletonDetail rows={4} />
         ) : (
           <>
             <ListSearch {...menuSearch.searchProps} aria-label={t('Rechercher dans les menus')} />
@@ -754,12 +820,23 @@ export const RolesPermissions: React.FC = () => {
           </span>
           <HelpButton size="small" helpId="administration.pilotage.roles.permissions" />
           <Tag color={SCOPE_TAGS[selectedRole.scope].color}>{SCOPE_TAGS[selectedRole.scope].label}</Tag>
+          <Tag>{t('{{count}} permissions accordées', { count: rolePermissionIds.size })}</Tag>
         </Space>
       }
       extra={
-        <Button type="primary" icon={<SaveOutlined />} onClick={handleSavePermissions} loading={savingPermissions}>
-          {t('Enregistrer')}
-        </Button>
+        <Space wrap>
+          {permsDirty && <Text type="warning">{t('Modifications non enregistrées')}</Text>}
+          <Button
+            type="primary"
+            icon={<SaveOutlined />}
+            onClick={handleSavePermissions}
+            loading={savingPermissions}
+            disabled={!permsDirty}
+            style={{ minHeight: 44 }}
+          >
+            {t('Enregistrer')}
+          </Button>
+        </Space>
       }
     >
       {selectedRole.description && (
@@ -769,9 +846,7 @@ export const RolesPermissions: React.FC = () => {
       )}
 
       {loadingRole ? (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: 32 }}>
-          <Spin />
-        </div>
+        <SkeletonDetail rows={4} />
       ) : permissionList.length === 0 ? (
         <Empty description={t('Aucune permission disponible')} />
       ) : (
@@ -780,41 +855,58 @@ export const RolesPermissions: React.FC = () => {
           {permissionSearch.isFiltered && Object.keys(groupedPermissions).length === 0 && (
             <Empty description={t('Aucune permission ne correspond aux critères.')} />
           )}
-          {Object.entries(groupedPermissions).map(([prefix, perms]) => (
-            <div key={prefix}>
-              <Text strong style={{ fontSize: 13, display: 'block', marginBottom: 12 }}>
-                {getPermissionGroupLabelFr(prefix)}
-              </Text>
-              <Row gutter={[16, 8]}>
-                {perms.map(permission => {
-                  const isChecked = rolePermissionIds.has(permission.id);
-                  const { label, description } = getPermissionLabelFr(
-                    permission.key,
-                    permission.description ?? undefined
-                  );
-                  return (
-                    <Col xs={24} md={12} key={permission.id}>
-                      <Checkbox
-                        checked={isChecked}
-                        onChange={() => handlePermissionToggle(permission.id)}
-                        style={{ alignItems: 'flex-start', marginInlineEnd: 0 }}
-                      >
-                        <Space orientation="vertical" size={0}>
-                          <Space>
-                            <span>{label}</span>
-                            {isChecked && <CheckOutlined style={{ color: 'var(--ant-color-success)' }} />}
-                          </Space>
-                          <Text type="secondary" style={{ fontSize: 12 }}>
-                            {description}
-                          </Text>
-                        </Space>
-                      </Checkbox>
-                    </Col>
-                  );
-                })}
-              </Row>
-            </div>
-          ))}
+          <Collapse
+            ghost
+            activeKey={openGroupKeys}
+            onChange={keys => {
+              const open = Array.isArray(keys) ? keys.map(String) : [String(keys)];
+              setClosedGroups(permissionGroupKeys.filter(key => !open.includes(key)));
+            }}
+            items={Object.entries(groupedPermissions).map(([prefix, perms]) => {
+              const grantedCount = perms.filter(permission => rolePermissionIds.has(permission.id)).length;
+              return {
+                key: prefix,
+                label: (
+                  <Space wrap>
+                    <Text strong style={{ fontSize: 13 }}>
+                      {getPermissionGroupLabelFr(prefix)}
+                    </Text>
+                    <Tag>{t('{{granted}} sur {{total}}', { granted: grantedCount, total: perms.length })}</Tag>
+                  </Space>
+                ),
+                children: (
+                  <Row gutter={[16, 12]}>
+                    {perms.map(permission => {
+                      const isChecked = rolePermissionIds.has(permission.id);
+                      const { label, description } = getPermissionLabelFr(
+                        permission.key,
+                        permission.description ?? undefined
+                      );
+                      return (
+                        <Col xs={24} md={12} key={permission.id}>
+                          <Checkbox
+                            checked={isChecked}
+                            onChange={() => handlePermissionToggle(permission.id)}
+                            style={{ alignItems: 'flex-start', marginInlineEnd: 0, minHeight: 44 }}
+                          >
+                            <Space orientation="vertical" size={0}>
+                              <Space>
+                                <span>{label}</span>
+                                {isChecked && <CheckOutlined style={{ color: 'var(--ant-color-success)' }} />}
+                              </Space>
+                              <Text type="secondary" style={{ fontSize: 12 }}>
+                                {description}
+                              </Text>
+                            </Space>
+                          </Checkbox>
+                        </Col>
+                      );
+                    })}
+                  </Row>
+                )
+              };
+            })}
+          />
         </Space>
       )}
     </Card>
@@ -822,14 +914,10 @@ export const RolesPermissions: React.FC = () => {
 
   return (
     <Space orientation="vertical" size="large" style={{ width: '100%' }}>
-      <div>
-        <Title level={3} style={{ margin: 0 }}>
-          {t('Rôles, menus et permissions')}
-        </Title>
-        <Text type="secondary">
-          {t("Choisissez un rôle, puis réglez les menus qu'il voit et les permissions qu'il détient.")}
-        </Text>
-      </div>
+      <PageHeader
+        title={t('Rôles, menus et permissions')}
+        subtitle={t("Choisissez un rôle, puis réglez les menus qu'il voit et les permissions qu'il détient.")}
+      />
 
       {error && (
         <Alert title={t('Erreur')} description={error} type="error" showIcon closable onClose={() => setError(null)} />
@@ -855,10 +943,10 @@ export const RolesPermissions: React.FC = () => {
               <Tooltip title={t('Recharger les rôles et les menus')}>
                 <Button
                   type="text"
-                  size="small"
                   icon={<ReloadOutlined />}
-                  onClick={() => window.location.reload()}
+                  onClick={handleReload}
                   aria-label={t('Recharger')}
+                  style={{ minWidth: 44, minHeight: 44 }}
                 />
               </Tooltip>
             }
@@ -875,13 +963,23 @@ export const RolesPermissions: React.FC = () => {
                     key={role.key}
                     style={{
                       cursor: 'pointer',
+                      minHeight: 44,
                       background: isSelected ? 'var(--ant-color-primary-bg)' : undefined,
                       borderRadius: 6,
                       marginBottom: 4,
                       paddingInlineStart: 8,
                       borderInlineStart: isSelected ? '3px solid var(--ant-color-primary)' : '3px solid transparent'
                     }}
+                    role="button"
+                    tabIndex={0}
+                    aria-pressed={isSelected}
                     onClick={() => handleSelectRole(role)}
+                    onKeyDown={event => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        handleSelectRole(role);
+                      }
+                    }}
                   >
                     <List.Item.Meta
                       avatar={

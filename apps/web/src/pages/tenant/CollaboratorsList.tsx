@@ -1,20 +1,20 @@
 import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { App, Card, Button, Tag, Space, Avatar, Popconfirm, Alert, Typography } from 'antd';
+import { App, Card, Button, Tag, Space, Avatar, Typography } from 'antd';
 import { UserOutlined, PlusOutlined, EyeOutlined, UserDeleteOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { listMembers, Member, disableMember, enableMember } from '../../services/membership-service';
 import { listRoles } from '../../services/role-service';
 import { getRoleLabelFr } from '../../constants/permissions-labels';
 import type { ColumnsType } from 'antd/es/table';
-import { Table } from '../../components/primitives';
+import { ConfirmAction, PageHeader, StateBlock, Table } from '../../components/primitives';
 import { useListSearch } from '../../hooks/useListSearch';
 import { queryKey, entityKeyPrefix, STALE_TIME } from '../../lib/query-keys';
 import { collectAllPages } from '../../utils/table-export/collect';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 /**
  * Collaborateurs — exemple « liste paginée serveur » de la recherche
@@ -72,6 +72,7 @@ export const CollaboratorsList: React.FC = () => {
   const {
     data,
     isFetching,
+    refetch,
     error: queryError
   } = useQuery({
     queryKey: queryKey('members', tenantId, search.apiParams),
@@ -174,27 +175,42 @@ export const CollaboratorsList: React.FC = () => {
             icon={<EyeOutlined />}
             onClick={() => navigate(`/tenant/${tenantId}/collaborators/${record.userId}`)}
             title={t('Voir les détails')}
+            aria-label={t('Voir les détails de {{name}}', { name: record.user.fullName || record.user.email })}
+            style={{ minWidth: 44, minHeight: 44 }}
           />
           {record.status === 'ACTIVE' ? (
-            <Popconfirm
-              title={t('Désactiver le collaborateur')}
-              description={t('Êtes-vous sûr de vouloir désactiver ce collaborateur ?')}
+            <ConfirmAction
+              title={t('Désactiver {{name}} ?', { name: record.user.fullName || record.user.email })}
+              description={t("Cette personne ne pourra plus se connecter à l'agence. Vous pourrez la réactiver.")}
               onConfirm={() => handleToggleStatus(record.userId, record.status)}
-              okText={t('Oui')}
+              okText={t('Oui, désactiver')}
               cancelText={t('Non')}
+              danger
             >
-              <Button type="text" danger icon={<UserDeleteOutlined />} title={t('Désactiver')} />
-            </Popconfirm>
+              <Button
+                type="text"
+                danger
+                icon={<UserDeleteOutlined />}
+                title={t('Désactiver')}
+                aria-label={t('Désactiver {{name}}', { name: record.user.fullName || record.user.email })}
+                style={{ minWidth: 44, minHeight: 44 }}
+              />
+            </ConfirmAction>
           ) : (
-            <Popconfirm
-              title={t('Activer le collaborateur')}
-              description={t('Êtes-vous sûr de vouloir activer ce collaborateur ?')}
+            <ConfirmAction
+              title={t('Activer {{name}} ?', { name: record.user.fullName || record.user.email })}
               onConfirm={() => handleToggleStatus(record.userId, record.status)}
-              okText={t('Oui')}
+              okText={t('Oui, activer')}
               cancelText={t('Non')}
             >
-              <Button type="text" icon={<CheckCircleOutlined />} title={t('Activer')} />
-            </Popconfirm>
+              <Button
+                type="text"
+                icon={<CheckCircleOutlined />}
+                title={t('Activer')}
+                aria-label={t('Activer {{name}}', { name: record.user.fullName || record.user.email })}
+                style={{ minWidth: 44, minHeight: 44 }}
+              />
+            </ConfirmAction>
           )}
         </Space>
       )
@@ -205,20 +221,24 @@ export const CollaboratorsList: React.FC = () => {
     <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         {/* Header */}
-        <div className="it-toolbar it-toolbar--start">
-          <div>
-            <Title level={2} style={{ margin: 0 }}>
-              {t('Collaborateurs')}
-            </Title>
-            <Text type="secondary">{t('Gérez les collaborateurs de votre agence')}</Text>
-          </div>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate(`/tenant/${tenantId}/invite`)}>
-            {t('Inviter un collaborateur')}
-          </Button>
-        </div>
+        <PageHeader
+          title={t('Collaborateurs')}
+          subtitle={t('Gérez les collaborateurs de votre agence')}
+          primaryAction={{
+            label: t('Inviter un collaborateur'),
+            icon: <PlusOutlined />,
+            onClick: () => navigate(`/tenant/${tenantId}/invite`)
+          }}
+        />
 
         {/* Error Message */}
-        {error && <Alert message={t('Erreur')} description={error} type="error" showIcon />}
+        {error && (
+          <StateBlock
+            variant="error"
+            description={error}
+            actions={[{ label: t('Réessayer'), onClick: () => void refetch(), primary: true }]}
+          />
+        )}
 
         {/* Members Table */}
         <Card>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Alert, Button, Empty, Select, Space, Spin, Table, Tag } from 'antd';
+import { Button, Empty, Select, Space, Table } from 'antd';
+import { SkeletonTable, StateBlock, StatusTag } from '../../components/primitives';
 import { activeLocale } from '../../i18n/format';
 import { t } from '../../i18n/t';
 import { listAssistantFeedback, type AssistantFeedbackEntry } from '../../services/ai-settings-service';
@@ -44,13 +45,13 @@ export function AssistantFeedbackList() {
         ]}
       />
       {error ? (
-        <Alert
-          type="error"
-          message={t('Les avis n’ont pas pu être chargés.')}
-          action={<Button onClick={() => setRefresh(value => value + 1)}>{t('Réessayer')}</Button>}
+        <StateBlock
+          variant="error"
+          title={t('Les avis n’ont pas pu être chargés.')}
+          onRetry={() => setRefresh(value => value + 1)}
         />
       ) : !result ? (
-        <Spin />
+        <SkeletonTable rows={4} columns={4} />
       ) : (
         <>
           <Table<AssistantFeedbackEntry>
@@ -70,7 +71,13 @@ export function AssistantFeedbackList() {
               {
                 title: t('Avis'),
                 dataIndex: 'helpful',
-                render: value => <Tag>{value ? t('Utile') : t('Peu utile')}</Tag>
+                render: value => (
+                  <StatusTag
+                    status={value ? 'SUCCESS' : 'PENDING'}
+                    tone={value ? 'success' : 'warning'}
+                    label={value ? t('Utile') : t('Peu utile')}
+                  />
+                )
               },
               {
                 title: t('Extrait de la réponse'),
@@ -92,11 +99,15 @@ export function AssistantFeedbackList() {
               }
             ]}
           />
-          <Space>
-            <Button disabled={!offset} onClick={() => setOffset(value => value - PAGE_SIZE)}>
+          <Space wrap>
+            <Button style={{ minHeight: 44 }} disabled={!offset} onClick={() => setOffset(value => value - PAGE_SIZE)}>
               {t('Précédent')}
             </Button>
-            <Button disabled={!result.hasNext} onClick={() => setOffset(value => value + PAGE_SIZE)}>
+            <Button
+              style={{ minHeight: 44 }}
+              disabled={!result.hasNext}
+              onClick={() => setOffset(value => value + PAGE_SIZE)}
+            >
               {t('Suivant')}
             </Button>
           </Space>

@@ -4,6 +4,7 @@ import { DownloadOutlined, LinkOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { DataCard, DataView, SkeletonList, StateBlock } from '../../components/primitives';
 import { feedback } from '../../lib/feedback';
 import { t } from '../../i18n/t';
@@ -29,6 +30,8 @@ const ACCESSEURS = { type: (doc: CoOwnerDocument) => doc.type };
  */
 export default function CoOwnerDocuments() {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const { isMobile } = useBreakpoint();
+  const touchStyle = isMobile ? { minHeight: 44 } : undefined;
   const {
     data: documents,
     isPending,
@@ -69,6 +72,7 @@ export default function CoOwnerDocuments() {
     try {
       const { blob, filename } = await downloadCoOwnerDocument(document.id, document.title);
       saveBlob(blob, filename);
+      feedback.success(t('Document téléchargé.'));
     } catch (err) {
       feedback.error(await describeDownloadError(err));
     } finally {
@@ -80,6 +84,7 @@ export default function CoOwnerDocuments() {
     if (document.downloadable) {
       return (
         <Button
+          style={touchStyle}
           icon={<DownloadOutlined />}
           loading={downloadingId === document.id}
           onClick={() => void download(document)}
@@ -90,7 +95,13 @@ export default function CoOwnerDocuments() {
     }
     if (document.externalUrl) {
       return (
-        <Button icon={<LinkOutlined />} href={document.externalUrl} target="_blank" rel="noopener noreferrer">
+        <Button
+          style={touchStyle}
+          icon={<LinkOutlined />}
+          href={document.externalUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
           {t('Ouvrir')}
         </Button>
       );

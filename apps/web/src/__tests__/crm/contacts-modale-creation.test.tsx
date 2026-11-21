@@ -121,6 +121,8 @@ describe('Contacts — la modale de création se réinitialise entre deux ouvert
     expect(prenom).toHaveValue('Aminata');
 
     await user.click(screen.getByRole('button', { name: /^Annuler$/i }));
+    // Saisie en cours : la garde de sortie demande confirmation avant d'abandonner.
+    await user.click(await screen.findByRole('button', { name: 'Abandonner' }, { timeout: 8000 }));
     await terminerLAnimationDeFermeture();
     await waitFor(() => expect(screen.queryByLabelText(/Prénom/i)).not.toBeInTheDocument(), { timeout: 8000 });
 

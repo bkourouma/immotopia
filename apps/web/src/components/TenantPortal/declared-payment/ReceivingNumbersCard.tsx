@@ -23,7 +23,7 @@ export interface ReceivingNumbersCardProps {
   bordered?: boolean;
 }
 
-const TOUCH_TARGET = 40;
+const TOUCH_TARGET = 44;
 
 /** « +2250707070707 » donne « 0707070707 » ; tout autre motif est copié tel quel. */
 function nationalNumber(e164: string): string {

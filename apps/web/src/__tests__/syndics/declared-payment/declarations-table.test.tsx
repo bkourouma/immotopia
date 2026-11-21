@@ -358,7 +358,7 @@ describe('DeclarationsTable', () => {
       response([], { counts: { pending: 0, overdue: 0, suspectedDuplicate: 0 } })
     );
     renderTable();
-    expect(await screen.findByText('Aucun paiement déclaré', undefined, T)).toBeTruthy();
+    expect(await screen.findByText(/Aucun paiement déclaré/, undefined, T)).toBeTruthy();
   });
 
   it('affiche l’erreur de chargement et « Réessayer » recharge', async () => {

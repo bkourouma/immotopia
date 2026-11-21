@@ -14,6 +14,8 @@ import {
 } from 'antd';
 import dayjs, { Dayjs } from 'dayjs';
 import { formatMoney } from '../../primitives';
+import { useBreakpoint } from '../../../hooks/useBreakpoint';
+import { montantSaisiProps } from '../../../utils/montant-saisi';
 import { useFormFieldModes } from '../../../hooks/useFormFieldModes';
 import {
   ApproveDeclarationBody,
@@ -73,6 +75,7 @@ export const ApproveModal: React.FC<ApproveModalProps> = ({
   onStale
 }) => {
   const { message } = App.useApp();
+  const { isMobile } = useBreakpoint();
   const [correcting, setCorrecting] = useState(false);
   const [paidAt, setPaidAt] = useState<Dayjs | null>(null);
   const [amounts, setAmounts] = useState<Record<string, number | null>>({});
@@ -212,7 +215,8 @@ export const ApproveModal: React.FC<ApproveModalProps> = ({
       okButtonProps={{ disabled: !canSubmit, loading: submitting }}
       cancelButtonProps={{ disabled: submitting }}
       destroyOnClose
-      width={680}
+      width={isMobile ? '100%' : 680}
+      style={isMobile ? { top: 0, maxWidth: '100vw', paddingBottom: 0 } : undefined}
     >
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         {declaration.alerts.map((alert, index) => {
@@ -280,12 +284,17 @@ export const ApproveModal: React.FC<ApproveModalProps> = ({
                 </label>
                 <InputNumber
                   id={`approve-amount-${line.id}`}
+                  {...montantSaisiProps}
                   min={0}
                   precision={0}
                   step={1000}
+                  addonAfter="FCFA"
+                  inputMode="numeric"
                   style={{ display: 'block', width: '100%', marginBlockStart: 4 }}
                   value={amounts[line.id] ?? null}
-                  onChange={value => setAmounts(prev => ({ ...prev, [line.id]: value }))}
+                  onChange={value =>
+                    setAmounts(prev => ({ ...prev, [line.id]: typeof value === 'number' ? value : null }))
+                  }
                 />
                 {amounts[line.id] === 0 ? (
                   <Text type="secondary" style={{ fontSize: 12 }}>

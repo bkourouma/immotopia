@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { App, Button, Modal, Space, Tag, Typography } from 'antd';
+import { StatusTag } from '../../../components/primitives';
 import { PlusOutlined } from '@ant-design/icons';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -32,8 +33,8 @@ import { collectAllPages } from '../../../utils/table-export/collect';
 import {
   EXTERNAL_ACCESS_TYPES,
   accessSectionLabel,
-  accessStatusColor,
   accessStatusLabel,
+  accessStatusTone,
   accessTypeLabel
 } from './external-access-labels';
 
@@ -196,7 +197,7 @@ export const ExternalAccessPage: React.FC = () => {
         <StateBlock
           variant="error"
           description={t('Impossible de charger les options de partage (biens, entités, propriétaires).')}
-          actions={[{ label: t('Réessayer'), onClick: () => optionsQuery.refetch(), primary: true }]}
+          onRetry={() => optionsQuery.refetch()}
         />
       ) : null}
 
@@ -204,7 +205,7 @@ export const ExternalAccessPage: React.FC = () => {
         <StateBlock
           variant="error"
           description={t('Impossible de charger les accès partagés.')}
-          actions={[{ label: t('Réessayer'), onClick: () => grantsQuery.refetch(), primary: true }]}
+          onRetry={() => grantsQuery.refetch()}
         />
       ) : grantsQuery.isPending ? (
         <SkeletonList rows={5} aria-label={t('Accès partagés en cours de chargement')} />
@@ -235,7 +236,11 @@ export const ExternalAccessPage: React.FC = () => {
                 title: t('Statut'),
                 dataIndex: 'status',
                 render: (_: unknown, grant) => (
-                  <Tag color={accessStatusColor(grant.status)}>{accessStatusLabel(grant.status)}</Tag>
+                  <StatusTag
+                    status={grant.status}
+                    tone={accessStatusTone(grant.status)}
+                    label={accessStatusLabel(grant.status)}
+                  />
                 )
               },
               {
@@ -300,7 +305,6 @@ export const ExternalAccessPage: React.FC = () => {
                     <Space size="small" wrap>
                       {grant.status !== 'REVOKED' ? (
                         <Button
-                          size="small"
                           aria-label={t('Modifier {{name}}', { name: grant.recipientName })}
                           disabled={opening || !options}
                           onClick={() => openEdit(grant)}
@@ -310,7 +314,6 @@ export const ExternalAccessPage: React.FC = () => {
                       ) : null}
                       {live ? (
                         <Button
-                          size="small"
                           aria-label={t('Renvoyer un lien à {{name}}', { name: grant.recipientName })}
                           onClick={() => setSendFor(grant)}
                         >
@@ -318,7 +321,6 @@ export const ExternalAccessPage: React.FC = () => {
                         </Button>
                       ) : null}
                       <Button
-                        size="small"
                         aria-label={t('Journal de {{name}}', { name: grant.recipientName })}
                         onClick={() => setLogFor(grant)}
                       >
@@ -326,7 +328,6 @@ export const ExternalAccessPage: React.FC = () => {
                       </Button>
                       {grant.status !== 'REVOKED' ? (
                         <Button
-                          size="small"
                           danger
                           aria-label={t('Révoquer {{name}}', { name: grant.recipientName })}
                           onClick={() => setRevokeFor(grant)}

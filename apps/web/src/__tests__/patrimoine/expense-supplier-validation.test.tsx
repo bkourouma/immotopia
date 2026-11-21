@@ -117,7 +117,7 @@ describe('Dépense d’un bien — fournisseur requis si l’agence a commandé'
     await userEvent.click(within(modale).getByRole('switch', { name: "L'agence a commandé et doit la facture" }));
     expect(await within(modale).findByLabelText('Fournisseur')).toBeTruthy();
 
-    await userEvent.click(within(modale).getByRole('button', { name: /ok/i }));
+    await userEvent.click(within(modale).getByRole('button', { name: /Enregistrer|Ajouter/ }));
 
     await waitFor(() => {
       expect(within(modale).getByText(MESSAGE_FOURNISSEUR)).toBeTruthy();

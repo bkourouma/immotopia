@@ -410,6 +410,49 @@ export const SyndicMeetingDetail: React.FC = () => {
     }
   };
 
+  /** Prochaine action évidente, déduite du statut et de l'état de la convocation (aucune règle nouvelle). */
+  function describeNextStep(): { step: string; text: string; action?: { label: string; onClick: () => void } } | null {
+    if (!meeting) return null;
+    const agendaTotal = (meeting.agendaItems || []).length;
+    if (meeting.status === 'PLANNED') {
+      if (agendaTotal === 0) {
+        return {
+          step: t('Étape 1 sur 4 · Préparer'),
+          text: t("Saisissez l'ordre du jour : il sera joint aux convocations."),
+          action: { label: t("Saisir l'ordre du jour"), onClick: openCreateAgendaModal }
+        };
+      }
+      if (meeting.convocationSent === false) {
+        return {
+          step: t('Étape 2 sur 4 · Convoquer'),
+          text: t(
+            "L'ordre du jour est prêt : envoyez les convocations aux copropriétaires (bouton « Envoyer les convocations »)."
+          )
+        };
+      }
+      return {
+        step: t('Étape 3 sur 4 · Tenir la séance'),
+        text: t(
+          'Convocations envoyées. Enregistrez les procurations reçues, puis ouvrez la séance le jour de l’assemblée.'
+        )
+      };
+    }
+    if (meeting.status === 'IN_PROGRESS') {
+      return {
+        step: t('Étape 3 sur 4 · Tenir la séance'),
+        text: t('Séance en cours : ouvrez chaque vote, enregistrez les voix, puis clôturez la séance.')
+      };
+    }
+    if (meeting.status === 'COMPLETED') {
+      return {
+        step: t('Étape 4 sur 4 · Procès-verbal'),
+        text: t('Séance clôturée. Générez le compte rendu (PV) pour le diffuser.'),
+        action: { label: t('Générer compte rendu Word'), onClick: () => void handleGenerateMinutes() }
+      };
+    }
+    return null;
+  }
+
   if (loading) {
     return (
       <>
@@ -423,7 +466,16 @@ export const SyndicMeetingDetail: React.FC = () => {
   if (error || !meeting) {
     return (
       <>
-        <Alert type="error" message={error || t('Assemblée introuvable')} showIcon />
+        <Alert
+          type="error"
+          message={error || t('Assemblée introuvable')}
+          showIcon
+          action={
+            <Button size="small" onClick={() => void loadMeeting()}>
+              {t('Réessayer')}
+            </Button>
+          }
+        />
       </>
     );
   }
@@ -432,6 +484,7 @@ export const SyndicMeetingDetail: React.FC = () => {
   const meetingLots = (meeting.syndicate?.lots || []) as MeetingLot[];
   const convocationSent = meeting.convocationSent !== false;
   const agendaCount = (meeting.agendaItems || []).length;
+  const nextStep = describeNextStep();
 
   return (
     <>
@@ -452,7 +505,7 @@ export const SyndicMeetingDetail: React.FC = () => {
               <HelpButton helpId="syndic.assemblees.detail.statuts" />
             </Space>
             <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-              Date: {dayjs(meeting.scheduledAt).format('DD/MM/YYYY HH:mm')} {t('| Type:')}{' '}
+              {t('Date :')} {dayjs(meeting.scheduledAt).format('DD/MM/YYYY HH:mm')} {t('| Type:')}{' '}
               {t(meetingTypeLabels[meeting.type] ?? meeting.type)}
             </Paragraph>
             {metaEditable ? (
@@ -560,6 +613,23 @@ export const SyndicMeetingDetail: React.FC = () => {
           </Space>
         </div>
 
+        {nextStep ? (
+          <Alert
+            type="info"
+            showIcon
+            role="status"
+            message={nextStep.step}
+            description={nextStep.text}
+            action={
+              nextStep.action ? (
+                <Button size="small" type="primary" onClick={nextStep.action.onClick}>
+                  {nextStep.action.label}
+                </Button>
+              ) : null
+            }
+          />
+        ) : null}
+
         {meeting.status === 'CANCELLED' ? null : (
           <Card title={<HelpSectionTitle title={t('En direct')} helpId="syndic.assemblees.detail.direct" />}>
             <MeetingLiveConsole
@@ -646,6 +716,12 @@ export const SyndicMeetingDetail: React.FC = () => {
                         ) : (
                           <Popconfirm
                             title={t("Supprimer ce point de l'ordre du jour ?")}
+                            description={t(
+                              '« {{title}} » sera retiré de l’ordre du jour. Cette action est définitive.',
+                              {
+                                title: item.title
+                              }
+                            )}
                             okText={t('Supprimer')}
                             cancelText={t('Annuler')}
                             okButtonProps={{ danger: true }}
@@ -722,7 +798,7 @@ export const SyndicMeetingDetail: React.FC = () => {
             name="title"
             rules={[{ required: true, message: t('Le titre est obligatoire') }]}
           >
-            <Input />
+            <Input autoFocus />
           </Form.Item>
           {fmResolution.isVisible('description') && (
             <Form.Item
@@ -758,6 +834,7 @@ export const SyndicMeetingDetail: React.FC = () => {
         okText={t('Enregistrer')}
         cancelText={t('Annuler')}
         confirmLoading={savingAgenda}
+        okButtonProps={{ disabled: savingAgenda }}
       >
         <Form form={agendaForm} layout="vertical">
           <Form.Item
@@ -765,7 +842,7 @@ export const SyndicMeetingDetail: React.FC = () => {
             name="title"
             rules={[{ required: true, message: t('Le titre est obligatoire') }]}
           >
-            <Input />
+            <Input autoFocus />
           </Form.Item>
           <Form.Item
             label={t('Ordre')}

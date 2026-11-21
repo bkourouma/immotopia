@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { App, Alert, Badge, Space, Tabs, Typography } from 'antd';
+import { App, Alert, Badge, Space, Tabs } from 'antd';
 import { RentalOnlineCheckoutsTable } from '../../components/rental/online-payment/CheckoutsTable';
 import { RentalReviewDecisionModal } from '../../components/rental/online-payment/ReviewDecisionModal';
 import { CollectionAccountPanel } from '../../components/rental/online-payment/CollectionAccountPanel';
@@ -13,11 +13,9 @@ import type {
   RentalOnlineUnavailableReason,
   ResolveOnlinePaymentResultDto
 } from '../../types/rental-online-payment';
-import { formatMoney } from '../../components/primitives';
+import { formatMoney, PageHeader, StateBlock } from '../../components/primitives';
 import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { t } from '../../i18n/t';
-
-const { Title, Paragraph } = Typography;
 
 const TABS = ['suivi', 'collecte'] as const;
 type TabKey = (typeof TABS)[number];
@@ -90,7 +88,7 @@ export const OnlinePayments: React.FC = () => {
   }, [tenantId, refreshToken]);
 
   if (!tenantId) {
-    return <Alert type="error" showIcon message={t('Paramètres agence manquants')} />;
+    return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
   }
 
   const bump = () => setRefreshToken(value => value + 1);
@@ -111,16 +109,12 @@ export const OnlinePayments: React.FC = () => {
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      <Space direction="vertical" size={4}>
-        <Title level={2} style={{ margin: 0 }}>
-          {t('Paiements en ligne')}
-        </Title>
-        <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-          {t(
-            'Loyers payés en ligne par les locataires : suivi, décision sur les cas à vérifier et compte de collecte.'
-          )}
-        </Paragraph>
-      </Space>
+      <PageHeader
+        title={t('Paiements en ligne')}
+        subtitle={t(
+          'Loyers payés en ligne par les locataires : suivi, décision sur les cas à vérifier et compte de collecte.'
+        )}
+      />
 
       {unavailable ? (
         <Alert type="warning" showIcon message={unavailableText(unavailable === 'UNKNOWN' ? null : unavailable)} />

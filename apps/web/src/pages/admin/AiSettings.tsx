@@ -9,7 +9,6 @@ import {
   Input,
   Radio,
   Select,
-  Skeleton,
   Space,
   Switch,
   Tag,
@@ -34,8 +33,9 @@ import { handleApiError } from '../../utils/error-handler';
 import { dateFormat } from '../../i18n/format';
 import { t } from '../../i18n/t';
 import { HelpSectionTitle } from '../../help';
+import { PageHeader, SkeletonDetail, StateBlock } from '../../components/primitives';
 
-const { Title, Text, Paragraph } = Typography;
+const { Text, Paragraph } = Typography;
 
 interface Draft {
   provider: AiProviderId;
@@ -167,6 +167,17 @@ export const AiSettingsPage: React.FC = () => {
     );
   }, [settings, draft]);
 
+  // Garde de sortie : des réglages modifiés mais non enregistrés ne se perdent pas en silence.
+  useEffect(() => {
+    if (!dirty) return undefined;
+    const avertir = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', avertir);
+    return () => window.removeEventListener('beforeunload', avertir);
+  }, [dirty]);
+
   const modelOptions = useMemo(() => {
     const options = (models ?? [])
       .map(m => ({ value: m.id, label: m.name && m.name !== m.id ? `${m.name} (${m.id})` : m.id }))
@@ -230,23 +241,18 @@ export const AiSettingsPage: React.FC = () => {
   if (loading) {
     return (
       <div data-testid="ai-settings-loading">
-        <Skeleton active paragraph={{ rows: 8 }} />
+        <SkeletonDetail rows={6} aria-label={t('Chargement des réglages de l’assistant IA')} />
       </div>
     );
   }
 
   if (loadError || !settings || !draft) {
     return (
-      <Alert
-        type="error"
-        showIcon
-        message={t('Impossible de charger les réglages de l’assistant IA')}
+      <StateBlock
+        variant="error"
+        title={t('Impossible de charger les réglages de l’assistant IA')}
         description={loadError ?? undefined}
-        action={
-          <Button size="small" onClick={() => void load()}>
-            {t('Réessayer')}
-          </Button>
-        }
+        onRetry={() => void load()}
       />
     );
   }
@@ -265,12 +271,10 @@ export const AiSettingsPage: React.FC = () => {
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      <div>
-        <Title level={2} style={{ marginBottom: 4 }}>
-          {t('Assistant IA')}
-        </Title>
-        <Text type="secondary">{t('Choisissez le fournisseur et le modèle utilisés par ImmoCopilot.')}</Text>
-      </div>
+      <PageHeader
+        title={t('Assistant IA')}
+        subtitle={t('Choisissez le fournisseur et le modèle utilisés par ImmoCopilot.')}
+      />
 
       <Alert
         type="info"
@@ -428,9 +432,15 @@ export const AiSettingsPage: React.FC = () => {
                 { value: 'fast', label: t('Rapide') }
               ]}
             />
-            <Button disabled={dirty} loading={testing} onClick={() => void runConnectionTest()}>
+            <Button
+              disabled={dirty}
+              loading={testing}
+              onClick={() => void runConnectionTest()}
+              style={{ minHeight: 44 }}
+            >
               {t('Tester la connexion')}
             </Button>
+            {dirty && <Text type="secondary">{t('Enregistrez vos modifications avant de tester la connexion.')}</Text>}
           </Space>
         </Card>
       )}
@@ -497,9 +507,15 @@ export const AiSettingsPage: React.FC = () => {
           }
           loading={saving}
           onClick={() => void onSave()}
+          style={{ minHeight: 44 }}
         >
           {t('Enregistrer')}
         </Button>
+        {dirty && (
+          <Text type="warning" role="status">
+            {t('Modifications non enregistrées')}
+          </Text>
+        )}
         <Tag>{settings.source === 'database' ? t('Base de données') : t('Variables d’environnement')}</Tag>
         {settings.updatedAt ? (
           <Text type="secondary">

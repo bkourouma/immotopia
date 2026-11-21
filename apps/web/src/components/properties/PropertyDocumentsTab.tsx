@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Button, Card, Space, Spin } from 'antd';
+import { Button, Card, Space } from 'antd';
+import { SkeletonList } from '../primitives/Skeleton';
+import { StateBlock } from '../primitives/StateBlock';
 import { PlusOutlined } from '@ant-design/icons';
 import type { PropertyDocument } from '../../types/property-types';
 import { deletePropertyDocument, listPropertyDocuments } from '../../services/property-service';
@@ -27,11 +29,14 @@ export const PropertyDocumentsTab: React.FC<Props> = ({ tenantId, propertyId }) 
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const load = useCallback(async () => {
     try {
+      setLoadFailed(false);
       setDocuments(await listPropertyDocuments(tenantId, propertyId));
     } catch (error) {
+      setLoadFailed(true);
       feedback.error(apiErrorMessage(error, t('Impossible de charger les documents.')));
     } finally {
       setLoading(false);
@@ -55,7 +60,21 @@ export const PropertyDocumentsTab: React.FC<Props> = ({ tenantId, propertyId }) 
     }
   };
 
-  if (loading) return <Spin />;
+  if (loading) return <SkeletonList rows={3} />;
+
+  if (loadFailed && documents.length === 0) {
+    return (
+      <StateBlock
+        variant="error"
+        title={t('Impossible de charger les documents')}
+        description={t('Vérifiez votre connexion, puis réessayez.')}
+        onRetry={() => {
+          setLoading(true);
+          void load();
+        }}
+      />
+    );
+  }
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>

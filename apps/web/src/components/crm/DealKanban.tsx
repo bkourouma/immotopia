@@ -2,7 +2,9 @@ import { contactDisplayName } from '../../utils/contact-display';
 import React, { useState } from 'react';
 import { CrmDealDetail, CrmDealStage } from '../../types/crm-types';
 import { Button } from '../ui/button';
-import { Plus } from 'lucide-react';
+import { Dropdown } from 'antd';
+import { Plus, ArrowRightLeft } from 'lucide-react';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { t } from '../../i18n/t';
 import { dealStageLabel, dealTypeLabel } from '../../utils/crm-labels';
 import { formatFcfa } from '../../utils/crm-utils';
@@ -52,6 +54,7 @@ export const DealKanban: React.FC<DealKanbanProps> = ({
   onAddDeal,
   onLoadMore
 }) => {
+  const { isDesktop } = useBreakpoint();
   const deals: KanbanDeal[] = pipelineStages.flatMap(stage => columns[stage]?.deals ?? []);
   const [draggedDealId, setDraggedDealId] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<CrmDealStage | null>(null);
@@ -115,6 +118,8 @@ export const DealKanban: React.FC<DealKanbanProps> = ({
           const column = columns[stage];
           const stageDeals = column?.deals ?? [];
           const isDragOver = dragOverStage === stage;
+          const budgetSum = stageDeals.reduce((sum, d) => sum + (Number(d.budgetMax) || 0), 0);
+          const allLoaded = stageDeals.length >= (column?.total ?? 0);
 
           return (
             <div
@@ -137,11 +142,18 @@ export const DealKanban: React.FC<DealKanbanProps> = ({
                     {column?.total ?? 0}
                   </span>
                 </div>
+                {budgetSum > 0 && (
+                  <div className="mt-0.5 text-[11px] text-gray-500" data-testid={`kanban-budget-${stage}`}>
+                    {t('Budget cumulé : {{montant}}', {
+                      montant: `${formatFcfa(budgetSum)}${allLoaded ? '' : '+'}`
+                    })}
+                  </div>
+                )}
                 {onAddDeal && (
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="mt-1 text-primary hover:text-primary-hover hover:bg-primary-bg w-full justify-start h-7 text-xs px-2"
+                    className="mt-1 text-primary hover:text-primary-hover hover:bg-primary-bg w-full justify-start h-7 max-lg:h-11 text-xs px-2"
                     onClick={() => onAddDeal(stage)}
                   >
                     <Plus className="h-3 w-3 me-1" />
@@ -179,6 +191,16 @@ export const DealKanban: React.FC<DealKanbanProps> = ({
                           draggedDealId === deal.id ? 'opacity-50' : ''
                         }`}
                         onClick={() => onDealClick?.(deal)}
+                        role="link"
+                        tabIndex={0}
+                        aria-label={`${contactName} — ${dealTypeLabel(deal.type)}`}
+                        onKeyDown={e => {
+                          if (e.target !== e.currentTarget) return;
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            onDealClick?.(deal);
+                          }
+                        }}
                       >
                         {/* Contact Info */}
                         <div className="flex items-start gap-2 mb-2">
@@ -211,6 +233,37 @@ export const DealKanban: React.FC<DealKanbanProps> = ({
                         {deal.locationZone && (
                           <div className="text-[10px] text-gray-500 truncate">📍 {deal.locationZone}</div>
                         )}
+
+                        {/* Changer d'étape sans glisser-déposer (tactile, clavier) : même appel que le dépôt d'une carte. */}
+                        {onStageChange && (
+                          <div className="mt-2" onClick={e => e.stopPropagation()}>
+                            <Dropdown
+                              trigger={['click']}
+                              menu={{
+                                items: pipelineStages
+                                  .filter(target => target !== deal.stage)
+                                  .map(target => ({
+                                    key: target,
+                                    label: dealStageLabel(target),
+                                    onClick: () => onStageChange(deal.id, target)
+                                  }))
+                              }}
+                            >
+                              <button
+                                type="button"
+                                className={`inline-flex items-center gap-1 rounded border border-gray-300 px-2 text-xs text-gray-700 hover:bg-gray-50 ${
+                                  isDesktop ? 'h-7' : 'h-11'
+                                }`}
+                                aria-label={t("Déplacer l'affaire de {{nom}} vers une autre étape", {
+                                  nom: contactName
+                                })}
+                              >
+                                <ArrowRightLeft className="h-3 w-3" aria-hidden="true" />
+                                {t('Déplacer vers…')}
+                              </button>
+                            </Dropdown>
+                          </div>
+                        )}
                       </div>
                     );
                   })
@@ -220,7 +273,7 @@ export const DealKanban: React.FC<DealKanbanProps> = ({
                   <Button
                     variant="outline"
                     size="sm"
-                    className="w-full h-7 text-xs"
+                    className="w-full h-7 max-lg:h-11 text-xs"
                     disabled={column?.loadingMore}
                     onClick={() => onLoadMore(stage)}
                   >

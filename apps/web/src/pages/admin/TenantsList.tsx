@@ -1,29 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Space, Typography, Button, Alert, Tag, Progress } from 'antd';
-import { PlusOutlined, EyeOutlined, EditOutlined, BankOutlined } from '@ant-design/icons';
+import { Space, Typography, Button, Tag, Progress, Dropdown } from 'antd';
+import { PlusOutlined, EditOutlined, BankOutlined, MoreOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { listTenants, Tenant, TenantFilters, type ProvisionTenantResult } from '../../services/tenant-service';
 import { listCatalog, type CatalogEntry } from '../../services/subscription-v2-service';
 import { getSubscriptionSummaries, type SubscriptionSummary } from '../../services/subscription-extras-service';
 import { CreateTenantDrawer } from '../../components/admin/CreateTenantDrawer';
-import { Table } from '../../components/primitives';
+import { Table, PageHeader, StatusTag, StateBlock } from '../../components/primitives';
 import { useListSearch } from '../../hooks/useListSearch';
 import { collectAllPages } from '../../utils/table-export/collect';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
-const { Title, Text } = Typography;
-
-const getStatusTag = (status: string) => {
-  const config: Record<string, { color: string; text: string }> = {
-    ACTIVE: { color: 'success', text: t('Actif') },
-    SUSPENDED: { color: 'error', text: t('Suspendu') },
-    INACTIVE: { color: 'default', text: t('Inactif') }
-  };
-  const { color, text } = config[status] || config.INACTIVE;
-  return <Tag color={color}>{text}</Tag>;
-};
+const { Text } = Typography;
 
 export const TenantsList: React.FC = () => {
   const navigate = useNavigate();
@@ -128,6 +118,7 @@ export const TenantsList: React.FC = () => {
     // Même critères, nouvelle lecture (après une création d'agence).
     latest.current += 1;
     setLoading(true);
+    setError(null);
     listTenants(JSON.parse(paramsKey) as TenantFilters)
       .then(async response => {
         const list = response.data?.tenants ?? [];
@@ -184,7 +175,7 @@ export const TenantsList: React.FC = () => {
       title: t('Statut'),
       dataIndex: 'status',
       key: 'status',
-      render: (status: string) => getStatusTag(status)
+      render: (status: string) => <StatusTag status={status} />
     },
     {
       title: t('Packs'),
@@ -257,19 +248,35 @@ export const TenantsList: React.FC = () => {
       key: 'actions',
       align: 'end',
       render: (_, record) => (
-        <Space>
+        <Space size={4}>
           <Button
             type="link"
-            icon={<EyeOutlined />}
             onClick={() => navigate(`/admin/tenants/${record.id}`)}
-            title={t('Voir les détails')}
-          />
-          <Button
-            type="link"
-            icon={<EditOutlined />}
-            onClick={() => navigate(`/admin/tenants/${record.id}/edit`)}
-            title={t('Modifier')}
-          />
+            aria-label={t("Ouvrir la fiche de l'agence {{value}}", { value: record.name })}
+            style={{ minHeight: 44 }}
+          >
+            {t('Ouvrir')}
+          </Button>
+          <Dropdown
+            trigger={['click']}
+            menu={{
+              items: [
+                {
+                  key: 'edit',
+                  icon: <EditOutlined />,
+                  label: t('Modifier'),
+                  onClick: () => navigate(`/admin/tenants/${record.id}/edit`)
+                }
+              ]
+            }}
+          >
+            <Button
+              type="text"
+              icon={<MoreOutlined />}
+              aria-label={t("Autres actions pour l'agence {{value}}", { value: record.name })}
+              style={{ minWidth: 44, minHeight: 44 }}
+            />
+          </Dropdown>
         </Space>
       )
     }
@@ -278,38 +285,11 @@ export const TenantsList: React.FC = () => {
   return (
     <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        {/* Header */}
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'flex-start',
-            flexWrap: 'wrap',
-            gap: 16
-          }}
-        >
-          <div>
-            <Title level={3} style={{ margin: 0 }}>
-              {t('Agences')}
-            </Title>
-            <Text type="secondary">{t('Gérez toutes les agences de la plateforme')}</Text>
-          </div>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
-            {t('Nouvelle agence')}
-          </Button>
-        </div>
-
-        {/* Error */}
-        {error && (
-          <Alert
-            message={t('Erreur')}
-            description={error}
-            type="error"
-            showIcon
-            closable
-            onClose={() => setError(null)}
-          />
-        )}
+        <PageHeader
+          title={t('Agences')}
+          subtitle={t('Gérez toutes les agences de la plateforme')}
+          primaryAction={{ label: t('Nouvelle agence'), icon: <PlusOutlined />, onClick: () => setCreateOpen(true) }}
+        />
 
         <Table<Tenant>
           aria-label={t('Agences')}
@@ -323,7 +303,19 @@ export const TenantsList: React.FC = () => {
           loading={loading}
           scroll={{ x: 'max-content' }}
           pagination={search.tablePagination(total)}
-          locale={search.isFiltered ? undefined : { emptyText: t('Aucune agence trouvée') }}
+          locale={{
+            emptyText: error ? (
+              <StateBlock variant="error" description={error} onRetry={reload} />
+            ) : search.isFiltered ? (
+              <StateBlock variant="no-results" />
+            ) : (
+              <StateBlock
+                variant="empty"
+                title={t('Aucune agence trouvée')}
+                actions={[{ label: t('Nouvelle agence'), onClick: () => setCreateOpen(true), primary: true }]}
+              />
+            )
+          }}
         />
       </Space>
 

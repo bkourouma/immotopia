@@ -260,7 +260,7 @@ describe('SyndicChargeSchedules — onglet Programmation (lot S4)', () => {
     fireEvent.mouseDown(budgetSelect);
     fireEvent.click(await screen.findByText('Budget 2026 (2026)'));
 
-    fireEvent.click(screen.getByText('Créer'));
+    fireEvent.click(screen.getByText('Créer la programmation'));
 
     await waitFor(() => {
       expect(createChargeSchedule).toHaveBeenCalledWith(
@@ -276,7 +276,7 @@ describe('SyndicChargeSchedules — onglet Programmation (lot S4)', () => {
     mount();
 
     fireEvent.click(await screen.findByText('Nouvelle programmation'));
-    fireEvent.click(screen.getByText('Créer'));
+    fireEvent.click(screen.getByText('Créer la programmation'));
 
     expect(await screen.findByText('Le libellé est obligatoire')).toBeInTheDocument();
     expect(createChargeSchedule).not.toHaveBeenCalled();
@@ -599,7 +599,7 @@ describe('SyndicChargeSchedules — onglet Programmation (lot S4)', () => {
       expect(labelInput).toHaveValue('Charges renommées');
       expect(labelInput.closest('.ant-form-item')).not.toHaveClass('ant-form-item-is-validating');
     });
-    await user.click(screen.getByRole('button', { name: 'Enregistrer' }));
+    await user.click(screen.getByRole('button', { name: 'Enregistrer la programmation' }));
 
     // La validation asynchrone de tous les champs Ant Design depasse parfois
     // la seconde par defaut de waitFor sur le runner CI partage.
@@ -652,7 +652,7 @@ describe('SyndicChargeSchedules — onglet Programmation (lot S4)', () => {
       expect(screen.getByText('A02')).toBeInTheDocument();
       expect(screen.getAllByText(/50\s000/).length).toBeGreaterThan(0);
 
-      fireEvent.click(screen.getByText('Créer'));
+      fireEvent.click(screen.getByText('Créer la programmation'));
       await waitFor(() =>
         expect(createChargeSchedule).toHaveBeenCalledWith(
           'tenant-1',
@@ -670,7 +670,7 @@ describe('SyndicChargeSchedules — onglet Programmation (lot S4)', () => {
       expect(screen.getAllByText(/25\s000/).length).toBeGreaterThan(0);
       expect(screen.getAllByText(/75\s000/).length).toBeGreaterThan(0);
 
-      fireEvent.click(screen.getByText('Créer'));
+      fireEvent.click(screen.getByText('Créer la programmation'));
       await waitFor(() =>
         expect(createChargeSchedule).toHaveBeenCalledWith(
           'tenant-1',
@@ -690,7 +690,7 @@ describe('SyndicChargeSchedules — onglet Programmation (lot S4)', () => {
       // 2 appartements à 25 000 : total 50 000.
       expect(screen.getAllByText(/50\s000/).length).toBeGreaterThan(0);
 
-      fireEvent.click(screen.getByText('Créer'));
+      fireEvent.click(screen.getByText('Créer la programmation'));
       await waitFor(() =>
         expect(createChargeSchedule).toHaveBeenCalledWith(
           'tenant-1',
@@ -715,7 +715,7 @@ describe('SyndicChargeSchedules — onglet Programmation (lot S4)', () => {
       const link = screen.getByText('Paramétrer le barème de la copropriété').closest('a');
       expect(link?.getAttribute('href')).toBe('/tenant/tenant-1/syndics/syndic-1');
 
-      fireEvent.click(screen.getByText('Créer'));
+      fireEvent.click(screen.getByText('Créer la programmation'));
       await new Promise(resolve => setTimeout(resolve, 50));
       expect(createChargeSchedule).not.toHaveBeenCalled();
     });
@@ -726,7 +726,7 @@ describe('SyndicChargeSchedules — onglet Programmation (lot S4)', () => {
       fireEvent.click(screen.getByText('Par type de lot'));
 
       expect(await screen.findByText(/barème par type de lot est indisponible/)).toBeInTheDocument();
-      fireEvent.click(screen.getByText('Créer'));
+      fireEvent.click(screen.getByText('Créer la programmation'));
       await new Promise(resolve => setTimeout(resolve, 50));
       expect(createChargeSchedule).not.toHaveBeenCalled();
     });
@@ -740,7 +740,7 @@ describe('SyndicChargeSchedules — onglet Programmation (lot S4)', () => {
       expect(screen.queryByText('Par type de lot')).toBeNull();
       fireEvent.mouseDown(await screen.findByLabelText('Budget'));
       fireEvent.click(await screen.findByText('Budget 2026 (2026)'));
-      fireEvent.click(screen.getByText('Créer'));
+      fireEvent.click(screen.getByText('Créer la programmation'));
       await waitFor(() =>
         expect(createChargeSchedule).toHaveBeenCalledWith(
           'tenant-1',
@@ -778,7 +778,7 @@ describe('SyndicChargeSchedules — onglet Programmation (lot S4)', () => {
         await openFixedDrawer('Charges annexes');
         expect(await screen.findByRole('switch')).toBeChecked();
         fireEvent.change(await screen.findByLabelText('Montant total par période'), { target: { value: '100000' } });
-        fireEvent.click(screen.getByText('Créer'));
+        fireEvent.click(screen.getByText('Créer la programmation'));
         await waitFor(() =>
           expect(createChargeSchedule).toHaveBeenCalledWith(
             'tenant-1',
@@ -792,7 +792,7 @@ describe('SyndicChargeSchedules — onglet Programmation (lot S4)', () => {
         await openFixedDrawer('Charges principales');
         fireEvent.click(await screen.findByRole('switch'));
         fireEvent.change(await screen.findByLabelText('Montant total par période'), { target: { value: '100000' } });
-        fireEvent.click(screen.getByText('Créer'));
+        fireEvent.click(screen.getByText('Créer la programmation'));
         await waitFor(() =>
           expect(createChargeSchedule).toHaveBeenCalledWith(
             'tenant-1',
@@ -819,7 +819,7 @@ describe('SyndicChargeSchedules — onglet Programmation (lot S4)', () => {
         mount();
         fireEvent.click(await screen.findByText('Ouvrir'));
         expect(await screen.findByRole('switch')).not.toBeChecked();
-        fireEvent.click(screen.getByText('Enregistrer'));
+        fireEvent.click(screen.getByText('Enregistrer la programmation'));
         await waitFor(() => expect(updateChargeSchedule).toHaveBeenCalled());
         expect(updateChargeSchedule.mock.calls[0][3]).toMatchObject({ includeAnnexLots: false });
       });

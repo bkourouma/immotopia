@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { App, Card, List, Row, Col, Spin, Typography } from 'antd';
+import { App, Card, List, Row, Col, Typography } from 'antd';
 import { getTenantActivity, TenantActivity } from '../../../services/admin-subscription-service';
-import { StatCard, StatusTag } from '../../primitives';
+import { StatCard, StatusTag, StateBlock, SkeletonDetail } from '../../primitives';
 import { getModuleKeyLabelFr } from '../../../constants/module-labels';
 import { activeLocale } from '../../../i18n/format';
 import { t } from '../../../i18n/t';
@@ -33,16 +33,22 @@ export const ActivityTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const { message } = App.useApp();
   const [activity, setActivity] = useState<TenantActivity | null>(null);
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setFailed(false);
     getTenantActivity(tenantId)
       .then(data => {
         if (!cancelled) setActivity(data);
       })
       .catch((err: any) => {
-        if (!cancelled) message.error(err.response?.data?.message || t("Erreur lors du chargement de l'activité"));
+        if (!cancelled) {
+          setFailed(true);
+          message.error(err.response?.data?.message || t("Erreur lors du chargement de l'activité"));
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -51,18 +57,18 @@ export const ActivityTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId]);
+  }, [tenantId, attempt]);
 
   if (loading) {
-    return (
-      <div style={{ textAlign: 'center', padding: 'var(--space-8) 0' }}>
-        <Spin />
-      </div>
-    );
+    return <SkeletonDetail aria-label={t("Chargement de l'activité")} />;
+  }
+
+  if (failed) {
+    return <StateBlock variant="error" onRetry={() => setAttempt(n => n + 1)} />;
   }
 
   if (!activity) {
-    return <p>{t("Aucune donnée d'activité pour cette agence.")}</p>;
+    return <StateBlock variant="empty" title={t("Aucune donnée d'activité pour cette agence.")} description="" />;
   }
 
   return (

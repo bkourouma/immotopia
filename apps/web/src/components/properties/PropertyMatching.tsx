@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { App, Button, Card, Col, Descriptions, Empty, Row, Space, Tag, Typography } from 'antd';
+import { App, Button, Card, Col, Descriptions, Row, Space, Tag, Typography } from 'antd';
+import { StateBlock } from '../primitives';
 import { CheckCircleOutlined, EyeOutlined, PlusOutlined, SearchOutlined, StarFilled } from '@ant-design/icons';
 import { Property } from '../../types/property-types';
 import { addPropertyToShortlist, matchPropertiesForDeal } from '../../services/property-service';
@@ -53,31 +54,38 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ dealId, tena
   const navigate = useNavigate();
   const [matches, setMatches] = useState<PropertyMatchResult[]>([]);
   const [loading, setLoading] = useState(false);
+  const [searched, setSearched] = useState(false);
+  const [matchError, setMatchError] = useState<string | null>(null);
+  const [addingId, setAddingId] = useState<string | null>(null);
   const [shortlistedProperties, setShortlistedProperties] = useState<Set<string>>(new Set());
 
   const handleMatch = async () => {
     setLoading(true);
+    setMatchError(null);
     try {
       const results = await matchPropertiesForDeal(tenantId, dealId);
       setMatches(results as PropertyMatchResult[]);
+      setSearched(true);
       if (!results.length) {
         message.info(t('Aucune correspondance trouvée'));
       }
     } catch (error: any) {
       console.error('Error matching properties:', error);
-      message.error(
-        writeErrorMessage(
-          error,
-          t('Erreur lors de la recherche de correspondances'),
-          t("Vous n'avez pas les droits nécessaires pour lancer le matching.")
-        )
+      const text = writeErrorMessage(
+        error,
+        t('Erreur lors de la recherche de correspondances'),
+        t("Vous n'avez pas les droits nécessaires pour lancer le matching.")
       );
+      setMatchError(text);
+      message.error(text);
     } finally {
       setLoading(false);
     }
   };
 
   const handleAddToShortlist = async (propertyId: string, matchScore: number, explanation: unknown) => {
+    if (addingId) return;
+    setAddingId(propertyId);
     try {
       await addPropertyToShortlist(tenantId, dealId, propertyId, matchScore, explanation);
       setShortlistedProperties(previous => new Set([...previous, propertyId]));
@@ -92,6 +100,8 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ dealId, tena
           t("Vous n'avez pas les droits nécessaires pour modifier la shortlist.")
         )
       );
+    } finally {
+      setAddingId(null);
     }
   };
 
@@ -118,7 +128,9 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ dealId, tena
       {matches.length > 0 ? (
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           <Title level={5} style={{ margin: 0 }}>
-            {matches.length} correspondance{matches.length > 1 ? 's' : ''} trouvee{matches.length > 1 ? 's' : ''}
+            {matches.length > 1
+              ? t('{{count}} correspondances trouvées', { count: matches.length })
+              : t('{{count}} correspondance trouvée', { count: matches.length })}
           </Title>
 
           {matches.map(match => (
@@ -225,6 +237,8 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ dealId, tena
                     <Button
                       type="primary"
                       icon={<PlusOutlined />}
+                      loading={addingId === match.propertyId}
+                      disabled={addingId !== null}
                       onClick={() => handleAddToShortlist(match.propertyId, match.matchScore, match.explanation)}
                     >
                       {t('Ajouter à la shortlist')}
@@ -237,11 +251,28 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ dealId, tena
         </Space>
       ) : null}
 
-      {matches.length === 0 && !loading ? (
+      {matchError && matches.length === 0 ? (
         <Card>
-          <Empty
-            description={t('Aucune correspondance. Lancez une recherche pour proposer des propriétés.')}
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
+          <StateBlock
+            variant="error"
+            title={t('Recherche impossible')}
+            description={matchError}
+            actions={[{ label: t('Réessayer'), onClick: () => void handleMatch(), primary: true }]}
+          />
+        </Card>
+      ) : matches.length === 0 && !loading ? (
+        <Card>
+          <StateBlock
+            variant="empty"
+            title={searched ? t('Aucune correspondance trouvée') : t('Aucune recherche lancée')}
+            description={
+              searched
+                ? t(
+                    'Aucun bien ne correspond aux critères de cette affaire. Élargissez le budget ou la zone, puis relancez.'
+                  )
+                : t('Lancez une recherche pour proposer des propriétés.')
+            }
+            actions={[{ label: t('Rechercher des correspondances'), onClick: () => void handleMatch(), primary: true }]}
           />
         </Card>
       ) : null}

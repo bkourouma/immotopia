@@ -13,10 +13,14 @@ export const ForgotPassword: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string>('');
+  // Adresse saisie : rappelée sur l'écran de succès (faute de frappe visible) et
+  // préremplie si la personne refait une demande.
+  const [sentEmail, setSentEmail] = useState('');
 
   const handleSubmit = async (values: { email: string }): Promise<void> => {
     setError('');
     setSuccess(false);
+    setSentEmail(values.email);
     setIsSubmitting(true);
 
     try {
@@ -44,7 +48,7 @@ export const ForgotPassword: React.FC = () => {
           alignItems: 'center',
           justifyContent: 'center',
           padding: 24,
-          background: '#f0f2f5'
+          background: 'var(--surface-page)'
         }}
       >
         <Card style={{ maxWidth: 480, width: '100%' }}>
@@ -63,7 +67,11 @@ export const ForgotPassword: React.FC = () => {
                 {t('Nouvelle demande')}
               </Button>
             ]}
-          />
+          >
+            <Text type="secondary" role="status" style={{ display: 'block', textAlign: 'center' }}>
+              {t('Adresse saisie : {{email}}', { email: sentEmail })}
+            </Text>
+          </Result>
         </Card>
       </div>
     );
@@ -77,7 +85,7 @@ export const ForgotPassword: React.FC = () => {
         alignItems: 'center',
         justifyContent: 'center',
         padding: 24,
-        background: '#f0f2f5'
+        background: 'var(--surface-page)'
       }}
     >
       <Card
@@ -93,7 +101,14 @@ export const ForgotPassword: React.FC = () => {
           {t('Entrez votre adresse email et nous vous enverrons un lien pour réinitialiser votre mot de passe.')}
         </Text>
 
-        <Form form={form} layout="vertical" onFinish={handleSubmit} onValuesChange={() => setError('')}>
+        <Form
+          form={form}
+          layout="vertical"
+          onFinish={handleSubmit}
+          onValuesChange={() => setError('')}
+          initialValues={{ email: sentEmail }}
+          scrollToFirstError={{ focus: true }}
+        >
           {error && (
             <Alert
               message={error}
@@ -113,7 +128,16 @@ export const ForgotPassword: React.FC = () => {
               { type: 'email', message: t('Veuillez entrer une adresse email valide.') }
             ]}
           >
-            <Input size="large" prefix={<MailOutlined />} placeholder={t('vous@example.com')} autoComplete="email" />
+            <Input
+              size="large"
+              prefix={<MailOutlined />}
+              placeholder={t('vous@example.com')}
+              autoComplete="email"
+              inputMode="email"
+              autoCapitalize="none"
+              spellCheck={false}
+              autoFocus
+            />
           </Form.Item>
 
           <Form.Item style={{ marginBottom: 16 }}>

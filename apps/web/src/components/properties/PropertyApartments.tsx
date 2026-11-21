@@ -12,6 +12,8 @@ import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion } from '../../utils/list-search';
 import { t } from '../../i18n/t';
 import { HelpSectionTitle } from '../../help';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { apiErrorText } from './property-api-errors';
 
 // Accesseurs de la recherche locale : constantes de module (identité stable).
 const TEXTE_RECHERCHE = [
@@ -39,6 +41,8 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({ property
 
   const [apartments, setApartments] = useState<Property[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const { isMobile } = useBreakpoint();
   const [creating, setCreating] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [form] = Form.useForm();
@@ -86,6 +90,7 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({ property
 
   const loadApartments = async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const response = await apiClient.get<{ success: boolean; data: Property[] }>(
         `/tenants/${tenantId}/properties/${propertyId}/sub-properties`
@@ -102,9 +107,10 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({ property
         setApartments([]);
       } else {
         console.error('Erreur lors du chargement des appartements:', error);
-        // Ne pas afficher d'erreur si ce n'est pas un IMMEUBLE
+        // Une liste vide ferait croire que l'immeuble n'a aucun lot : l'erreur
+        // est affichée à la place de la liste, avec « Réessayer ».
         if (property.propertyType === 'IMMEUBLE') {
-          message.error(t('Erreur lors du chargement des appartements'));
+          setLoadError(apiErrorText(error, t('Impossible de charger les appartements.')));
         }
       }
     } finally {
@@ -293,7 +299,7 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({ property
       loadApartments();
     } catch (error: any) {
       console.error('Erreur globale lors de la création:', error);
-      message.error(error.response?.data?.error || t('Erreur lors de la création'));
+      message.error(apiErrorText(error, t('Erreur lors de la création')));
     } finally {
       setCreating(false);
     }
@@ -350,7 +356,12 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({ property
       width: 100,
       align: 'end',
       render: (_: unknown, appartement: Property) => (
-        <Button type="link" onClick={() => navigate(`/tenant/${tenantId}/properties/${appartement.id}`)}>
+        <Button
+          type="link"
+          aria-label={t('Voir {{title}}', { title: appartement.title })}
+          style={{ minHeight: 'var(--touch-target-min, 44px)' }}
+          onClick={() => navigate(`/tenant/${tenantId}/properties/${appartement.id}`)}
+        >
           {t('Voir')}
         </Button>
       )
@@ -401,6 +412,8 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({ property
         export={{ filename: t('Appartements'), fetchAll: local.exportAll }}
         {...local.dataViewProps}
         loading={loading}
+        error={loadError}
+        onRetry={() => void loadApartments()}
         rowKey={appartement => appartement.id}
         columns={colonnes}
         emptyDescription={t('Cet immeuble ne contient encore aucun appartement.')}
@@ -431,9 +444,17 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({ property
           form.resetFields();
         }}
         onOk={() => form.submit()}
-        width={800}
+        okText={t('Créer les appartements')}
+        cancelText={t('Annuler')}
+        // Plein écran sous 768 px : une modale de 800 px déborde d'un téléphone.
+        width={isMobile ? '100%' : 800}
         confirmLoading={creating}
-        style={{ top: 20 }}
+        // Pendant la création, fermer la fenêtre ferait perdre le suivi des envois.
+        maskClosable={false}
+        keyboard={!creating}
+        cancelButtonProps={{ disabled: creating }}
+        style={isMobile ? { top: 0, maxWidth: '100vw', margin: 0, paddingBottom: 0 } : { top: 20 }}
+        styles={isMobile ? { body: { maxHeight: 'calc(100dvh - 120px)', overflowY: 'auto' } } : undefined}
       >
         <Form
           form={form}
@@ -577,7 +598,7 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({ property
                           </div>
                         )}
                       </Upload>
-                      <div style={{ marginTop: 8, fontSize: 12, color: '#999' }}>
+                      <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-tertiary)' }}>
                         {t('Format accepté: Images (JPG, PNG, etc.) et Vidéos (MP4, etc.)')}
                       </div>
                     </Form.Item>

@@ -3,10 +3,10 @@ import { Button, Tag, Typography } from 'antd';
 import { DownloadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
-import { Table } from '../primitives';
+import { DataCard, DataView } from '../primitives';
 import { SyndicateDocument } from '../../types/syndic-types';
 import { downloadSyndicDocument, updateSyndicDocument } from '../../services/syndic-service';
-import { ConfirmAction } from '../primitives/ConfirmAction';
+import { ConfirmAction, useConfirmAction } from '../primitives/ConfirmAction';
 import { feedback } from '../../lib/feedback';
 import { saveBlob } from '../../utils/save-blob';
 import { useLocalListSearch } from '../../utils/list-search';
@@ -88,6 +88,7 @@ export const DocumentVault: React.FC<DocumentVaultProps> = ({
   onChanged
 }) => {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const confirmAction = useConfirmAction();
 
   const download = async (document: SyndicateDocument) => {
     setDownloadingId(document.id);
@@ -214,18 +215,75 @@ export const DocumentVault: React.FC<DocumentVaultProps> = ({
       : [])
   ];
 
+  // Mobile : une carte par document, avec l'ouverture ou le téléchargement en action visible.
+  const renderCard = (item: SyndicateDocument) => {
+    const external = isExternalUrl(item.fileUrl);
+    const expired = item.expiresAt ? dayjs(item.expiresAt).isBefore(dayjs(), 'day') : false;
+    return (
+      <DataCard
+        aria-label={item.title}
+        title={item.title}
+        subtitle={typeLabels[item.type] ?? item.type}
+        status={
+          <Tag color={item.visibleToCoOwners ? 'green' : undefined}>
+            {item.visibleToCoOwners ? t('Visible au portail') : t('Interne')}
+          </Tag>
+        }
+        fields={[
+          {
+            label: t('Expiration'),
+            value: item.expiresAt ? (
+              <Text type={expired ? 'danger' : undefined}>
+                {dayjs(item.expiresAt).format('DD/MM/YYYY')}
+                {expired ? ` (${t('expiré')})` : ''}
+              </Text>
+            ) : (
+              t('Sans expiration')
+            )
+          }
+        ]}
+        primaryAction={
+          external
+            ? {
+                label: t('Ouvrir'),
+                onClick: () => window.open(item.fileUrl as string, '_blank', 'noopener,noreferrer')
+              }
+            : { label: t('Télécharger'), onClick: () => void download(item), loading: downloadingId === item.id }
+        }
+        secondaryActions={
+          canEdit
+            ? [
+                {
+                  key: 'visibility',
+                  label: item.visibleToCoOwners ? t('Retirer du portail') : t('Rendre visible'),
+                  onClick: () =>
+                    confirmAction({
+                      title: item.visibleToCoOwners
+                        ? t('Retirer ce document du portail des copropriétaires ?')
+                        : t('Rendre ce document visible des copropriétaires ?'),
+                      onConfirm: () => toggleVisibility(item)
+                    })
+                }
+              ]
+            : undefined
+        }
+      />
+    );
+  };
+
   return (
-    <Table
+    <DataView<SyndicateDocument>
+      {...local.dataViewProps}
       helpId="syndic.documents.tableau"
-      {...local.tableProps}
       aria-label={t('Documents')}
-      exportFilename={t('Documents')}
-      exportFetchAll={local.exportAll}
-      scroll={{ x: 'max-content' }}
-      rowKey="id"
+      export={{ filename: t('Documents'), fetchAll: local.exportAll }}
+      rowKey={item => item.id}
       columns={columns}
       loading={loading}
-      locale={local.isFiltered ? undefined : { emptyText: t('Aucun document disponible') }}
+      emptyDescription={t(
+        'Aucun document disponible. Ajoutez le règlement de copropriété, les procès-verbaux ou les assurances.'
+      )}
+      renderCard={renderCard}
     />
   );
 };

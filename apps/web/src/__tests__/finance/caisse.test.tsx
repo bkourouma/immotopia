@@ -308,7 +308,7 @@ describe('Caisse — clôture, billetage', () => {
     // Le libellé n'est pas cliquable : c'est l'interrupteur lui-même qui bascule le mode.
     await user.click(screen.getByRole('switch'));
 
-    const champMontant = screen.getByLabelText('Montant compté');
+    const champMontant = screen.getByLabelText('Montant compté (FCFA)');
     await user.clear(champMontant);
     await user.type(champMontant, '31000');
 

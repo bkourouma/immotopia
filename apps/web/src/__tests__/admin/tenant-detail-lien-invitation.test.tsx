@@ -69,7 +69,8 @@ describe('<TenantDetail> — lien d’invitation', () => {
     setClipboard(writeText);
     mount();
 
-    await user.click(await screen.findByRole('button', { name: /Copier le lien d'invitation/ }));
+    await user.click(await screen.findByRole('button', { name: 'Autres actions' }));
+    await user.click(await screen.findByText("Copier le lien d'invitation"));
     expect(post).not.toHaveBeenCalled();
     expect(await screen.findByText(/invalide le précédent/)).toBeInTheDocument();
 
@@ -86,7 +87,8 @@ describe('<TenantDetail> — lien d’invitation', () => {
     setClipboard(vi.fn().mockRejectedValue(new Error('refusé')));
     mount();
 
-    await user.click(await screen.findByRole('button', { name: /Copier le lien d'invitation/ }));
+    await user.click(await screen.findByRole('button', { name: 'Autres actions' }));
+    await user.click(await screen.findByText("Copier le lien d'invitation"));
     await user.click(await screen.findByRole('button', { name: 'Générer le lien' }));
 
     expect(await screen.findByDisplayValue(LINK.acceptUrl)).toBeInTheDocument();
@@ -97,7 +99,8 @@ describe('<TenantDetail> — lien d’invitation', () => {
     setClipboard(vi.fn());
     mount();
 
-    await user.click(await screen.findByRole('button', { name: /Copier le lien d'invitation/ }));
+    await user.click(await screen.findByRole('button', { name: 'Autres actions' }));
+    await user.click(await screen.findByText("Copier le lien d'invitation"));
     await user.click(await screen.findByRole('button', { name: 'Annuler' }));
 
     expect(post).not.toHaveBeenCalled();

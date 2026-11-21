@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Alert, App, Button, Card, Space } from 'antd';
+import { App, Button, Card, Space } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined, UploadOutlined } from '@ant-design/icons';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -11,7 +11,7 @@ import {
   listSyndicReturnImports,
   previewSyndicReturnFile
 } from '../../../services/syndic-direct-debit-service';
-import { formatMoney, Table } from '../../primitives';
+import { DataCard, DataView, formatMoney } from '../../primitives';
 import { useListSearch } from '../../../hooks/useListSearch';
 import { collectAllPages } from '../../../utils/table-export/collect';
 import {
@@ -75,7 +75,7 @@ export const SyndicRemittancesCard: React.FC<SyndicRemittancesCardProps> = ({
     ]
   });
 
-  const { data, isFetching, error } = useQuery({
+  const { data, isFetching, isPending, error, refetch } = useQuery({
     queryKey: SYNDIC_DD_KEYS.remittances(tenantId, syndicId, search.apiParams),
     queryFn: () => listSyndicRemittances(tenantId, syndicId, search.apiParams),
     staleTime: STALE_TIME.list,
@@ -84,6 +84,22 @@ export const SyndicRemittancesCard: React.FC<SyndicRemittancesCardProps> = ({
 
   const detailPath = (remittanceId: string) =>
     `/tenant/${tenantId}/syndics/${syndicId}/prelevements/remises/${remittanceId}`;
+
+  /** Carte mobile : référence, statut et total d'un coup d'œil ; toute la carte ouvre le détail. */
+  const renderCard = (remittance: RemittanceSummaryDto) => (
+    <DataCard
+      title={remittance.reference}
+      subtitle={t('Prélèvement le {{date}}', { date: formatDay(remittance.collectionDate) })}
+      highlight={formatMoney(remittance.totalAmount)}
+      status={<RemittanceStatusTag status={remittance.status} />}
+      onOpen={() => navigate(detailPath(remittance.id))}
+      fields={[
+        { label: t('Lignes'), value: remittance.lineCount },
+        { label: t('Avis de prélèvement au plus tard le'), value: formatDay(remittance.prenotificationDeadline) }
+      ]}
+      primaryAction={{ label: t('Ouvrir la remise'), onClick: () => navigate(detailPath(remittance.id)) }}
+    />
+  );
 
   const columns: ColumnsType<RemittanceSummaryDto> = [
     {
@@ -137,36 +153,42 @@ export const SyndicRemittancesCard: React.FC<SyndicRemittancesCardProps> = ({
       }
     >
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
-        {error && (
-          <Alert type="error" showIcon message={apiErrorMessage(error, t('Erreur lors du chargement des remises'))} />
-        )}
-        <Table<RemittanceSummaryDto>
+        <DataView<RemittanceSummaryDto>
+          {...search.dataViewProps}
           helpId="syndic.prelevements.remises"
           aria-label={t('Remises')}
           search={search.searchProps}
-          exportFilename={t('Remises')}
-          exportFetchAll={() =>
-            collectAllPages<RemittanceSummaryDto>(async (page, limit) => {
-              const response = await listSyndicRemittances(tenantId, syndicId, {
-                ...search.filterParams,
-                page,
-                pageSize: limit
-              });
-              return { items: response.items, total: response.total };
-            })
-          }
-          rowKey="id"
-          size="middle"
-          loading={isFetching}
+          export={{
+            filename: t('Remises'),
+            fetchAll: () =>
+              collectAllPages<RemittanceSummaryDto>(async (page, limit) => {
+                const response = await listSyndicRemittances(tenantId, syndicId, {
+                  ...search.filterParams,
+                  page,
+                  pageSize: limit
+                });
+                return { items: response.items, total: response.total };
+              })
+          }}
+          rowKey={remittance => remittance.id}
+          items={data?.items ?? []}
+          total={data?.total ?? 0}
+          loading={isPending}
+          isReloading={isFetching}
+          error={error ? apiErrorMessage(error, t('Erreur lors du chargement des remises')) : null}
+          onRetry={() => void refetch()}
+          errorCause={error}
           columns={columns}
-          dataSource={data?.items ?? []}
-          scroll={{ x: 'max-content' }}
-          onRow={remittance => ({
-            onClick: () => navigate(detailPath(remittance.id)),
-            style: { cursor: 'pointer' }
-          })}
-          pagination={search.tablePagination(data?.total ?? 0)}
-          locale={search.isFiltered ? undefined : { emptyText: t('Aucune remise de prélèvement') }}
+          scrollX={900}
+          emptyDescription={t(
+            'Aucune remise de prélèvement. Préparez une remise pour regrouper les prélèvements du mois et l’envoyer à la banque.'
+          )}
+          emptyAction={
+            canManage && creditor?.isActive
+              ? { label: t('Préparer une remise'), onClick: () => setPreparing(true) }
+              : undefined
+          }
+          renderCard={renderCard}
         />
         <ReturnImportsHistory
           tenantId={tenantId}

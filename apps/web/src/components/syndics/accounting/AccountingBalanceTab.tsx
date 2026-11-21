@@ -67,7 +67,7 @@ export const AccountingBalanceTab: React.FC<AccountingBalanceTabProps> = ({ tena
   // `filterParams` : critères seuls, sans `page`/`limit` (la balance n'est pas paginée par l'API).
   const query = search.filterParams;
 
-  const { data, isLoading, isFetching, error } = useQuery({
+  const { data, isLoading, isFetching, error, refetch } = useQuery({
     queryKey: accountingKey(tenantId, syndicId, 'balance', query),
     queryFn: () => getTrialBalance(tenantId, syndicId, query as SyndicTrialBalanceQuery),
     placeholderData: keepPreviousData
@@ -121,7 +121,18 @@ export const AccountingBalanceTab: React.FC<AccountingBalanceTabProps> = ({ tena
         />
       ) : null}
 
-      {error ? <Alert type="error" showIcon message={t('Impossible de charger la comptabilité')} /> : null}
+      {error ? (
+        <Alert
+          type="error"
+          showIcon
+          message={t('Impossible de charger la comptabilité')}
+          action={
+            <Button size="small" onClick={() => void refetch()}>
+              {t('Réessayer')}
+            </Button>
+          }
+        />
+      ) : null}
 
       <Table<SyndicTrialBalanceLine>
         helpId="syndic.comptabilite.balance"

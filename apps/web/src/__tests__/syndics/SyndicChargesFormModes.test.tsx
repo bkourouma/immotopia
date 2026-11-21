@@ -120,8 +120,13 @@ describe('SyndicCharges — champs réglables du formulaire de création', () =>
   it('fonds obligatoire : message de validation, aucun appel API', async () => {
     formModes.current = { fundId: 'REQUIRED' };
     const dialog = await openCreateModal();
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Créer' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: "Créer l'appel de charges" }));
     expect(await within(dialog).findByText('Le fonds alimenté est obligatoire', {}, T)).toBeTruthy();
     expect(createChargeCall).not.toHaveBeenCalled();
   }, 60000);
 });
+
+// Les écrans « charges » et « budgets » basculent en cartes sous 992 px : ici on teste la disposition tableau.
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));

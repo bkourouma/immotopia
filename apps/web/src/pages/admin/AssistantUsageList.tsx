@@ -1,4 +1,4 @@
-import { Alert, Button, DatePicker, Form, Input, Select, Space, Table, Typography } from 'antd';
+import { Alert, Button, DatePicker, Empty, Form, Input, Select, Space, Table, Typography } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { useEffect, useState } from 'react';
 import type { Dayjs } from 'dayjs';
@@ -24,6 +24,7 @@ export function AssistantUsageList() {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
   const [form] = Form.useForm<FormValues>();
   useEffect(() => {
     const controller = new AbortController();
@@ -40,7 +41,7 @@ export function AssistantUsageList() {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [filters, offset]);
+  }, [filters, offset, retry]);
 
   const modes = {
     standard: t('Standard'),
@@ -198,8 +199,11 @@ export function AssistantUsageList() {
           </Form.Item>
           <Form.Item>
             <Space>
-              <Button htmlType="submit">{t('Filtrer')}</Button>
+              <Button htmlType="submit" style={{ minHeight: 44 }}>
+                {t('Filtrer')}
+              </Button>
               <Button
+                style={{ minHeight: 44 }}
                 onClick={() => {
                   form.resetFields();
                   apply({});
@@ -211,7 +215,19 @@ export function AssistantUsageList() {
           </Form.Item>
         </Space>
       </Form>
-      {error && <Alert type="error" showIcon message={error} />}
+      {error && (
+        <Alert
+          type="error"
+          showIcon
+          role="alert"
+          message={error}
+          action={
+            <Button size="small" onClick={() => setRetry(value => value + 1)}>
+              {t('Réessayer')}
+            </Button>
+          }
+        />
+      )}
       <Space wrap>
         {report && (
           <Text type="secondary">
@@ -221,7 +237,12 @@ export function AssistantUsageList() {
         {(filters.userId || filters.tenantId) && (
           <Text type="secondary">{t('Filtre de compte ou d’agence actif')}</Text>
         )}
-        <Button loading={exporting} disabled={loading || !report} onClick={() => void exportCsv()}>
+        <Button
+          style={{ minHeight: 44 }}
+          loading={exporting}
+          disabled={loading || !report}
+          onClick={() => void exportCsv()}
+        >
           {t('Exporter en CSV')}
         </Button>
       </Space>
@@ -233,12 +254,36 @@ export function AssistantUsageList() {
         rowKey={row => JSON.stringify([row.tenantId, row.userId, row.provider, row.model, row.mode, row.status])}
         columns={columns}
         dataSource={report?.items ?? []}
+        locale={{
+          emptyText: (
+            <Empty
+              description={
+                filters.tenantId ||
+                filters.userId ||
+                filters.provider ||
+                filters.model ||
+                filters.mode ||
+                filters.status
+                  ? t('Aucun usage ne correspond aux filtres.')
+                  : t('Aucun usage enregistré sur cette période.')
+              }
+            />
+          )
+        }}
       />
-      <Space>
-        <Button disabled={!offset || loading} onClick={() => setOffset(value => value - pageSize)}>
+      <Space wrap>
+        <Button
+          style={{ minHeight: 44 }}
+          disabled={!offset || loading}
+          onClick={() => setOffset(value => value - pageSize)}
+        >
           {t('Précédent')}
         </Button>
-        <Button disabled={!report?.hasNext || loading} onClick={() => setOffset(value => value + pageSize)}>
+        <Button
+          style={{ minHeight: 44 }}
+          disabled={!report?.hasNext || loading}
+          onClick={() => setOffset(value => value + pageSize)}
+        >
           {t('Suivant')}
         </Button>
       </Space>

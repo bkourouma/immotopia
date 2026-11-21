@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Alert, Button, Card, Tag, Typography } from 'antd';
+import { Button, Card, Tag, Typography } from 'antd';
 import type { AssetClass } from '../../../services/patrimoine-assets-service';
 import type { ProjectionAssumptions } from '../../../services/patrimoine-projections-service';
 import { ASSET_CLASS_KEYS, assetClassLabel } from '../actifs/asset-classes';
@@ -30,25 +30,26 @@ const Editor: React.FC<{
     Object.fromEntries(classes.map(key => [key, String(used.growthPercentByClass[key])]))
   );
   const [inflation, setInflation] = useState(String(used.inflationPercent));
-  const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const customized = Object.keys(overrides.growth).length > 0 || overrides.inflation !== undefined;
 
   const apply = () => {
+    const errors: Record<string, string> = {};
     const nextGrowth: Partial<Record<AssetClass, number>> = { ...overrides.growth };
     for (const key of classes) {
       const value = Number(growth[key]);
       if (growth[key]?.trim() === '' || !inRange(value, GROWTH_MIN, GROWTH_MAX)) {
-        setError(t("La croissance doit être comprise entre −50 % et 100 %, et l'inflation entre 0 % et 100 %."));
-        return;
+        errors[`hyp-${key}`] = t('La valeur doit être comprise entre −50 % et 100 %.');
+      } else if (value !== used.growthPercentByClass[key] || key in nextGrowth) {
+        nextGrowth[key] = value;
       }
-      if (value !== used.growthPercentByClass[key] || key in nextGrowth) nextGrowth[key] = value;
     }
     const inflationValue = Number(inflation);
     if (inflation.trim() === '' || !inRange(inflationValue, INFLATION_MIN, INFLATION_MAX)) {
-      setError(t("La croissance doit être comprise entre −50 % et 100 %, et l'inflation entre 0 % et 100 %."));
-      return;
+      errors['hyp-inflation'] = t('La valeur doit être comprise entre 0 % et 100 %.');
     }
-    setError(null);
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) return;
     onApply({
       growth: nextGrowth,
       inflation:
@@ -71,6 +72,9 @@ const Editor: React.FC<{
               onChange={value => setGrowth(current => ({ ...current, [key]: value }))}
               min={GROWTH_MIN}
               max={GROWTH_MAX}
+              unit="%"
+              hint={t('Variation par an, entre −50 % et 100 %')}
+              error={fieldErrors[`hyp-${key}`]}
             />
             {key in overrides.growth && <Tag color="orange">{t('Personnalisée')}</Tag>}
           </div>
@@ -83,16 +87,18 @@ const Editor: React.FC<{
             onChange={setInflation}
             min={INFLATION_MIN}
             max={INFLATION_MAX}
+            unit="%"
+            hint={t('Hausse des prix par an, entre 0 % et 100 %')}
+            error={fieldErrors['hyp-inflation']}
           />
           {overrides.inflation !== undefined && <Tag color="orange">{t('Personnalisée')}</Tag>}
         </div>
       </div>
-      {error && <Alert type="error" showIcon style={{ marginTop: 'var(--space-3)' }} title={error} />}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)', marginTop: 'var(--space-4)' }}>
-        <Button type="primary" onClick={apply}>
+        <Button type="primary" onClick={apply} style={{ minHeight: 40 }}>
           {t('Appliquer les hypothèses')}
         </Button>
-        <Button onClick={onReset} disabled={!customized}>
+        <Button onClick={onReset} disabled={!customized} style={{ minHeight: 40 }}>
           {t('Rétablir les hypothèses par défaut')}
         </Button>
       </div>

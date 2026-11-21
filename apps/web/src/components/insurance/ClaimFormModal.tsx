@@ -128,6 +128,7 @@ export const ClaimFormModal: React.FC<Props> = ({ open, tenantId, propertyId, po
       <Form form={form} layout="vertical" onFinish={submit}>
         <Form.Item name="policyId" label={t('Police')} rules={required}>
           <Select
+            autoFocus
             options={policies.map(policy => ({
               value: policy.id,
               label: t('{{assureur}} · n° {{numero}}', { assureur: policy.insurer, numero: policy.policyNumber })

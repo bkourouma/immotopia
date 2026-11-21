@@ -39,3 +39,25 @@ export function reminderExclusionLabel(reason: string | null | undefined, fallba
       return fallbackLabel || reason || '';
   }
 }
+
+/** Geste à faire pour corriger la cause d'un échec d'envoi ; vide quand il n'y a rien à faire de plus. */
+export function reminderFailureAction(code: string | null | undefined): string {
+  switch (code) {
+    case 'SMTP_REJECTED':
+    case 'TIMEOUT':
+    case 'ERROR':
+      return t('Relancez dans quelques minutes ; si l’échec persiste, vérifiez l’adresse e-mail du copropriétaire.');
+    case 'NO_EMAIL':
+      return t('Ajoutez une adresse e-mail à la fiche du copropriétaire, puis relancez.');
+    case 'NO_OWNER':
+      return t('Rattachez un copropriétaire au lot, puis relancez.');
+    case 'OWNER_NOT_CURRENT':
+      return t('Vérifiez le copropriétaire actuel du lot avant de relancer.');
+    case 'NOTIFICATION_DISABLED':
+      return t('Activez la notification de relance dans les paramètres de l’agence, puis relancez.');
+    case 'ALREADY_PAID':
+      return t('Aucune action : l’appel est déjà soldé.');
+    default:
+      return '';
+  }
+}

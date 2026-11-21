@@ -1,11 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { App, Alert, Button, Space, Tag, Typography } from 'antd';
+import type { MenuProps } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { DownloadOutlined, FileWordOutlined, MailOutlined, PlusOutlined, PrinterOutlined } from '@ant-design/icons';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { useListSearch } from '../../hooks/useListSearch';
-import { MoneyValue, Table } from '../../components/primitives';
+import { DataCard, DataView, MoneyValue } from '../../components/primitives';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { collectAllPages } from '../../utils/table-export/collect';
 import { PrintReceiptsModal } from '../../components/syndics/PrintReceiptsModal';
 import { listBudgets, listSyndicateLots } from '../../services/syndic-service';
@@ -94,6 +96,7 @@ function periodLabelOf(receipt: ReceiptView): string {
  */
 export const SyndicReceipts: React.FC = () => {
   const { message, modal } = App.useApp();
+  const { isMobile } = useBreakpoint();
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
 
   const ready = Boolean(effectiveTenantId && syndicId);
@@ -217,7 +220,11 @@ export const SyndicReceipts: React.FC = () => {
     : receiptsQuery.error
       ? (receiptsQuery.error as any).response?.data?.error || t('Impossible de charger les reçus et quittances')
       : null;
+  const missingParams = !ready;
   const refreshReceipts = () => receiptsQuery.refetch();
+
+  const downloadedMessage = (receipt: ReceiptView) =>
+    message.success(t('{{kind}} {{number}} téléchargé(e).', { kind: kindLabel[receipt.kind], number: receipt.number }));
 
   const handleDownload = async (receipt: ReceiptView, translation?: 'ar') => {
     if (!effectiveTenantId || !syndicId) return;
@@ -228,6 +235,7 @@ export const SyndicReceipts: React.FC = () => {
         ? await downloadReceiptFile(effectiveTenantId, syndicId, receipt.id, fallback, translation)
         : await downloadReceiptFile(effectiveTenantId, syndicId, receipt.id, fallback);
       saveBlob(blob, filename);
+      downloadedMessage(receipt);
     } catch (err) {
       message.error(await describeDownloadError(err));
     } finally {
@@ -242,6 +250,7 @@ export const SyndicReceipts: React.FC = () => {
       const fallback = `${receipt.kind === 'QUITTANCE' ? 'Quittance' : 'Recu'} ${receipt.number}.docx`;
       const { blob, filename } = await downloadReceiptWordFile(effectiveTenantId, syndicId, receipt.id, fallback);
       saveBlob(blob, filename);
+      downloadedMessage(receipt);
     } catch (err) {
       message.error(await describeDownloadError(err));
     } finally {
@@ -256,7 +265,7 @@ export const SyndicReceipts: React.FC = () => {
     setResendingId(receipt.id);
     try {
       await resendReceiptEmail(effectiveTenantId, syndicId, receipt.id);
-      message.success(t('Document renvoyé par e-mail.'));
+      message.success(t('{{number}} renvoyé par e-mail.', { number: receipt.number }));
       await refreshReceipts();
     } catch (err: any) {
       const status = err.response?.status;
@@ -291,7 +300,7 @@ export const SyndicReceipts: React.FC = () => {
       content: t(
         'Une quittance sera créée pour chaque appel entièrement réglé qui n’en a pas encore. Aucun e-mail ne sera envoyé.'
       ),
-      okText: t('Générer'),
+      okText: t('Générer les quittances'),
       cancelText: t('Annuler'),
       onOk: () => runBackfill(effectiveTenantId, syndicId)
     });
@@ -395,7 +404,7 @@ export const SyndicReceipts: React.FC = () => {
       title: t('Actions'),
       key: 'actions',
       render: (_: unknown, row) => (
-        <Space>
+        <Space wrap>
           <Button
             size="small"
             icon={<DownloadOutlined />}
@@ -404,7 +413,7 @@ export const SyndicReceipts: React.FC = () => {
           >
             {t('Télécharger')}
           </Button>
-          <Button loading={downloadingId === row.id} onClick={() => void handleDownload(row, 'ar')}>
+          <Button size="small" loading={downloadingId === row.id} onClick={() => void handleDownload(row, 'ar')}>
             {t('Traduction arabe')}
           </Button>
           <Button
@@ -440,12 +449,12 @@ export const SyndicReceipts: React.FC = () => {
               {t('Reçus de paiement et quittances de charges de la copropriété.')}
             </Paragraph>
           </Space>
-          <Space wrap>
-            <Button icon={<PlusOutlined />} loading={backfilling} onClick={handleBackfill}>
-              {t('Générer les quittances manquantes')}
-            </Button>
-            <Button type="primary" icon={<PrinterOutlined />} onClick={() => setPrintOpen(true)}>
+          <Space wrap style={isMobile ? { width: '100%' } : undefined}>
+            <Button type="primary" icon={<PrinterOutlined />} onClick={() => setPrintOpen(true)} block={isMobile}>
               {t('Imprimer les quittances')}
+            </Button>
+            <Button icon={<PlusOutlined />} loading={backfilling} onClick={handleBackfill} block={isMobile}>
+              {t('Générer les quittances manquantes')}
             </Button>
           </Space>
         </div>
@@ -462,31 +471,68 @@ export const SyndicReceipts: React.FC = () => {
           }
         />
 
-        {error ? <Alert type="error" message={error} showIcon /> : null}
+        {missingParams ? <Alert type="error" message={error} showIcon /> : null}
 
-        <Table<ReceiptView>
-          helpId="syndic.quittances.liste.tableau"
-          search={search.searchProps}
-          exportFilename={t('Quittances')}
-          // Tous les reçus et quittances, avec les mêmes critères que la liste affichée.
-          exportFetchAll={() =>
-            collectAllPages<ReceiptView>(async (exportPage, limit) => {
-              const result = await listSyndicateReceipts(
-                tenantId,
-                syndic,
-                toListParams({ ...search.filterParams, page: exportPage, limit })
+        {missingParams ? null : (
+          <DataView<ReceiptView>
+            aria-label={t('Quittances')}
+            helpId="syndic.quittances.liste.tableau"
+            search={search.searchProps}
+            {...search.dataViewProps}
+            items={items}
+            total={total}
+            loading={receiptsQuery.isLoading}
+            isReloading={receiptsQuery.isFetching && !receiptsQuery.isLoading}
+            error={receiptsQuery.error ? error : null}
+            errorCause={receiptsQuery.error}
+            onRetry={() => void receiptsQuery.refetch()}
+            emptyDescription={t('Aucun reçu ou quittance pour cette copropriété.')}
+            rowKey={row => row.id}
+            columns={columns}
+            scrollX={1100}
+            export={{
+              filename: t('Quittances'),
+              // Tous les reçus et quittances, avec les mêmes critères que la liste affichée.
+              fetchAll: () =>
+                collectAllPages<ReceiptView>(async (exportPage, limit) => {
+                  const result = await listSyndicateReceipts(
+                    tenantId,
+                    syndic,
+                    toListParams({ ...search.filterParams, page: exportPage, limit })
+                  );
+                  return { items: result.items, total: result.pagination.total };
+                })
+            }}
+            renderCard={row => {
+              const secondary: MenuProps['items'] = [
+                { key: 'ar', label: t('Traduction arabe'), onClick: () => void handleDownload(row, 'ar') },
+                { key: 'word', label: t('Télécharger (Word)'), onClick: () => void handleDownloadWord(row) },
+                { key: 'resend', label: t('Renvoyer par e-mail'), onClick: () => void handleResend(row) }
+              ];
+              return (
+                <DataCard
+                  title={row.number}
+                  aria-label={row.number}
+                  subtitle={[row.lotNumber, row.coownerName].filter(Boolean).join(' — ') || t('Sans copropriétaire')}
+                  status={<Tag color={kindColor[row.kind]}>{kindLabel[row.kind]}</Tag>}
+                  highlight={<MoneyValue value={row.amount} currency={displayCurrency(row.currency)} />}
+                  fields={[
+                    { label: t('Période'), value: periodLabelOf(row) },
+                    { label: t('Émis le'), value: dayjs(row.issuedAt).format(dateFormat('short')) },
+                    { label: t('E-mail'), value: emailColumn(row) }
+                  ]}
+                  primaryAction={{
+                    label: t('Télécharger'),
+                    icon: <DownloadOutlined />,
+                    loading: downloadingId === row.id,
+                    onClick: () => void handleDownload(row)
+                  }}
+                  secondaryActions={secondary}
+                />
               );
-              return { items: result.items, total: result.pagination.total };
-            })
-          }
-          rowKey="id"
-          loading={receiptsQuery.isLoading || receiptsQuery.isFetching}
-          dataSource={items}
-          columns={columns}
-          scroll={{ x: 'max-content' }}
-          pagination={search.tablePagination(total)}
-          locale={search.isFiltered ? undefined : { emptyText: t('Aucun reçu ou quittance pour cette copropriété.') }}
-        />
+            }}
+          />
+        )}
       </Space>
 
       {effectiveTenantId && syndicId ? (

@@ -23,6 +23,8 @@ export function ConversationHistory({ tenantId, activeId, disabled, refresh, onS
   const [limit, setLimit] = useState(1);
   const [revision, setRevision] = useState(0);
   const [busy, setBusy] = useState(false);
+  // Faux tant que la première lecture n'a pas répondu : pas de « vide » trompeur au chargement.
+  const [loaded, setLoaded] = useState(false);
   const [rename, setRename] = useState<AssistantConversationSummary>();
   const [remove, setRemove] = useState<AssistantConversationSummary>();
   const [title, setTitle] = useState('');
@@ -43,6 +45,7 @@ export function ConversationHistory({ tenantId, activeId, disabled, refresh, onS
         if (!cancelled) {
           setItems(rows);
           setNextCursor(cursor);
+          setLoaded(true);
         }
       } catch {
         if (!cancelled) feedback.error(t('L’historique des conversations n’a pas pu être chargé.'));
@@ -101,6 +104,17 @@ export function ConversationHistory({ tenantId, activeId, disabled, refresh, onS
           listStyle: 'none'
         }}
       >
+        {loaded && items.length === 0 && (
+          <li role="status">
+            <Typography.Text type="secondary">
+              {q.trim()
+                ? t('Aucune conversation ne correspond à votre recherche.')
+                : archived
+                  ? t('Aucune conversation archivée.')
+                  : t('Aucune conversation pour le moment.')}
+            </Typography.Text>
+          </li>
+        )}
         {items.map(item => (
           <li key={item.id}>
             <Button
@@ -109,7 +123,7 @@ export function ConversationHistory({ tenantId, activeId, disabled, refresh, onS
               disabled={disabled}
               aria-current={item.id === activeId ? 'true' : undefined}
               onClick={() => onSelect(item.id)}
-              style={{ justifyContent: 'flex-start', overflow: 'hidden' }}
+              style={{ justifyContent: 'start', overflow: 'hidden', minHeight: 44 }}
             >
               <Typography.Text ellipsis={{ tooltip: item.title }} style={{ color: 'inherit' }}>
                 {item.title}
@@ -206,7 +220,8 @@ export function ConversationHistory({ tenantId, activeId, disabled, refresh, onS
           )
         }
       >
-        {remove?.title}
+        <p style={{ marginBlockStart: 0 }}>{remove?.title}</p>
+        <p style={{ marginBlockEnd: 0 }}>{t('Cette conversation et ses messages seront supprimés.')}</p>
       </Modal>
     </div>
   );

@@ -61,6 +61,7 @@ import { ValuationsSection } from './property-tab/ValuationsSection';
 import { ExpensesSection } from './property-tab/ExpensesSection';
 import { LoansSection } from './property-tab/LoansSection';
 import { WorksSection } from './property-tab/WorksSection';
+import { SectionError, montantProps } from './property-tab/section-parts';
 import { RUBRIQUE_PARAM, parseRubrique } from './property-tab/rubriques';
 import type { Rubrique } from './property-tab/rubriques';
 import {
@@ -748,7 +749,11 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
           </Col>
           <Col xs={24}>
             {sectionErrors.yieldData ? (
-              <Alert type="error" showIcon message={sectionErrors.yieldData} />
+              <SectionError
+                title={t('Impossible de charger le rendement')}
+                detail={sectionErrors.yieldData}
+                onRetry={() => void loadSection('yieldData')}
+              />
             ) : (
               <YieldCalculator
                 data={yieldData}
@@ -774,6 +779,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
         <ValuationsSection
           valuations={valuations}
           error={sectionErrors.valuations}
+          onRetry={() => void loadSection('valuations')}
           busyActionId={busyActionId}
           onAdd={openCreateValuation}
           onEdit={openEditValuation}
@@ -791,6 +797,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
           <ExpensesSection
             expenses={expenses}
             error={sectionErrors.expenses}
+            onRetry={() => void loadSection('expenses')}
             busyActionId={busyActionId}
             onAdd={openCreateExpense}
             onEdit={openEditExpense}
@@ -817,6 +824,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
         <LoansSection
           loans={loans}
           error={sectionErrors.loans}
+          onRetry={() => void loadSection('loans')}
           busyActionId={busyActionId}
           onAdd={openCreateLoan}
           onEdit={openEditLoan}
@@ -835,6 +843,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
           <WorksSection
             workPrograms={workPrograms}
             error={sectionErrors.workPrograms}
+            onRetry={() => void loadSection('workPrograms')}
             busyActionId={busyActionId}
             onAdd={openCreateWorkProgram}
             onEdit={openEditWorkProgram}
@@ -849,7 +858,11 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
       children: enChargement('documents') ? (
         <BlocChargement />
       ) : sectionErrors.documents ? (
-        <Alert type="error" showIcon message={sectionErrors.documents} />
+        <SectionError
+          title={t('Impossible de charger les documents')}
+          detail={sectionErrors.documents}
+          onRetry={() => void loadSection('documents')}
+        />
       ) : (
         <DocumentVault
           documents={documents}
@@ -858,6 +871,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
           onDelete={handleDeleteDocument}
           deletingId={deletingDocumentId}
           searchPrefix="doc"
+          onAdd={openCreateDocument}
           extra={
             <Button type="primary" onClick={openCreateDocument}>
               {t('Ajouter')}
@@ -881,6 +895,8 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
         open={valuationModalOpen}
         onCancel={() => setValuationModalOpen(false)}
         onOk={submitValuation}
+        okText={t('Enregistrer')}
+        cancelText={t('Annuler')}
         confirmLoading={submitting}
         destroyOnClose
       >
@@ -889,13 +905,13 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
             <Input type="datetime-local" />
           </Form.Item>
           <Form.Item name="estimatedValue" label={t('Valeur estimée')} rules={[{ required: true }]}>
-            <InputNumber min={0} style={{ width: '100%' }} />
+            <InputNumber {...montantProps} />
           </Form.Item>
           <Form.Item name="currency" label={t('Devise')} rules={[{ required: true }]}>
             <Input />
           </Form.Item>
           <Form.Item name="acquisitionCost" label={t("Coût d'acquisition")}>
-            <InputNumber min={0} style={{ width: '100%' }} />
+            <InputNumber {...montantProps} />
           </Form.Item>
           <Form.Item name="acquisitionDate" label={t("Date d'acquisition")}>
             <Input type="datetime-local" />
@@ -922,6 +938,8 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
         open={expenseModalOpen}
         onCancel={() => setExpenseModalOpen(false)}
         onOk={submitExpense}
+        okText={t('Enregistrer')}
+        cancelText={t('Annuler')}
         confirmLoading={submitting}
         destroyOnClose
       >
@@ -946,7 +964,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
             <Input />
           </Form.Item>
           <Form.Item name="amount" label={t('Montant')} rules={[{ required: true }]}>
-            <InputNumber min={0} style={{ width: '100%' }} />
+            <InputNumber {...montantProps} />
           </Form.Item>
           <Form.Item name="currency" label={t('Devise')} rules={[{ required: true }]}>
             <Input />
@@ -1041,6 +1059,8 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
         open={loanModalOpen}
         onCancel={() => setLoanModalOpen(false)}
         onOk={submitLoan}
+        okText={t('Enregistrer')}
+        cancelText={t('Annuler')}
         confirmLoading={submitting}
         destroyOnClose
       >
@@ -1049,16 +1069,16 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
             <Input />
           </Form.Item>
           <Form.Item name="capitalAmount" label={t('Capital initial')} rules={[{ required: true }]}>
-            <InputNumber min={0} style={{ width: '100%' }} />
+            <InputNumber {...montantProps} />
           </Form.Item>
           <Form.Item name="remainingCapital" label={t('Capital restant')} rules={[{ required: true }]}>
-            <InputNumber min={0} style={{ width: '100%' }} />
+            <InputNumber {...montantProps} />
           </Form.Item>
           <Form.Item name="interestRate" label={t("Taux d'intérêt")} rules={[{ required: true }]}>
-            <InputNumber min={0} step={0.01} style={{ width: '100%' }} />
+            <InputNumber min={0} step={0.01} inputMode="decimal" addonAfter="%" style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item name="monthlyPayment" label={t('Mensualité')} rules={[{ required: true }]}>
-            <InputNumber min={0} style={{ width: '100%' }} />
+            <InputNumber {...montantProps} />
           </Form.Item>
           <Form.Item name="currency" label={t('Devise')} rules={[{ required: true }]}>
             <Input />
@@ -1088,6 +1108,8 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
         open={workModalOpen}
         onCancel={() => setWorkModalOpen(false)}
         onOk={submitWorkProgram}
+        okText={t('Enregistrer')}
+        cancelText={t('Annuler')}
         confirmLoading={submitting}
         destroyOnClose
       >
@@ -1099,7 +1121,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
             <Input.TextArea rows={3} />
           </Form.Item>
           <Form.Item name="estimatedCost" label={t('Coût estimé')} rules={[{ required: true }]}>
-            <InputNumber min={0} style={{ width: '100%' }} />
+            <InputNumber {...montantProps} />
           </Form.Item>
           {editingWorkIsSiteLinked ? (
             <Form.Item label={t('Coût réel')}>
@@ -1112,7 +1134,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
             </Form.Item>
           ) : (
             <Form.Item name="actualCost" label={t('Coût réel')}>
-              <InputNumber min={0} style={{ width: '100%' }} />
+              <InputNumber {...montantProps} />
             </Form.Item>
           )}
           <Form.Item name="currency" label={t('Devise')} rules={[{ required: true }]}>
@@ -1150,6 +1172,8 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
           setDocumentFile(null);
         }}
         onOk={submitDocument}
+        okText={t('Ajouter')}
+        cancelText={t('Annuler')}
         confirmLoading={submitting}
         destroyOnClose
       >

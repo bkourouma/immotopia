@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, App, Button, Card, Input, Popconfirm, Space, Tag, Typography } from 'antd';
-import { Table } from '../primitives';
+import { App, Button, Card, Input, Space, Typography } from 'antd';
+import { ConfirmAction, StateBlock, StatusTag, Table } from '../primitives';
 import {
   createOwnerStatementSecureLink,
   listOwnerStatementSecureLinks,
@@ -176,68 +176,59 @@ export const OwnerStatementSecureLinks: React.FC<OwnerStatementSecureLinksProps>
           {t('Liens actifs')}
         </Typography.Title>
         {loadError ? (
-          <Alert
-            type="error"
-            showIcon
-            message={loadError}
-            action={
-              <Button size="small" onClick={() => void reload()}>
-                {t('Réessayer')}
-              </Button>
-            }
+          <StateBlock variant="error" title={loadError} onRetry={() => void reload()} />
+        ) : (
+          <Table
+            helpId="patrimoine.releve.liens-actifs"
+            exportFilename={t('Liens actifs')}
+            scroll={{ x: 'max-content' }}
+            rowKey="id"
+            size="small"
+            loading={loading}
+            dataSource={links}
+            pagination={false}
+            locale={{ emptyText: t('Aucun lien actif.') }}
+            columns={[
+              { title: t('Créé le'), dataIndex: 'createdAt', render: (v: string) => formatDateTime(v) },
+              { title: t('Expire le'), dataIndex: 'expiresAt', render: (v: string) => formatDateTime(v) },
+              {
+                title: t('Consultations'),
+                dataIndex: 'viewCount',
+                align: 'end' as const,
+                render: (v: number) => v.toLocaleString(activeLocale())
+              },
+              {
+                title: t('Dernière consultation'),
+                dataIndex: 'lastViewedAt',
+                render: (v: string | null) => formatDateTime(v)
+              },
+              {
+                title: t('Statut'),
+                dataIndex: 'status',
+                // L'API ne liste que les liens actifs.
+                render: () => <StatusTag status="ACTIVE" />
+              },
+              {
+                title: '',
+                key: 'actions',
+                align: 'end' as const,
+                render: (_: unknown, record: OwnerStatementSecureLink) => (
+                  <ConfirmAction
+                    danger
+                    title={t('Révoquer le lien créé le {{date}} ?', { date: formatDateTime(record.createdAt) })}
+                    description={t('Le propriétaire ne pourra plus ouvrir le rapport avec ce lien.')}
+                    okText={t('Révoquer')}
+                    onConfirm={() => handleRevoke(record.id)}
+                  >
+                    <Button danger loading={revokingId === record.id}>
+                      {t('Révoquer')}
+                    </Button>
+                  </ConfirmAction>
+                )
+              }
+            ]}
           />
-        ) : null}
-        <Table
-          helpId="patrimoine.releve.liens-actifs"
-          exportFilename={t('Liens actifs')}
-          scroll={{ x: 'max-content' }}
-          rowKey="id"
-          size="small"
-          loading={loading}
-          dataSource={links}
-          pagination={false}
-          locale={{ emptyText: t('Aucun lien actif.') }}
-          columns={[
-            { title: t('Créé le'), dataIndex: 'createdAt', render: (v: string) => formatDateTime(v) },
-            { title: t('Expire le'), dataIndex: 'expiresAt', render: (v: string) => formatDateTime(v) },
-            {
-              title: t('Consultations'),
-              dataIndex: 'viewCount',
-              align: 'end' as const,
-              render: (v: number) => v.toLocaleString(activeLocale())
-            },
-            {
-              title: t('Dernière consultation'),
-              dataIndex: 'lastViewedAt',
-              render: (v: string | null) => formatDateTime(v)
-            },
-            {
-              title: t('Statut'),
-              dataIndex: 'status',
-              // L'API ne liste que les liens actifs.
-              render: () => <Tag color="success">{t('Actif')}</Tag>
-            },
-            {
-              title: '',
-              key: 'actions',
-              align: 'end' as const,
-              render: (_: unknown, record: OwnerStatementSecureLink) => (
-                <Popconfirm
-                  title={t('Révoquer ce lien ?')}
-                  description={t('Le propriétaire ne pourra plus ouvrir le rapport avec ce lien.')}
-                  okText={t('Révoquer')}
-                  cancelText={t('Annuler')}
-                  okButtonProps={{ danger: true }}
-                  onConfirm={() => handleRevoke(record.id)}
-                >
-                  <Button size="small" danger loading={revokingId === record.id}>
-                    {t('Révoquer')}
-                  </Button>
-                </Popconfirm>
-              )
-            }
-          ]}
-        />
+        )}
       </Space>
     </Card>
   );

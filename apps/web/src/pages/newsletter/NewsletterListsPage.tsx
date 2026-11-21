@@ -29,6 +29,7 @@ export function NewsletterListsPage() {
   const [subscribers, setSubscribers] = useState<NewsletterSubscriber[]>([]);
   const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 20, totalPages: 0 });
   const [loading, setLoading] = useState(true);
+  const [listsError, setListsError] = useState<string | null>(null);
   const [subLoading, setSubLoading] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -44,11 +45,14 @@ export function NewsletterListsPage() {
   const loadLists = useCallback(async () => {
     if (!tenantId) return;
     setLoading(true);
+    setListsError(null);
     try {
       const data = await newsletterService.listLists(tenantId);
       setLists(data);
     } catch (e) {
-      message.error((e as Error).message || t('Erreur lors du chargement'));
+      const msg = (e as Error).message || t('Erreur lors du chargement');
+      setListsError(msg);
+      message.error(msg);
     } finally {
       setLoading(false);
     }
@@ -338,6 +342,8 @@ export function NewsletterListsPage() {
             search={listSearch.searchProps}
             onClearSearch={listSearch.clear}
             loading={loading}
+            error={listsError}
+            onRetry={loadLists}
             onSelectList={list => {
               subSearch.clear();
               setSelectedList(list);
@@ -365,7 +371,7 @@ export function NewsletterListsPage() {
       >
         <Form form={form} layout="vertical" onFinish={handleCreateList}>
           <Form.Item name="name" label={t('Nom')} rules={[{ required: true }]}>
-            <Input placeholder={t('Ex: Newsletter clients')} />
+            <Input autoFocus placeholder={t('Ex: Newsletter clients')} />
           </Form.Item>
           <Form.Item name="type" label={t('Type')} initialValue="MANUAL" rules={[{ required: true }]}>
             <Select
@@ -405,7 +411,7 @@ export function NewsletterListsPage() {
       >
         <Form form={editForm} layout="vertical" onFinish={handleEditList}>
           <Form.Item name="name" label={t('Nom')} rules={[{ required: true }]}>
-            <Input placeholder={t('Ex: Newsletter clients')} />
+            <Input autoFocus placeholder={t('Ex: Newsletter clients')} />
           </Form.Item>
           {editList?.type === 'MANUAL' && (
             <Form.Item name="doubleOptIn" label={t('Double opt-in')} valuePropName="checked">
@@ -439,7 +445,7 @@ export function NewsletterListsPage() {
           setListToDelete(null);
         }}
         confirmLoading={saving}
-        okText={t('Supprimer')}
+        okText={t('Supprimer la liste')}
         okButtonProps={{ danger: true }}
       >
         {listToDelete && (

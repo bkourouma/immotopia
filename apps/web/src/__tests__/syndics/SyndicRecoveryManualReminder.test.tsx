@@ -74,9 +74,17 @@ vi.mock('antd', async () => {
           {okButtonProps?.style?.display === 'none' ? null : <button onClick={onOk}>{okText}</button>}
         </div>
       ),
+    Pagination: () => null,
     Row: passthrough(),
     Select: passthrough('select'),
     Space: passthrough(),
+    // Les squelettes des primitives (chargement initial) : un simple bloc.
+    Skeleton: Object.assign(passthrough(), {
+      Input: passthrough(),
+      Button: passthrough(),
+      Avatar: passthrough(),
+      Node: passthrough()
+    }),
     Spin: passthrough(),
     Statistic: ({ title, value }: any) => (
       <div>
@@ -225,7 +233,7 @@ describe('Syndics recovery page - relance manuelle et droits', () => {
 
     renderWithRoute();
     fireEvent.click(await screen.findByText('Relance manuelle'));
-    fireEvent.click(await screen.findByText('Créer'));
+    fireEvent.click(await screen.findByText('Créer la relance'));
 
     await waitFor(() => expect(message.success).toHaveBeenCalled());
     expect(message.warning).toHaveBeenCalledWith(
@@ -248,7 +256,7 @@ describe('Syndics recovery page - relance manuelle et droits', () => {
 
     renderWithRoute();
     fireEvent.click(await screen.findByText('Relance manuelle'));
-    fireEvent.click(await screen.findByText('Créer'));
+    fireEvent.click(await screen.findByText('Créer la relance'));
 
     await waitFor(() => expect(message.success).toHaveBeenCalled());
     expect(message.warning).not.toHaveBeenCalled();

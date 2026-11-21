@@ -10,6 +10,8 @@ import type {
 import { t } from '../../../i18n/t';
 import { HelpSectionTitle } from '../../../help';
 import { activeLocale } from '../../../i18n/format';
+import { useBreakpoint } from '../../../hooks/useBreakpoint';
+import { CHART_COLORS, compactNumber } from '../chart-palette';
 import { formatAmount } from '../actifs/asset-format';
 import {
   SCENARIO_KEYS,
@@ -20,8 +22,7 @@ import {
   yearLabel
 } from './projection-helpers';
 
-const compact = (value: unknown) =>
-  new Intl.NumberFormat(activeLocale(), { notation: 'compact', maximumFractionDigits: 1 }).format(Number(value ?? 0));
+const compact = (value: unknown) => compactNumber(value, activeLocale());
 const full = (value: unknown) => formatAmount(Number(Array.isArray(value) ? value[0] : (value ?? 0)), 'XOF');
 
 /**
@@ -34,21 +35,22 @@ export const ProjectionChartCard: React.FC<{
   baseScenario: ProjectionScenarioKey;
   compare: boolean;
 }> = ({ data, baseScenario, compare }) => {
+  const { isMobile } = useBreakpoint();
   const rows = buildChartRows(data);
   return (
     <Card title={<HelpSectionTitle title={t('Valeur nette par année')} helpId="patrimoine.projections.courbe" />}>
       <div
         role="img"
         aria-label={t('Courbe de la valeur nette par année ; les valeurs exactes figurent dans le tableau annuel.')}
-        style={{ width: '100%', height: 320 }}
+        style={{ width: '100%', height: isMobile ? 260 : 320 }}
       >
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={rows} margin={{ top: 8, right: 16, left: 16, bottom: 8 }}>
+          <LineChart data={rows} margin={{ top: 8, right: isMobile ? 8 : 16, left: isMobile ? 0 : 16, bottom: 8 }}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="year" />
-            <YAxis width={70} tickFormatter={compact} />
+            <YAxis width={isMobile ? 48 : 70} tickFormatter={compact} />
             <Tooltip formatter={full} labelFormatter={label => yearLabel(Number(label))} />
-            <Legend />
+            <Legend wrapperStyle={{ whiteSpace: 'normal' }} />
             {compare ? (
               SCENARIO_KEYS.map(key => (
                 <Line
@@ -77,7 +79,7 @@ export const ProjectionChartCard: React.FC<{
                 type="monotone"
                 dataKey="simulated"
                 name={t('Simulation')}
-                stroke="#fa8c16"
+                stroke={CHART_COLORS.orange}
                 strokeDasharray="6 3"
                 strokeWidth={2}
                 dot={false}

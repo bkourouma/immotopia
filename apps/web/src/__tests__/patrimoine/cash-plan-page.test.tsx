@@ -240,7 +240,7 @@ describe('Plan de trésorerie prévisionnel', () => {
   it("envoie le solde de départ à l'API une fois saisi", async () => {
     monter();
     await screen.findByText(/Creux de trésorerie prévu dès/);
-    const champ = screen.getByLabelText('Solde de départ (XOF)');
+    const champ = screen.getByLabelText('Solde de départ');
     await userEvent.type(champ, '500000');
     await userEvent.tab();
     await waitFor(() => expect(planCalls().some(call => call.params.openingBalance === 500000)).toBe(true));

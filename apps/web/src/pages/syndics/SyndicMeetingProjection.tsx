@@ -30,12 +30,12 @@ const PANEL: React.CSSProperties = {
   borderRadius: 16,
   padding: 'clamp(16px, 2.5vw, 32px)'
 };
-const MUTED: React.CSSProperties = { color: '#94a3b8' };
+const MUTED: React.CSSProperties = { color: '#cbd5e1' };
 
 const ResultRow: React.FC<{ resolution: LiveResolutionRow }> = ({ resolution }) => {
   const result = resolution.tally.result;
   const tone = resultColor(result);
-  const colors: Record<string, string> = { green: '#22c55e', red: '#ef4444', orange: '#f59e0b', default: '#94a3b8' };
+  const colors: Record<string, string> = { green: '#22c55e', red: '#f87171', orange: '#f59e0b', default: '#94a3b8' };
   return (
     <div style={{ ...PANEL, display: 'flex', flexWrap: 'wrap', gap: 16, justifyContent: 'space-between' }}>
       <div style={{ flex: '1 1 320px', fontWeight: 600 }}>{resolution.title}</div>
@@ -57,7 +57,7 @@ const OpenResolution: React.FC<{ resolution: LiveResolutionRow; totalLots: numbe
   const percent = totalLots > 0 ? clampPercent((resolution.ballotCount / totalLots) * 100) : 0;
   return (
     <div style={{ ...PANEL, borderInlineStart: '8px solid #22c55e' }}>
-      <div style={{ ...MUTED, fontSize: '0.7em', textTransform: 'uppercase', letterSpacing: 1 }}>
+      <div style={{ ...MUTED, fontSize: '0.8em', textTransform: 'uppercase', letterSpacing: 1 }}>
         {voteStatusLabel('OPEN')}
       </div>
       <div style={{ fontSize: '1.6em', fontWeight: 700, marginBlock: 8 }}>{resolution.title}</div>
@@ -129,14 +129,18 @@ export const SyndicMeetingProjection: React.FC = () => {
         <div style={MUTED}>
           {meetingTypeTitle(meeting.type)} — {formatDateTime(meeting.scheduledAt)}
         </div>
-        {failed ? <div style={{ color: '#f59e0b', fontSize: '0.7em' }}>{t('Connexion instable')}</div> : null}
+        {failed ? (
+          <div role="status" style={{ color: '#fbbf24', fontSize: '0.9em' }}>
+            {t('Connexion instable : les chiffres affichés peuvent ne pas être à jour.')}
+          </div>
+        ) : null}
         {meeting.status === 'PLANNED' ? (
           <div style={{ marginBlockStart: 8 }}>{t("L'assemblée va bientôt commencer")}</div>
         ) : null}
         {meeting.status === 'COMPLETED' ? <div style={{ marginBlockStart: 8 }}>{t('Assemblée terminée')}</div> : null}
       </header>
 
-      <section style={PANEL} aria-label={t('Quorum')}>
+      <section style={PANEL} aria-label={t('Quorum')} aria-live="polite">
         <div style={MUTED}>{t('Quorum')}</div>
         <div style={{ fontSize: '3em', fontWeight: 800, lineHeight: 1.1 }}>{quorum} %</div>
         <Progress percent={quorum} showInfo={false} strokeColor="#38bdf8" trailColor="#334155" />
@@ -155,7 +159,11 @@ export const SyndicMeetingProjection: React.FC = () => {
       ))}
 
       {closed.length > 0 ? (
-        <section style={{ display: 'flex', flexDirection: 'column', gap: 16 }} aria-label={t('Résultats')}>
+        <section
+          style={{ display: 'flex', flexDirection: 'column', gap: 16 }}
+          aria-label={t('Résultats')}
+          aria-live="polite"
+        >
           <div style={MUTED}>{t('Résultats')}</div>
           {closed.map(resolution => (
             <ResultRow key={resolution.id} resolution={resolution} />

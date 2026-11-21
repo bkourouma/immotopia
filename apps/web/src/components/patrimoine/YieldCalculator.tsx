@@ -7,6 +7,7 @@ import { DEVISE_PATRIMOINE } from './patrimoine-labels';
 import { formatYieldPercent } from './patrimoine-format';
 import { BankRatiosCard } from './BankRatiosCard';
 import { HelpSectionTitle } from '../../help';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 
 export interface YieldAssumptionsInput {
   years: number;
@@ -91,6 +92,7 @@ export const YieldCalculator: React.FC<Props> = ({
   syncStatus = 'synced'
 }) => {
   const [form] = Form.useForm<YieldAssumptionsInput>();
+  const { isMobile } = useBreakpoint();
 
   React.useEffect(() => {
     form.setFieldsValue(assumptions || defaultAssumptions);
@@ -187,10 +189,18 @@ export const YieldCalculator: React.FC<Props> = ({
         title={<HelpSectionTitle title={t('Hypothèses de projection')} helpId="patrimoine.performance.hypotheses" />}
       >
         <SyncAlert status={syncStatus} />
-        <Form layout="vertical" form={form} onFinish={values => onRecalculate?.(values)}>
+        <Typography.Paragraph type="secondary" style={{ marginBottom: 'var(--space-3)' }}>
+          {t('Saisissez les taux annuels en décimal : 0,03 correspond à 3 %.')}
+        </Typography.Paragraph>
+        <Form
+          layout="vertical"
+          size={isMobile ? 'large' : undefined}
+          form={form}
+          onFinish={values => onRecalculate?.(values)}
+        >
           <Row gutter={[16, 8]}>
             <Col xs={24} md={8}>
-              <Form.Item name="years" label={t('Années')}>
+              <Form.Item name="years" label={t('Années')} extra={t('Durée de la projection, de 1 à 30 ans.')}>
                 <InputNumber min={1} max={30} precision={0} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
@@ -215,7 +225,14 @@ export const YieldCalculator: React.FC<Props> = ({
               </Form.Item>
             </Col>
           </Row>
-          <Button type="primary" htmlType="submit" loading={loading} disabled={!onRecalculate}>
+          <Button
+            type="primary"
+            htmlType="submit"
+            loading={loading}
+            disabled={!onRecalculate}
+            block={isMobile}
+            style={isMobile ? { minHeight: 44 } : undefined}
+          >
             {t('Recalculer')}
           </Button>
         </Form>

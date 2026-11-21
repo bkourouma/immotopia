@@ -25,6 +25,11 @@ vi.mock('../../services/syndic-service', () => ({
   assignBudgetLineFund: vi.fn()
 }));
 
+// Ces boutons sont ceux du tableau (poste de travail) : sur mobile ils se replient dans les cartes.
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));
+
 let access: { permissions: Set<string> | null; ready: boolean } = { permissions: null, ready: true };
 vi.mock('../../hooks/useMenuAccess', () => ({
   useMyMenuAccess: () => ({ disabled: new Set(), enabled: new Set(), ...access })

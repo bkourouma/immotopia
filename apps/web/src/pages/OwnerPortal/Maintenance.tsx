@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Card, Row, Col, Typography, Spin, Tag, Space, Button, Modal, Descriptions, List, Avatar, Empty } from 'antd';
+import { App, Row, Col, Typography, Spin, Tag, Space, Button, Modal, Descriptions, List, Avatar } from 'antd';
 import {
   ToolOutlined,
   EyeOutlined,
@@ -11,14 +11,14 @@ import {
 import { ownerPortalService } from '../../services/ownerPortalService';
 import { StatCard } from '../../components/OwnerPortal/StatCard';
 import { portalPersonName, type PortalPerson } from './owner-portal-people';
-import { Table } from '../../components/primitives';
-import { InlineError } from './search/InlineError';
+import { DataCard, DataView, PageHeader, SkeletonStats, StateBlock } from '../../components/primitives';
 import { useMaintenanceTickets } from './search/useMaintenanceTickets';
 import {
   AttachmentList,
   fromPortalAttachment,
   type PortalAttachment
 } from '../../components/maintenance/AttachmentList';
+import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
 import { HelpSectionTitle } from '../../help';
@@ -124,16 +124,16 @@ const getPriorityTag = (priority: string) => {
 
 const getCategoryLabel = (category: string) => {
   const categoryMap: Record<string, string> = {
-    PLUMBING: 'Plomberie',
+    PLUMBING: t('Plomberie'),
     ELECTRICITY: t('Électricité'),
-    AC: 'Climatisation',
-    OTHER: 'Autre'
+    AC: t('Climatisation'),
+    OTHER: t('Autre')
   };
   return categoryMap[category] || category;
 };
 
 export default function Maintenance() {
-  const [error, setError] = useState<string | null>(null);
+  const { message } = App.useApp();
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [ticketDetails, setTicketDetails] = useState<TicketDetails | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
@@ -145,7 +145,6 @@ export default function Maintenance() {
   const handleViewDetails = async (ticketId: string) => {
     try {
       setDetailsLoading(true);
-      setError(null);
       setSelectedTicketId(ticketId);
       const response = await ownerPortalService.getMaintenanceTicketDetails(ticketId);
       if (response.data?.success && response.data?.data?.ticket) {
@@ -153,13 +152,13 @@ export default function Maintenance() {
         setDetailsModalVisible(true);
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || t('Erreur lors du chargement des détails'));
+      message.error(err.response?.data?.message || t('Impossible de charger les détails de ce ticket. Réessayez.'));
     } finally {
       setDetailsLoading(false);
     }
   };
 
-  const columns = [
+  const columns: ColumnsType<MaintenanceTicketListItem> = [
     {
       title: t('Propriété'),
       dataIndex: 'propertyAddress',
@@ -220,36 +219,28 @@ export default function Maintenance() {
     }
   ];
 
-  if (isPending && !data) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <Spin size="large" tip={t('Chargement des tickets de maintenance...')} />
-      </div>
-    );
-  }
-
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      {/* Page Header */}
-      <div className="it-toolbar">
-        <div>
-          <Title level={2}>{t('Maintenance')}</Title>
-          <Text type="secondary">{t('Suivi des tickets de maintenance')}</Text>
-        </div>
-        <Button
-          icon={<SyncOutlined />}
-          onClick={loadTickets}
-          loading={loading}
-          aria-label={t('Rafraîchir les tickets')}
-        >
-          {t('Actualiser')}
-        </Button>
-      </div>
+      <PageHeader
+        title={t('Maintenance')}
+        subtitle={t('Suivi des tickets de maintenance')}
+        extra={
+          <Button
+            icon={<SyncOutlined />}
+            onClick={loadTickets}
+            loading={loading}
+            aria-label={t('Rafraîchir les tickets')}
+          >
+            {t('Actualiser')}
+          </Button>
+        }
+      />
 
+      {isPending && !data && <SkeletonStats rows={4} aria-label={t('Chargement des tickets de maintenance')} />}
       {/* Summary Cards (T127) */}
       {data?.summary && (
         <Row gutter={[16, 16]}>
-          <Col xs={24} sm={12} lg={6}>
+          <Col xs={12} lg={6}>
             <StatCard
               helpId="portails.proprietaire.incidents.indicateurs"
               title={t('Total')}
@@ -258,7 +249,7 @@ export default function Maintenance() {
               valueStyle={{ fontSize: 18 }}
             />
           </Col>
-          <Col xs={24} sm={12} lg={6}>
+          <Col xs={12} lg={6}>
             <StatCard
               title={t('Ouverts')}
               value={data.summary.open.toString()}
@@ -266,7 +257,7 @@ export default function Maintenance() {
               valueStyle={{ fontSize: 18, color: '#faad14' }}
             />
           </Col>
-          <Col xs={24} sm={12} lg={6}>
+          <Col xs={12} lg={6}>
             <StatCard
               title={t('En cours')}
               value={data.summary.inProgress.toString()}
@@ -274,7 +265,7 @@ export default function Maintenance() {
               valueStyle={{ fontSize: 18, color: '#1890ff' }}
             />
           </Col>
-          <Col xs={24} sm={12} lg={6}>
+          <Col xs={12} lg={6}>
             <StatCard
               title={t('Résolus')}
               value={data.summary.resolved.toString()}
@@ -285,24 +276,39 @@ export default function Maintenance() {
         </Row>
       )}
 
-      {/* Tickets Table (T126) */}
-      <Card title={t('Liste des tickets')}>
-        <InlineError message={error || loadError} />
-        <Table
-          helpId="portails.proprietaire.incidents.tableau"
-          aria-label={t('Liste des tickets')}
-          search={search.searchProps}
-          exportFilename={t('Liste des tickets')}
-          exportFetchAll={exportAll}
-          scroll={{ x: 'max-content' }}
-          columns={columns}
-          dataSource={tickets}
-          rowKey="id"
-          loading={loading}
-          pagination={search.tablePagination(total)}
-          locale={search.isFiltered ? undefined : { emptyText: t('Aucun ticket trouvé') }}
-        />
-      </Card>
+      {/* Tickets (T126) : tableau sur grand ecran, cartes sur telephone */}
+      <DataView<MaintenanceTicketListItem>
+        helpId="portails.proprietaire.incidents.tableau"
+        aria-label={t('Liste des tickets')}
+        {...search.dataViewProps}
+        search={search.searchProps}
+        items={tickets}
+        total={total}
+        loading={isPending}
+        isReloading={loading && !isPending}
+        error={loadError}
+        onRetry={() => void loadTickets()}
+        emptyDescription={t('Aucun ticket trouvé')}
+        export={{ filename: t('Liste des tickets'), fetchAll: exportAll }}
+        columns={columns}
+        rowKey={row => row.id}
+        renderCard={row => (
+          <DataCard
+            title={row.title}
+            subtitle={[row.propertyAddress, getCategoryLabel(row.category)].filter(Boolean).join(' · ')}
+            status={getStatusTag(row.status)}
+            highlight={getPriorityTag(row.priority)}
+            fields={[{ label: t('Date'), value: dayjs(row.createdAt).format('DD/MM/YYYY') }]}
+            onOpen={() => void handleViewDetails(row.id)}
+            primaryAction={{
+              label: t('Détails'),
+              icon: <EyeOutlined />,
+              onClick: () => void handleViewDetails(row.id),
+              loading: detailsLoading && selectedTicketId === row.id
+            }}
+          />
+        )}
+      />
 
       {/* Ticket Details Modal (T128-T129) */}
       <Modal
@@ -445,7 +451,7 @@ export default function Maintenance() {
             )}
           </Space>
         ) : (
-          <Empty description={t('Aucune information disponible')} />
+          <StateBlock variant="empty" description={t('Aucune information disponible')} />
         )}
       </Modal>
     </Space>

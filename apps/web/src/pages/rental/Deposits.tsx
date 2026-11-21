@@ -205,6 +205,11 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
             description={error}
             type="error"
             showIcon
+            action={
+              <Button size="small" onClick={() => void loadDeposit()}>
+                {t('Réessayer')}
+              </Button>
+            }
             closable
             onClose={() => setError(null)}
           />

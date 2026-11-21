@@ -36,7 +36,7 @@ export interface MyDeclarationsListProps {
 
 const PAGE_SIZE = 10;
 const NOTE_STYLE: React.CSSProperties = { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' };
-const TOUCH_TARGET = 40;
+const TOUCH_TARGET = 44;
 
 type StatusFilter = RentalDeclarationStatus | 'ALL';
 
@@ -176,6 +176,7 @@ export function MyDeclarationsList({ onChanged }: MyDeclarationsListProps): Reac
         }}
         options={statusOptions()}
         aria-label={t('Filtrer par statut')}
+        size="large"
         style={{ width: '100%', maxWidth: 320, minHeight: TOUCH_TARGET }}
       />
 

@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { App, Card, Typography, Spin, Alert, Empty, List, Button, Space, Tag, Divider } from 'antd';
+import { App, Card, Typography, List, Button, Space, Tag } from 'antd';
 import { FolderOutlined, DownloadOutlined, FileTextOutlined, CalendarOutlined } from '@ant-design/icons';
 import { tenantPortalService } from '../../services/tenantPortalService';
-import { ListSearch } from '../../components/primitives';
+import { ListSearch, PageHeader, SkeletonList, StateBlock } from '../../components/primitives';
 import { DocumentsSansResultat, useDocumentsSearch } from './search/documentsSearch';
 import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
 import { filenameFromDisposition } from '../../utils/save-blob';
 import { HelpSectionTitle } from '../../help';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 interface RentalDocument {
   id: string;
@@ -92,12 +92,12 @@ export default function TenantDocuments() {
   const getDocumentTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
       LEASE_CONTRACT: t('Contrat de bail'),
-      LEASE_ADDENDUM: 'Avenant',
+      LEASE_ADDENDUM: t('Avenant'),
       RENT_RECEIPT: t('Quittance de loyer'),
-      RENT_QUITTANCE: 'Quittance',
+      RENT_QUITTANCE: t('Quittance'),
       DEPOSIT_RECEIPT: t('Reçu de dépôt'),
       STATEMENT: t('Relevé'),
-      OTHER: 'Autre'
+      OTHER: t('Autre')
     };
     return labels[type] || type;
   };
@@ -117,23 +117,30 @@ export default function TenantDocuments() {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <Spin size="large" tip={t('Chargement des documents...')} />
+      <div>
+        <PageHeader title={t('Documents')} subtitle={t('Accédez et téléchargez vos documents de location')} />
+        <SkeletonList aria-label={t('Chargement des documents...')} />
       </div>
     );
   }
 
   if (error) {
-    return <Alert message={t('Erreur')} description={error} type="error" showIcon />;
+    return (
+      <div>
+        <PageHeader title={t('Documents')} />
+        <StateBlock
+          variant="error"
+          title={t('Impossible de charger vos documents')}
+          description={t('Vérifiez votre connexion puis réessayez.')}
+          actions={[{ label: t('Réessayer'), onClick: loadDocuments, primary: true }]}
+        />
+      </div>
+    );
   }
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      {/* Page Header */}
-      <div>
-        <Title level={2}>{t('Documents')}</Title>
-        <Text type="secondary">{t('Accédez et téléchargez vos documents de location')}</Text>
-      </div>
+      <PageHeader title={t('Documents')} subtitle={t('Accédez et téléchargez vos documents de location')} />
 
       {/* Recherche (T111) : seulement s'il y a des documents à chercher. */}
       {(data?.documents.length ?? 0) > 0 ? <ListSearch {...local.searchProps} /> : null}
@@ -146,7 +153,7 @@ export default function TenantDocuments() {
               key={type}
               title={
                 <Space>
-                  <FileTextOutlined />
+                  <FileTextOutlined aria-hidden />
                   <HelpSectionTitle title={getDocumentTypeLabel(type)} helpId="portails.locataire.documents.liste" />
                   <Tag>{documents.length}</Tag>
                 </Space>
@@ -161,6 +168,7 @@ export default function TenantDocuments() {
                       <Button
                         key="download"
                         type="link"
+                        style={{ minHeight: 44 }}
                         icon={<DownloadOutlined />}
                         onClick={() => handleDownload(doc.id)}
                         loading={downloading === doc.id}
@@ -204,9 +212,11 @@ export default function TenantDocuments() {
       ) : local.isFiltered ? (
         <DocumentsSansResultat onClear={local.clear} />
       ) : (
-        <Card>
-          <Empty description={t('Aucun document trouvé')} />
-        </Card>
+        <StateBlock
+          variant="empty"
+          title={t('Aucun document trouvé')}
+          description={t("Vos contrats et quittances apparaîtront ici dès qu'ils seront disponibles.")}
+        />
       )}
     </Space>
   );

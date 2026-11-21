@@ -14,6 +14,7 @@ import { StatusTag, Table, useConfirmAction, type StatusTone } from '../../primi
 import { activeLocale } from '../../../i18n/format';
 import { t } from '../../../i18n/t';
 import { HelpButton } from '../../../help';
+import { useBreakpoint } from '../../../hooks/useBreakpoint';
 import { localizedRecord } from '../../../i18n/localized';
 
 const { Text } = Typography;
@@ -63,6 +64,8 @@ function errorMessage(err: any, fallback: string): string {
 export const DataExportTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const { message } = App.useApp();
   const confirmAction = useConfirmAction();
+  const { isDesktop } = useBreakpoint();
+  const touchStyle = isDesktop ? undefined : { minHeight: 44 };
   const [exports, setExports] = useState<TenantDataExport[]>([]);
   const [loading, setLoading] = useState(true);
   const [requesting, setRequesting] = useState(false);
@@ -151,6 +154,9 @@ export const DataExportTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const handleDelete = (row: TenantDataExport) => {
     confirmAction({
       title: t('Supprimer cet export ?'),
+      description: t("L'archive demandée le {{value}} ne pourra plus être téléchargée.", {
+        value: formatDateTime(row.createdAt)
+      }),
       okText: t('Supprimer'),
       danger: true,
       onConfirm: async () => {
@@ -203,6 +209,7 @@ export const DataExportTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           {r.status === 'READY' && (
             <Button
               size="small"
+              style={touchStyle}
               icon={<DownloadOutlined />}
               loading={downloadingId === r.id}
               onClick={() => handleDownload(r)}
@@ -211,7 +218,7 @@ export const DataExportTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
             </Button>
           )}
           {r.status !== 'RUNNING' && (
-            <Button size="small" danger icon={<DeleteOutlined />} onClick={() => handleDelete(r)}>
+            <Button size="small" style={touchStyle} danger icon={<DeleteOutlined />} onClick={() => handleDelete(r)}>
               {t('Supprimer')}
             </Button>
           )}

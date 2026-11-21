@@ -12,6 +12,8 @@ import {
   StrikethroughOutlined
 } from '@ant-design/icons';
 import { whatsappNotificationConfigService } from '../../services/whatsapp-notification-config-service';
+import { ConfirmAction } from '../../components/primitives';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { t } from '../../i18n/t';
 import { HelpSectionTitle } from '../../help';
 
@@ -31,6 +33,9 @@ export function WhatsAppGroupMessagePage() {
   const { message } = App.useApp();
 
   const { tenantId } = useParams<{ tenantId: string }>();
+  const { isDesktop } = useBreakpoint();
+  // Cibles tactiles d'au moins 44 px sous 992 px.
+  const toolbarButtonStyle: React.CSSProperties | undefined = isDesktop ? undefined : { minHeight: 44, minWidth: 44 };
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -202,27 +207,32 @@ export function WhatsAppGroupMessagePage() {
         <Divider />
 
         <Space size={[8, 8]} wrap style={{ marginBottom: 12 }}>
-          <Button size="small" icon={<BoldOutlined />} onClick={() => wrapSelection('*')}>
+          <Button size="small" style={toolbarButtonStyle} icon={<BoldOutlined />} onClick={() => wrapSelection('*')}>
             {t('Gras')}
           </Button>
-          <Button size="small" icon={<ItalicOutlined />} onClick={() => wrapSelection('_')}>
+          <Button size="small" style={toolbarButtonStyle} icon={<ItalicOutlined />} onClick={() => wrapSelection('_')}>
             {t('Italique')}
           </Button>
-          <Button size="small" icon={<StrikethroughOutlined />} onClick={() => wrapSelection('~')}>
+          <Button
+            size="small"
+            style={toolbarButtonStyle}
+            icon={<StrikethroughOutlined />}
+            onClick={() => wrapSelection('~')}
+          >
             {t('Barre')}
           </Button>
-          <Button size="small" icon={<CodeOutlined />} onClick={() => wrapSelection('`')}>
+          <Button size="small" style={toolbarButtonStyle} icon={<CodeOutlined />} onClick={() => wrapSelection('`')}>
             {t('Code')}
           </Button>
           <Popover content={emojiPanel} trigger="click" placement="bottomLeft">
-            <Button size="small" icon={<SmileOutlined />}>
+            <Button size="small" style={toolbarButtonStyle} icon={<SmileOutlined />}>
               {t('Emojis')}
             </Button>
           </Popover>
-          <Button size="small" icon={<PictureOutlined />} onClick={openImagePicker}>
+          <Button size="small" style={toolbarButtonStyle} icon={<PictureOutlined />} onClick={openImagePicker}>
             {t('Image')}
           </Button>
-          <Button size="small" onClick={() => insertAtCursor('\n- ')}>
+          <Button size="small" style={toolbarButtonStyle} onClick={() => insertAtCursor('\n- ')}>
             {t('Liste')}
           </Button>
         </Space>
@@ -233,6 +243,7 @@ export function WhatsAppGroupMessagePage() {
           onChange={event => setComposerText(event.target.value)}
           onClick={focusComposer}
           placeholder={t('Tapez votre message WhatsApp...')}
+          aria-label={t('Message à envoyer au groupe')}
           rows={8}
           style={{
             width: '100%',
@@ -254,7 +265,9 @@ export function WhatsAppGroupMessagePage() {
         />
 
         <div style={{ marginTop: 8 }}>
-          <Tag color="default">{composerText.length} caracteres</Tag>
+          <Tag color="default" role="status">
+            {t('{{count}} caractères', { count: composerText.length })}
+          </Tag>
           {selectedImage ? <Tag color="green">Image: {selectedImage.name}</Tag> : null}
         </div>
 
@@ -292,16 +305,22 @@ export function WhatsAppGroupMessagePage() {
               helpId="communication.canaux.whatsapp-groupe.envoi"
             />
           </Text>
-          <Button
-            type="primary"
-            icon={<SendOutlined />}
-            size="large"
-            loading={sending}
+          {/* Un envoi au groupe ne se rattrape pas : on confirme, en rappelant ce qui part. */}
+          <ConfirmAction
+            title={t('Envoyer ce message au groupe ?')}
+            description={
+              selectedImage
+                ? t('Le message et l’image seront envoyés tout de suite à tous les membres du groupe.')
+                : t('Le message sera envoyé tout de suite à tous les membres du groupe.')
+            }
+            okText={t('Envoyer')}
+            onConfirm={handleSend}
             disabled={!canSend}
-            onClick={handleSend}
           >
-            {t('Envoyer au groupe')}
-          </Button>
+            <Button type="primary" icon={<SendOutlined />} size="large" loading={sending} disabled={!canSend}>
+              {t('Envoyer au groupe')}
+            </Button>
+          </ConfirmAction>
         </Space>
       </Card>
     </>

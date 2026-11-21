@@ -17,6 +17,14 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 
 Modèle de section : voir le bloc « Modèle de section » plus bas.
 
+## Ergonomie UI/UX de toute l'application — 2026-11-21
+
+**État** — Branche `orch/2026-11-21-ux` (6 lots fusionnés + commit i18n/wiki `1212ac31`), PR https://github.com/bkourouma/immotopia/pull/235 ouverte vers `main`, CI à suivre. Rien fusionné ni déployé au moment de l'écriture. Aucune fonctionnalité, règle métier ni API modifiée.
+
+**Reste** — Suivre la CI de la PR et corriger les échecs ; la suite web complète n'a pas été lancée d'un seul tenant en local. Contrôle visuel en navigateur (375 px) non fait. Relecture humaine des traductions arabes. Une dizaine de `<Pagination>` bruts sans pager nommé restent (CoOwnerPortal/Meetings, crm/Activities, crm/Contacts, NotificationsPage, OwnerPortal Documents/Properties, HoldingEntitiesPage, tenant TicketList, TeamPerformanceTable, MyDeclarationsList).
+
+**Pièges** — Les chefs de lot calent (watchdog 600 s) dès qu'un run vitest multi-dossiers dure : lancer les suites en arrière-plan avec sortie redirigée, un seul runner à la fois. Le push de gros diffs échoue parfois (« connection reset ») : réessayer avec `-c http.postBuffer=524288000 -c http.version=HTTP/1.1`. `i18n:check` échoue s'il reste des `*.orphans.json`. Worktrees des lots sous `D:/APP/Immobillier-worktrees/ux21-*` avec jonctions `node_modules` : retirer les jonctions (rmdir) AVANT `git worktree remove`.
+
 ## Revue Syndic et Gestion locative — 2026-11-20
 
 **Branche :** `orch/2026-11-20-revue-syndic-locatif`, base `origin/main` `25e340fe` ; dernier commit : voir `git log` de la branche. Pull request https://github.com/bkourouma/immotopia/pull/234 (fusion par l'utilisateur).
@@ -46,7 +54,6 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 - Verrous consultatifs et `updateMany` de trésorerie testés sur mocks seulement.
 - Relevés propriétaires de version < 4 à recalculer.
 - Aucune migration de données : budgets et appels avec centimes en base non arrondis.
-  \=======
 
 ## feat/lien-invitation-agence — 2026-11-19
 
@@ -644,7 +651,7 @@ Compose des piles confirme l’absence de `AI_TRANSCRIPTION_OPENAI_KEY` et de `G
 
 **État :** 6 visuels 1080×1350 (`slide-1..6.png`) dans `docs/marketing/carrousel-signalement-maintenance/` (`generate.mjs` → HTML, `render.ps1` → PNG via Chrome headless). Ils intègrent de vraies captures de l'écran « Créer un ticket de maintenance » (`src/cap-*.png`, données de démo, formulaire jamais envoyé) et les logos officiels. Rien de commité.
 **Reste à faire :** valider la palette et retirer la mention « Palette provisoire » ; la capture montre le bien démo FLB-A2 alors que le texte parle de DEMO-12 (texte imposé, non modifié). Pour refaire des captures : `apps/web` doit tourner sur le port 3000 (l'API n'autorise que cette origine ; `launch.json` pose 3002).
-**Piège :** ce fichier contient des marqueurs de conflit `<<<<<<< HEAD` hérités du merge, à résoudre séparément.
+**Piège :** ce fichier contenait des marqueurs de conflit hérités d'un merge (résolus depuis).
 
 ## Reel FB07 « Retrouver la quittance » — 2026-11-10
 

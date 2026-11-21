@@ -1,26 +1,10 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
-import {
-  App,
-  Alert,
-  Button,
-  Col,
-  Form,
-  Input,
-  InputNumber,
-  Modal,
-  Row,
-  Select,
-  Space,
-  Spin,
-  Tabs,
-  Tag,
-  Typography
-} from 'antd';
-import { ArrowLeftOutlined, DownloadOutlined, PlusOutlined } from '@ant-design/icons';
+import { App, Alert, Button, Col, Form, Input, InputNumber, Modal, Row, Select, Space, Spin, Tabs, Tag } from 'antd';
+import { DownloadOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { MoneyValue, StatCard, Table } from '../../components/primitives';
+import { DataCard, DataView, MoneyValue, PageHeader, StatCard } from '../../components/primitives';
+import { montantSaisiProps } from '../../utils/montant-saisi';
 import {
   createLotOwnerAccountAdjustment,
   downloadLotOwnerAccountStatement,
@@ -48,8 +32,6 @@ const receiptKindLabel: Record<ReceiptKind, string> = localizedRecord(() => ({
   RECEIPT: t('Reçu'),
   QUITTANCE: t('Quittance')
 }));
-
-const { Paragraph, Title } = Typography;
 
 const ACCOUNT_TABS = ['transactions', 'recus'] as const;
 
@@ -118,7 +100,6 @@ export const SyndicOwnerAccount: React.FC = () => {
   const { message } = App.useApp();
 
   const { tenantId: effectiveTenantId, syndicId, lotId } = useSyndicRouteContext();
-  const navigate = useNavigate();
   const [account, setAccount] = useState<OwnerAccount | null>(null);
   const [tab, setTab] = useTabParam(ACCOUNT_TABS, 'transactions');
   // Rechargement des transactions après un ajustement.
@@ -333,32 +314,35 @@ export const SyndicOwnerAccount: React.FC = () => {
   return (
     <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-          <Space direction="vertical" size={4}>
-            <Button
-              icon={<ArrowLeftOutlined />}
-              onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}/lots`)}
-            >
-              {t('Retour aux lots')}
-            </Button>
-            <Title level={2} style={{ margin: 0 }}>
-              {t('Compte du lot')} {account?.lot?.lotNumber ?? ''}
-            </Title>
-            <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-              {t('Suivi du compte individuel et des mouvements.')}
-            </Paragraph>
-          </Space>
-          <Space>
-            <Button icon={<DownloadOutlined />} onClick={() => void handleDownloadStatement()}>
-              {t('Télécharger le relevé')}
-            </Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
-              {t('Ajouter ajustement')}
-            </Button>
-          </Space>
-        </div>
+        <PageHeader
+          title={`${t('Compte du lot')} ${account?.lot?.lotNumber ?? ''}`.trim()}
+          subtitle={t('Suivi du compte individuel et des mouvements.')}
+          breadcrumbs={[
+            { label: t('Lots'), to: `/tenant/${effectiveTenantId}/syndics/${syndicId}/lots` },
+            { label: `${t('Compte du lot')} ${account?.lot?.lotNumber ?? ''}`.trim() }
+          ]}
+          primaryAction={{ label: t('Ajouter ajustement'), icon: <PlusOutlined />, onClick: () => setOpen(true) }}
+          extra={
+            <>
+              <Button icon={<DownloadOutlined />} onClick={() => void handleDownloadStatement()}>
+                {t('Télécharger le relevé')}
+              </Button>
+            </>
+          }
+        />
 
-        {error || transactionsError ? <Alert type="error" message={error ?? transactionsError} showIcon /> : null}
+        {error || transactionsError ? (
+          <Alert
+            type="error"
+            message={error ?? transactionsError}
+            showIcon
+            action={
+              <Button size="small" onClick={() => (error ? void loadData() : void txQuery.refetch())}>
+                {t('Réessayer')}
+              </Button>
+            }
+          />
+        ) : null}
 
         {loading ? (
           <div style={{ minHeight: 280, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -401,27 +385,62 @@ export const SyndicOwnerAccount: React.FC = () => {
                   key: 'transactions',
                   label: t('Historique des transactions'),
                   children: (
-                    <Table
+                    <DataView<OwnerAccountTransaction>
                       helpId="syndic.lots.compte.transactions"
+                      {...txSearch.dataViewProps}
                       aria-label={t('Historique des transactions')}
                       search={txSearch.searchProps}
-                      exportFilename={t('Historique des transactions')}
-                      exportFetchAll={() =>
-                        collectAllPages<OwnerAccountTransaction>(async (page, limit) => {
-                          const result = await listLotOwnerAccountTransactionsWithTotal(
-                            effectiveTenantId as string,
-                            syndicId as string,
-                            lotId as string,
-                            { ...txSearch.filterParams, page, limit }
-                          );
-                          return { items: result.items, total: result.totalCount };
-                        })
-                      }
-                      scroll={{ x: 'max-content' }}
-                      rowKey="id"
-                      dataSource={transactions}
-                      loading={txQuery.isFetching}
-                      pagination={txSearch.tablePagination(filteredTransactionsTotal)}
+                      items={transactions}
+                      total={filteredTransactionsTotal}
+                      loading={txQuery.isPending && Boolean(accountId)}
+                      isReloading={txQuery.isFetching}
+                      emptyDescription={t(
+                        'Aucun mouvement sur ce compte. Les appels de charges et les paiements apparaîtront ici.'
+                      )}
+                      export={{
+                        filename: t('Historique des transactions'),
+                        fetchAll: () =>
+                          collectAllPages<OwnerAccountTransaction>(async (page, limit) => {
+                            const result = await listLotOwnerAccountTransactionsWithTotal(
+                              effectiveTenantId as string,
+                              syndicId as string,
+                              lotId as string,
+                              { ...txSearch.filterParams, page, limit }
+                            );
+                            return { items: result.items, total: result.totalCount };
+                          })
+                      }}
+                      rowKey={row => row.id}
+                      renderCard={row => {
+                        const info = describeOwnerBalance(row.balanceAfter);
+                        const isDebit = Boolean(row.debit) && Number(row.debit) !== 0;
+                        const day = dayjs(row.transactionDate).format('DD/MM/YYYY');
+                        return (
+                          <DataCard
+                            aria-label={`${row.label} — ${day}`}
+                            title={row.label}
+                            subtitle={`${day} · ${transactionTypeLabels()[row.type] || row.type}`}
+                            highlight={
+                              <>
+                                {isDebit ? t('Débit') : t('Crédit')} :{' '}
+                                <MoneyValue value={isDebit ? row.debit : row.credit} />
+                              </>
+                            }
+                            fields={[
+                              {
+                                label: t('Solde après ce mouvement'),
+                                value: (
+                                  <Space size={6}>
+                                    <MoneyValue value={info.amount} />
+                                    <Tag color={balanceToneTagColor[info.tone]}>{balanceToneLabel[info.tone]}</Tag>
+                                  </Space>
+                                )
+                              }
+                            ]}
+                          />
+                        );
+                      }}
+                      scrollX={900}
                       columns={[
                         {
                           title: t('Date'),
@@ -474,29 +493,51 @@ export const SyndicOwnerAccount: React.FC = () => {
                   key: 'recus',
                   label: t('Reçus et quittances'),
                   children: (
-                    <Table
+                    <DataView<ReceiptView>
                       helpId="syndic.lots.compte.recus"
+                      {...receiptSearch.dataViewProps}
                       aria-label={t('Reçus et quittances')}
                       search={receiptSearch.searchProps}
-                      exportFilename={t('Reçus et quittances')}
-                      exportFetchAll={() =>
-                        collectAllPages<ReceiptView>(async (page, limit) => {
-                          const result = await listLotReceipts(
-                            effectiveTenantId as string,
-                            syndicId as string,
-                            lotId as string,
-                            { ...receiptSearch.filterParams, page, limit } as ReceiptListParams
-                          );
-                          return { items: result.items, total: result.pagination.total };
-                        })
-                      }
-                      rowKey="id"
-                      loading={receiptsQuery.isFetching}
-                      dataSource={receipts}
-                      pagination={receiptSearch.tablePagination(receiptsTotal)}
-                      locale={
-                        receiptSearch.isFiltered ? undefined : { emptyText: t('Aucun reçu ou quittance pour ce lot.') }
-                      }
+                      items={receipts}
+                      total={receiptsTotal}
+                      loading={receiptsQuery.isPending}
+                      isReloading={receiptsQuery.isFetching}
+                      emptyDescription={t('Aucun reçu ou quittance pour ce lot.')}
+                      export={{
+                        filename: t('Reçus et quittances'),
+                        fetchAll: () =>
+                          collectAllPages<ReceiptView>(async (page, limit) => {
+                            const result = await listLotReceipts(
+                              effectiveTenantId as string,
+                              syndicId as string,
+                              lotId as string,
+                              { ...receiptSearch.filterParams, page, limit } as ReceiptListParams
+                            );
+                            return { items: result.items, total: result.pagination.total };
+                          })
+                      }}
+                      rowKey={row => row.id}
+                      renderCard={row => (
+                        <DataCard
+                          aria-label={`${receiptKindLabel[row.kind]} ${row.number}`}
+                          title={row.number}
+                          subtitle={`${receiptKindLabel[row.kind]} · ${dayjs(row.issuedAt).format('DD/MM/YYYY')}`}
+                          highlight={<MoneyValue value={row.amount} currency={displayCurrency(row.currency)} />}
+                          primaryAction={{
+                            label: t('Télécharger'),
+                            icon: <DownloadOutlined />,
+                            loading: downloadingReceiptId === row.id,
+                            onClick: () => void handleDownloadReceipt(row)
+                          }}
+                          secondaryActions={[
+                            {
+                              key: 'ar',
+                              label: t('Traduction arabe'),
+                              onClick: () => void handleDownloadReceipt(row, 'ar')
+                            }
+                          ]}
+                        />
+                      )}
                       columns={[
                         { title: t('Numéro'), dataIndex: 'number' },
                         {
@@ -557,12 +598,17 @@ export const SyndicOwnerAccount: React.FC = () => {
         open={open}
         onCancel={() => setOpen(false)}
         onOk={() => void handleAdjustment()}
-        okText={t('Enregistrer')}
+        okText={t("Enregistrer l'ajustement")}
         cancelText={t('Annuler')}
         confirmLoading={submitting}
       >
         <Form form={form} layout="vertical" initialValues={{ direction: 'DEBIT' }}>
-          <Form.Item label={t('Direction')} name="direction" rules={[{ required: true }]}>
+          <Form.Item
+            label={t('Direction')}
+            name="direction"
+            rules={[{ required: true, message: t('Choisissez débit ou crédit') }]}
+            extra={t('Un débit augmente ce que le copropriétaire doit ; un crédit le diminue.')}
+          >
             <Select
               showSearch
               optionFilterProp="label"
@@ -577,7 +623,7 @@ export const SyndicOwnerAccount: React.FC = () => {
             name="amount"
             rules={[{ required: true, message: t('Le montant est obligatoire') }]}
           >
-            <InputNumber min={1} style={{ width: '100%' }} />
+            <InputNumber {...montantSaisiProps} min={1} addonAfter="FCFA" style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item
             label={t('Libellé')}

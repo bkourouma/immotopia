@@ -85,7 +85,7 @@ export const SyndicMandatesCard: React.FC<SyndicMandatesCardProps> = ({ tenantId
     ]
   });
 
-  const { data, isFetching, error } = useQuery({
+  const { data, isFetching, error, refetch } = useQuery({
     queryKey: SYNDIC_DD_KEYS.mandates(tenantId, syndicId, search.apiParams),
     queryFn: () => listSyndicMandates(tenantId, syndicId, search.apiParams),
     staleTime: STALE_TIME.list,
@@ -160,7 +160,16 @@ export const SyndicMandatesCard: React.FC<SyndicMandatesCardProps> = ({ tenantId
           />
         )}
         {error && (
-          <Alert type="error" showIcon message={apiErrorMessage(error, t('Erreur lors du chargement des mandats'))} />
+          <Alert
+            type="error"
+            showIcon
+            message={apiErrorMessage(error, t('Erreur lors du chargement des mandats'))}
+            action={
+              <Button size="small" onClick={() => void refetch()}>
+                {t('Réessayer')}
+              </Button>
+            }
+          />
         )}
         <Table<MandateDto>
           helpId="syndic.prelevements.mandats"

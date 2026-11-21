@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { App, Button, Card, Col, Form, Input, InputNumber, Row, Select, Space, Typography } from 'antd';
+import { Alert, App, Button, Card, Col, Form, Input, InputNumber, Row, Select, Space, Typography } from 'antd';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   getPropertyHoldings,
@@ -16,6 +16,7 @@ import { TaxEstimateCard } from './TaxEstimateCard';
 import { TaxDisclaimer } from './TaxDisclaimer';
 import { t } from '../../../i18n/t';
 import { apiErrorMessage } from '../patrimoine-labels';
+import { moneyInputProps } from '../actifs/form-helpers';
 import { HelpSectionTitle } from '../../../help';
 
 const { Title, Text } = Typography;
@@ -160,16 +161,10 @@ export const PropertyHoldingTaxSection: React.FC<PropertyHoldingTaxSectionProps>
       <StateBlock
         variant="error"
         description={t('Impossible de charger la fiscalité de ce bien.')}
-        actions={[
-          {
-            label: t('Réessayer'),
-            primary: true,
-            onClick: () => {
-              holdingsQuery.refetch();
-              profileQuery.refetch();
-            }
-          }
-        ]}
+        onRetry={() => {
+          holdingsQuery.refetch();
+          profileQuery.refetch();
+        }}
       />
     );
   }
@@ -187,9 +182,7 @@ export const PropertyHoldingTaxSection: React.FC<PropertyHoldingTaxSectionProps>
         style={{ marginBottom: 'var(--space-4)' }}
       >
         {holdingsError && (
-          <div role="alert" style={{ color: 'var(--color-error-text)', marginBottom: 'var(--space-3)' }}>
-            {holdingsError}
-          </div>
+          <Alert type="error" showIcon role="alert" title={holdingsError} style={{ marginBottom: 'var(--space-3)' }} />
         )}
         <Space orientation="vertical" style={{ width: '100%' }} size="small">
           {rows.map((row, index) => (
@@ -240,9 +233,7 @@ export const PropertyHoldingTaxSection: React.FC<PropertyHoldingTaxSectionProps>
         style={{ marginBottom: 'var(--space-4)' }}
       >
         {profileError && (
-          <div role="alert" style={{ color: 'var(--color-error-text)', marginBottom: 'var(--space-3)' }}>
-            {profileError}
-          </div>
+          <Alert type="error" showIcon role="alert" title={profileError} style={{ marginBottom: 'var(--space-3)' }} />
         )}
         <Form form={profileForm} layout="vertical" requiredMark={false}>
           <Row gutter={16}>
@@ -263,7 +254,7 @@ export const PropertyHoldingTaxSection: React.FC<PropertyHoldingTaxSectionProps>
             </Col>
             <Col xs={24} md={8}>
               <Form.Item name="declaredRentalValue" label={t('Valeur locative saisie')}>
-                <InputNumber style={{ width: '100%' }} min={0} />
+                <InputNumber style={{ width: '100%' }} min={0} inputMode="numeric" {...moneyInputProps('FCFA')} />
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
@@ -324,7 +315,7 @@ export const PropertyHoldingTaxSection: React.FC<PropertyHoldingTaxSectionProps>
           <StateBlock
             variant="error"
             description={t("Impossible de charger l'estimation fiscale.")}
-            actions={[{ label: t('Réessayer'), primary: true, onClick: () => estimateQuery.refetch() }]}
+            onRetry={() => estimateQuery.refetch()}
           />
         ) : estimateQuery.data ? (
           <div>

@@ -42,6 +42,7 @@ export function useChargeSchedules(tenantId: string | undefined, syndicId: strin
     schedules: data.schedules,
     loading: data.loading,
     error: data.error,
+    reload: data.loadData,
     approvedBudgetOptions: data.approvedBudgetOptions,
     preview: data.preview,
     previewLoading: data.previewLoading,

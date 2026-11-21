@@ -639,6 +639,7 @@ function FenetreReception(props: {
               <label htmlFor="reception-lieu">{t('Lieu de réception')}</label>
               <Select
                 id="reception-lieu"
+                autoFocus
                 style={{ width: '100%' }}
                 placeholder={t('Choisir un lieu')}
                 showSearch
@@ -1159,6 +1160,7 @@ function FenetreSortie(props: {
               <label htmlFor="sortie-chantier">{t('Chantier')}</label>
               <Select
                 id="sortie-chantier"
+                autoFocus
                 style={{ width: '100%' }}
                 placeholder={t('Choisir un chantier')}
                 showSearch
@@ -1526,6 +1528,7 @@ function FenetreRebut(props: {
               <label htmlFor="rebut-lieu">{t('Lieu')}</label>
               <Select
                 id="rebut-lieu"
+                autoFocus
                 style={{ width: '100%' }}
                 placeholder={t('Choisir un lieu')}
                 showSearch
@@ -1768,6 +1771,7 @@ function FenetreRetour(props: {
               <label htmlFor="retour-article">{t('Article')}</label>
               <Select
                 id="retour-article"
+                autoFocus
                 style={{ width: '100%' }}
                 placeholder={t('Choisir un article reçu sur cette facture')}
                 disabled={!vue}

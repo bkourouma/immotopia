@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Alert, Space } from 'antd';
+import { Alert, Button, Space } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { listCreditors, listMandates, MandateDto, MandateListFilters } from '../../services/direct-debit-service';
@@ -70,7 +70,7 @@ export const DirectDebitMandates: React.FC = () => {
     ]
   });
 
-  const { data, isFetching, error } = useQuery({
+  const { data, isFetching, error, refetch } = useQuery({
     queryKey: queryKey('direct-debit-mandates', tenantId, search.apiParams),
     queryFn: () => listMandates(tenantId as string, search.apiParams as MandateListFilters),
     enabled: Boolean(tenantId),
@@ -118,7 +118,16 @@ export const DirectDebitMandates: React.FC = () => {
       <DirectDebitTabs />
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
         {error && (
-          <Alert type="error" showIcon message={apiErrorMessage(error, t('Erreur lors du chargement des mandats'))} />
+          <Alert
+            type="error"
+            showIcon
+            message={apiErrorMessage(error, t('Erreur lors du chargement des mandats'))}
+            action={
+              <Button style={{ minHeight: 44 }} onClick={() => void refetch()}>
+                {t('Réessayer')}
+              </Button>
+            }
+          />
         )}
         <Table<MandateDto>
           helpId="locatif.prelevements.mandats.tableau"

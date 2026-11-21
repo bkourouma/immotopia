@@ -9,11 +9,12 @@ import {
 } from '../../services/invitation-service';
 import apiClient from '../../utils/api-client';
 import { getRoleLabelFr } from '../../constants/permissions-labels';
+import { PageHeader } from '../../components/primitives';
 import { t } from '../../i18n/t';
 import { HelpSectionTitle, helpAnchor } from '../../help';
 import { writeErrorMessage } from '../../utils/error-handler';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 interface Role {
   id: string;
@@ -141,17 +142,19 @@ export const InviteCollaborator: React.FC = () => {
   return (
     <>
       <Space orientation="vertical" size="large" style={{ width: '100%' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px' }}>
           <Button
             type="text"
             icon={<ArrowLeftOutlined />}
             onClick={() => navigate(`/tenant/${tenantId}/collaborators`)}
+            aria-label={t('Retour aux collaborateurs')}
+            style={{ minWidth: 44, minHeight: 44 }}
           />
-          <div>
-            <Title level={2} style={{ margin: 0 }}>
-              {t('Inviter un collaborateur')}
-            </Title>
-            <Text type="secondary">{t('Envoyer une invitation à un nouvel utilisateur')}</Text>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <PageHeader
+              title={t('Inviter un collaborateur')}
+              subtitle={t('Envoyer une invitation à un nouvel utilisateur')}
+            />
           </div>
         </div>
 
@@ -196,7 +199,7 @@ export const InviteCollaborator: React.FC = () => {
               help={
                 hasTriedSubmit && !rolesLoading && roles.length > 0 && selectedRoles.length === 0
                   ? t('Veuillez sélectionner au moins un rôle')
-                  : ''
+                  : t('Le rôle détermine ce que la personne pourra faire dans l’agence.')
               }
             >
               {rolesLoading ? (
@@ -204,7 +207,7 @@ export const InviteCollaborator: React.FC = () => {
               ) : rolesError ? (
                 <Space orientation="vertical">
                   <Text type="danger">{rolesError}</Text>
-                  <Button onClick={loadRoles}>{t('Reessayer')}</Button>
+                  <Button onClick={loadRoles}>{t('Réessayer')}</Button>
                 </Space>
               ) : roles.length === 0 ? (
                 <Space orientation="vertical">

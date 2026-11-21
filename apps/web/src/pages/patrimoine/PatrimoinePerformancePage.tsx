@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Alert, Space, Spin, Typography } from 'antd';
+import { Space } from 'antd';
+import { PageHeader, SkeletonStats, StateBlock } from '../../components/primitives';
 import { YieldCalculator, type YieldAssumptionsInput } from '../../components/patrimoine/YieldCalculator';
 import { YieldProjectionChart } from '../../components/patrimoine/YieldProjectionChart';
 import { getPatrimoinePerformance } from '../../services/patrimoine-service';
@@ -9,8 +10,6 @@ import type { PropertyYieldData } from '../../types/patrimoine-types';
 import { useAuth } from '../../hooks/useAuth';
 import { t } from '../../i18n/t';
 import { loadYieldAssumptions, persistYieldAssumptions } from '../../components/patrimoine/yield-assumptions-storage';
-
-const { Title, Text } = Typography;
 
 const DEFAULT_ASSUMPTIONS: YieldAssumptionsInput = {
   years: 10,
@@ -27,6 +26,7 @@ export const PatrimoinePerformancePage: React.FC = () => {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
   const [propertyId, setPropertyId] = useState<string | undefined>(undefined);
   const [data, setData] = useState<PropertyYieldData | null>(null);
   // Hypothèses indexées par bien : jamais utilisées pour un autre bien que celui d'origine.
@@ -42,6 +42,7 @@ export const PatrimoinePerformancePage: React.FC = () => {
   useEffect(() => {
     setAssumptionsState(null);
     setData(null);
+    setError(null);
     if (!effectiveTenantId || !propertyId) return;
     let annule = false;
     setLoading(true);
@@ -99,17 +100,12 @@ export const PatrimoinePerformancePage: React.FC = () => {
     return () => {
       annule = true;
     };
-  }, [assumptions, effectiveTenantId, propertyId]);
+  }, [assumptions, effectiveTenantId, propertyId, attempt]);
 
   return (
     <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        <div>
-          <Title level={2} style={{ marginBottom: 0 }}>
-            {t('Performance Patrimoine')}
-          </Title>
-          <Text type="secondary">{t('Rendement brut, net, net-net et projection')}</Text>
-        </div>
+        <PageHeader title={t('Performance Patrimoine')} subtitle={t('Rendement brut, net, net-net et projection')} />
 
         <PropertySearchSelect
           tenantId={effectiveTenantId}
@@ -121,15 +117,12 @@ export const PatrimoinePerformancePage: React.FC = () => {
         />
 
         {!propertyId ? (
-          <Alert type="info" showIcon message={t('Sélectionnez un bien pour afficher la performance.')} />
-        ) : null}
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: '24px 0' }}>
-            <Spin />
-          </div>
-        ) : null}
-        {error ? <Alert type="error" showIcon message={error} /> : null}
-        {propertyId ? (
+          <StateBlock
+            variant="empty"
+            title={t('Aucun bien sélectionné')}
+            description={t('Choisissez un bien dans la liste ci-dessus pour afficher sa performance.')}
+          />
+        ) : (
           <>
             <YieldCalculator
               data={data}
@@ -138,9 +131,20 @@ export const PatrimoinePerformancePage: React.FC = () => {
               syncStatus={syncStatus}
               onRecalculate={handleRecalculate}
             />
-            <YieldProjectionChart data={data?.projection ?? []} />
+            {error ? (
+              <StateBlock
+                variant="error"
+                description={t('Impossible de calculer la performance de ce bien.')}
+                detail={error}
+                onRetry={() => setAttempt(n => n + 1)}
+              />
+            ) : loading && !data ? (
+              <SkeletonStats rows={4} />
+            ) : (
+              <YieldProjectionChart data={data?.projection ?? []} />
+            )}
           </>
-        ) : null}
+        )}
       </Space>
     </>
   );

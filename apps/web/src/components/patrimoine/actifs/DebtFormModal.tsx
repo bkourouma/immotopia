@@ -5,6 +5,7 @@ import { t } from '../../../i18n/t';
 import { apiErrorMessage, serverFieldErrors, todayIso } from './asset-format';
 import { loanStatusLabel } from '../patrimoine-labels';
 import { HelpSectionTitle } from '../../../help';
+import { moneyInputProps, submitOnEnter } from './form-helpers';
 
 interface FormValues {
   lender: string;
@@ -46,6 +47,7 @@ export const DebtFormModal: React.FC<DebtFormModalProps> = ({ open, assetId, deb
   const [form] = Form.useForm<FormValues>();
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const currency = Form.useWatch('currency', form) ?? debt?.currency ?? 'XOF';
 
   useEffect(() => {
     if (!open) return;
@@ -120,32 +122,32 @@ export const DebtFormModal: React.FC<DebtFormModalProps> = ({ open, assetId, deb
       destroyOnHidden
     >
       {errorMessage && <Alert type="error" showIcon title={errorMessage} style={{ marginBottom: 'var(--space-3)' }} />}
-      <Form form={form} layout="vertical">
+      <Form form={form} layout="vertical" onKeyDown={submitOnEnter(handleOk, submitting)}>
         <Form.Item
           name="lender"
           label={t('Prêteur')}
           rules={[{ required: true, whitespace: true, message: t('Le prêteur est requis') }]}
         >
-          <Input maxLength={160} />
+          <Input maxLength={160} autoFocus />
+        </Form.Item>
+        <Form.Item name="currency" label={t('Devise')} rules={[{ required: true }]}>
+          <Select options={['XOF', 'EUR', 'USD'].map(value => ({ value, label: value }))} />
         </Form.Item>
         <Form.Item name="capitalAmount" label={t('Capital emprunté')} rules={[requiredNumber(t('Champ obligatoire'))]}>
-          <InputNumber style={{ width: '100%' }} />
+          <InputNumber style={{ width: '100%' }} {...moneyInputProps(currency)} />
         </Form.Item>
         <Form.Item
           name="remainingCapital"
           label={t('Capital restant dû')}
           rules={[requiredNumber(t('Champ obligatoire'))]}
         >
-          <InputNumber style={{ width: '100%' }} />
+          <InputNumber style={{ width: '100%' }} {...moneyInputProps(currency)} />
         </Form.Item>
         <Form.Item name="interestRate" label={t("Taux d'intérêt (%)")} rules={[requiredNumber(t('Champ obligatoire'))]}>
-          <InputNumber style={{ width: '100%' }} />
+          <InputNumber style={{ width: '100%' }} suffix="%" />
         </Form.Item>
         <Form.Item name="monthlyPayment" label={t('Mensualité')} rules={[requiredNumber(t('Champ obligatoire'))]}>
-          <InputNumber style={{ width: '100%' }} />
-        </Form.Item>
-        <Form.Item name="currency" label={t('Devise')} rules={[{ required: true }]}>
-          <Select options={['XOF', 'EUR', 'USD'].map(value => ({ value, label: value }))} />
+          <InputNumber style={{ width: '100%' }} {...moneyInputProps(currency)} />
         </Form.Item>
         <Form.Item
           name="startDate"

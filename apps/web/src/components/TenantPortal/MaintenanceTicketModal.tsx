@@ -73,12 +73,12 @@ export default function MaintenanceTicketModal({ open, onCancel, onSuccess, leas
   const beforeUpload = (file: File) => {
     const isImage = file.type.startsWith('image/');
     if (!isImage) {
-      message.error(t('Vous ne pouvez télécharger que des images!'));
+      message.error(t('Seules les images sont acceptées.'));
       return Upload.LIST_IGNORE;
     }
     const isLt5M = file.size / 1024 / 1024 < 5;
     if (!isLt5M) {
-      message.error(t('Le fichier doit être inférieur à 5MB!'));
+      message.error(t('Chaque photo doit peser moins de 5 Mo.'));
       return Upload.LIST_IGNORE;
     }
     return false; // Prevent auto upload
@@ -110,7 +110,7 @@ export default function MaintenanceTicketModal({ open, onCancel, onSuccess, leas
         }}
       >
         <Form.Item label={t('Titre')} name="title" rules={[{ required: true, message: t('Le titre est requis') }]}>
-          <Input placeholder={t("Ex: Fuite d'eau dans la salle de bain")} />
+          <Input size="large" placeholder={t("Ex: Fuite d'eau dans la salle de bain")} />
         </Form.Item>
 
         <Form.Item
@@ -118,7 +118,7 @@ export default function MaintenanceTicketModal({ open, onCancel, onSuccess, leas
           name="category"
           rules={[{ required: true, message: t('La catégorie est requise') }]}
         >
-          <Select showSearch optionFilterProp="children" placeholder={t('Sélectionner la catégorie')}>
+          <Select size="large" showSearch optionFilterProp="children" placeholder={t('Sélectionner la catégorie')}>
             <Select.Option value="PLUMBING">{t('Plomberie')}</Select.Option>
             <Select.Option value="ELECTRICITY">{t('Électricité')}</Select.Option>
             <Select.Option value="AC">{t('Climatisation')}</Select.Option>
@@ -131,7 +131,7 @@ export default function MaintenanceTicketModal({ open, onCancel, onSuccess, leas
           name="priority"
           rules={[{ required: true, message: t('La priorité est requise') }]}
         >
-          <Select showSearch optionFilterProp="children" placeholder={t('Sélectionner la priorité')}>
+          <Select size="large" showSearch optionFilterProp="children" placeholder={t('Sélectionner la priorité')}>
             <Select.Option value="LOW">{t('Basse')}</Select.Option>
             <Select.Option value="MEDIUM">{t('Moyenne')}</Select.Option>
             <Select.Option value="HIGH">{t('Haute')}</Select.Option>
@@ -154,7 +154,7 @@ export default function MaintenanceTicketModal({ open, onCancel, onSuccess, leas
         <Form.Item
           label={t('Photos')}
           name="attachments"
-          extra={<Text type="secondary">{t('Images uniquement (max 10 fichiers, 5MB chacun)')}</Text>}
+          extra={<Text type="secondary">{t('Images uniquement (10 photos au plus, 5 Mo chacune)')}</Text>}
         >
           <Upload
             fileList={fileList}
@@ -166,17 +166,19 @@ export default function MaintenanceTicketModal({ open, onCancel, onSuccess, leas
           >
             {fileList.length < 10 && (
               <div>
-                <PlusOutlined />
-                <div style={{ marginTop: 8 }}>{t('Télécharger')}</div>
+                <PlusOutlined aria-hidden />
+                <div style={{ marginTop: 8 }}>{t('Ajouter une photo')}</div>
               </div>
             )}
           </Upload>
         </Form.Item>
 
         <Form.Item>
-          <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
-            <Button onClick={handleCancel}>{t('Annuler')}</Button>
-            <Button type="primary" htmlType="submit" loading={loading}>
+          <Space wrap style={{ width: '100%', justifyContent: 'flex-end' }}>
+            <Button size="large" onClick={handleCancel}>
+              {t('Annuler')}
+            </Button>
+            <Button size="large" type="primary" htmlType="submit" loading={loading}>
               {t('Créer le ticket')}
             </Button>
           </Space>

@@ -87,13 +87,13 @@ describe('Revenus du portail propriétaire : effacer la période', () => {
     expect(screen.getByRole('button', { name: 'effacer-periode' })).toBeInTheDocument();
   }, 20000);
 
-  it("une erreur de chargement propose « Actualiser » au lieu d'une page sans issue", async () => {
+  it("une erreur de chargement propose « Réessayer » au lieu d'une page sans issue", async () => {
     const user = userEvent.setup();
     getRevenueSummary.mockRejectedValueOnce({ response: { data: { message: 'Panne' } } });
     renderPage();
 
     expect(await screen.findByText('Panne')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: /Actualiser/ }));
+    await user.click(screen.getByRole('button', { name: /Réessayer/ }));
 
     await waitFor(() => expect(screen.queryByText('Panne')).not.toBeInTheDocument());
     expect(getRevenueSummary).toHaveBeenCalledTimes(2);

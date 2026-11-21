@@ -87,7 +87,11 @@ vi.mock('antd', async () => {
     Alert: passthrough(),
     Button: passthrough('button'),
     Card: passthrough(),
+    // Grille des modales : seul le contenu compte ici, les paliers (`xs`, `md`…) sont écartés.
+    Col: ({ children }: any) => <div>{children}</div>,
     DatePicker: passthrough('input'),
+    // Séparateur de la modale « Créer un compte » : seul son intitulé compte.
+    Divider: ({ children }: any) => <div>{children}</div>,
     Form: FormComponent,
     Input: Object.assign(passthrough('input'), { TextArea: passthrough('textarea') }),
     InputNumber: passthrough('input'),
@@ -108,9 +112,19 @@ vi.mock('antd', async () => {
         </button>
       </div>
     ),
+    Row: ({ children }: any) => <div>{children}</div>,
+    // Barre de pagination de `DataView` : sans objet ici (listes courtes).
+    Pagination: () => null,
     Select: passthrough('select'),
     // `Space.Compact` : le résultat d'invitation au portail y pose le lien et « Copier ».
     Space: Object.assign(passthrough(), { Compact: passthrough() }),
+    // Squelette des primitives (liste en chargement) : sans objet ici.
+    Skeleton: Object.assign(() => null, {
+      Button: () => null,
+      Input: () => null,
+      Avatar: () => null,
+      Image: () => null
+    }),
     Spin: passthrough(),
     Table,
     // Onglets : seul le panneau actif est rendu (comme `destroyOnHidden`).
@@ -145,8 +159,9 @@ vi.mock('antd', async () => {
   return {
     ...antdMock,
     App: { useApp: () => appApi },
-    // Aucun palier actif : le rendu par defaut des tests est le mobile.
-    Grid: { useBreakpoint: () => ({}) }
+    // Palier desktop : les listes d'incidents et de profils se rendent en tableau (sous 768 px,
+    // `DataView` bascule en cartes, avec `Collapse`, que ce mock d'antd ne fournit pas).
+    Grid: { useBreakpoint: () => ({ xs: true, sm: true, md: true, lg: true, xl: true }) }
   };
 });
 
@@ -446,7 +461,7 @@ describe('Syndics profiles/incidents page', () => {
     expect(formInstance.setFieldsValue).toHaveBeenCalledWith({ lotId: 'lot-1' });
   });
 
-  it('un double clic sur « OK » de la modale profil propriétaire ne crée le profil qu’une fois', async () => {
+  it('un double clic sur « Créer le profil propriétaire » de la modale profil propriétaire ne crée le profil qu’une fois', async () => {
     mockApiClient.post.mockResolvedValue({ data: { success: true, data: { id: 'op-2' } } });
     // Validation asynchrone : le second clic arrive avant la fin du premier.
     formValidateFields.mockResolvedValue({
@@ -460,10 +475,10 @@ describe('Syndics profiles/incidents page', () => {
     renderWithRoute();
     fireEvent.click(await screen.findByText('Profil propriétaire'));
 
-    // La modale d'invitation (sans libellé de validation) précède la modale profil propriétaire.
-    const okButtons = screen.getAllByText('OK');
-    fireEvent.click(okButtons[1]);
-    fireEvent.click(okButtons[1]);
+    // Le bouton de validation de la modale porte désormais son action, plus « OK ».
+    const okButton = screen.getByText('Créer le profil propriétaire');
+    fireEvent.click(okButton);
+    fireEvent.click(okButton);
 
     await waitFor(() =>
       expect(mockApiClient.post).toHaveBeenCalledWith(
@@ -543,9 +558,7 @@ describe('Syndics profiles/incidents page', () => {
       contractId: 'ct-1',
       lotId: 'lot-1'
     });
-    // La modale d'imputation est la dernière à porter le libellé par défaut « OK ».
-    const okButtons = screen.getAllByText('OK');
-    fireEvent.click(okButtons[okButtons.length - 1]);
+    fireEvent.click(screen.getByText("Enregistrer l'imputation"));
 
     await waitFor(() =>
       expect(mockApiClient.post).toHaveBeenCalledWith(
@@ -593,7 +606,7 @@ describe('Syndics profiles/incidents page', () => {
       formValidateFields.mockResolvedValue(ownerValues);
       renderWithRoute();
       fireEvent.click(await screen.findByText('Profil propriétaire'));
-      fireEvent.click(screen.getAllByText('OK')[1]);
+      fireEvent.click(screen.getByText('Créer le profil propriétaire'));
     };
 
     afterEach(() => formValidateFields.mockReset());

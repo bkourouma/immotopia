@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { App, Card, Typography, Form, DatePicker, Select, Button, Space, Divider, Row, Col, Spin, Alert } from 'antd';
+import { App, Card, Form, DatePicker, Select, Button, Space, Row, Col } from 'antd';
 import { FilePdfOutlined, FileExcelOutlined, FileTextOutlined, DownloadOutlined } from '@ant-design/icons';
 import { ownerPortalService } from '../../services/ownerPortalService';
 import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
 import { HelpSectionTitle } from '../../help';
+import { PageHeader } from '../../components/primitives';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 
-const { Title, Text } = Typography;
 const { Option } = Select;
 const { RangePicker } = DatePicker;
 
@@ -17,7 +18,9 @@ export default function Reports() {
   const [occupancyForm] = Form.useForm();
   const [exportForm] = Form.useForm();
   const [properties, setProperties] = useState<Array<{ id: string; address: string }>>([]);
-  const [loading, setLoading] = useState(false);
+  const { isMobile } = useBreakpoint();
+  // Un état par formulaire : générer un rapport ne doit pas faire tourner les deux autres boutons.
+  const [busy, setBusy] = useState<'revenue' | 'occupancy' | 'export' | null>(null);
 
   useEffect(() => {
     loadProperties();
@@ -34,14 +37,14 @@ export default function Reports() {
           }))
         );
       }
-    } catch (err) {
-      console.error('Error loading properties:', err);
+    } catch {
+      message.warning(t('Liste des propriétés indisponible : le choix d’une propriété est désactivé pour le moment.'));
     }
   };
 
   const handleRevenueReport = async (values: any) => {
     try {
-      setLoading(true);
+      setBusy('revenue');
       const response = await ownerPortalService.generateRevenueReport({
         startDate: values.dateRange[0].format('YYYY-MM-DD'),
         endDate: values.dateRange[1].format('YYYY-MM-DD'),
@@ -67,13 +70,13 @@ export default function Reports() {
     } catch (err: any) {
       message.error(err.response?.data?.message || t('Erreur lors de la génération du rapport'));
     } finally {
-      setLoading(false);
+      setBusy(null);
     }
   };
 
   const handleOccupancyReport = async (values: any) => {
     try {
-      setLoading(true);
+      setBusy('occupancy');
       const response = await ownerPortalService.generateOccupancyReport({
         asOfDate: values.asOfDate.format('YYYY-MM-DD'),
         format: values.format
@@ -97,13 +100,13 @@ export default function Reports() {
     } catch (err: any) {
       message.error(err.response?.data?.message || t('Erreur lors de la génération du rapport'));
     } finally {
-      setLoading(false);
+      setBusy(null);
     }
   };
 
   const handleExportData = async (values: any) => {
     try {
-      setLoading(true);
+      setBusy('export');
       const params: any = {
         entityType: values.entityType,
         format: values.format
@@ -138,17 +141,13 @@ export default function Reports() {
     } catch (err: any) {
       message.error(err.response?.data?.message || t("Erreur lors de l'export des données"));
     } finally {
-      setLoading(false);
+      setBusy(null);
     }
   };
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      {/* Page Header */}
-      <div>
-        <Title level={2}>{t('Rapports')}</Title>
-        <Text type="secondary">{t('Génération de rapports et export de données')}</Text>
-      </div>
+      <PageHeader title={t('Rapports')} subtitle={t('Génération de rapports et export de données')} />
 
       {/* Revenue Report (T152) */}
       <Card
@@ -212,7 +211,14 @@ export default function Reports() {
             </Col>
           </Row>
           <Form.Item>
-            <Button type="primary" htmlType="submit" icon={<DownloadOutlined />} loading={loading}>
+            <Button
+              type="primary"
+              htmlType="submit"
+              icon={<DownloadOutlined />}
+              loading={busy === 'revenue'}
+              disabled={busy !== null && busy !== 'revenue'}
+              block={isMobile}
+            >
               {t('Générer le rapport')}
             </Button>
           </Form.Item>
@@ -271,7 +277,14 @@ export default function Reports() {
             </Col>
           </Row>
           <Form.Item>
-            <Button type="primary" htmlType="submit" icon={<DownloadOutlined />} loading={loading}>
+            <Button
+              type="default"
+              htmlType="submit"
+              icon={<DownloadOutlined />}
+              loading={busy === 'occupancy'}
+              disabled={busy !== null && busy !== 'occupancy'}
+              block={isMobile}
+            >
               {t('Générer le rapport')}
             </Button>
           </Form.Item>
@@ -343,7 +356,14 @@ export default function Reports() {
             </Col>
           </Row>
           <Form.Item>
-            <Button type="primary" htmlType="submit" icon={<DownloadOutlined />} loading={loading}>
+            <Button
+              type="default"
+              htmlType="submit"
+              icon={<DownloadOutlined />}
+              loading={busy === 'export'}
+              disabled={busy !== null && busy !== 'export'}
+              block={isMobile}
+            >
               {t('Exporter les données')}
             </Button>
           </Form.Item>

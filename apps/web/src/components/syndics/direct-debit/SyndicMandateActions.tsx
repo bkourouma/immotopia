@@ -15,6 +15,7 @@ import {
 import { saveBlob } from '../../../utils/save-blob';
 import { apiErrorMessage } from '../../rental/direct-debit/direct-debit-shared';
 import { t } from '../../../i18n/t';
+import { montantSaisiProps } from '../../../utils/montant-saisi';
 import { useFormFieldModes } from '../../../hooks/useFormFieldModes';
 
 interface SyndicMandateActionsProps {
@@ -368,7 +369,7 @@ export const SyndicMandateActions: React.FC<SyndicMandateActionsProps> = ({
               label={t('Plafond par prélèvement (FCFA)')}
               rules={[{ required: fm.isRequired('maxAmount', false), message: t('Champ obligatoire') }]}
             >
-              <InputNumber min={1} style={{ width: '100%' }} />
+              <InputNumber {...montantSaisiProps} min={1} inputMode="numeric" style={{ width: '100%' }} />
             </Form.Item>
           )}
           {fm.isVisible('collectionDay') && (

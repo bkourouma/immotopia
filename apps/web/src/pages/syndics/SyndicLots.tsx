@@ -15,15 +15,14 @@ import {
   Select,
   Space,
   Tag,
-  Spin,
-  Typography
+  Spin
 } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { LotTable } from '../../components/syndics/LotTable';
 import { useFormFieldModes } from '../../hooks/useFormFieldModes';
 import { listSyndicDeclarations } from '../../services/syndic-declared-payment-service';
-import { StatCard } from '../../components/primitives';
+import { PageHeader, StatCard } from '../../components/primitives';
 import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { getLotTypeRates, type LotTypeRates } from '../../services/syndic-lot-type-rates-service';
 import { listContacts } from '../../services/crm-service';
@@ -52,8 +51,6 @@ import { t } from '../../i18n/t';
 import { HelpSectionTitle, helpAnchor } from '../../help';
 import { dateFormat } from '../../i18n/format';
 import { getLotTypeLabel } from '../../utils/syndic-lot-label';
-
-const { Paragraph, Title } = Typography;
 
 const LOT_TYPES: LotType[] = ['APARTMENT', 'PARKING', 'CELLAR', 'OFFICE', 'COMMERCIAL', 'OTHER'];
 
@@ -424,7 +421,9 @@ export const SyndicLots: React.FC = () => {
     if (!effectiveTenantId || !syndicId) return;
     try {
       await updateSyndicateLot(effectiveTenantId, syndicId, lot.id, { generalShares: 0 });
-      message.success(t('Lot désactivé'));
+      message.success(
+        t('Lot {{lot}} désactivé : il sort des appels de charges et reste dans l’historique.', { lot: lot.lotNumber })
+      );
       await loadData();
     } catch (err: any) {
       message.error(err.response?.data?.error || t('Désactivation du lot impossible'));
@@ -444,7 +443,7 @@ export const SyndicLots: React.FC = () => {
     if (!effectiveTenantId || !syndicId) return;
     try {
       await deactivateLotTenantAssignment(effectiveTenantId, syndicId, lot.id, assignment.id);
-      message.success(t('Affectation du locataire terminée'));
+      message.success(t('Affectation du locataire terminée sur le lot {{lot}}', { lot: lot.lotNumber }));
       await loadData();
     } catch (err: any) {
       message.error(err.response?.data?.error || t("Fin de l'affectation impossible"));
@@ -455,7 +454,7 @@ export const SyndicLots: React.FC = () => {
     if (!effectiveTenantId || !syndicId) return;
     try {
       await deleteSyndicateLot(effectiveTenantId, syndicId, lot.id);
-      message.success(t('Lot supprimé'));
+      message.success(t('Lot {{lot}} supprimé', { lot: lot.lotNumber }));
       await loadData();
     } catch (err: any) {
       if (err.response?.status === 409) {
@@ -542,14 +541,14 @@ export const SyndicLots: React.FC = () => {
         }
         if (lotFm.isVisible('specialShares')) updatePayload.specialShares = values.specialShares ?? null;
         const updated = await updateSyndicateLot(effectiveTenantId, syndicId, editingLot.id, updatePayload);
-        message.success(t('Lot mis à jour'));
+        message.success(t('Lot {{lot}} mis à jour', { lot: editingLot.lotNumber }));
         showLotWarnings(updated?.warnings);
       } else {
         const created = await createSyndicateLot(effectiveTenantId, syndicId, {
           ...payload,
           generalShares: payload.generalShares ?? DEFAULT_LOT_SHARES
         } as CreateSyndicateLotRequest);
-        message.success(t('Lot créé'));
+        message.success(t('Lot {{lot}} créé', { lot: created?.lotNumber ?? payload.lotNumber }));
         showLotWarnings(created?.warnings);
       }
       resetModalState();
@@ -603,16 +602,18 @@ export const SyndicLots: React.FC = () => {
       }
 
       if (skippedCount > 0) {
-        const skippedReasons = result.skipped
-          .slice(0, 3)
-          .map(item => item.reason)
-          .join(' | ');
-        message.warning(
-          t('{{skippedCount}} lot(s) ignoré(s). {{skippedReasons}}', {
-            skippedCount: skippedCount,
-            skippedReasons: skippedReasons
-          })
-        );
+        const skippedReasons = Array.from(new Set(result.skipped.map(item => item.reason).filter(Boolean)));
+        modal.warning({
+          title: t('{{skippedCount}} lot(s) ignoré(s)', { skippedCount }),
+          content: (
+            <ul style={{ margin: 0, paddingInlineStart: 20 }}>
+              {skippedReasons.map(reason => (
+                <li key={reason}>{reason}</li>
+              ))}
+            </ul>
+          ),
+          okText: t('Compris')
+        });
       }
 
       showLotWarnings(result.warnings);
@@ -656,33 +657,37 @@ export const SyndicLots: React.FC = () => {
   return (
     <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-          <Space direction="vertical" size={4}>
-            <Title level={2} style={{ margin: 0 }}>
-              {t('Lots de')} {syndicate?.name || t('la copropriété')}
-            </Title>
-            <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-              {t(
-                'Ajoutez les lots et sélectionnez directement un bien existant pour proposer automatiquement le propriétaire.'
-              )}
-            </Paragraph>
-          </Space>
+        <PageHeader
+          title={`${t('Lots de')} ${syndicate?.name || t('la copropriété')}`}
+          subtitle={t(
+            'Ajoutez les lots et sélectionnez directement un bien existant pour proposer automatiquement le propriétaire.'
+          )}
+          primaryAction={{
+            label: t('Nouveau lot'),
+            icon: <PlusOutlined />,
+            onClick: openCreateModal,
+            disabled: !canCreate,
+            helpAnchor: 'lots-nouveau'
+          }}
+          extra={
+            <Button onClick={openImportModal} disabled={!canCreate} {...helpAnchor('lots-importer')}>
+              {t('Importer des biens')}
+            </Button>
+          }
+        />
 
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={openCreateModal}
-            disabled={!canCreate}
-            {...helpAnchor('lots-nouveau')}
-          >
-            {t('Nouveau lot')}
-          </Button>
-          <Button onClick={openImportModal} disabled={!canCreate} {...helpAnchor('lots-importer')}>
-            {t('Importer des biens')}
-          </Button>
-        </div>
-
-        {error ? <Alert type="error" message={error} showIcon /> : null}
+        {error ? (
+          <Alert
+            type="error"
+            message={error}
+            showIcon
+            action={
+              <Button size="small" onClick={() => void loadData()}>
+                {t('Réessayer')}
+              </Button>
+            }
+          />
+        ) : null}
 
         {loading ? (
           <div style={{ minHeight: 320, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -712,7 +717,20 @@ export const SyndicLots: React.FC = () => {
               </Col>
               {referenceShares !== null ? (
                 <Col xs={24} md={8}>
-                  <StatCard label={t('Total de référence des tantièmes')} value={referenceShares} />
+                  <StatCard
+                    label={t('Total de référence des tantièmes')}
+                    value={referenceShares}
+                    hint={
+                      usesLotTypeRates || sharesSum === referenceShares
+                        ? undefined
+                        : sharesSum < referenceShares
+                          ? t('Il manque {{gap}} tantièmes pour atteindre le total.', {
+                              gap: referenceShares - sharesSum
+                            })
+                          : t('{{gap}} tantièmes en trop par rapport au total.', { gap: sharesSum - referenceShares })
+                    }
+                    tone={usesLotTypeRates || sharesSum === referenceShares ? undefined : 'warning'}
+                  />
                 </Col>
               ) : null}
               <Col xs={24} md={8}>
@@ -745,7 +763,7 @@ export const SyndicLots: React.FC = () => {
                 lots={lots}
                 lotTypeRates={lotTypeRates}
                 declaredPendingLotIds={declaredPendingLotIds}
-                showMobileHint
+                onCreate={openCreateModal}
                 portalManageHref={`/tenant/${effectiveTenantId}/syndics/${syndicId}/profils-incidents`}
                 propertyLabelById={propertyLabelById}
                 ownerLabelById={ownerLabelById}
@@ -779,7 +797,7 @@ export const SyndicLots: React.FC = () => {
         open={open}
         onCancel={resetModalState}
         onOk={() => void handleSubmitLot()}
-        okText={editingLot ? t('Enregistrer') : t('Créer le lot')}
+        okText={editingLot ? t('Enregistrer le lot') : t('Créer le lot')}
         cancelText={t('Annuler')}
         confirmLoading={submitting}
       >
@@ -793,6 +811,7 @@ export const SyndicLots: React.FC = () => {
               rules={[{ required: lotFm.isRequired('propertyId', false), message: t('Ce champ est obligatoire') }]}
             >
               <Select
+                autoFocus
                 allowClear
                 showSearch
                 optionFilterProp="label"
@@ -880,7 +899,7 @@ export const SyndicLots: React.FC = () => {
         open={importOpen}
         onCancel={() => setImportOpen(false)}
         onOk={() => void handleImportLots()}
-        okText={t('Importer')}
+        okText={t('Importer les biens')}
         cancelText={t('Annuler')}
         confirmLoading={importSubmitting}
       >
@@ -900,6 +919,7 @@ export const SyndicLots: React.FC = () => {
             rules={[{ required: true, message: t('Sélectionnez au moins une propriété') }]}
           >
             <Select
+              autoFocus
               mode="multiple"
               showSearch
               optionFilterProp="label"
@@ -935,7 +955,7 @@ export const SyndicLots: React.FC = () => {
           tenantForm.resetFields();
         }}
         onOk={() => void handleAssignTenant()}
-        okText={t('Assigner')}
+        okText={t('Assigner le locataire')}
         cancelText={t('Annuler')}
         confirmLoading={tenantSubmitting}
       >
@@ -955,6 +975,7 @@ export const SyndicLots: React.FC = () => {
             rules={[{ required: true, message: t('Le contact locataire est obligatoire') }]}
           >
             <Select
+              autoFocus
               showSearch
               optionFilterProp="label"
               placeholder={t('Sélectionner un contact CRM')}

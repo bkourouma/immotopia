@@ -1,7 +1,7 @@
 import React from 'react';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
-import { MoneyValue, Table } from '../../primitives';
+import { DataCard, DataView, MoneyValue } from '../../primitives';
 import type { OverdueDashboardItem } from '../../../types/syndic-types';
 import { useLocalListSearch } from '../../../utils/list-search';
 import type { SearchCriterion } from '../../../utils/list-search';
@@ -30,6 +30,9 @@ const ACCESSEURS = {
 interface OverdueTableTabProps {
   items: OverdueDashboardItem[];
   loading: boolean;
+  /** Erreur de chargement du tableau de bord (message déjà traduit) et relance de la requête. */
+  error?: string | null;
+  onRetry?: () => void;
 }
 
 /**
@@ -37,7 +40,7 @@ interface OverdueTableTabProps {
  * retard) arrive en entier, la recherche et la pagination se font en local
  * (préfixe d'URL « rt »).
  */
-export const OverdueTableTab: React.FC<OverdueTableTabProps> = ({ items, loading }) => {
+export const OverdueTableTab: React.FC<OverdueTableTabProps> = ({ items, loading, error, onRetry }) => {
   const criteria: SearchCriterion[] = [
     { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Lot, propriétaire…') },
     { key: 'late', type: 'numberRange', label: t('Jours de retard'), primary: true, unit: t('jours') },
@@ -83,17 +86,32 @@ export const OverdueTableTab: React.FC<OverdueTableTabProps> = ({ items, loading
   ];
 
   return (
-    <Table<OverdueDashboardItem>
-      {...local.tableProps}
+    <DataView<OverdueDashboardItem>
+      {...local.dataViewProps}
       aria-label={t('Tableau des retards')}
       helpId="syndic.recouvrement.retards"
-      exportFilename={t('Tableau des retards')}
-      exportFetchAll={local.exportAll}
-      scroll={{ x: 'max-content' }}
-      rowKey="chargeCallId"
+      export={{ filename: t('Tableau des retards'), fetchAll: local.exportAll }}
+      scrollX={900}
+      rowKey={item => item.chargeCallId}
       loading={loading}
+      error={error}
+      onRetry={onRetry}
       columns={columns}
-      locale={local.isFiltered ? undefined : { emptyText: t('Aucun dossier en retard pour cette copropriété.') }}
+      emptyDescription={t('Aucun dossier en retard pour cette copropriété.')}
+      renderCard={item => (
+        <DataCard
+          title={overdueLotLabel(item)}
+          aria-label={overdueLotLabel(item)}
+          subtitle={ownerLabel(item.owner)}
+          highlight={<MoneyValue value={item.outstanding} />}
+          fields={[
+            { label: t('Échéance'), value: dayjs(item.dueDate).format(dateFormat('short')) },
+            { label: t('Jours retard'), value: item.daysLate },
+            { label: t('Montant'), value: <MoneyValue value={item.amount} /> },
+            { label: t('Payé'), value: <MoneyValue value={item.paid} /> }
+          ]}
+        />
+      )}
     />
   );
 };

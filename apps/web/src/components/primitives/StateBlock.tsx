@@ -43,6 +43,11 @@ export interface StateBlockProps {
    * affiche comme message principal.
    */
   detail?: string;
+  /**
+   * Relance de la lecture. Affiche un bouton « Réessayer » pour les variantes
+   * `error` et `offline`, sauf si `actions` en porte déjà un.
+   */
+  onRetry?: () => void;
 }
 
 /**
@@ -90,14 +95,26 @@ const ICON: Partial<Record<StateVariant, React.ReactNode>> = {
   forbidden: <LockOutlined style={{ fontSize: 40, color: 'var(--text-tertiary)' }} />
 };
 
-export const StateBlock: React.FC<StateBlockProps> = ({ variant, title, description, actions = [], detail }) => {
+export const StateBlock: React.FC<StateBlockProps> = ({
+  variant,
+  title,
+  description,
+  actions = [],
+  detail,
+  onRetry
+}) => {
   if (variant === 'loading') return <SkeletonList />;
 
   const parDefaut = defauts()[variant];
   const heading = title ?? parDefaut.title;
   const body = description ?? parDefaut.description;
 
-  const buttons = actions.map(a => (
+  const retryAction: StateBlockAction[] =
+    onRetry && (variant === 'error' || variant === 'offline') && actions.length === 0
+      ? [{ label: t('Réessayer'), onClick: onRetry, primary: true }]
+      : [];
+
+  const buttons = [...actions, ...retryAction].map(a => (
     <Button key={a.label} type={a.primary ? 'primary' : 'default'} onClick={a.onClick}>
       {a.label}
     </Button>

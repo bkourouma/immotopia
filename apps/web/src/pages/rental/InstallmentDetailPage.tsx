@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Button, Card, Row, Col, Typography, Spin, Alert, Descriptions, Space, Table } from 'antd';
-import { ArrowLeftOutlined, DollarOutlined, CalendarOutlined } from '@ant-design/icons';
+import { Card, Row, Col, Typography, Descriptions, Space, Table } from 'antd';
+import { DollarOutlined, CalendarOutlined } from '@ant-design/icons';
 import { getInstallment, RentalInstallment, AffectationEcheance } from '../../services/rental-service';
 import { InstallmentPaymentLinksPanel } from '../../components/rental/InstallmentPaymentLinksPanel';
 import { InstallmentReminderButton } from '../../components/rental/reminders/InstallmentReminderButton';
@@ -9,13 +9,16 @@ import { InstallmentRemindersHistoryPanel } from '../../components/rental/remind
 import { t } from '../../i18n/t';
 import { HelpSectionTitle } from '../../help';
 import { formatMoney } from '../../components/primitives/MoneyValue';
+import { PageHeader } from '../../components/primitives/PageHeader';
+import { StateBlock } from '../../components/primitives/StateBlock';
+import { SkeletonDetail } from '../../components/primitives/Skeleton';
 import { StatusTag } from '../../components/primitives';
 import { libelleMethodePaiement } from '../../lib/rental-payment-status';
 import { deviseAffichee, libellePeriodeEcheance } from '../../lib/rental-labels';
 import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 
 import { activeLocale } from '../../i18n/format';
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 export const InstallmentDetailPage: React.FC = () => {
   const { tenantId, installmentId } = useParams<{ tenantId: string; installmentId: string }>();
@@ -72,20 +75,20 @@ export const InstallmentDetailPage: React.FC = () => {
   };
 
   if (loading) {
-    return (
-      <>
-        <div style={{ textAlign: 'center', padding: 48 }}>
-          <Spin size="large" tip={t('Chargement...')} />
-        </div>
-      </>
-    );
+    return <SkeletonDetail aria-label={t("Chargement de l'échéance")} />;
   }
 
   if (error || !installment) {
     return (
-      <>
-        <Alert message={error || t('Échéance non trouvée')} type="error" showIcon />
-      </>
+      <StateBlock
+        variant="error"
+        title={t('Échéance non chargée')}
+        description={error || t('Échéance non trouvée')}
+        actions={[
+          { label: t('Réessayer'), onClick: () => void loadInstallment(), primary: true },
+          { label: t('Retour aux baux'), onClick: () => navigate(`/tenant/${tenantId}/rental/leases`) }
+        ]}
+      />
     );
   }
 
@@ -102,26 +105,28 @@ export const InstallmentDetailPage: React.FC = () => {
   return (
     <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        <div
-          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}
-        >
-          <Space size="middle">
-            <Button
-              type="text"
-              icon={<ArrowLeftOutlined />}
-              onClick={() => navigate(`/tenant/${tenantId}/rental/leases/${installment.lease_id}`)}
-            >
-              {t('Retour')}
-            </Button>
-            <div>
-              <Title level={3} style={{ margin: 0 }}>
-                {t('Échéance')} {libellePeriodeEcheance(installment.period_month, installment.period_year)}
-              </Title>
-              <Text type="secondary">{t("Détails de l'échéance")}</Text>
-            </div>
-          </Space>
-          <Space size="middle" wrap>
-            {tenantId && installmentId && ready && (
+        <PageHeader
+          title={`${t('Échéance')} ${libellePeriodeEcheance(installment.period_month, installment.period_year)}`}
+          subtitle={
+            <Space size="small" wrap>
+              {getStatusTag(installment.status)}
+              <Text strong type={remaining > 0 ? 'danger' : 'success'}>
+                {remaining > 0
+                  ? t('Reste à payer : {{montant}}', { montant: formatCurrency(remaining, installment.currency) })
+                  : t('Échéance soldée')}
+              </Text>
+            </Space>
+          }
+          breadcrumbs={[
+            { label: t('Baux'), to: `/tenant/${tenantId}/rental/leases` },
+            {
+              label: installment.lease?.lease_number ?? t('Bail'),
+              to: `/tenant/${tenantId}/rental/leases/${installment.lease_id}`
+            },
+            { label: libellePeriodeEcheance(installment.period_month, installment.period_year) }
+          ]}
+          extra={
+            tenantId && installmentId && ready ? (
               <InstallmentReminderButton
                 tenantId={tenantId}
                 installmentId={installmentId}
@@ -132,10 +137,9 @@ export const InstallmentDetailPage: React.FC = () => {
                 canAllocate={permissions === null || permissions.has('RENTAL_PAYMENTS_ALLOCATE')}
                 onSent={() => setRemindersRefresh(k => k + 1)}
               />
-            )}
-            {getStatusTag(installment.status)}
-          </Space>
-        </div>
+            ) : undefined
+          }
+        />
 
         <Row gutter={[24, 24]}>
           <Col xs={24} md={12}>

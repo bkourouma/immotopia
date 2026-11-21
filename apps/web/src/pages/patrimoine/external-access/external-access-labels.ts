@@ -77,6 +77,14 @@ export function accessStatusColor(status: ExternalAccessStatus): string {
   return 'red';
 }
 
+/** Intention visuelle d'un statut d'accès, pour `<StatusTag tone>` (le libellé reste celui d'`accessStatusLabel`). */
+export function accessStatusTone(status: ExternalAccessStatus): 'success' | 'warning' | 'neutral' | 'danger' {
+  if (status === 'ACTIVE') return 'success';
+  if (status === 'EXPIRING') return 'warning';
+  if (status === 'EXPIRED') return 'neutral';
+  return 'danger';
+}
+
 export function accessLogActionLabel(action: string): string {
   switch (action) {
     case 'VIEWED':

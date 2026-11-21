@@ -8,7 +8,7 @@ import { downloadNetWorthExport } from '../../services/patrimoine-net-worth-expo
 import { saveBlob } from '../../utils/save-blob';
 
 /**
- * Export de la situation patrimoniale (lot 5) — boutons PDF et Excel.
+ * Export de la situation patrimoniale (lot 5) — menu « Exporter » (PDF et Excel).
  * `vi.mock` couvre chaque export utilisé par le composant (AGENTS.md).
  */
 
@@ -42,7 +42,8 @@ describe('<NetWorthExportButtons>', () => {
     mockDownload.mockResolvedValueOnce({ blob, filename: 'situation-patrimoniale-2026-09-29.pdf' });
     monter();
 
-    await userEvent.click(screen.getByRole('button', { name: /Exporter en PDF/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Exporter/ }));
+    await userEvent.click(await screen.findByText('Exporter en PDF'));
 
     await waitFor(() => expect(mockDownload).toHaveBeenCalledWith('agence-1', 'pdf'));
     await waitFor(() => expect(mockSaveBlob).toHaveBeenCalledWith(blob, 'situation-patrimoniale-2026-09-29.pdf'));
@@ -53,7 +54,8 @@ describe('<NetWorthExportButtons>', () => {
     mockDownload.mockResolvedValueOnce({ blob, filename: 'situation-patrimoniale.xlsx' });
     monter();
 
-    await userEvent.click(screen.getByRole('button', { name: /Exporter en Excel/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Exporter/ }));
+    await userEvent.click(await screen.findByText('Exporter en Excel'));
 
     await waitFor(() => expect(mockDownload).toHaveBeenCalledWith('agence-1', 'xlsx'));
     await waitFor(() => expect(mockSaveBlob).toHaveBeenCalledWith(blob, 'situation-patrimoniale.xlsx'));
@@ -64,7 +66,8 @@ describe('<NetWorthExportButtons>', () => {
     mockDownload.mockRejectedValueOnce({ response: { data: body } });
     monter();
 
-    await userEvent.click(screen.getByRole('button', { name: /Exporter en PDF/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Exporter/ }));
+    await userEvent.click(await screen.findByText('Exporter en PDF'));
 
     expect(await screen.findByText('Abonnement insuffisant.')).toBeInTheDocument();
     expect(mockSaveBlob).not.toHaveBeenCalled();

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, Button, Card, Col, Row, Space, Typography } from 'antd';
-import { CreditCardOutlined, SyncOutlined } from '@ant-design/icons';
+import { CreditCardOutlined, SyncOutlined, WarningOutlined } from '@ant-design/icons';
+import dayjs from 'dayjs';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { MoneyValue, SkeletonList, StateBlock } from '../../components/primitives';
@@ -169,6 +170,10 @@ export default function CoOwnerChargeCalls() {
   const outstanding = calls.reduce((sum, call) => sum + call.outstanding, 0);
   const overdue = calls.filter(call => call.status === 'OVERDUE');
   const overdueAmount = overdue.reduce((sum, call) => sum + call.outstanding, 0);
+  // Prochaine échéance à régler : l'appel non soldé dont la date est la plus proche (ISO : tri par texte).
+  const nextDue = calls
+    .filter(call => call.outstanding > 0)
+    .sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)))[0];
 
   const availability = availabilityQuery.data;
   const onlineEnabled = Boolean(availability?.syndicates.some(syndicate => syndicate.available));
@@ -253,12 +258,22 @@ export default function CoOwnerChargeCalls() {
             <div style={{ marginTop: 4 }}>
               <MoneyValue value={outstanding} />
             </div>
+            {nextDue ? (
+              <Text type="secondary" style={{ fontSize: 'var(--font-size-caption)' }}>
+                {t('Prochaine échéance : le {{date}}', { date: dayjs(nextDue.dueDate).format('DD/MM/YYYY') })}
+              </Text>
+            ) : (
+              <Text type="secondary" style={{ fontSize: 'var(--font-size-caption)' }}>
+                {t('Aucun appel à régler : vous êtes à jour.')}
+              </Text>
+            )}
           </Card>
         </Col>
         <Col xs={24} sm={12}>
           <Card>
             <Text type="secondary">{t('Dont en retard')}</Text>
             <div style={{ marginTop: 4 }}>
+              {overdue.length > 0 ? <WarningOutlined aria-hidden style={{ color: 'var(--color-error-text)' }} /> : null}{' '}
               <MoneyValue value={overdueAmount} />{' '}
               <Text type="secondary">({t('{{count}} appel(s)', { count: overdue.length })})</Text>
             </div>
@@ -321,6 +336,7 @@ export default function CoOwnerChargeCalls() {
                 type="primary"
                 icon={<CreditCardOutlined aria-hidden />}
                 disabled={selectedCalls.length === 0}
+                style={{ minHeight: 44 }}
                 loading={paying}
                 onClick={() => void payOnline()}
                 {...helpAnchor('portail-payer-en-ligne')}

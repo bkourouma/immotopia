@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Pagination, Space } from 'antd';
-import { ListSearch, StateBlock } from '../../../components/primitives';
+import { ListSearch, namedPageItemRender, StateBlock } from '../../../components/primitives';
 import { propertyTypeLabel } from '../../../components/copilot/copilot-labels';
 import { useLocalListSearch } from '../../../utils/list-search';
 import type { SearchCriterion } from '../../../utils/list-search';
@@ -126,6 +126,7 @@ export const PropertiesSection: React.FC<Props> = ({ properties, currency, busyR
           total={local.total}
           showSizeChanger={false}
           hideOnSinglePage
+          itemRender={namedPageItemRender(local.page)}
           onChange={page => local.setPage(page)}
         />
       </nav>

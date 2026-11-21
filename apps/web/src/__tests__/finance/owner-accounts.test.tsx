@@ -321,7 +321,7 @@ describe('Compte propriétaire — nouveau reversement', () => {
     const champMontant = (await screen.findByLabelText('Montant', {}, { timeout: 8000 })) as HTMLInputElement;
     expect(champMontant.value).toMatch(/450\s000/);
 
-    await user.click(screen.getByText('Enregistrer'));
+    await user.click(screen.getByText('Enregistrer le reversement'));
 
     await waitFor(() => expect(createOwnerPayout).toHaveBeenCalled(), { timeout: 8000 });
     expect(createOwnerPayout).toHaveBeenCalledWith(
@@ -346,7 +346,7 @@ describe('Compte propriétaire — nouveau reversement', () => {
     await user.click(await screen.findByText('Nouveau reversement', {}, { timeout: 8000 }));
     await screen.findByLabelText('Montant', {}, { timeout: 8000 });
 
-    await user.click(screen.getByText('Enregistrer'));
+    await user.click(screen.getByText('Enregistrer le reversement'));
 
     expect(
       await screen.findByText('Le reversement dépasse le solde dû au propriétaire', {}, { timeout: 8000 })

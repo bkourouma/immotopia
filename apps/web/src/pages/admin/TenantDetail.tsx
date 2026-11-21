@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   getTenant,
@@ -17,23 +17,9 @@ import { ActivityTab } from '../../components/admin/tenant-detail/ActivityTab';
 import { DataExportTab } from '../../components/admin/tenant-detail/DataExportTab';
 import { CollaboratorsTab } from '../../components/admin/tenant-detail/CollaboratorsTab';
 import { TenantFormUnlocksTab } from '../../components/admin/tenant-detail/TenantFormUnlocksTab';
-import {
-  Building2,
-  ArrowLeft,
-  Edit,
-  CreditCard,
-  Receipt,
-  Activity,
-  BarChart3,
-  AlertTriangle,
-  CheckCircle,
-  Users,
-  DatabaseBackup,
-  ListChecks,
-  Link2
-} from 'lucide-react';
+import { Building2, CreditCard, Receipt, Activity, BarChart3, Users, DatabaseBackup, ListChecks } from 'lucide-react';
 import { App, Input, Modal } from 'antd';
-import { StatusTag, useConfirmAction } from '../../components/primitives';
+import { StatusTag, useConfirmAction, PageHeader, StateBlock, SkeletonDetail } from '../../components/primitives';
 import { getModuleKeyLabelFr } from '../../constants/module-labels';
 import { t } from '../../i18n/t';
 import { HelpButton } from '../../help';
@@ -180,40 +166,29 @@ export const TenantDetail: React.FC = () => {
     });
   };
 
-  const getStatusBadge = (status: string) => {
-    const styles = {
-      ACTIVE: 'bg-green-100 text-green-800',
-      SUSPENDED: 'bg-red-100 text-red-800',
-      INACTIVE: 'bg-gray-100 text-gray-800'
-    };
-    return (
-      <span
-        className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-          styles[status as keyof typeof styles] || styles.INACTIVE
-        }`}
-      >
-        {status === 'ACTIVE' ? t('Actif') : status === 'SUSPENDED' ? t('Suspendu') : t('Inactif')}
-      </span>
-    );
-  };
+  const getStatusBadge = (status: string) => <StatusTag status={status} />;
+
+  // L'onglet actif reste visible quand la barre défile (mobile).
+  const activeTabRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    activeTabRef.current?.scrollIntoView?.({ block: 'nearest', inline: 'center' });
+  }, [activeTab, loading]);
 
   if (loading) {
-    return (
-      <>
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-        </div>
-      </>
-    );
+    return <SkeletonDetail aria-label={t("Chargement de la fiche de l'agence")} />;
   }
 
   if (error || !tenant) {
     return (
-      <>
-        <div className="bg-red-50 border border-red-200 rounded-md p-4">
-          <p className="text-sm text-red-800">{error || t('Tenant introuvable')}</p>
-        </div>
-      </>
+      <StateBlock
+        variant="error"
+        title={t("Impossible de charger l'agence")}
+        description={error || t('Tenant introuvable')}
+        actions={[
+          { label: t('Réessayer'), onClick: () => void loadTenant(), primary: true },
+          { label: t('Retour aux agences'), onClick: () => navigate('/admin/tenants') }
+        ]}
+      />
     );
   }
 
@@ -242,56 +217,36 @@ export const TenantDetail: React.FC = () => {
         )}
       </Modal>
       <div className="space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button onClick={() => navigate('/admin/tenants')} className="text-gray-600 hover:text-gray-900">
-              <ArrowLeft className="h-5 w-5" />
-            </button>
-            <div>
-              <h1 className="text-3xl font-bold text-slate-900">{tenant.name}</h1>
-              <p className="mt-2 text-sm text-slate-600">{tenant.legalName || tenant.slug}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {getStatusBadge(tenant.status)}
-            {tenant.status === 'ACTIVE' ? (
-              <button
-                onClick={handleSuspend}
-                className="inline-flex items-center px-4 py-2 border border-red-300 rounded-md shadow-sm text-sm font-medium text-red-700 bg-white hover:bg-red-50"
-              >
-                <AlertTriangle className="h-4 w-4 me-2" />
-                {t('Suspendre')}
-              </button>
-            ) : (
-              <button
-                onClick={handleActivate}
-                className="inline-flex items-center px-4 py-2 border border-green-300 rounded-md shadow-sm text-sm font-medium text-green-700 bg-white hover:bg-green-50"
-              >
-                <CheckCircle className="h-4 w-4 me-2" />
-                {t('Activer')}
-              </button>
-            )}
-            <button
-              onClick={handleCopyInvitationLink}
-              className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-            >
-              <Link2 className="h-4 w-4 me-2" />
-              {t("Copier le lien d'invitation")}
-            </button>
-            <button
-              onClick={() => navigate(`/admin/tenants/${tenantId}/edit`)}
-              className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary hover:bg-primary-hover"
-            >
-              <Edit className="h-4 w-4 me-2" />
-              {t('Modifier')}
-            </button>
-          </div>
-        </div>
+        <PageHeader
+          title={tenant.name}
+          subtitle={
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              {getStatusBadge(tenant.status)}
+              <span>{tenant.legalName || tenant.slug}</span>
+            </span>
+          }
+          breadcrumbs={[{ label: t('Agences'), to: '/admin/tenants' }, { label: tenant.name }]}
+          primaryAction={
+            tenant.status === 'ACTIVE'
+              ? { label: t('Modifier'), onClick: () => navigate(`/admin/tenants/${tenantId}/edit`) }
+              : { label: t('Activer'), onClick: handleActivate }
+          }
+          secondaryActions={
+            tenant.status === 'ACTIVE'
+              ? [
+                  { key: 'suspend', label: t('Suspendre'), danger: true, onClick: handleSuspend },
+                  { key: 'invitation-link', label: t("Copier le lien d'invitation"), onClick: handleCopyInvitationLink }
+                ]
+              : [
+                  { key: 'edit', label: t('Modifier'), onClick: () => navigate(`/admin/tenants/${tenantId}/edit`) },
+                  { key: 'invitation-link', label: t("Copier le lien d'invitation"), onClick: handleCopyInvitationLink }
+                ]
+          }
+        />
 
         {/* Tabs */}
         <div className="border-b border-gray-200">
-          <nav className="-mb-px flex gap-8 overflow-x-auto" aria-label={t("Sections de l'agence")}>
+          <nav className="-mb-px flex gap-6 overflow-x-auto" aria-label={t("Sections de l'agence")}>
             {[
               { id: 'overview', label: t("Vue d'ensemble"), icon: Building2 },
               { id: 'collaborators', label: t('Collaborateurs'), icon: Users },
@@ -304,9 +259,10 @@ export const TenantDetail: React.FC = () => {
             ].map(tab => (
               <button
                 key={tab.id}
+                ref={activeTab === tab.id ? activeTabRef : undefined}
                 onClick={() => setActiveTab(tab.id as TenantDetailTab)}
                 aria-current={activeTab === tab.id ? 'page' : undefined}
-                className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
+                className={`whitespace-nowrap py-4 px-1 min-h-[44px] border-b-2 font-medium text-sm flex items-center gap-2 ${
                   activeTab === tab.id
                     ? 'border-primary text-primary'
                     : 'border-transparent text-gray-500 hover:text-gray-700'

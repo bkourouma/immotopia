@@ -199,7 +199,9 @@ export const Associations: React.FC = () => {
         title={t('Associations')}
         subtitle={
           associations.length > 0
-            ? `${associations.length} association${associations.length > 1 ? 's' : ''}`
+            ? associations.length === 1
+              ? t('1 association')
+              : t('{{count}} associations', { count: associations.length })
             : undefined
         }
         primaryAction={{ label: t('Nouvelle association'), icon: <PlusOutlined />, onClick: ouvrirCreation }}
@@ -257,6 +259,8 @@ export const Associations: React.FC = () => {
                 coup. */}
             <Input
               id="association-label"
+              autoFocus
+              onPressEnter={validerCreation}
               value={libelle}
               onChange={event => setLibelle(event.target.value)}
               placeholder={t('Ex. Villa Riviera — indivision Kouadio')}

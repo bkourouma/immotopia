@@ -25,6 +25,8 @@ import { apiErrorMessage, formatAmount, formatDay, serverFieldErrors, todayIso }
 import { detailKeyLabel, reliabilityLabel, VALUATION_METHODS, valuationMethodName } from './asset-classes';
 import { ReliabilityBadge } from './ReliabilityBadge';
 import { HelpButton, HelpSectionTitle } from '../../../help';
+import { useBreakpoint } from '../../../hooks/useBreakpoint';
+import { moneyInputProps, submitOnEnter } from './form-helpers';
 
 interface ValuationFormValues {
   valuatedAt: string;
@@ -75,6 +77,7 @@ const ValuationFormModal: React.FC<{
   const [form] = Form.useForm<ValuationFormValues>();
   const method = Form.useWatch('method', form);
   const amount = Form.useWatch('estimatedValue', form);
+  const currency = Form.useWatch('currency', form) ?? asset.currency;
   const noteManual =
     !valuation && isComputed(prefill?.method) && method === 'MANUAL' && Number(amount) !== prefill?.estimatedValue;
   const [submitting, setSubmitting] = useState(false);
@@ -151,6 +154,7 @@ const ValuationFormModal: React.FC<{
       <Form
         form={form}
         layout="vertical"
+        onKeyDown={submitOnEnter(handleOk, submitting)}
         onValuesChange={changed => {
           if (!('estimatedValue' in changed) || valuation || !prefill?.method) return;
           form.setFieldValue('method', methodForAmount(prefill, changed.estimatedValue, prefill.method));
@@ -161,7 +165,7 @@ const ValuationFormModal: React.FC<{
           label={t('Date de la valeur')}
           rules={[{ required: true, message: t('Champ obligatoire') }]}
         >
-          <Input type="date" />
+          <Input type="date" autoFocus />
         </Form.Item>
         <Form.Item
           name="estimatedValue"
@@ -177,7 +181,7 @@ const ValuationFormModal: React.FC<{
             }
           ]}
         >
-          <InputNumber style={{ width: '100%' }} />
+          <InputNumber style={{ width: '100%' }} {...moneyInputProps(currency)} />
         </Form.Item>
         <Form.Item name="currency" label={t('Devise')} rules={[{ required: true }]}>
           <Select options={['XOF', 'EUR', 'USD'].map(value => ({ value, label: value }))} />
@@ -337,7 +341,7 @@ const SuggestionMissing: React.FC<{
   );
 };
 
-const ValuationCurve: React.FC<{ valuations: AssetValuationDto[] }> = ({ valuations }) => {
+const ValuationCurve: React.FC<{ valuations: AssetValuationDto[]; currency: string }> = ({ valuations, currency }) => {
   const points = useMemo(
     () =>
       [...valuations]
@@ -348,7 +352,11 @@ const ValuationCurve: React.FC<{ valuations: AssetValuationDto[] }> = ({ valuati
   if (points.length < 2) return null;
   const day = (value: unknown) => new Date(String(value)).toLocaleDateString(activeLocale(), { timeZone: 'UTC' });
   return (
-    <div style={{ width: '100%', height: 220, marginBottom: 'var(--space-4)' }} aria-hidden="true">
+    <div
+      style={{ width: '100%', height: 220, marginBottom: 'var(--space-4)' }}
+      role="img"
+      aria-label={t("Courbe de l'historique des valeurs ; le tableau ci-dessous en donne le détail.")}
+    >
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={points} margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
           <CartesianGrid strokeDasharray="3 3" />
@@ -361,7 +369,7 @@ const ValuationCurve: React.FC<{ valuations: AssetValuationDto[] }> = ({ valuati
               )
             }
           />
-          <Tooltip labelFormatter={day} formatter={value => formatAmount(Number(value), 'XOF')} />
+          <Tooltip labelFormatter={day} formatter={value => formatAmount(Number(value), currency)} />
           <Line type="monotone" dataKey="value" stroke="#1677ff" strokeWidth={2} isAnimationActive={false} />
         </LineChart>
       </ResponsiveContainer>
@@ -410,6 +418,7 @@ export const AssetValuationsTab: React.FC<{
   // Le client ne connaît pas les permissions : un refus 403 du serveur retire aussi les boutons d'écriture.
   const [denied, setDenied] = useState(false);
   const canWrite = canWriteProp && !denied;
+  const { isMobile } = useBreakpoint();
 
   const valuationsQuery = useQuery({
     queryKey: queryKey('patrimoine-asset-valuations', tenantId, { assetId: asset.id }),
@@ -520,23 +529,27 @@ export const AssetValuationsTab: React.FC<{
     }
   };
 
+  const actions = (
+    <Space wrap>
+      <Button icon={<CalculatorOutlined />} loading={suggesting} onClick={handleSuggest}>
+        {t('Calculer une valeur')}
+      </Button>
+      <HelpButton size="small" helpId="patrimoine.actif.calcul" />
+      {canWrite && (
+        <Button icon={<PlusOutlined />} onClick={() => openForm(null)}>
+          {t('Ajouter une valeur')}
+        </Button>
+      )}
+    </Space>
+  );
+
   return (
     <Card
       title={<HelpSectionTitle title={t('Historique des valeurs')} helpId="patrimoine.actif.valeurs" />}
-      extra={
-        <Space wrap>
-          <Button icon={<CalculatorOutlined />} loading={suggesting} onClick={handleSuggest}>
-            {t('Calculer une valeur')}
-          </Button>
-          <HelpButton size="small" helpId="patrimoine.actif.calcul" />
-          {canWrite && (
-            <Button icon={<PlusOutlined />} onClick={() => openForm(null)}>
-              {t('Ajouter une valeur')}
-            </Button>
-          )}
-        </Space>
-      }
+      // Sur téléphone, les actions passent sous le titre : dans l'en-tête, elles l'écrasent.
+      extra={isMobile ? undefined : actions}
     >
+      {isMobile && <div style={{ marginBottom: 'var(--space-3)' }}>{actions}</div>}
       {suggestion?.ok === true && (
         <SuggestionOk
           asset={asset}
@@ -554,13 +567,17 @@ export const AssetValuationsTab: React.FC<{
         <SuggestionMissing result={suggestion} onCompleteInfo={onCompleteInfo} onDismiss={() => setSuggestion(null)} />
       )}
       {valuationsQuery.error ? (
+        <StateBlock variant="error" onRetry={() => valuationsQuery.refetch()} />
+      ) : !valuationsQuery.isPending && valuationItems.length === 0 ? (
         <StateBlock
-          variant="error"
-          actions={[{ label: t('Réessayer'), onClick: () => valuationsQuery.refetch(), primary: true }]}
+          variant="empty"
+          title={t('Aucune valeur enregistrée : ajoutez-en une pour que cet actif compte dans votre valeur nette.')}
+          description=""
+          actions={canWrite ? [{ label: t('Ajouter une valeur'), onClick: () => openForm(null), primary: true }] : []}
         />
       ) : (
         <>
-          <ValuationCurve valuations={valuationItems} />
+          <ValuationCurve valuations={valuationItems} currency={asset.currency} />
           <Table<AssetValuationDto>
             {...local.tableProps}
             helpId="patrimoine.actif.valeurs.tableau"
@@ -570,15 +587,6 @@ export const AssetValuationsTab: React.FC<{
             size="small"
             loading={valuationsQuery.isPending}
             scroll={{ x: 'max-content' }}
-            locale={
-              local.isFiltered
-                ? undefined
-                : {
-                    emptyText: t(
-                      'Aucune valeur enregistrée : ajoutez-en une pour que cet actif compte dans votre valeur nette.'
-                    )
-                  }
-            }
             columns={[
               { title: t('Date'), dataIndex: 'valuatedAt', render: (value: string) => formatDay(value) },
               {
@@ -608,7 +616,14 @@ export const AssetValuationsTab: React.FC<{
                   canWrite && (
                     <Space>
                       <a onClick={() => openForm(row)}>{t('Modifier')}</a>
-                      <ConfirmAction title={t('Supprimer cette valeur ?')} danger onConfirm={() => handleDelete(row)}>
+                      <ConfirmAction
+                        title={t('Supprimer la valeur de {{montant}} du {{date}} ?', {
+                          montant: formatAmount(row.estimatedValue, row.currency),
+                          date: formatDay(row.valuatedAt)
+                        })}
+                        danger
+                        onConfirm={() => handleDelete(row)}
+                      >
                         <a>{t('Supprimer')}</a>
                       </ConfirmAction>
                     </Space>

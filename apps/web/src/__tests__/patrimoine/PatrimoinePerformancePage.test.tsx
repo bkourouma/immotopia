@@ -185,3 +185,25 @@ describe('PatrimoinePerformancePage — hypothèses par bien', () => {
     expect(screen.getByTestId('years')).toHaveTextContent('15');
   });
 });
+
+describe('PatrimoinePerformancePage — états', () => {
+  it('sans bien choisi : état vide explicite', async () => {
+    mount();
+    expect(await screen.findByText('Aucun bien sélectionné')).toBeInTheDocument();
+  });
+
+  it('erreur : message clair, détail serveur en retrait, Réessayer relance le calcul', async () => {
+    getMock.mockResolvedValue(etat(7));
+    perfMock.mockRejectedValueOnce({ response: { data: { error: 'boom SQL' } } });
+    mount();
+    await screen.findByRole('option', { name: 'Bien A' });
+    await choisir('A');
+    expect(await screen.findByText('Impossible de calculer la performance de ce bien.')).toBeInTheDocument();
+    perfMock.mockClear();
+    await userEvent.click(screen.getByRole('button', { name: /Réessayer/ }));
+    await waitFor(() => expect(perfMock).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(screen.queryByText('Impossible de calculer la performance de ce bien.')).not.toBeInTheDocument()
+    );
+  });
+});

@@ -2,14 +2,16 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import {
   App,
-  Alert,
   Button,
   Card,
+  Col,
   DatePicker,
+  Divider,
   Form,
   Input,
   InputNumber,
   Modal,
+  Row,
   Select,
   Space,
   Tag,
@@ -20,7 +22,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined, UploadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { MoneyValue } from '../primitives/MoneyValue';
-import { Table } from '../primitives';
+import { DataCard, DataView } from '../primitives';
 import { collectAllPages } from '../../utils/table-export/collect';
 import { useListSearch } from '../../hooks/useListSearch';
 import { useLocalListSearch } from '../../utils/list-search';
@@ -50,6 +52,8 @@ import { t } from '../../i18n/t';
 import { useFormFieldModes } from '../../hooks/useFormFieldModes';
 import { HelpButton, HelpSectionTitle } from '../../help';
 import { displayCurrency } from '../../utils/syndic-currency';
+import { montantSaisiProps } from '../../utils/montant-saisi';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { currencyFractionDigits } from './budget-money';
 
 const { Paragraph, Title, Text } = Typography;
@@ -87,6 +91,7 @@ export const ProviderInvoicesTab: React.FC<ProviderInvoicesTabProps> = ({
   contracts
 }) => {
   const { message } = App.useApp();
+  const { isMobile } = useBreakpoint();
 
   const [balances, setBalances] = useState<ProviderBalance[]>([]);
   const [incidents, setIncidents] = useState<SyndicateIncident[]>([]);
@@ -166,7 +171,6 @@ export const ProviderInvoicesTab: React.FC<ProviderInvoicesTabProps> = ({
   });
   const items = invoicesQuery.data?.items ?? [];
   const total = invoicesQuery.data?.total ?? 0;
-  const loading = invoicesQuery.isFetching;
   const invoicesError = invoicesQuery.error as { response?: { data?: { error?: string } } } | null;
   const error = invoicesError ? invoicesError.response?.data?.error || t('Impossible de charger les factures') : null;
   const loadInvoices = async () => {
@@ -247,7 +251,7 @@ export const ProviderInvoicesTab: React.FC<ProviderInvoicesTabProps> = ({
         currency: values.currency || 'XOF',
         file: fm.isVisible('file') ? (createFile ?? undefined) : undefined
       });
-      message.success(t('Facture enregistrée'));
+      message.success(t('Facture {{number}} enregistrée', { number: values.number }));
       if (!result.incidentImputation.linked && result.incidentImputation.reason !== 'NO_INCIDENT') {
         const reasonLabel =
           result.incidentImputation.reason === 'AMBIGUOUS'
@@ -316,8 +320,13 @@ export const ProviderInvoicesTab: React.FC<ProviderInvoicesTabProps> = ({
       title: t('Actions'),
       key: 'actions',
       align: 'end',
+      exportable: false,
       render: (_: unknown, row) => (
-        <Button size="small" onClick={() => setOpenInvoiceId(row.id)}>
+        <Button
+          size="small"
+          aria-label={t('Ouvrir la facture {{number}}', { number: row.number })}
+          onClick={() => setOpenInvoiceId(row.id)}
+        >
           {t('Ouvrir')}
         </Button>
       )
@@ -385,44 +394,99 @@ export const ProviderInvoicesTab: React.FC<ProviderInvoicesTabProps> = ({
       </Paragraph>
 
       <Card title={t('Soldes par prestataire')}>
-        <Table
-          {...balanceSearch.tableProps}
+        <DataView<ProviderBalance>
+          {...balanceSearch.dataViewProps}
           helpId="syndic.prestataires.soldes"
           aria-label={t('Soldes par prestataire')}
-          exportFilename={t('Soldes par prestataire')}
-          exportFetchAll={balanceSearch.exportAll}
-          rowKey="providerId"
+          export={{ filename: t('Soldes par prestataire'), fetchAll: balanceSearch.exportAll }}
+          rowKey={row => row.providerId}
           columns={balanceColumns}
-          locale={balanceSearch.isFiltered ? undefined : { emptyText: t('Aucune facture enregistrée') }}
+          emptyDescription={t('Aucune facture enregistrée')}
+          scrollX={760}
+          renderCard={row => (
+            <DataCard
+              title={row.providerName}
+              aria-label={row.providerName}
+              highlight={<MoneyValue value={row.totalDue} currency={displayCurrency(row.currency)} />}
+              fields={[
+                { label: t('Factures'), value: row.invoicesCount },
+                {
+                  label: t('Total facturé'),
+                  value: <MoneyValue value={row.totalInvoiced} currency={displayCurrency(row.currency)} />
+                },
+                {
+                  label: t('Total payé'),
+                  value: <MoneyValue value={row.totalPaid} currency={displayCurrency(row.currency)} />
+                },
+                {
+                  label: t('Dont en retard'),
+                  value: (
+                    <Text type={row.overdueDue > 0 ? 'danger' : undefined}>
+                      <MoneyValue value={row.overdueDue} currency={displayCurrency(row.currency)} />
+                    </Text>
+                  )
+                }
+              ]}
+            />
+          )}
         />
       </Card>
 
-      {error ? <Alert type="error" message={error} showIcon /> : null}
-
       <Card>
-        <Table
-          helpId="syndic.prestataires.factures-liste"
+        <DataView<ProviderInvoice>
+          {...search.dataViewProps}
           search={search.searchProps}
+          items={items}
+          total={total}
+          helpId="syndic.prestataires.factures-liste"
           aria-label={t('Factures des prestataires')}
-          exportFilename={t('Factures des prestataires')}
-          // Toutes les factures, avec les mêmes critères que la liste affichée.
-          exportFetchAll={() =>
-            collectAllPages<ProviderInvoice>(async (exportPage, limit) => {
-              const data = await listProviderInvoices(tenantId, syndicId, {
-                ...search.filterParams,
-                page: exportPage,
-                limit
-              } as ProviderInvoiceListParams);
-              return { items: data.items, total: data.total };
-            })
-          }
-          rowKey="id"
-          loading={loading}
-          dataSource={items}
+          loading={invoicesQuery.isLoading}
+          isReloading={invoicesQuery.isFetching && !invoicesQuery.isLoading}
+          error={error}
+          errorCause={invoicesQuery.error}
+          onRetry={() => void invoicesQuery.refetch()}
+          emptyDescription={t('Aucune facture enregistrée')}
+          emptyAction={{ label: t('Enregistrer une facture'), onClick: openCreateModal }}
+          export={{
+            filename: t('Factures des prestataires'),
+            // Toutes les factures, avec les mêmes critères que la liste affichée.
+            fetchAll: () =>
+              collectAllPages<ProviderInvoice>(async (exportPage, limit) => {
+                const data = await listProviderInvoices(tenantId, syndicId, {
+                  ...search.filterParams,
+                  page: exportPage,
+                  limit
+                } as ProviderInvoiceListParams);
+                return { items: data.items, total: data.total };
+              })
+          }}
+          rowKey={row => row.id}
           columns={columns}
-          scroll={{ x: 'max-content' }}
-          pagination={search.tablePagination(total)}
-          locale={search.isFiltered ? undefined : { emptyText: t('Aucune facture enregistrée') }}
+          scrollX={1100}
+          renderCard={row => (
+            <DataCard
+              title={`${row.number} — ${row.provider?.name || row.providerId}`}
+              aria-label={t('Facture {{number}}', { number: row.number })}
+              subtitle={row.label}
+              highlight={<MoneyValue value={row.amountTTC} currency={displayCurrency(row.currency)} />}
+              status={
+                <Tag color={providerInvoiceStatusColors[row.status]}>{providerInvoiceStatusLabels[row.status]}</Tag>
+              }
+              fields={[
+                { label: t('Date de facture'), value: dayjs(row.invoiceDate).format(dateFormat('short')) },
+                {
+                  label: t('Payé'),
+                  value: <MoneyValue value={row.amountPaid} currency={displayCurrency(row.currency)} />
+                },
+                {
+                  label: t('Reste dû'),
+                  value: <MoneyValue value={row.amountDue} currency={displayCurrency(row.currency)} />
+                },
+                { label: t('Pièce'), value: row.hasFile ? t('Jointe') : t('Aucune') }
+              ]}
+              primaryAction={{ label: t('Ouvrir'), onClick: () => setOpenInvoiceId(row.id) }}
+            />
+          )}
         />
       </Card>
 
@@ -440,151 +504,229 @@ export const ProviderInvoicesTab: React.FC<ProviderInvoicesTabProps> = ({
         open={createOpen}
         onOk={() => void handleCreate()}
         onCancel={() => setCreateOpen(false)}
-        okText={t('Enregistrer')}
+        okText={t('Enregistrer la facture')}
         cancelText={t('Annuler')}
         confirmLoading={creating}
-        width={640}
+        maskClosable={!creating}
+        // Plein écran sur téléphone : le clavier et les sélecteurs de date ne débordent plus.
+        width={isMobile ? '100%' : 680}
+        style={isMobile ? { top: 0, maxWidth: '100vw', paddingBottom: 0 } : undefined}
+        afterOpenChange={visible => {
+          if (visible) document.getElementById('invoice-provider')?.focus();
+        }}
       >
         <HelpButton helpId="syndic.prestataires.facture-nouvelle" />
         <Form form={createForm} layout="vertical">
           <Form.Item
             label={t('Prestataire')}
             name="providerId"
-            rules={[{ required: true, message: t('Le prestataire est obligatoire') }]}
+            rules={[{ required: true, message: t('Choisissez le prestataire qui a émis la facture') }]}
           >
             <Select
+              id="invoice-provider"
               showSearch
               optionFilterProp="label"
               options={providers.map(provider => ({ value: provider.id, label: provider.name }))}
               placeholder={t('Sélectionner un prestataire')}
             />
           </Form.Item>
-          {fm.isVisible('contractId') && (
-            <Form.Item
-              label={t('Contrat')}
-              name="contractId"
-              rules={[{ required: fm.isRequired('contractId', false), message: t('Champ obligatoire') }]}
-            >
-              <Select
-                allowClear
-                showSearch
-                optionFilterProp="label"
-                options={contracts.map(contract => ({ value: contract.id, label: contract.nature }))}
-                placeholder={t('Sans contrat')}
-              />
-            </Form.Item>
-          )}
-          {fm.isVisible('incidentId') && (
-            <Form.Item
-              label={t('Incident')}
-              name="incidentId"
-              rules={[{ required: fm.isRequired('incidentId', false), message: t('Champ obligatoire') }]}
-            >
-              <Select
-                allowClear
-                showSearch
-                optionFilterProp="label"
-                options={incidents.map(incident => ({ value: incident.id, label: incident.description }))}
-                placeholder={t('Sans incident')}
-              />
-            </Form.Item>
-          )}
-          {fm.isVisible('budgetLineItemId') && (
-            <Form.Item
-              label={t('Ligne budgétaire')}
-              name="budgetLineItemId"
-              rules={[{ required: fm.isRequired('budgetLineItemId', false), message: t('Champ obligatoire') }]}
-            >
-              <Select
-                allowClear
-                showSearch
-                optionFilterProp="label"
-                options={budgetLineOptions}
-                placeholder={t('Déduite du contrat si possible')}
-              />
-            </Form.Item>
-          )}
-          {fm.isVisible('fundId') && (
-            <Form.Item
-              label={t('Fonds débité par défaut')}
-              name="fundId"
-              rules={[{ required: fm.isRequired('fundId', false), message: t('Champ obligatoire') }]}
-            >
-              <Select
-                allowClear
-                showSearch
-                optionFilterProp="label"
-                options={funds.map(fund => ({ value: fund.id, label: fund.name }))}
-                placeholder={t('À choisir au moment du paiement')}
-              />
-            </Form.Item>
-          )}
-          <Form.Item label={t('Nature de la dépense')} name="expenseKind">
-            <Select
-              options={[
-                { value: 'CURRENT', label: t('Charges courantes') },
-                { value: 'WORKS', label: t('Travaux') }
-              ]}
-            />
-          </Form.Item>
-          <Form.Item
-            label={t('Numéro de facture')}
-            name="number"
-            rules={[{ required: true, message: t('Le numéro de facture est obligatoire') }]}
-          >
-            <Input />
-          </Form.Item>
-          <Form.Item
-            label={t('Libellé')}
-            name="label"
-            rules={[{ required: true, message: t('Le libellé de la facture est obligatoire') }]}
-          >
-            <Input />
-          </Form.Item>
-          <Form.Item
-            label={t('Date de facture')}
-            name="invoiceDate"
-            rules={[{ required: true, message: t('La date de facture est obligatoire') }]}
-          >
-            <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
-          </Form.Item>
-          {fm.isVisible('dueDate') && (
-            <Form.Item
-              label={t('Échéance')}
-              name="dueDate"
-              rules={[{ required: fm.isRequired('dueDate', false), message: t('Champ obligatoire') }]}
-            >
-              <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
-            </Form.Item>
-          )}
-          <Form.Item
-            label={t('Montant HT')}
-            name="amountHT"
-            rules={[{ required: true, message: t('Le montant HT est obligatoire') }]}
-          >
-            <InputNumber
-              min={0}
-              style={{ width: '100%' }}
-              precision={currencyFractionDigits(createCurrency)}
-              onChange={value => setCreateAmountHT(Number(value) || 0)}
-            />
-          </Form.Item>
-          <Form.Item label={t('TVA')} name="vatAmount">
-            <InputNumber
-              min={0}
-              style={{ width: '100%' }}
-              precision={currencyFractionDigits(createCurrency)}
-              onChange={value => setCreateVatAmount(Number(value) || 0)}
-            />
-          </Form.Item>
-          <Form.Item label={t('Montant TTC (calculé)')}>
-            <MoneyValue value={createAmountHT + createVatAmount} currency={displayCurrency(createCurrency || 'XOF')} />
-          </Form.Item>
-          <Form.Item label={t('Devise')} name="currency">
-            <Input onChange={event => setCreateCurrency(event.target.value)} />
-          </Form.Item>
+          <Row gutter={16}>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label={t('Numéro de facture')}
+                name="number"
+                rules={[{ required: true, whitespace: true, message: t('Saisissez le numéro inscrit sur la facture') }]}
+              >
+                <Input />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label={t('Libellé')}
+                name="label"
+                rules={[{ required: true, whitespace: true, message: t('Décrivez la facture en quelques mots') }]}
+              >
+                <Input />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label={t('Date de facture')}
+                name="invoiceDate"
+                rules={[{ required: true, message: t('Choisissez la date de la facture') }]}
+              >
+                <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
+              </Form.Item>
+            </Col>
+            {fm.isVisible('dueDate') && (
+              <Col xs={24} md={12}>
+                <Form.Item
+                  label={t('Échéance')}
+                  name="dueDate"
+                  dependencies={['invoiceDate']}
+                  rules={[
+                    { required: fm.isRequired('dueDate', false), message: t("Choisissez la date d'échéance") },
+                    ({ getFieldValue }) => ({
+                      validator: (_rule, value) => {
+                        const invoiceDate = getFieldValue('invoiceDate');
+                        if (value && invoiceDate && dayjs(value).isBefore(dayjs(invoiceDate), 'day')) {
+                          return Promise.reject(new Error(t("L'échéance ne peut pas précéder la date de facture")));
+                        }
+                        return Promise.resolve();
+                      }
+                    })
+                  ]}
+                >
+                  <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
+                </Form.Item>
+              </Col>
+            )}
+          </Row>
+
+          <Divider titlePlacement="start" plain>
+            {t('Montants')}
+          </Divider>
+          <Row gutter={16}>
+            <Col xs={24} md={8}>
+              <Form.Item
+                label={t('Montant HT')}
+                name="amountHT"
+                rules={[{ required: true, message: t('Saisissez le montant hors taxes') }]}
+              >
+                <InputNumber
+                  {...montantSaisiProps}
+                  precision={currencyFractionDigits(createCurrency)}
+                  min={0}
+                  inputMode="decimal"
+                  style={{ width: '100%' }}
+                  addonAfter={displayCurrency(createCurrency || 'XOF') ?? 'FCFA'}
+                  onChange={value => setCreateAmountHT(Number(value) || 0)}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={8}>
+              <Form.Item label={t('TVA')} name="vatAmount">
+                <InputNumber
+                  {...montantSaisiProps}
+                  precision={currencyFractionDigits(createCurrency)}
+                  min={0}
+                  inputMode="decimal"
+                  style={{ width: '100%' }}
+                  addonAfter={displayCurrency(createCurrency || 'XOF') ?? 'FCFA'}
+                  onChange={value => setCreateVatAmount(Number(value) || 0)}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={8}>
+              <Form.Item label={t('Montant TTC (calculé)')}>
+                <Text strong>
+                  <MoneyValue
+                    value={createAmountHT + createVatAmount}
+                    currency={displayCurrency(createCurrency || 'XOF')}
+                  />
+                </Text>
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={8}>
+              <Form.Item label={t('Devise')} name="currency">
+                <Input onChange={event => setCreateCurrency(event.target.value)} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={8}>
+              <Form.Item label={t('Nature de la dépense')} name="expenseKind">
+                <Select
+                  options={[
+                    { value: 'CURRENT', label: t('Charges courantes') },
+                    { value: 'WORKS', label: t('Travaux') }
+                  ]}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Divider titlePlacement="start" plain>
+            {t('Rattachement (facultatif)')}
+          </Divider>
+          <Row gutter={16}>
+            {fm.isVisible('contractId') && (
+              <Col xs={24} md={12}>
+                <Form.Item
+                  label={t('Contrat')}
+                  name="contractId"
+                  rules={[{ required: fm.isRequired('contractId', false), message: t('Choisissez un contrat') }]}
+                >
+                  <Select
+                    allowClear
+                    showSearch
+                    optionFilterProp="label"
+                    options={contracts.map(contract => ({ value: contract.id, label: contract.nature }))}
+                    placeholder={t('Sans contrat')}
+                  />
+                </Form.Item>
+              </Col>
+            )}
+            {fm.isVisible('incidentId') && (
+              <Col xs={24} md={12}>
+                <Form.Item
+                  label={t('Incident')}
+                  name="incidentId"
+                  rules={[{ required: fm.isRequired('incidentId', false), message: t('Choisissez un incident') }]}
+                >
+                  <Select
+                    allowClear
+                    showSearch
+                    optionFilterProp="label"
+                    options={incidents.map(incident => ({ value: incident.id, label: incident.description }))}
+                    placeholder={t('Sans incident')}
+                  />
+                </Form.Item>
+              </Col>
+            )}
+            {fm.isVisible('budgetLineItemId') && (
+              <Col xs={24} md={12}>
+                <Form.Item
+                  label={t('Ligne budgétaire')}
+                  name="budgetLineItemId"
+                  rules={[
+                    {
+                      required: fm.isRequired('budgetLineItemId', false),
+                      message: t('Choisissez une ligne budgétaire')
+                    }
+                  ]}
+                >
+                  <Select
+                    allowClear
+                    showSearch
+                    optionFilterProp="label"
+                    options={budgetLineOptions}
+                    placeholder={t('Déduite du contrat si possible')}
+                  />
+                </Form.Item>
+              </Col>
+            )}
+            {fm.isVisible('fundId') && (
+              <Col xs={24} md={12}>
+                <Form.Item
+                  label={t('Fonds débité par défaut')}
+                  name="fundId"
+                  rules={[{ required: fm.isRequired('fundId', false), message: t('Choisissez un fonds') }]}
+                >
+                  <Select
+                    allowClear
+                    showSearch
+                    optionFilterProp="label"
+                    options={funds.map(fund => ({ value: fund.id, label: fund.name }))}
+                    placeholder={t('À choisir au moment du paiement')}
+                  />
+                </Form.Item>
+              </Col>
+            )}
+          </Row>
           {fm.isVisible('file') && (
-            <Form.Item label={t('Pièce jointe')}>
+            <Form.Item
+              label={t('Pièce jointe')}
+              extra={t('PDF, PNG ou JPG. Facultatif : vous pourrez l’ajouter plus tard.')}
+            >
               <Upload
                 maxCount={1}
                 accept=".pdf,.png,.jpg,.jpeg"

@@ -274,7 +274,7 @@ describe('ProviderInvoicesTab', () => {
       }
     });
 
-    fireEvent.click(screen.getByText('Enregistrer'));
+    fireEvent.click(screen.getByText('Enregistrer la facture'));
 
     await waitFor(() => {
       expect(messageError).toHaveBeenCalledWith(
@@ -310,7 +310,7 @@ describe('ProviderInvoicesTab', () => {
       }
     });
 
-    fireEvent.click(screen.getByText('Enregistrer'));
+    fireEvent.click(screen.getByText('Enregistrer le paiement'));
 
     await waitFor(() => {
       expect(messageWarning).toHaveBeenCalledWith('Le solde du fonds débité est désormais négatif.');

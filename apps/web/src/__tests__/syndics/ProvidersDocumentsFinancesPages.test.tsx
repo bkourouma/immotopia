@@ -229,7 +229,7 @@ describe('Providers/Documents pages', () => {
     renderWithRoute('/tenant/tenant-1/syndics/syndic-1/prestataires');
     await screen.findByText('Prestataires et contrats');
 
-    fireEvent.click(screen.getByText('Nouveau prestataire'));
+    fireEvent.click(screen.getAllByText('Nouveau prestataire')[0]);
 
     // Le formulaire de creation est la 2e instance montee (contractForm puis
     // providerForm, voir SyndicProviders.tsx) : on force ses valeurs pour ce
@@ -244,7 +244,7 @@ describe('Providers/Documents pages', () => {
     }));
     __mocks.formInstances[1].validateFields = validateProvider;
 
-    fireEvent.click(screen.getByText('Créer'));
+    fireEvent.click(screen.getByText('Créer le prestataire'));
 
     await waitFor(() => {
       expect(mockApiClient.post).toHaveBeenCalledWith(
@@ -285,7 +285,7 @@ describe('Providers/Documents pages', () => {
     }));
     __mocks.formInstances[1].validateFields = validateProvider;
 
-    fireEvent.click(screen.getByText('Enregistrer'));
+    fireEvent.click(screen.getByText('Enregistrer les modifications'));
 
     await waitFor(() => {
       expect(mockApiClient.patch).toHaveBeenCalledWith(

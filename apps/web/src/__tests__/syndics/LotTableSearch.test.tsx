@@ -145,7 +145,7 @@ describe('LotTable : recherche multicritères locale', () => {
 
   it('sans lot : message « Aucun lot enregistré »', () => {
     mount([]);
-    expect(screen.getByText('Aucun lot enregistré')).toBeInTheDocument();
+    expect(screen.getByText(/Aucun lot enregistré/)).toBeInTheDocument();
   });
 
   it('pagine localement par 20', async () => {

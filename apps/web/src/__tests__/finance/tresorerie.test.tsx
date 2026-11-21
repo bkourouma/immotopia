@@ -170,7 +170,7 @@ describe('Trésorerie — onglet Comptes', () => {
     await user.click(screen.getByLabelText('Opérateur Mobile Money'));
     await user.click(await screen.findByText('Wave'));
 
-    await user.click(screen.getByRole('button', { name: 'Créer' }));
+    await user.click(screen.getByRole('button', { name: 'Créer le compte' }));
 
     await waitFor(() => expect(createTreasuryAccount).toHaveBeenCalled());
     expect(createTreasuryAccount).toHaveBeenCalledWith('agence-1', {
@@ -204,7 +204,7 @@ describe('Trésorerie — onglet Virements internes', () => {
 
     await user.type(screen.getByLabelText('Montant (FCFA)'), '100000');
 
-    await user.click(screen.getByRole('button', { name: 'Enregistrer' }));
+    await user.click(screen.getByRole('button', { name: 'Enregistrer le virement' }));
 
     await waitFor(() => expect(createTreasuryTransfer).toHaveBeenCalled());
     const appel = createTreasuryTransfer.mock.calls[0];
