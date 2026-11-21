@@ -87,9 +87,7 @@ export const ReasonPromptModal: React.FC<ReasonPromptModalProps> = ({
           value={reason}
           onChange={e => setReason(e.target.value)}
         />
-        {reasonRequired && (
-          <Text type={invalid ? 'danger' : 'secondary'}>{t('Le motif est obligatoire.')}</Text>
-        )}
+        {reasonRequired && <Text type={invalid ? 'danger' : 'secondary'}>{t('Le motif est obligatoire.')}</Text>}
       </Space>
     </Modal>
   );

@@ -1,24 +1,9 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
 import { contactDisplayName } from '../../utils/contact-display';
 import { useNavigate } from 'react-router-dom';
+import { App, Button, Card, Col, Descriptions, Divider, Empty, Row, Select, Space, Tag, Typography } from 'antd';
 import {
-  App,
-  Alert,
-  Button,
-  Card,
-  Col,
-  Descriptions,
-  Divider,
-  Empty,
-  Row,
-  Select,
-  Space,
-  Spin,
-  Tag,
-  Typography
-} from 'antd';
-import {
-  ArrowLeftOutlined,
+  ArrowRightOutlined,
   CalendarOutlined,
   DollarOutlined,
   EditOutlined,
@@ -31,6 +16,7 @@ import {
   UserOutlined
 } from '@ant-design/icons';
 import type { CrmDealStage } from '../../types/crm-types';
+import { PageHeader, StateBlock, SkeletonDetail, StepRail, useConfirmAction } from '../primitives';
 import { getDeal, updateDeal, CrmDealDetail, UpdateCrmDealRequest } from '../../services/crm-service';
 import { ActivityTimeline } from './ActivityTimeline';
 import { PropertyMatching } from '../properties/PropertyMatching';
@@ -40,7 +26,7 @@ import { dealStageLabel, dealTypeLabel } from '../../utils/crm-labels';
 
 import { activeLocale } from '../../i18n/format';
 import { localizedRecord } from '../../i18n/localized';
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 interface DealDetailProps {
   tenantId: string;
@@ -48,6 +34,9 @@ interface DealDetailProps {
 }
 
 const STAGE_CODES: CrmDealStage[] = ['NEW', 'QUALIFIED', 'VISIT', 'NEGOTIATION', 'WON', 'LOST'];
+
+/** Parcours normal d'une affaire : « Perdue » en sort, elle n'en fait pas partie. */
+const STAGE_PATH: CrmDealStage[] = ['NEW', 'QUALIFIED', 'VISIT', 'NEGOTIATION', 'WON'];
 
 // Construit à l'affichage : `t()` suit la langue courante.
 const stageOptions = (): Array<{ value: CrmDealStage; label: string }> =>
@@ -108,6 +97,7 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
   const { message } = App.useApp();
 
   const navigate = useNavigate();
+  const confirm = useConfirmAction();
   const [deal, setDeal] = useState<CrmDealDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -128,7 +118,7 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
         setError(t("Erreur lors du chargement de l'affaire"));
       }
     } catch (err: any) {
-      setError(err?.response?.data?.message || t("Erreur lors du chargement de l'affaire"));
+      setError(t('Impossible de charger cette affaire. Vérifiez votre connexion puis réessayez.'));
     } finally {
       setLoading(false);
     }
@@ -201,152 +191,197 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
     return tags;
   }, [criteria]);
 
-  if (loading) {
-    return (
-      <div style={{ textAlign: 'center', padding: '48px 0' }}>
-        <Spin size="large" />
-        <div style={{ marginTop: 12 }}>
-          <Text type="secondary">{t("Chargement de l'affaire...")}</Text>
-        </div>
-      </div>
-    );
+  if (loading && !deal) {
+    return <SkeletonDetail aria-label={t("Chargement de l'affaire...")} />;
   }
 
   if (error) {
-    return <Alert type="error" showIcon message={error} />;
+    return <StateBlock variant="error" description={error} onRetry={() => void loadDeal()} />;
   }
 
   if (!deal) {
-    return <Empty description={t('Affaire non trouvée')} />;
+    return (
+      <StateBlock
+        variant="empty"
+        title={t('Affaire non trouvée')}
+        description={t("Cette affaire n'existe plus ou n'appartient pas à votre agence.")}
+        actions={[
+          {
+            label: t('Retour aux affaires'),
+            onClick: () => navigate(`/tenant/${tenantId}/crm/deals`),
+            primary: true
+          }
+        ]}
+      />
+    );
   }
+
+  const stageIndex = STAGE_PATH.indexOf(deal.stage as CrmDealStage);
+  const nextStage = stageIndex >= 0 && stageIndex < STAGE_PATH.length - 1 ? STAGE_PATH[stageIndex + 1] : null;
+  const typeLabel = getDealTypeLabel(deal.type);
+  const phoneToCall = deal.contact?.phonePrimary || deal.contact?.phone;
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      <Card>
-        <Row gutter={[16, 16]} justify="space-between" align="top">
-          <Col flex="auto">
-            <Space align="center" wrap>
-              <Title level={2} style={{ margin: 0 }}>
-                {getDealTypeLabel(deal.type)}
-              </Title>
-              <Tag color={getStageColor(deal.stage)}>{getStageLabel(deal.stage)}</Tag>
-              <HelpButton helpId="commercial.affaires.detail.etape" size="small" />
-            </Space>
+      <PageHeader
+        title={typeLabel}
+        subtitle={<Tag color={getStageColor(deal.stage)}>{getStageLabel(deal.stage)}</Tag>}
+        breadcrumbs={[{ label: t('Affaires'), to: `/tenant/${tenantId}/crm/deals` }, { label: typeLabel }]}
+        helpId="commercial.affaires.detail.etape"
+        primaryAction={
+          nextStage
+            ? {
+                label: t('Passer à « {{etape}} »', { etape: getStageLabel(nextStage) }),
+                icon: <ArrowRightOutlined />,
+                onClick: () => {
+                  // Conclure l'affaire est un geste lourd : une confirmation évite le clic malheureux.
+                  if (nextStage === 'WON') {
+                    confirm({
+                      title: t("Marquer l'affaire « {{etape}} » ?", { etape: getStageLabel(nextStage) }),
+                      description: t("Vous pourrez la remettre dans une autre étape depuis la liste de l'étape."),
+                      okText: t('Confirmer'),
+                      onConfirm: () => handleStageChange(nextStage)
+                    });
+                    return;
+                  }
+                  void handleStageChange(nextStage);
+                },
+                loading: updatingStage
+              }
+            : {
+                label: t('Modifier'),
+                icon: <EditOutlined />,
+                onClick: () => navigate(`/tenant/${tenantId}/crm/deals/${dealId}/edit`)
+              }
+        }
+        secondaryActions={
+          nextStage
+            ? [
+                {
+                  key: 'edit',
+                  icon: <EditOutlined />,
+                  label: t('Modifier'),
+                  onClick: () => navigate(`/tenant/${tenantId}/crm/deals/${dealId}/edit`)
+                }
+              ]
+            : undefined
+        }
+        extra={
+          <Select
+            showSearch
+            optionFilterProp="label"
+            aria-label={t("Étape de l'affaire")}
+            style={{ minWidth: 180 }}
+            value={deal.stage}
+            options={stageOptions()}
+            onChange={handleStageChange}
+            loading={updatingStage}
+            disabled={updatingStage}
+          />
+        }
+      />
 
-            <Descriptions
-              size="small"
-              column={{ xs: 1, md: 2 }}
-              style={{ marginTop: 16 }}
-              items={
-                [
-                  deal.contact
-                    ? {
-                        key: 'contact',
-                        label: (
-                          <Space>
-                            <UserOutlined />
-                            {t('Contact')}
-                          </Space>
-                        ),
-                        children: contactDisplayName(deal.contact)
-                      }
-                    : null,
-                  deal.contact?.email
-                    ? {
-                        key: 'email',
-                        label: (
-                          <Space>
-                            <MailOutlined />
-                            {t('Email')}
-                          </Space>
-                        ),
-                        children: deal.contact.email
-                      }
-                    : null,
-                  deal.contact?.phonePrimary || deal.contact?.phone
-                    ? {
-                        key: 'phone',
-                        label: (
-                          <Space>
-                            <PhoneOutlined />
-                            {t('Téléphone')}
-                          </Space>
-                        ),
-                        children: deal.contact?.phonePrimary || deal.contact?.phone
-                      }
-                    : null,
-                  deal.locationZone
-                    ? {
-                        key: 'zone',
-                        label: (
-                          <Space>
-                            <EnvironmentOutlined />
-                            {t('Zone')}
-                          </Space>
-                        ),
-                        children: deal.locationZone
-                      }
-                    : null,
-                  deal.budgetMin || deal.budgetMax
-                    ? {
-                        key: 'budget',
-                        label: (
-                          <Space>
-                            <DollarOutlined />
-                            {t('Budget')}
-                          </Space>
-                        ),
-                        children:
-                          deal.budgetMin && deal.budgetMax
-                            ? `${formatNumber(deal.budgetMin)} - ${formatNumber(deal.budgetMax)} FCFA`
-                            : deal.budgetMax
-                              ? t("Jusqu'à {{value}} FCFA", { value: formatNumber(deal.budgetMax) })
-                              : t('À partir de {{value}} FCFA', { value: formatNumber(deal.budgetMin) })
-                      }
-                    : null,
-                  {
-                    key: 'createdAt',
+      {/* Étape courante : le parcours complet, pour savoir où l'on en est et ce qui reste */}
+      {stageIndex >= 0 ? (
+        <Card>
+          <StepRail items={STAGE_PATH.map(stage => ({ title: getStageLabel(stage) }))} current={stageIndex} />
+        </Card>
+      ) : (
+        <Card>
+          <Tag color={getStageColor(deal.stage)}>{getStageLabel(deal.stage)}</Tag>
+        </Card>
+      )}
+
+      <Card>
+        <Descriptions
+          size="small"
+          column={{ xs: 1, md: 2 }}
+          style={{ marginTop: 16 }}
+          items={
+            [
+              deal.contact
+                ? {
+                    key: 'contact',
                     label: (
                       <Space>
-                        <CalendarOutlined />
-                        {t('Créé le')}
+                        <UserOutlined />
+                        {t('Contact')}
                       </Space>
                     ),
-                    children: new Date(deal.createdAt).toLocaleDateString(activeLocale())
-                  },
-                  {
-                    key: 'updatedAt',
-                    label: t('Modifié le'),
-                    children: new Date(deal.updatedAt).toLocaleDateString(activeLocale())
+                    children: contactDisplayName(deal.contact)
                   }
-                ].filter(Boolean) as any
+                : null,
+              deal.contact?.email
+                ? {
+                    key: 'email',
+                    label: (
+                      <Space>
+                        <MailOutlined />
+                        {t('Email')}
+                      </Space>
+                    ),
+                    children: <a href={`mailto:${deal.contact.email}`}>{deal.contact.email}</a>
+                  }
+                : null,
+              deal.contact?.phonePrimary || deal.contact?.phone
+                ? {
+                    key: 'phone',
+                    label: (
+                      <Space>
+                        <PhoneOutlined />
+                        {t('Téléphone')}
+                      </Space>
+                    ),
+                    children: <a href={`tel:${phoneToCall}`}>{phoneToCall}</a>
+                  }
+                : null,
+              deal.locationZone
+                ? {
+                    key: 'zone',
+                    label: (
+                      <Space>
+                        <EnvironmentOutlined />
+                        {t('Zone')}
+                      </Space>
+                    ),
+                    children: deal.locationZone
+                  }
+                : null,
+              deal.budgetMin || deal.budgetMax
+                ? {
+                    key: 'budget',
+                    label: (
+                      <Space>
+                        <DollarOutlined />
+                        {t('Budget')}
+                      </Space>
+                    ),
+                    children:
+                      deal.budgetMin && deal.budgetMax
+                        ? `${formatNumber(deal.budgetMin)} - ${formatNumber(deal.budgetMax)} FCFA`
+                        : deal.budgetMax
+                          ? t("Jusqu'à {{value}} FCFA", { value: formatNumber(deal.budgetMax) })
+                          : t('À partir de {{value}} FCFA', { value: formatNumber(deal.budgetMin) })
+                  }
+                : null,
+              {
+                key: 'createdAt',
+                label: (
+                  <Space>
+                    <CalendarOutlined />
+                    {t('Créé le')}
+                  </Space>
+                ),
+                children: new Date(deal.createdAt).toLocaleDateString(activeLocale())
+              },
+              {
+                key: 'updatedAt',
+                label: t('Modifié le'),
+                children: new Date(deal.updatedAt).toLocaleDateString(activeLocale())
               }
-            />
-          </Col>
-
-          <Col>
-            <Space direction="vertical" size="small" style={{ minWidth: 220 }}>
-              <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/tenant/${tenantId}/crm/deals`)}>
-                {t('Retour')}
-              </Button>
-              <Select
-                showSearch
-                optionFilterProp="label"
-                value={deal.stage}
-                options={stageOptions()}
-                onChange={handleStageChange}
-                loading={updatingStage}
-              />
-              <Button
-                type="primary"
-                icon={<EditOutlined />}
-                onClick={() => navigate(`/tenant/${tenantId}/crm/deals/${dealId}/edit`)}
-              >
-                {t('Modifier')}
-              </Button>
-            </Space>
-          </Col>
-        </Row>
+            ].filter(Boolean) as any
+          }
+        />
       </Card>
 
       {(hasValue(criteria.propertyType) ||

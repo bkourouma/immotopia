@@ -20,6 +20,7 @@ import { CheckCircleFilled } from '@ant-design/icons';
 import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { feedback } from '../../lib/feedback';
 import { t } from '../../i18n/t';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 import {
   provisionTenant,
   resendInvitation,
@@ -90,6 +91,7 @@ export interface CreateTenantDrawerProps {
  */
 export const CreateTenantDrawer: React.FC<CreateTenantDrawerProps> = ({ open, onClose, onCreated }) => {
   const [form] = Form.useForm<TenantFormValues>();
+  const { isMobile } = useBreakpoint();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ProvisionTenantResult | null>(null);
@@ -352,9 +354,11 @@ export const CreateTenantDrawer: React.FC<CreateTenantDrawerProps> = ({ open, on
         )
       }
       placement="right"
-      width={560}
+      width={isMobile ? '100%' : 560}
       open={open}
       onClose={onClose}
+      // Saisie longue : un clic à côté ne doit pas la faire perdre.
+      maskClosable={Boolean(result)}
     >
       {result ? (
         <TenantCreatedResult
@@ -408,7 +412,7 @@ export const CreateTenantDrawer: React.FC<CreateTenantDrawerProps> = ({ open, on
               { type: 'email', message: t('E-mail invalide') }
             ]}
           >
-            <Input type="email" placeholder="admin@exemple.fr" />
+            <Input type="email" inputMode="email" autoComplete="off" placeholder="admin@exemple.fr" />
           </Form.Item>
 
           <Divider style={{ margin: 'var(--space-4) 0' }} />
@@ -690,8 +694,16 @@ export const CreateTenantDrawer: React.FC<CreateTenantDrawerProps> = ({ open, on
           />
 
           <Space>
-            <Button onClick={onClose}>{t('Annuler')}</Button>
-            <Button type="primary" htmlType="submit" loading={loading} disabled={loading || selectedPacks.length === 0}>
+            <Button onClick={onClose} disabled={loading} style={isMobile ? { minHeight: 44 } : undefined}>
+              {t('Annuler')}
+            </Button>
+            <Button
+              type="primary"
+              htmlType="submit"
+              loading={loading}
+              disabled={loading || selectedPacks.length === 0}
+              style={isMobile ? { minHeight: 44 } : undefined}
+            >
               {t("Créer l'agence")}
             </Button>
           </Space>

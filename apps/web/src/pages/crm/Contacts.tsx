@@ -3,15 +3,15 @@ import { contactDisplayName } from '../../utils/contact-display';
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAgencyFeatures } from '../../hooks/useAgencyFeatures';
-import { App, Button, Card, Space, Row, Col, Modal, Spin, Empty, Alert, Typography, Tooltip, Popconfirm } from 'antd';
+import { App, Button, Card, Checkbox, Space, Row, Col, Modal, Pagination, Typography, Tooltip } from 'antd';
 import {
-  UserOutlined,
   PlusOutlined,
   EditOutlined,
   EyeOutlined,
   CalendarOutlined,
   TagOutlined,
-  DeleteOutlined
+  DeleteOutlined,
+  PhoneOutlined
 } from '@ant-design/icons';
 import { ContactForm } from '../../components/crm/ContactForm';
 import { ActivityForm } from '../../components/crm/ActivityForm';
@@ -35,17 +35,28 @@ import { useListSearch } from '../../hooks/useListSearch';
 import { listAssignableMembers } from '../../services/membership-service';
 import { getMaturityLabel } from '../../utils/crm-utils';
 import { leadSourceLabels } from '../../utils/crm-labels';
-import { Table } from '../../components/primitives';
+import {
+  Table,
+  PageHeader,
+  StateBlock,
+  SkeletonList,
+  DataCard,
+  ListSearch,
+  useConfirmAction
+} from '../../components/primitives';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { collectAllPages } from '../../utils/table-export/collect';
 import type { ColumnsType } from 'antd/es/table';
 import { t as translate } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
 import { HelpSectionTitle, helpAnchor } from '../../help';
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 export const Contacts: React.FC = () => {
   const { message } = App.useApp();
+  const confirm = useConfirmAction();
+  const { isDesktop } = useBreakpoint();
 
   const { tenantId } = useParams<{ tenantId: string }>();
   const { has: possede } = useAgencyFeatures(tenantId);
@@ -186,7 +197,7 @@ export const Contacts: React.FC = () => {
         setError(translate('Erreur lors du chargement des contacts'));
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || translate('Erreur lors du chargement des contacts'));
+      setError(translate('Impossible de charger les contacts. Vérifiez votre connexion puis réessayez.'));
     } finally {
       setLoading(false);
     }
@@ -253,6 +264,20 @@ export const Contacts: React.FC = () => {
       console.error('Error deleting contact:', err);
       message.error(err?.response?.data?.message || translate('Erreur lors de la suppression du contact'));
     }
+  };
+
+  const askDelete = (contact: CrmContact) =>
+    confirm({
+      title: translate('Supprimer le contact {{nom}} ?', { nom: contactDisplayName(contact) }),
+      description: translate('Cette action est définitive. Confirmez la suppression du contact.'),
+      okText: translate('Supprimer'),
+      danger: true,
+      onConfirm: () => handleDeleteContact(contact)
+    });
+
+  const openEdit = (contact: CrmContact) => {
+    setEditingDetailLoading(true);
+    setEditingContact(contact);
   };
 
   const handleAddActivity = (contact: CrmContact) => {
@@ -344,42 +369,46 @@ export const Contacts: React.FC = () => {
       title: translate('Actions'),
       key: 'actions',
       width: 200,
-      render: (_, record) => (
-        <Space {...helpAnchor('contacts-actions')}>
-          <Tooltip title={translate('Ajouter une activité')}>
-            <Button type="text" icon={<CalendarOutlined />} onClick={() => handleAddActivity(record)} />
-          </Tooltip>
-          <Tooltip title={translate('Voir les détails')}>
-            <Button
-              type="text"
-              icon={<EyeOutlined />}
-              onClick={() => navigate(`/tenant/${tenantId}/crm/contacts/${record.id}`)}
-            />
-          </Tooltip>
-          <Tooltip title={translate('Modifier')}>
-            <Button
-              type="text"
-              icon={<EditOutlined />}
-              onClick={() => {
-                setEditingDetailLoading(true);
-                setEditingContact(record);
-              }}
-            />
-          </Tooltip>
-          <Tooltip title={translate('Supprimer')}>
-            <Popconfirm
-              title={translate('Supprimer ce contact ?')}
-              description={translate('Cette action est définitive. Confirmez la suppression du contact.')}
-              okText={translate('Supprimer')}
-              okType="danger"
-              cancelText={translate('Annuler')}
-              onConfirm={() => handleDeleteContact(record)}
-            >
-              <Button type="text" danger icon={<DeleteOutlined />} />
-            </Popconfirm>
-          </Tooltip>
-        </Space>
-      )
+      render: (_, record) => {
+        const nom = contactDisplayName(record);
+        return (
+          <Space {...helpAnchor('contacts-actions')}>
+            <Tooltip title={translate('Ajouter une activité')}>
+              <Button
+                type="text"
+                icon={<CalendarOutlined />}
+                aria-label={translate('Ajouter une activité pour {{nom}}', { nom })}
+                onClick={() => handleAddActivity(record)}
+              />
+            </Tooltip>
+            <Tooltip title={translate('Voir les détails')}>
+              <Button
+                type="text"
+                icon={<EyeOutlined />}
+                aria-label={translate('Voir la fiche de {{nom}}', { nom })}
+                onClick={() => navigate(`/tenant/${tenantId}/crm/contacts/${record.id}`)}
+              />
+            </Tooltip>
+            <Tooltip title={translate('Modifier')}>
+              <Button
+                type="text"
+                icon={<EditOutlined />}
+                aria-label={translate('Modifier {{nom}}', { nom })}
+                onClick={() => openEdit(record)}
+              />
+            </Tooltip>
+            <Tooltip title={translate('Supprimer')}>
+              <Button
+                type="text"
+                danger
+                icon={<DeleteOutlined />}
+                aria-label={translate('Supprimer {{nom}}', { nom })}
+                onClick={() => askDelete(record)}
+              />
+            </Tooltip>
+          </Space>
+        );
+      }
     }
   ];
   const columns = toutesColonnes.filter(
@@ -400,29 +429,142 @@ export const Contacts: React.FC = () => {
     }
   };
 
+  const clearSearch = search.searchProps.onClear;
+  const emptyState = (
+    <StateBlock
+      variant="empty"
+      title={translate('Aucun contact trouvé')}
+      description={translate('Commencez par créer votre premier contact.')}
+      actions={[{ label: translate('Créer un contact'), onClick: () => setShowForm(true), primary: true }]}
+    />
+  );
+  const errorState = <StateBlock variant="error" description={error ?? undefined} onRetry={loadContacts} />;
+
+  const tableLocale = error
+    ? { emptyText: errorState }
+    : search.isFiltered || search.page > 1
+      ? undefined
+      : { emptyText: emptyState };
+
+  const toggleSelected = (id: string, checked: boolean) =>
+    setSelectedContacts(prev => (checked ? [...prev.filter(x => x !== id), id] : prev.filter(x => x !== id)));
+
+  const renderContactCard = (record: CrmContact) => {
+    const nom = contactDisplayName(record);
+    const phone = record.phonePrimary || record.phone;
+    const fields = [
+      ...(phone ? [{ label: translate('Téléphone'), value: phone }] : []),
+      ...(possede('CRM') && record.activeDeal
+        ? [
+            {
+              label: translate('Affaire en cours'),
+              value: `${dealTypeLabel(record.activeDeal.type)} — ${dealStageLabel(record.activeDeal.stage)}`
+            }
+          ]
+        : []),
+      ...(possede('CRM') && record.nextAction
+        ? [
+            {
+              label: translate('Prochaine action'),
+              value: `${record.nextAction.nextActionType || translate('Action')} — ${new Date(
+                record.nextAction.nextActionAt
+              ).toLocaleDateString(activeLocale(), { day: '2-digit', month: 'short' })}`
+            }
+          ]
+        : [])
+    ];
+    return (
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)' }}>
+        <Checkbox
+          checked={selectedContacts.includes(record.id)}
+          onChange={event => toggleSelected(record.id, event.target.checked)}
+          aria-label={translate('Sélectionner {{nom}}', { nom })}
+          style={{ minHeight: 44, minWidth: 28, alignItems: 'center' }}
+        />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <DataCard
+            title={nom}
+            subtitle={record.email || undefined}
+            fields={fields}
+            onOpen={() => navigate(`/tenant/${tenantId}/crm/contacts/${record.id}`)}
+            primaryAction={
+              phone
+                ? {
+                    label: translate('Appeler'),
+                    icon: <PhoneOutlined />,
+                    onClick: () => {
+                      window.location.href = `tel:${phone}`;
+                    }
+                  }
+                : undefined
+            }
+            secondaryActions={[
+              { key: 'activity', label: translate('Ajouter une activité'), onClick: () => handleAddActivity(record) },
+              { key: 'edit', label: translate('Modifier'), onClick: () => openEdit(record) },
+              { key: 'delete', label: translate('Supprimer'), danger: true, onClick: () => askDelete(record) }
+            ]}
+          />
+        </div>
+      </div>
+    );
+  };
+
+  const mobileList = (
+    <div {...helpAnchor('contacts-tableau')}>
+      <ListSearch
+        {...search.searchProps}
+        resultCount={error || (loading && contacts.length === 0) ? undefined : pagination.total}
+      />
+      {error ? (
+        errorState
+      ) : loading && contacts.length === 0 ? (
+        <SkeletonList rows={5} aria-label={translate('Chargement des contacts')} />
+      ) : contacts.length === 0 ? (
+        search.isFiltered ? (
+          <StateBlock
+            variant="no-results"
+            actions={[{ label: translate('Effacer les critères'), onClick: clearSearch, primary: true }]}
+          />
+        ) : (
+          emptyState
+        )
+      ) : (
+        <div role="list" aria-label={translate('Contacts')} aria-busy={loading || undefined}>
+          {contacts.map(record => (
+            <div role="listitem" key={record.id}>
+              {renderContactCard(record)}
+            </div>
+          ))}
+        </div>
+      )}
+      {!error && pagination.total > 0 && (
+        <nav aria-label={translate('Pagination')} style={{ display: 'flex', justifyContent: 'center' }}>
+          <Pagination
+            current={search.page}
+            pageSize={search.pageSize}
+            total={pagination.total}
+            onChange={search.dataViewProps.onPageChange}
+            showSizeChanger={false}
+            responsive
+          />
+        </nav>
+      )}
+    </div>
+  );
+
   return (
     <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        <Row justify="space-between" align="middle" gutter={[16, 16]}>
-          <Col xs={24} sm={24} md={12}>
-            <Title level={2} style={{ margin: 0 }}>
-              {translate('Contacts')}
-            </Title>
-            <Text type="secondary">{translate('Gérez vos contacts et prospects CRM')}</Text>
-          </Col>
-          <Col xs={24} sm={24} md={12}>
-            <Space wrap>
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={() => setShowForm(true)}
-                {...helpAnchor('contacts-nouveau')}
-              >
-                {translate('Nouveau contact')}
-              </Button>
-            </Space>
-          </Col>
-        </Row>
+        <PageHeader
+          title={translate('Contacts')}
+          subtitle={translate('Gérez vos contacts et prospects CRM')}
+          primaryAction={{
+            label: translate('Nouveau contact'),
+            icon: <PlusOutlined />,
+            onClick: () => setShowForm(true),
+            helpAnchor: 'contacts-nouveau'
+          }}
+        />
 
         <Modal
           title={
@@ -430,6 +572,8 @@ export const Contacts: React.FC = () => {
           }
           open={showForm}
           onCancel={() => setShowForm(false)}
+          // Un clic à côté ne doit pas faire perdre un formulaire long : on ferme par « Annuler » ou la croix.
+          maskClosable={false}
           footer={null}
           width={800}
           // ANO-22, recette du 20 septembre 2026 : sans ce démontage, `ContactForm`
@@ -449,12 +593,13 @@ export const Contacts: React.FC = () => {
           title={<HelpSectionTitle title={translate('Modifier le contact')} helpId="commercial.contacts.modifier" />}
           open={!!editingContact}
           onCancel={() => setEditingContact(null)}
+          maskClosable={false}
           footer={null}
           width={800}
         >
           {editingContact &&
             (editingDetailLoading ? (
-              <Spin />
+              <SkeletonList rows={4} aria-label={translate('Chargement du contact')} />
             ) : (
               <ContactForm
                 contact={editingDetail ?? editingContact}
@@ -487,41 +632,37 @@ export const Contacts: React.FC = () => {
           )}
         </Modal>
 
-        {/* Contacts List */}
-        {error && (
-          <Alert
-            message={translate('Erreur')}
-            description={error}
-            type="error"
-            showIcon
-            closable
-            onClose={() => setError(null)}
-          />
-        )}
-
-        {/* Bulk Actions Toolbar */}
+        {/* Actions groupées : la barre dit combien de contacts sont choisis et ce qu'on peut en faire. */}
         {selectedContacts.length > 0 && (
           <Card
+            role="region"
+            aria-live="polite"
+            aria-label={translate('Actions sur la sélection')}
             style={{
-              background: '#e6f7ff',
-              borderColor: '#91d5ff'
+              background: 'var(--color-primary-bg)',
+              borderColor: 'var(--color-primary-border)'
             }}
           >
             <Row justify="space-between" align="middle" gutter={[16, 16]}>
               <Col xs={24} sm={12}>
-                <Space>
+                <Space wrap>
                   <Text strong>
                     {selectedContacts.length > 1
                       ? translate('{{count}} contacts sélectionnés', { count: selectedContacts.length })
                       : translate('{{count}} contact sélectionné', { count: selectedContacts.length })}
                   </Text>
-                  <Button size="small" onClick={() => setSelectedContacts([])}>
+                  <Button size={isDesktop ? 'small' : 'middle'} onClick={() => setSelectedContacts([])}>
                     {translate('Désélectionner tout')}
                   </Button>
                 </Space>
               </Col>
               <Col xs={24} sm={12} style={{ textAlign: 'end' }}>
-                <Button type="primary" icon={<TagOutlined />} onClick={() => setShowBulkTagManager(true)}>
+                <Button
+                  type="primary"
+                  icon={<TagOutlined />}
+                  block={!isDesktop}
+                  onClick={() => setShowBulkTagManager(true)}
+                >
                   {translate('Gérer les tags')}
                 </Button>
               </Col>
@@ -529,60 +670,43 @@ export const Contacts: React.FC = () => {
           </Card>
         )}
 
-        {/* Table View : la barre de recherche reste affichée même sans ligne. */}
+        {/* La barre de recherche reste affichée même sans ligne, en tableau comme en cartes. */}
         <Card>
-          <div {...helpAnchor('contacts-tableau')}>
-            <Table
-              helpId="commercial.contacts.liste.tableau"
-              search={search.searchProps}
-              exportFilename={translate('Contacts')}
-              // Export de TOUS les contacts, avec les mêmes critères que la liste affichée.
-              exportFetchAll={() =>
-                collectAllPages<CrmContact>(async (page, limit) => {
-                  const reponse = await listContacts(
-                    tenantId as string,
-                    {
-                      ...search.filterParams,
-                      page,
-                      limit
-                    } as ContactFilters
-                  );
-                  return { items: reponse.contacts ?? [], total: reponse.pagination?.total ?? 0 };
-                })
-              }
-              columns={columns}
-              dataSource={contacts}
-              rowKey="id"
-              loading={loading}
-              rowSelection={rowSelection}
-              pagination={search.tablePagination(pagination.total)}
-              scroll={{ x: 'max-content' }}
-              rowClassName={record => (selectedContacts.includes(record.id) ? 'ant-table-row-selected' : '')}
-              // Sans critère : invitation à créer. Sous critère, la Table affiche seule « Aucun résultat ».
-              locale={
-                search.isFiltered || search.page > 1
-                  ? undefined
-                  : {
-                      emptyText: (
-                        <Empty
-                          image={<UserOutlined style={{ fontSize: 64, color: '#bfbfbf' }} />}
-                          imageStyle={{ height: 64 }}
-                          description={
-                            <Space direction="vertical" size="small">
-                              <Text strong>{translate('Aucun contact trouvé')}</Text>
-                              <Text type="secondary">{translate('Commencez par créer votre premier contact.')}</Text>
-                            </Space>
-                          }
-                        >
-                          <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowForm(true)}>
-                            {translate('Créer un contact')}
-                          </Button>
-                        </Empty>
-                      )
-                    }
-              }
-            />
-          </div>
+          {isDesktop ? (
+            <div {...helpAnchor('contacts-tableau')}>
+              <Table
+                helpId="commercial.contacts.liste.tableau"
+                search={search.searchProps}
+                exportFilename={translate('Contacts')}
+                // Export de TOUS les contacts, avec les mêmes critères que la liste affichée.
+                exportFetchAll={() =>
+                  collectAllPages<CrmContact>(async (page, limit) => {
+                    const reponse = await listContacts(
+                      tenantId as string,
+                      {
+                        ...search.filterParams,
+                        page,
+                        limit
+                      } as ContactFilters
+                    );
+                    return { items: reponse.contacts ?? [], total: reponse.pagination?.total ?? 0 };
+                  })
+                }
+                columns={columns}
+                dataSource={contacts}
+                rowKey="id"
+                loading={loading}
+                rowSelection={rowSelection}
+                pagination={search.tablePagination(pagination.total)}
+                scroll={{ x: 'max-content' }}
+                rowClassName={record => (selectedContacts.includes(record.id) ? 'ant-table-row-selected' : '')}
+                // Sans critère : invitation à créer. Sous critère, la Table affiche seule « Aucun résultat ».
+                locale={tableLocale}
+              />
+            </div>
+          ) : (
+            mobileList
+          )}
         </Card>
 
         {/* Bulk Tag Manager Modal */}

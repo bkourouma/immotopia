@@ -46,7 +46,8 @@ import {
   updateSubscriptionItem,
   type ExtensionRequest
 } from '../../../services/subscription-extras-service';
-import { StatusTag, MoneyValue, Table, useConfirmAction } from '../../primitives';
+import { StatusTag, MoneyValue, Table, useConfirmAction, StateBlock, SkeletonDetail } from '../../primitives';
+import { useBreakpoint } from '../../../hooks/useBreakpoint';
 import { ReasonPromptModal } from '../ReasonPromptModal';
 import { isExtensionAllowed } from '../../../utils/extension-rules';
 import { activeLocale } from '../../../i18n/format';
@@ -400,6 +401,8 @@ const ExtensionRequestsSection: React.FC<{
   tenantId: string;
   onCloseRequest: (request: ExtensionRequest, status: 'HANDLED' | 'DECLINED') => void;
 }> = ({ tenantId, onCloseRequest }) => {
+  const { isDesktop } = useBreakpoint();
+  const touchStyle = isDesktop ? undefined : { minHeight: 44 };
   const [requests, setRequests] = useState<ExtensionRequest[] | undefined>(undefined);
 
   useEffect(() => {
@@ -472,10 +475,10 @@ const ExtensionRequestsSection: React.FC<{
           render: (_, r) =>
             r.status === 'OPEN' ? (
               <Space wrap>
-                <Button size="small" type="primary" onClick={() => onCloseRequest(r, 'HANDLED')}>
+                <Button size="small" type="primary" style={touchStyle} onClick={() => onCloseRequest(r, 'HANDLED')}>
                   {t('Marquer traitée')}
                 </Button>
-                <Button size="small" onClick={() => onCloseRequest(r, 'DECLINED')}>
+                <Button size="small" style={touchStyle} onClick={() => onCloseRequest(r, 'DECLINED')}>
                   {t('Refuser')}
                 </Button>
               </Space>
@@ -491,6 +494,9 @@ const ExtensionRequestsSection: React.FC<{
 export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }> = ({ tenantId, tenantName }) => {
   const { message, modal } = App.useApp();
   const confirmAction = useConfirmAction();
+  // Cibles tactiles d'au moins 44 px sous 992 px.
+  const { isDesktop } = useBreakpoint();
+  const touchStyle = isDesktop ? undefined : { minHeight: 44 };
   const [overview, setOverview] = useState<SubscriptionOverview | null>(null);
   const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
   // Sections repliables : leurs requêtes ne partent qu'à l'ouverture (voir
@@ -791,15 +797,11 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
   };
 
   if (loading) {
-    return (
-      <div style={{ textAlign: 'center', padding: 'var(--space-8) 0' }}>
-        <Spin />
-      </div>
-    );
+    return <SkeletonDetail aria-label={t("Chargement de l'abonnement")} />;
   }
 
   if (error) {
-    return <Alert type="error" showIcon message={error} action={<Button onClick={load}>{t('Réessayer')}</Button>} />;
+    return <StateBlock variant="error" description={error} onRetry={() => void load()} />;
   }
 
   if (!overview) {
@@ -876,20 +878,20 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
           <Text type="secondary">—</Text>
         ) : (
           <Space wrap>
-            <Button size="small" onClick={() => handleEditDiscount(item)}>
+            <Button size="small" style={touchStyle} onClick={() => handleEditDiscount(item)}>
               {t('Modifier')}
             </Button>
             {(item.code === 'PATRIMOINE_ESSENTIEL' || item.code === 'PATRIMOINE_PRO') && (
-              <Button size="small" loading={tierChangeSaving} onClick={() => handleChangeTier(item)}>
+              <Button size="small" loading={tierChangeSaving} style={touchStyle} onClick={() => handleChangeTier(item)}>
                 {item.code === 'PATRIMOINE_ESSENTIEL' ? t('Passer au Pro') : t("Passer à l'Essentiel")}
               </Button>
             )}
             {!item.endsAt && (
-              <Button size="small" onClick={() => handleRemoveAtEnd(item)}>
+              <Button size="small" style={touchStyle} onClick={() => handleRemoveAtEnd(item)}>
                 {t('Retirer à l’échéance')}
               </Button>
             )}
-            <Button size="small" danger onClick={() => handleRemoveNow(item)}>
+            <Button size="small" danger style={touchStyle} onClick={() => handleRemoveNow(item)}>
               {t('Retirer immédiatement')}
             </Button>
           </Space>
@@ -929,7 +931,7 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
       key: 'actions',
       render: (_, o) =>
         !o.revokedAt && (
-          <Button size="small" danger onClick={() => handleRevokeOverride(o)}>
+          <Button size="small" danger style={touchStyle} onClick={() => handleRevokeOverride(o)}>
             {t('Révoquer')}
           </Button>
         )
@@ -966,7 +968,7 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
             <Space>
               {subscription.trialEndsAt ? formatDateTime(subscription.trialEndsAt) : t('hors essai')}
               {subscription.status === 'TRIALING' && (
-                <Button size="small" type="link" onClick={handleExtendTrial}>
+                <Button size="small" type="link" style={touchStyle} onClick={handleExtendTrial}>
                   {t('Prolonger')}
                 </Button>
               )}
@@ -1010,7 +1012,12 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
             message={
               <Space wrap>
                 <span>{t('Lecture seule (manuelle)')}</span>
-                <Button size="small" loading={manualReadOnlySaving} onClick={handleClearManualReadOnly}>
+                <Button
+                  size="small"
+                  loading={manualReadOnlySaving}
+                  style={touchStyle}
+                  onClick={handleClearManualReadOnly}
+                >
                   {t('Lever la lecture seule')}
                 </Button>
               </Space>
@@ -1030,7 +1037,13 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
         )}
         <div style={{ marginTop: 'var(--space-3)' }}>
           {!entitlements.manualReadOnlyReason && (
-            <Button size="small" danger loading={manualReadOnlySaving} onClick={handleSetManualReadOnly}>
+            <Button
+              size="small"
+              danger
+              loading={manualReadOnlySaving}
+              style={touchStyle}
+              onClick={handleSetManualReadOnly}
+            >
               {t('Passer en lecture seule')}
             </Button>
           )}
@@ -1045,7 +1058,7 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
           />
         }
         extra={
-          <Button size="small" onClick={() => setOverrideOpen(true)}>
+          <Button size="small" style={touchStyle} onClick={() => setOverrideOpen(true)}>
             {t('Accorder une dérogation')}
           </Button>
         }

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Alert, Button, Input, Space, Tag, Typography } from 'antd';
 import { CheckCircleFilled, CopyOutlined, MailOutlined } from '@ant-design/icons';
@@ -83,11 +83,22 @@ export const TenantCreatedResult: React.FC<TenantCreatedResultProps> = ({
   onClose
 }) => {
   const navigate = useNavigate();
+  const [copied, setCopied] = useState(false);
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (copiedTimer.current) clearTimeout(copiedTimer.current);
+    },
+    []
+  );
 
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(result.invitation.acceptUrl);
       feedback.success(t('Lien copié.'));
+      setCopied(true);
+      if (copiedTimer.current) clearTimeout(copiedTimer.current);
+      copiedTimer.current = setTimeout(() => setCopied(false), 2500);
     } catch {
       feedback.error(t('Impossible de copier le lien — copiez-le manuellement.'));
     }
@@ -166,12 +177,27 @@ export const TenantCreatedResult: React.FC<TenantCreatedResultProps> = ({
           {t("Lien d'invitation")}
         </Title>
         {result.invitation.acceptUrl ? (
-          <Space.Compact style={{ width: '100%' }}>
-            <Input readOnly value={result.invitation.acceptUrl} />
-            <Button icon={<CopyOutlined />} onClick={handleCopy}>
-              {t('Copier')}
-            </Button>
-          </Space.Compact>
+          <>
+            <Space.Compact style={{ width: '100%' }}>
+              <Input
+                readOnly
+                value={result.invitation.acceptUrl}
+                aria-label={t("Lien d'invitation")}
+                style={{ minHeight: 44 }}
+              />
+              <Button
+                icon={copied ? <CheckCircleFilled /> : <CopyOutlined />}
+                onClick={handleCopy}
+                aria-label={t("Copier le lien d'invitation")}
+                style={{ minHeight: 44 }}
+              >
+                {copied ? t('Copié') : t('Copier')}
+              </Button>
+            </Space.Compact>
+            <Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
+              {t('Copiez ce lien maintenant : il ne sera plus affiché une fois ce panneau fermé.')}
+            </Text>
+          </>
         ) : (
           <Text type="secondary" style={{ display: 'block' }}>
             {t(

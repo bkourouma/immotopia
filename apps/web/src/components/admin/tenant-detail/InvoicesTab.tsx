@@ -36,6 +36,7 @@ import {
 } from '../../../services/platform-billing-service';
 import { setSubscriptionManualReadOnly } from '../../../services/subscription-v2-service';
 import { formatMoney, StatusTag, Table, useConfirmAction } from '../../primitives';
+import { useBreakpoint } from '../../../hooks/useBreakpoint';
 import { collectAllPages } from '../../../utils/table-export/collect';
 import { useListSearch } from '../../../hooks/useListSearch';
 import { platformInvoiceCriteria } from '../../subscription/platform-invoice-criteria';
@@ -100,6 +101,9 @@ function errorMessage(err: any, fallback: string): string {
 export const InvoicesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const { message } = App.useApp();
   const confirmAction = useConfirmAction();
+  // Cibles tactiles d'au moins 44 px sous 992 px.
+  const { isDesktop } = useBreakpoint();
+  const touchStyle = isDesktop ? undefined : { minHeight: 44 };
   const [invoices, setInvoices] = useState<PlatformInvoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
@@ -267,7 +271,7 @@ export const InvoicesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       dataIndex: 'invoiceNumber',
       key: 'number',
       render: (v: string | null, r) => (
-        <Button type="link" style={{ padding: 0 }} onClick={() => openDetail(r)}>
+        <Button type="link" style={{ padding: 0, ...touchStyle }} onClick={() => openDetail(r)}>
           {v ?? t('Brouillon')}
         </Button>
       )
@@ -302,19 +306,19 @@ export const InvoicesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       align: 'end',
       render: (_, r) => (
         <Space wrap>
-          <Button size="small" icon={<FilePdfOutlined />} onClick={() => handlePdf(r)}>
+          <Button size="small" style={touchStyle} icon={<FilePdfOutlined />} onClick={() => handlePdf(r)}>
             {t('PDF')}
           </Button>
-          <Button size="small" onClick={() => handlePdf(r, 'ar')}>
+          <Button size="small" style={touchStyle} onClick={() => handlePdf(r, 'ar')}>
             {t('Traduction arabe')}
           </Button>
           {r.status === 'DRAFT' && (
-            <Button size="small" onClick={() => handleIssue(r)}>
+            <Button size="small" style={touchStyle} onClick={() => handleIssue(r)}>
               {t('Émettre')}
             </Button>
           )}
           {PAYABLE_STATUSES.includes(r.status) && r.nature !== 'CREDIT_NOTE' && (
-            <Button size="small" type="primary" onClick={() => openPay(r)}>
+            <Button size="small" type="primary" style={touchStyle} onClick={() => openPay(r)}>
               {t('Marquer payée')}
             </Button>
           )}
@@ -322,6 +326,7 @@ export const InvoicesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
             <Button
               size="small"
               danger
+              style={touchStyle}
               onClick={() => {
                 setCrediting(r);
                 creditForm.setFieldsValue({ reason: '', reissuePending: false });
@@ -334,6 +339,7 @@ export const InvoicesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
             <Button
               size="small"
               danger
+              style={touchStyle}
               onClick={() => {
                 setLockingInvoice(r);
                 lockForm.setFieldsValue({ reason: '' });

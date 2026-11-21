@@ -10,9 +10,9 @@ import {
   Member
 } from '../../services/membership-service';
 import apiClient from '../../utils/api-client';
-import { ArrowLeft, Edit, Key, LogOut, UserX, UserCheck, Users } from 'lucide-react';
-import { App, Typography } from 'antd';
-import { useConfirmAction } from '../../components/primitives';
+import { Edit, Key, LogOut, UserX, UserCheck } from 'lucide-react';
+import { App, Button, Input, Modal, Typography } from 'antd';
+import { PageHeader, SkeletonDetail, StateBlock, StatusTag, useConfirmAction } from '../../components/primitives';
 import { t } from '../../i18n/t';
 import { HelpSectionTitle } from '../../help';
 
@@ -25,16 +25,20 @@ interface Role {
 }
 
 export const AdminCollaboratorDetail: React.FC = () => {
-  const { message, modal } = App.useApp();
+  const { message } = App.useApp();
   const confirmAction = useConfirmAction();
   const { tenantId, userId } = useParams<{ tenantId: string; userId: string }>();
   const navigate = useNavigate();
   const [member, setMember] = useState<Member | null>(null);
   const [availableRoles, setAvailableRoles] = useState<Role[]>([]);
+  const [rolesLoading, setRolesLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [revealedPassword, setRevealedPassword] = useState<string | null>(null);
+  const [passwordShown, setPasswordShown] = useState(false);
+  const [passwordCopied, setPasswordCopied] = useState(false);
 
   useEffect(() => {
     if (tenantId && userId) {
@@ -70,8 +74,26 @@ export const AdminCollaboratorDetail: React.FC = () => {
       }
     } catch (err) {
       console.error('Error loading roles:', err);
+    } finally {
+      setRolesLoading(false);
     }
   };
+
+  const initialRoleIds = member ? member.roles.map(r => r.id) : [];
+  const rolesDirty =
+    member !== null &&
+    (selectedRoleIds.length !== initialRoleIds.length || selectedRoleIds.some(id => !initialRoleIds.includes(id)));
+
+  // Garde de sortie : un changement de rôle non enregistré ne se perd pas en silence.
+  useEffect(() => {
+    if (!rolesDirty) return undefined;
+    const avertir = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', avertir);
+    return () => window.removeEventListener('beforeunload', avertir);
+  }, [rolesDirty]);
 
   const handleSaveRoles = async () => {
     if (!tenantId || !userId) return;
@@ -87,10 +109,28 @@ export const AdminCollaboratorDetail: React.FC = () => {
     }
   };
 
+  const copyPassword = async () => {
+    if (!revealedPassword) return;
+    try {
+      await navigator.clipboard.writeText(revealedPassword);
+      setPasswordCopied(true);
+    } catch {
+      message.error(t('Copie impossible : affichez le mot de passe et copiez-le à la main.'));
+    }
+  };
+
+  const closePasswordModal = () => {
+    setRevealedPassword(null);
+    setPasswordShown(false);
+    setPasswordCopied(false);
+  };
+
   const handleResetPassword = () => {
     if (!tenantId || !userId) return;
     confirmAction({
-      title: t('Réinitialiser le mot de passe de {{value}} ?', { value: member?.user?.fullName ?? 'ce collaborateur' }),
+      title: t('Réinitialiser le mot de passe de {{value}} ?', {
+        value: member?.user?.fullName ?? t('ce collaborateur')
+      }),
       description: t("Un email sera envoyé à l'utilisateur."),
       okText: t('Réinitialiser'),
       danger: true,
@@ -99,23 +139,11 @@ export const AdminCollaboratorDetail: React.FC = () => {
           const response = await resetMemberPassword(tenantId, userId, { sendEmail: true });
           const newPassword = response.data?.newPassword;
           if (newPassword) {
-            // Le mot de passe régénéré était affiché dans un dialogue natif :
-            // ni copiable, ni masquable, ni journalisable (§5.7). Il passe par
-            // une modale AntD avec bouton de copie.
-            modal.info({
-              title: t('Nouveau mot de passe'),
-              content: (
-                <div>
-                  <Typography.Paragraph copyable={{ text: newPassword }} code>
-                    {newPassword}
-                  </Typography.Paragraph>
-                  <Typography.Text type="secondary">
-                    {t("Un email a été envoyé à l'utilisateur. Ce mot de passe ne sera plus affiché.")}
-                  </Typography.Text>
-                </div>
-              ),
-              okText: t('Fermer')
-            });
+            // Le mot de passe régénéré est masqué par défaut, copiable, et
+            // annoncé comme affiché une seule fois.
+            setPasswordShown(false);
+            setPasswordCopied(false);
+            setRevealedPassword(newPassword);
           } else {
             message.success(t("Mot de passe réinitialisé. Un email a été envoyé à l'utilisateur."));
           }
@@ -129,7 +157,9 @@ export const AdminCollaboratorDetail: React.FC = () => {
   const handleRevokeSessions = () => {
     if (!tenantId || !userId) return;
     confirmAction({
-      title: t('Révoquer toutes les sessions de ce collaborateur ?'),
+      title: t('Révoquer toutes les sessions de {{value}} ?', {
+        value: member?.user?.fullName ?? t('ce collaborateur')
+      }),
       description: t('Il devra se reconnecter sur tous ses appareils.'),
       okText: t('Révoquer'),
       danger: true,
@@ -147,9 +177,13 @@ export const AdminCollaboratorDetail: React.FC = () => {
   const handleToggleStatus = () => {
     if (!tenantId || !userId || !member) return;
     const disabling = member.status === 'ACTIVE';
+    const name = member.user?.fullName ?? t('ce collaborateur');
     confirmAction({
-      title: `${disabling ? t('Désactiver') : 'Activer'} ${member.user?.fullName ?? 'ce collaborateur'} ?`,
-      okText: disabling ? t('Désactiver') : 'Activer',
+      title: disabling ? t('Désactiver {{value}} ?', { value: name }) : t('Activer {{value}} ?', { value: name }),
+      description: disabling
+        ? t('Il ne pourra plus se connecter tant que le compte reste désactivé.')
+        : t('Il pourra de nouveau se connecter.'),
+      okText: disabling ? t('Désactiver') : t('Activer'),
       danger: disabling,
       onConfirm: async () => {
         try {
@@ -167,127 +201,103 @@ export const AdminCollaboratorDetail: React.FC = () => {
     });
   };
 
-  const getStatusBadge = (status: string) => {
-    const styles = {
-      ACTIVE: 'bg-green-100 text-green-800',
-      PENDING_INVITE: 'bg-yellow-100 text-yellow-800',
-      DISABLED: 'bg-red-100 text-red-800'
-    };
-    const labels = {
-      ACTIVE: 'Actif',
-      PENDING_INVITE: t('Invitation en attente'),
-      DISABLED: 'Desactive'
-    };
-    return (
-      <span
-        className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-          styles[status as keyof typeof styles] || styles.DISABLED
-        }`}
-      >
-        {labels[status as keyof typeof labels] || status}
-      </span>
-    );
-  };
-
-  if (loading) {
-    return (
-      <>
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-        </div>
-      </>
-    );
+  if (loading && !member) {
+    return <SkeletonDetail />;
   }
 
   if (error || !member) {
     return (
-      <>
-        <div className="bg-red-50 border border-red-200 rounded-md p-4">
-          <p className="text-sm text-red-800">{error || t('Collaborateur introuvable')}</p>
-        </div>
-      </>
+      <StateBlock
+        variant="error"
+        title={t('Collaborateur introuvable')}
+        description={error || t('Collaborateur introuvable')}
+        actions={[
+          { label: t('Réessayer'), onClick: () => void loadMember(), primary: true },
+          { label: t("Retour à l'agence"), onClick: () => navigate(`/admin/tenants/${tenantId}`) }
+        ]}
+      />
     );
+  }
+
+  const memberName = member.user.fullName || member.user.email;
+  const isActive = member.status === 'ACTIVE';
+  const statusTag =
+    member.status === 'ACTIVE' ? (
+      <StatusTag status="ACTIVE" label={t('Actif')} />
+    ) : member.status === 'PENDING_INVITE' ? (
+      <StatusTag status="PENDING" label={t('Invitation en attente')} />
+    ) : (
+      <StatusTag status="INACTIVE" tone="danger" label={t('Désactivé')} />
+    );
+
+  const infoRows: Array<[string, React.ReactNode]> = [
+    [t('Email'), member.user.email],
+    [t('Nom complet'), member.user.fullName || '-'],
+    [t('Email vérifié'), member.user.emailVerified ? t('Oui') : t('Non')],
+    [
+      t('Dernière connexion'),
+      member.user.lastLoginAt ? new Date(member.user.lastLoginAt).toLocaleString(activeLocale()) : t('Jamais')
+    ],
+    [t('Membre depuis'), new Date(member.createdAt).toLocaleDateString(activeLocale())]
+  ];
+  if (member.invitedAt) {
+    infoRows.push([t('Invité le'), new Date(member.invitedAt).toLocaleDateString(activeLocale())]);
   }
 
   return (
     <>
       <div className="space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => navigate(`/admin/tenants/${tenantId}`)}
-              className="text-gray-600 hover:text-gray-900"
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </button>
-            <div className="flex items-center gap-3">
-              <div className="h-12 w-12 rounded-full bg-primary-bg flex items-center justify-center">
-                <Users className="h-7 w-7 text-primary" />
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold text-slate-900">{member.user.fullName || member.user.email}</h1>
-                <p className="mt-1 text-sm text-slate-600">{member.user.email}</p>
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">{getStatusBadge(member.status)}</div>
-        </div>
+        <PageHeader
+          title={memberName}
+          subtitle={
+            <span className="inline-flex flex-wrap items-center gap-2">
+              {member.user.email} {statusTag}
+            </span>
+          }
+          breadcrumbs={[
+            { label: t('Agences'), to: '/admin/tenants' },
+            { label: t("Retour à l'agence"), to: `/admin/tenants/${tenantId}` },
+            { label: memberName }
+          ]}
+          primaryAction={{
+            label: t('Enregistrer les rôles'),
+            icon: <Edit className="h-4 w-4" />,
+            onClick: () => void handleSaveRoles(),
+            loading: saving,
+            disabled: !rolesDirty,
+            disabledReason: t('Aucun changement de rôle à enregistrer')
+          }}
+        />
 
-        {/* User Info */}
         <div className="bg-white rounded-lg shadow p-6 space-y-6">
           <h2 className="text-lg font-medium text-gray-900">{t('Informations')}</h2>
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">{t('Email')}</label>
-              <p className="mt-1 text-sm text-gray-900">{member.user.email}</p>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">{t('Nom complet')}</label>
-              <p className="mt-1 text-sm text-gray-900">{member.user.fullName || '-'}</p>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">{t('Email verifie')}</label>
-              <p className="mt-1 text-sm text-gray-900">{member.user.emailVerified ? t('Oui') : t('Non')}</p>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">{t('Derniere connexion')}</label>
-              <p className="mt-1 text-sm text-gray-900">
-                {member.user.lastLoginAt
-                  ? new Date(member.user.lastLoginAt).toLocaleString(activeLocale())
-                  : t('Jamais')}
-              </p>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">{t('Membre depuis')}</label>
-              <p className="mt-1 text-sm text-gray-900">
-                {new Date(member.createdAt).toLocaleDateString(activeLocale())}
-              </p>
-            </div>
-            {member.invitedAt && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700">{t('Invite le')}</label>
-                <p className="mt-1 text-sm text-gray-900">
-                  {new Date(member.invitedAt).toLocaleDateString(activeLocale())}
-                </p>
+          <dl className="grid grid-cols-1 gap-6 md:grid-cols-2">
+            {infoRows.map(([label, value]) => (
+              <div key={label}>
+                <dt className="block text-sm font-medium text-gray-700">{label}</dt>
+                <dd className="mt-1 text-sm text-gray-900 break-words">{value}</dd>
               </div>
-            )}
-          </div>
+            ))}
+          </dl>
         </div>
 
-        {/* Roles */}
         <div className="bg-white rounded-lg shadow p-6 space-y-4">
           <h2 className="text-lg font-medium text-gray-900">
-            <HelpSectionTitle title={t('Roles')} helpId="administration.plateforme-agences.collaborateur.roles" />
+            <HelpSectionTitle title={t('Rôles')} helpId="administration.plateforme-agences.collaborateur.roles" />
           </h2>
-          {availableRoles.length === 0 ? (
-            <p className="text-sm text-gray-500">{t('Chargement des roles...')}</p>
+          {rolesLoading ? (
+            <p className="text-sm text-gray-500" role="status">
+              {t('Chargement des rôles...')}
+            </p>
+          ) : availableRoles.length === 0 ? (
+            <p className="text-sm text-gray-500">{t('Aucun rôle disponible pour le moment.')}</p>
           ) : (
             <div className="space-y-2">
               {availableRoles.map(role => (
                 <label
                   key={role.id}
                   className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer"
+                  style={{ minHeight: 44 }}
                 >
                   <input
                     type="checkbox"
@@ -299,7 +309,7 @@ export const AdminCollaboratorDetail: React.FC = () => {
                         setSelectedRoleIds(selectedRoleIds.filter(id => id !== role.id));
                       }
                     }}
-                    className="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded"
+                    className="h-5 w-5 text-primary focus:ring-primary border-gray-300 rounded"
                   />
                   <div className="ms-3">
                     <div className="text-sm font-medium text-gray-900">{role.name}</div>
@@ -307,61 +317,83 @@ export const AdminCollaboratorDetail: React.FC = () => {
                   </div>
                 </label>
               ))}
-              <button
-                onClick={handleSaveRoles}
-                disabled={saving}
-                className="mt-4 inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary hover:bg-primary-hover disabled:opacity-50"
-              >
-                <Edit className="h-4 w-4 me-2" />
-                {saving ? 'Enregistrement...' : t('Enregistrer les roles')}
-              </button>
+              <div className="flex flex-wrap items-center gap-3 pt-2">
+                <Button
+                  type="primary"
+                  onClick={() => void handleSaveRoles()}
+                  loading={saving}
+                  disabled={!rolesDirty}
+                  style={{ minHeight: 44 }}
+                >
+                  {saving ? t('Enregistrement...') : t('Enregistrer les rôles')}
+                </Button>
+                {rolesDirty && (
+                  <Typography.Text type="warning" role="status">
+                    {t('Modifications non enregistrées')}
+                  </Typography.Text>
+                )}
+              </div>
             </div>
           )}
         </div>
 
-        {/* Actions */}
         <div className="bg-white rounded-lg shadow p-6 space-y-4">
           <h2 className="text-lg font-medium text-gray-900">
             <HelpSectionTitle title={t('Actions')} helpId="administration.plateforme-agences.collaborateur.actions" />
           </h2>
-          <div className="flex flex-wrap gap-4">
-            <button
-              onClick={handleResetPassword}
-              className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-            >
-              <Key className="h-4 w-4 me-2" />
-              {t('Reinitialiser le mot de passe')}
-            </button>
-            <button
-              onClick={handleRevokeSessions}
-              className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-            >
-              <LogOut className="h-4 w-4 me-2" />
-              {t('Revoquer les sessions')}
-            </button>
-            <button
+          <div className="flex flex-wrap gap-3">
+            <Button icon={<Key className="h-4 w-4" />} onClick={handleResetPassword} style={{ minHeight: 44 }}>
+              {t('Réinitialiser le mot de passe')}
+            </Button>
+            <Button icon={<LogOut className="h-4 w-4" />} onClick={handleRevokeSessions} style={{ minHeight: 44 }}>
+              {t('Révoquer les sessions')}
+            </Button>
+            <Button
+              danger={isActive}
+              icon={isActive ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
               onClick={handleToggleStatus}
-              className={`inline-flex items-center px-4 py-2 border rounded-md shadow-sm text-sm font-medium ${
-                member.status === 'ACTIVE'
-                  ? 'border-red-300 text-red-700 bg-white hover:bg-red-50'
-                  : 'border-green-300 text-green-700 bg-white hover:bg-green-50'
-              }`}
+              style={{ minHeight: 44 }}
             >
-              {member.status === 'ACTIVE' ? (
-                <>
-                  <UserX className="h-4 w-4 me-2" />
-                  {t('Desactiver le compte')}
-                </>
-              ) : (
-                <>
-                  <UserCheck className="h-4 w-4 me-2" />
-                  {t('Activer le compte')}
-                </>
-              )}
-            </button>
+              {isActive ? t('Désactiver le compte') : t('Activer le compte')}
+            </Button>
           </div>
         </div>
       </div>
+
+      <Modal
+        open={revealedPassword !== null}
+        title={t('Nouveau mot de passe')}
+        onCancel={closePasswordModal}
+        mask={{ closable: false }}
+        footer={
+          <Button type="primary" onClick={closePasswordModal} style={{ minHeight: 44 }}>
+            {t('Fermer')}
+          </Button>
+        }
+      >
+        <div className="space-y-3">
+          <Typography.Text type="warning" strong>
+            {t('Ce mot de passe ne sera plus affiché une fois cette fenêtre fermée.')}
+          </Typography.Text>
+          <Input
+            readOnly
+            dir="ltr"
+            aria-label={t('Nouveau mot de passe')}
+            type={passwordShown ? 'text' : 'password'}
+            value={revealedPassword ?? ''}
+            style={{ minHeight: 44 }}
+          />
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => setPasswordShown(v => !v)} style={{ minHeight: 44 }}>
+              {passwordShown ? t('Masquer') : t('Afficher')}
+            </Button>
+            <Button onClick={() => void copyPassword()} style={{ minHeight: 44 }}>
+              {passwordCopied ? t('Copié') : t('Copier')}
+            </Button>
+          </div>
+          <Typography.Text type="secondary">{t("Un email a été envoyé à l'utilisateur.")}</Typography.Text>
+        </div>
+      </Modal>
     </>
   );
 };

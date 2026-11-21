@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Button, Card, Modal, Popconfirm, Select, Space, Spin, Typography } from 'antd';
+import { Button, Card, Modal, Select, Space, Typography } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { PropertyOwnershipType } from '../../types/property-types';
 import type { PropertyMandate } from '../../types/property-types';
@@ -8,7 +8,8 @@ import { listContacts } from '../../services/crm-service';
 import { contactDisplayName } from '../../utils/contact-display';
 import { PropertyMandateForm } from './PropertyMandateForm';
 import { MandateSignatures } from '../signature/MandateSignatures';
-import { Table } from '../primitives';
+import { ConfirmAction, SkeletonList, StateBlock, Table } from '../primitives';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { apiErrorMessage } from '../patrimoine/patrimoine-labels';
 import { feedback } from '../../lib/feedback';
 import { activeLocale } from '../../i18n/format';
@@ -109,7 +110,7 @@ const ConfierAUnProprietaire: React.FC<{ tenantId: string; propertyId: string; o
           onChange={setEmail}
           options={contacts.map(contact => ({ value: contact.email, label: contact.label }))}
         />
-        <Button type="primary" disabled={!email} loading={saving} onClick={confier}>
+        <Button type="primary" disabled={!email || saving} loading={saving} onClick={confier}>
           {t('Confier ce bien')}
         </Button>
       </Space>
@@ -127,12 +128,17 @@ const MandatsDuBien: React.FC<Pick<Props, 'tenantId' | 'propertyId' | 'ownerName
   const [creating, setCreating] = useState(false);
   const [revokingId, setRevokingId] = useState<string | null>(null);
   const [signaturesFor, setSignaturesFor] = useState<MandateRow | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const { isMobile } = useBreakpoint();
 
   const load = useCallback(async () => {
+    setLoadError(null);
     try {
       setMandates((await getPropertyMandates(tenantId, propertyId)) as MandateRow[]);
     } catch (error) {
-      feedback.error(apiErrorMessage(error, t('Impossible de charger les mandats.')));
+      const text = apiErrorMessage(error, t('Impossible de charger les mandats.'));
+      setLoadError(text);
+      feedback.error(text);
     } finally {
       setLoading(false);
     }
@@ -155,7 +161,20 @@ const MandatsDuBien: React.FC<Pick<Props, 'tenantId' | 'propertyId' | 'ownerName
     }
   };
 
-  if (loading) return <Spin />;
+  if (loading) return <SkeletonList rows={2} aria-label={t('Chargement des mandats')} />;
+  if (loadError) {
+    return (
+      <StateBlock
+        variant="error"
+        title={t('Impossible de charger les mandats')}
+        description={loadError}
+        onRetry={() => {
+          setLoading(true);
+          void load();
+        }}
+      />
+    );
+  }
 
   const hasActive = mandates.some(mandate => mandate.isActive);
 
@@ -222,11 +241,19 @@ const MandatsDuBien: React.FC<Pick<Props, 'tenantId' | 'propertyId' | 'ownerName
                     <Button size="small" onClick={() => setSignaturesFor(record)}>
                       {t('Signatures')}
                     </Button>
-                    <Popconfirm title={t('Résilier ce mandat ?')} onConfirm={() => revoke(record.id)}>
-                      <Button danger size="small" loading={revokingId === record.id}>
+                    <ConfirmAction
+                      title={t('Résilier le mandat de {{nom}} ?', {
+                        nom: record.owner?.fullName || ownerName || record.owner?.email || t('ce propriétaire')
+                      })}
+                      description={t("L'agence ne gérera plus ce bien. Vous pourrez créer un nouveau mandat ensuite.")}
+                      okText={t('Résilier')}
+                      danger
+                      onConfirm={() => revoke(record.id)}
+                    >
+                      <Button danger size="small" loading={revokingId === record.id} disabled={revokingId !== null}>
                         {t('Résilier')}
                       </Button>
-                    </Popconfirm>
+                    </ConfirmAction>
                   </Space>
                 ) : (
                   <Text type="secondary">{t('Résilié')}</Text>
@@ -239,7 +266,8 @@ const MandatsDuBien: React.FC<Pick<Props, 'tenantId' | 'propertyId' | 'ownerName
         open={signaturesFor !== null}
         title={t('Signatures du mandat de gestion')}
         footer={null}
-        width={720}
+        width={isMobile ? '100%' : 720}
+        style={isMobile ? { top: 0, maxWidth: '100vw', margin: 0 } : undefined}
         destroyOnHidden
         onCancel={() => {
           setSignaturesFor(null);

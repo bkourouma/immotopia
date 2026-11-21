@@ -66,7 +66,7 @@ export function UnsubscribePage() {
   if (status === 'loading') {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Spin size="large" tip="Chargement..." />
+        <Spin size="large" tip={t('Chargement...')} />
       </div>
     );
   }

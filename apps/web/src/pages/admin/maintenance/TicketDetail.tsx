@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { App, Card, Typography, Space, Button, Spin, Divider, Input, Select, Form } from 'antd';
-import { ArrowLeftOutlined, SaveOutlined, SendOutlined } from '@ant-design/icons';
+import { Alert, App, Card, Typography, Space, Button, Divider, Input, Select, Form } from 'antd';
+import { SaveOutlined, SendOutlined } from '@ant-design/icons';
+import { PageHeader, SkeletonDetail, StateBlock, useConfirmAction } from '../../../components/primitives';
 import { TicketStatusBadge } from '../../../components/maintenance/TicketStatusBadge';
 import { TicketTimeline } from '../../../components/maintenance/TicketTimeline';
 import { CommentThread } from '../../../components/maintenance/CommentThread';
@@ -24,17 +25,17 @@ const { TextArea } = Input;
 const { Option } = Select;
 
 const categoryLabels: Record<string, string> = localizedRecord(() => ({
-  PLUMBING: 'Plomberie',
+  PLUMBING: t('Plomberie'),
   ELECTRICITY: t('Électricité'),
-  AC: 'Climatisation',
-  OTHER: 'Autre'
+  AC: t('Climatisation'),
+  OTHER: t('Autre')
 }));
 
 const priorityLabels: Record<string, string> = localizedRecord(() => ({
-  LOW: 'Faible',
-  MEDIUM: 'Moyenne',
+  LOW: t('Faible'),
+  MEDIUM: t('Moyenne'),
   HIGH: t('Élevée'),
-  URGENT: 'Urgente'
+  URGENT: t('Urgente')
 }));
 
 const statusLabels: Record<MaintenanceTicketStatus, string> = localizedRecord(() => ({
@@ -67,6 +68,7 @@ const NEXT_STATUSES: Record<MaintenanceTicketStatus, MaintenanceTicketStatus[]> 
 
 export const TicketDetail: React.FC = () => {
   const { message } = App.useApp();
+  const confirmAction = useConfirmAction();
 
   const { tenantId, ticketId } = useParams<{ tenantId: string; ticketId: string }>();
   const navigate = useNavigate();
@@ -74,11 +76,25 @@ export const TicketDetail: React.FC = () => {
   const effectiveTenantId = tenantId || tenantMembership?.tenantId;
 
   const [form] = Form.useForm();
+  const watchedStatus = Form.useWatch('status', form);
   const [ticket, setTicket] = useState<TicketDetailType | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [commentContent, setCommentContent] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+  // Modifications du formulaire non enregistrées (garde de sortie).
+  const [dirty, setDirty] = useState(false);
+
+  useEffect(() => {
+    if (!dirty) return undefined;
+    const avertir = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', avertir);
+    return () => window.removeEventListener('beforeunload', avertir);
+  }, [dirty]);
 
   useEffect(() => {
     if (effectiveTenantId && ticketId) {
@@ -90,6 +106,7 @@ export const TicketDetail: React.FC = () => {
     if (!effectiveTenantId || !ticketId) return;
 
     setLoading(true);
+    setLoadFailed(false);
     try {
       const response = await managerMaintenanceService.getTicket(effectiveTenantId, ticketId);
       if (response.success) {
@@ -101,16 +118,18 @@ export const TicketDetail: React.FC = () => {
           contractDueDate: response.data.contractDueDate ?? '',
           resolutionNotes: response.data.resolutionNotes
         });
+        setDirty(false);
       }
     } catch (error) {
       console.error('Error loading ticket:', error);
+      setLoadFailed(true);
       message.error(t('Erreur lors du chargement du ticket'));
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSave = async (values: any) => {
+  const saveTicket = async (values: any) => {
     if (!effectiveTenantId || !ticketId) return;
 
     setSaving(true);
@@ -140,6 +159,22 @@ export const TicketDetail: React.FC = () => {
     }
   };
 
+  // Annuler un ticket est définitif (aucun statut ne suit) : on demande confirmation en nommant le ticket.
+  const handleSave = (values: any) => {
+    if (values.status === MaintenanceTicketStatus.CANCELED && ticket?.status !== MaintenanceTicketStatus.CANCELED) {
+      confirmAction({
+        title: t('Annuler le ticket « {{title}} » ?', { title: ticket?.title ?? '' }),
+        description: t('Un ticket annulé ne peut plus changer de statut.'),
+        okText: t('Annuler le ticket'),
+        cancelText: t('Garder le ticket'),
+        danger: true,
+        onConfirm: () => saveTicket(values)
+      });
+      return;
+    }
+    return saveTicket(values);
+  };
+
   const handleAddComment = async () => {
     if (!effectiveTenantId || !ticketId || !commentContent.trim()) return;
 
@@ -156,54 +191,73 @@ export const TicketDetail: React.FC = () => {
     }
   };
 
-  if (loading) {
-    return (
-      <>
-        <Spin size="large" style={{ display: 'block', textAlign: 'center', padding: '50px' }} />
-      </>
-    );
+  if (loading && !ticket) {
+    return <SkeletonDetail aria-label={t('Chargement du ticket')} />;
   }
 
   if (!ticket) {
     return (
-      <>
-        <Card>
-          <Text>{t('Ticket introuvable')}</Text>
-        </Card>
-      </>
+      <StateBlock
+        variant={loadFailed ? 'error' : 'empty'}
+        title={t('Ticket introuvable')}
+        actions={[
+          ...(loadFailed ? [{ label: t('Réessayer'), primary: true, onClick: () => void loadTicket() }] : []),
+          {
+            label: t('Retour à la liste'),
+            onClick: () => navigate(`/tenant/${effectiveTenantId}/admin/maintenance/tickets`)
+          }
+        ]}
+      />
     );
   }
 
   const formattedCreatedDate = formatTicketDate(ticket.createdAt);
+  const nextStatus = NEXT_STATUSES[ticket.status].find(statut => statut !== MaintenanceTicketStatus.CANCELED);
 
   return (
     <>
       <div style={{ padding: '24px' }}>
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
-          <Button
-            icon={<ArrowLeftOutlined />}
-            onClick={() => navigate(`/tenant/${effectiveTenantId}/admin/maintenance/tickets`)}
-          >
-            {t('Retour à la liste')}
-          </Button>
+          <PageHeader
+            title={ticket.title}
+            subtitle={
+              <>
+                {t('Créé le')} {formattedCreatedDate}
+              </>
+            }
+            breadcrumbs={[
+              {
+                label: t('Gestion des tickets de maintenance'),
+                to: `/tenant/${effectiveTenantId}/admin/maintenance/tickets`
+              },
+              { label: ticket.title }
+            ]}
+            extra={<TicketStatusBadge status={ticket.status} />}
+          />
 
           <Card>
             <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-              <div className="it-toolbar it-toolbar--start">
-                <div>
-                  <Title level={3} style={{ margin: 0 }}>
-                    {ticket.title}
-                  </Title>
-                  <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
-                    {t('Créé le')} {formattedCreatedDate}
-                  </Text>
-                </div>
-                <TicketStatusBadge status={ticket.status} />
-              </div>
+              {nextStatus && watchedStatus === ticket.status && (
+                <Alert
+                  type="info"
+                  showIcon
+                  message={t('Étape suivante : « {{statut}} »', { statut: statusLabels[nextStatus] })}
+                  action={
+                    <Button
+                      size="middle"
+                      style={{ minHeight: 44 }}
+                      onClick={() => {
+                        form.setFieldValue('status', nextStatus);
+                        setDirty(true);
+                      }}
+                    >
+                      {t('Passer à « {{statut}} »', { statut: statusLabels[nextStatus] })}
+                    </Button>
+                  }
+                />
+              )}
 
-              <Divider />
-
-              <Form form={form} layout="vertical" onFinish={handleSave}>
+              <Form form={form} layout="vertical" onFinish={handleSave} onValuesChange={() => setDirty(true)}>
                 <Space direction="vertical" size="large" style={{ width: '100%' }}>
                   <div>
                     <Title level={5}>
@@ -225,7 +279,7 @@ export const TicketDetail: React.FC = () => {
                       )}
                       {ticket.tenantContact && (
                         <div>
-                          <Text strong>Locataire: </Text>
+                          <Text strong>{t('Locataire:')} </Text>
                           <Text>
                             {ticket.tenantContact.firstName} {ticket.tenantContact.lastName}
                           </Text>
@@ -301,7 +355,14 @@ export const TicketDetail: React.FC = () => {
                   </Form.Item>
 
                   <Form.Item>
-                    <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={saving}>
+                    <Button
+                      type="primary"
+                      htmlType="submit"
+                      icon={<SaveOutlined />}
+                      loading={saving}
+                      disabled={!dirty}
+                      style={{ minHeight: 44 }}
+                    >
                       {t('Enregistrer les modifications')}
                     </Button>
                   </Form.Item>
@@ -372,7 +433,7 @@ export const TicketDetail: React.FC = () => {
                   <Button
                     type="primary"
                     icon={<SendOutlined />}
-                    style={{ marginTop: 8 }}
+                    style={{ marginTop: 8, minHeight: 44 }}
                     onClick={handleAddComment}
                     loading={submittingComment}
                     disabled={!commentContent.trim()}

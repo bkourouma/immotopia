@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Card, Button, Space, Typography, Alert, Spin } from 'antd';
+import { Card, Button, Space, Typography, App } from 'antd';
 import { ArrowLeftOutlined, PictureOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import { PropertyForm } from '../../components/properties/PropertyForm';
 import { PropertyPublicationControls } from '../../components/properties/PropertyPublicationControls';
@@ -10,12 +10,22 @@ import { getProperty, updateProperty } from '../../services/property-service';
 import { Property, UpdatePropertyRequest, PropertyMediaType } from '../../types/property-types';
 import { useAuth } from '../../hooks/useAuth';
 import { HelpButton } from '../../help';
+import { SkeletonDetail } from '../../components/primitives/Skeleton';
+import { StateBlock } from '../../components/primitives/StateBlock';
+import { useConfirmAction } from '../../components/primitives/ConfirmAction';
+import { apiErrorText } from '../../components/properties/property-api-errors';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
 
 export const PropertyEdit: React.FC = () => {
   const navigate = useNavigate();
+  const { message } = App.useApp();
+  const { isDesktop } = useBreakpoint();
+  const confirmer = useConfirmAction();
+  // Vrai tant que le formulaire porte une saisie non enregistrée.
+  const [modifie, setModifie] = useState(false);
   const { tenantId, id } = useParams<{ tenantId: string; id: string }>();
   const { tenantMembership } = useAuth();
   const effectiveTenantId = tenantId || tenantMembership?.tenantId;
@@ -40,10 +50,11 @@ export const PropertyEdit: React.FC = () => {
 
     try {
       setLoading(true);
+      setError(null);
       const data = await getProperty(effectiveTenantId, id);
       setProperty(data);
     } catch (err: any) {
-      setError(err.response?.data?.error || t('Erreur lors du chargement de la propriété'));
+      setError(apiErrorText(err, t('Erreur lors du chargement de la propriété')));
     } finally {
       setLoading(false);
     }
@@ -54,11 +65,29 @@ export const PropertyEdit: React.FC = () => {
 
     try {
       await updateProperty(effectiveTenantId, id, data);
+      setModifie(false);
+      message.success(t('Bien mis à jour'));
       navigate(`/tenant/${effectiveTenantId}/properties/${id}`);
     } catch (error) {
       console.error('Error updating property:', error);
       throw error;
     }
+  };
+
+  // « Retour » ne perd jamais une modification en silence.
+  const handleBack = () => {
+    if (!modifie) {
+      handleCancel();
+      return;
+    }
+    confirmer({
+      title: t('Abandonner les modifications ?'),
+      description: t('Les changements non enregistrés seront perdus.'),
+      okText: t('Abandonner les modifications'),
+      cancelText: t('Continuer la saisie'),
+      danger: true,
+      onConfirm: handleCancel
+    });
   };
 
   const handleCancel = () => {
@@ -76,33 +105,21 @@ export const PropertyEdit: React.FC = () => {
     );
   }
 
-  if (loading) {
-    return (
-      <>
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-          <Spin size="large" />
-        </div>
-      </>
-    );
+  if (loading && !property) {
+    return <SkeletonDetail rows={8} aria-label={t('Chargement de la propriété')} />;
   }
 
-  if (error || !property) {
+  if (!property) {
     return (
-      <>
-        <div style={{ textAlign: 'center', padding: '48px 0' }}>
-          <Alert
-            message={t('Erreur')}
-            description={error || t('Propriété non trouvée')}
-            type="error"
-            showIcon
-            action={
-              <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/properties`)}>
-                {t('Retour à la liste')}
-              </Button>
-            }
-          />
-        </div>
-      </>
+      <StateBlock
+        variant="error"
+        title={t('Impossible de charger ce bien')}
+        description={error || t('Propriété non trouvée')}
+        onRetry={() => void loadProperty()}
+        actions={[
+          { label: t('Retour à la liste'), onClick: () => navigate(`/tenant/${effectiveTenantId}/properties`) }
+        ]}
+      />
     );
   }
 
@@ -110,10 +127,12 @@ export const PropertyEdit: React.FC = () => {
     <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         {/* Page Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
           <Button
             icon={<ArrowLeftOutlined />}
-            onClick={() => navigate(`/tenant/${effectiveTenantId}/properties/${id}`)}
+            onClick={handleBack}
+            style={isDesktop ? undefined : { minHeight: 44 }}
+            aria-label={t('Retour à la fiche du bien')}
           >
             {t('Retour')}
           </Button>
@@ -137,6 +156,7 @@ export const PropertyEdit: React.FC = () => {
             tenantId={effectiveTenantId}
             onSubmit={handleSubmit}
             onCancel={handleCancel}
+            onDirtyChange={setModifie}
           />
         </Card>
 

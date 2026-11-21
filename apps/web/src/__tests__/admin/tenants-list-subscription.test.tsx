@@ -133,7 +133,7 @@ describe('<TenantsList> — titre', () => {
   it('titre la page « Agences », comme le menu', async () => {
     mount();
 
-    expect(await screen.findByRole('heading', { level: 3, name: 'Agences' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Agences' })).toBeInTheDocument();
     expect(screen.queryByText('Tenants')).not.toBeInTheDocument();
   });
 });

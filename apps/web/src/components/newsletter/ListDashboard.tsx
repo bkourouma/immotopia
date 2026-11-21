@@ -1,14 +1,11 @@
 import React from 'react';
-import { Card, Row, Col, Statistic, Tag, Button, Typography, Space, Empty } from 'antd';
+import { Card, Row, Col, Statistic, Tag, Button, Space } from 'antd';
 import { TeamOutlined, UserOutlined, MailOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { NewsletterList } from '../../services/newsletter.service';
-import { ListSearch } from '../primitives';
+import { ListSearch, PageHeader, StateBlock } from '../primitives';
 import type { ListSearchBinding } from '../primitives';
 import { t } from '../../i18n/t';
 import { localizedRecord } from '../../i18n/localized';
-import { HelpSectionTitle } from '../../help';
-
-const { Title, Text } = Typography;
 
 interface ListDashboardProps {
   /** Listes affichées (déjà filtrées par la recherche). */
@@ -18,6 +15,9 @@ interface ListDashboardProps {
   search?: ListSearchBinding;
   onClearSearch?: () => void;
   loading?: boolean;
+  /** Message d'erreur de chargement des listes ; affiché avec « Réessayer » quand aucune liste n'est chargée. */
+  error?: string | null;
+  onRetry?: () => void;
   onSelectList: (list: NewsletterList) => void;
   onCreateList: () => void;
   onEditList: (list: NewsletterList) => void;
@@ -37,6 +37,8 @@ export function ListDashboard({
   search,
   onClearSearch,
   loading,
+  error,
+  onRetry,
   onSelectList,
   onCreateList,
   onEditList,
@@ -44,14 +46,24 @@ export function ListDashboard({
 }: ListDashboardProps) {
   return (
     <div>
-      <div className="it-toolbar" style={{ marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}>
-          <HelpSectionTitle title={t('Listes de diffusion')} helpId="communication.newsletter.listes.cartes" />
-        </Title>
-        <Button type="primary" onClick={onCreateList} icon={<TeamOutlined />}>
-          {t('Nouvelle liste')}
-        </Button>
-      </div>
+      <PageHeader
+        title={t('Listes de diffusion')}
+        helpId="communication.newsletter.listes.cartes"
+        primaryAction={{ label: t('Nouvelle liste'), onClick: onCreateList, icon: <TeamOutlined /> }}
+      />
+
+      {error && lists.length === 0 && <StateBlock variant="error" title={error} onRetry={onRetry} />}
+
+      {!error && loading && lists.length === 0 && <StateBlock variant="loading" />}
+
+      {!error && !loading && (totalLists ?? lists.length) === 0 && (
+        <StateBlock
+          variant="empty"
+          title={t('Aucune liste de diffusion')}
+          description={t('Créez une liste pour regrouper les destinataires de vos newsletters.')}
+          actions={[{ label: t('Créer une liste'), onClick: onCreateList, primary: true }]}
+        />
+      )}
 
       {search && (totalLists ?? lists.length) > 0 && (
         <div style={{ marginBottom: 16 }}>
@@ -60,9 +72,11 @@ export function ListDashboard({
       )}
 
       {search && lists.length === 0 && (totalLists ?? 0) > 0 && (
-        <Empty description={t('Aucun résultat pour ces critères')}>
-          {onClearSearch && <Button onClick={onClearSearch}>{t('Effacer les critères')}</Button>}
-        </Empty>
+        <StateBlock
+          variant="no-results"
+          title={t('Aucun résultat pour ces critères')}
+          actions={onClearSearch ? [{ label: t('Effacer les critères'), onClick: onClearSearch, primary: true }] : []}
+        />
       )}
 
       <Row gutter={[16, 16]}>
@@ -77,6 +91,8 @@ export function ListDashboard({
                 <Button
                   type="link"
                   size="small"
+                  style={{ minHeight: 44 }}
+                  aria-label={t('Modifier la liste {{nom}}', { nom: list.name })}
                   icon={<EditOutlined />}
                   onClick={e => {
                     e.stopPropagation();
@@ -90,6 +106,8 @@ export function ListDashboard({
                   type="link"
                   size="small"
                   danger
+                  style={{ minHeight: 44 }}
+                  aria-label={t('Supprimer la liste {{nom}}', { nom: list.name })}
                   icon={<DeleteOutlined />}
                   onClick={e => {
                     e.stopPropagation();

@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Row, Col, Typography, Alert, Spin, Statistic, Space } from 'antd';
+import { Card, Row, Col, Typography, Statistic, Space } from 'antd';
 import { BankOutlined, TeamOutlined, CreditCardOutlined, BarChartOutlined } from '@ant-design/icons';
 import { getGlobalStatistics, GlobalStatistics } from '../../services/statistics-service';
 import { getModuleKeyLabelFr } from '../../constants/module-labels';
 import { t } from '../../i18n/t';
-import { HelpButton, HelpSectionTitle } from '../../help';
+import { HelpSectionTitle } from '../../help';
+import { PageHeader, SkeletonStats, StateBlock } from '../../components/primitives';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 export const Statistics: React.FC = () => {
   const [stats, setStats] = useState<GlobalStatistics | null>(null);
@@ -36,20 +37,17 @@ export const Statistics: React.FC = () => {
   };
 
   if (loading) {
-    return (
-      <>
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 256 }}>
-          <Spin size="large" />
-        </div>
-      </>
-    );
+    return <SkeletonStats aria-label={t('Chargement des statistiques')} />;
   }
 
   if (error || !stats) {
     return (
-      <>
-        <Alert message={t('Erreur')} description={error || t('Erreur lors du chargement')} type="error" showIcon />
-      </>
+      <StateBlock
+        variant="error"
+        title={t('Statistiques indisponibles')}
+        description={error || t('Erreur lors du chargement')}
+        actions={[{ label: t('Réessayer'), primary: true, onClick: () => void loadStatistics() }]}
+      />
     );
   }
 
@@ -115,13 +113,11 @@ export const Statistics: React.FC = () => {
   return (
     <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        <div>
-          <Title level={3} style={{ margin: 0 }}>
-            {t('Statistiques Globales')}
-          </Title>
-          <Text type="secondary">{t("Vue d'ensemble de la plateforme")}</Text>
-          <HelpButton size="small" helpId="administration.pilotage.statistiques.indicateurs" />
-        </div>
+        <PageHeader
+          title={t('Statistiques Globales')}
+          subtitle={t("Vue d'ensemble de la plateforme")}
+          helpId="administration.pilotage.statistiques.indicateurs"
+        />
 
         <Row gutter={[24, 24]}>
           {statCards.map((item, index) => (

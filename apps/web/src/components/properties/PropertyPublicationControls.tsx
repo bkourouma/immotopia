@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { App, Card, Button, Space, Typography, Alert, Tag, Popconfirm } from 'antd';
+import { App, Card, Button, Space, Typography, Alert, Tag } from 'antd';
 import {
   GlobalOutlined,
   EyeInvisibleOutlined,
@@ -7,7 +7,8 @@ import {
   CheckCircleOutlined
 } from '@ant-design/icons';
 import { Property } from '../../types/property-types';
-import { apiFieldErrors } from './property-api-errors';
+import { apiErrorText, apiFieldErrors } from './property-api-errors';
+import { ConfirmAction } from '../primitives';
 import { publishProperty, unpublishProperty } from '../../services/property-service';
 import { HelpSectionTitle } from '../../help';
 import { t } from '../../i18n/t';
@@ -46,7 +47,7 @@ export const PropertyPublicationControls: React.FC<PropertyPublicationControlsPr
       if (conditions.length > 0) {
         setValidationErrors(conditions);
       } else {
-        setValidationErrors([error.response?.data?.message || t('Erreur lors de la publication')]);
+        setValidationErrors([apiErrorText(error, t('Erreur lors de la publication'))]);
       }
       message.error(t('Erreur lors de la publication'));
     } finally {
@@ -63,7 +64,7 @@ export const PropertyPublicationControls: React.FC<PropertyPublicationControlsPr
         onUpdate();
       }
     } catch (error: any) {
-      message.error(error.response?.data?.error || t('Erreur lors de la dépublication'));
+      message.error(apiErrorText(error, t('Erreur lors de la dépublication')));
     } finally {
       setPublishing(false);
     }
@@ -113,19 +114,27 @@ export const PropertyPublicationControls: React.FC<PropertyPublicationControlsPr
         {/* Actions */}
         <div>
           {property.isPublished ? (
-            <Popconfirm
-              title={t('Retirer du portail public')}
-              description={t('Êtes-vous sûr de vouloir retirer cette propriété du portail public ?')}
+            <ConfirmAction
+              title={t('Retirer « {{title}} » du portail public ?', { title: property.title })}
+              description={t(
+                'Le bien ne sera plus visible du public. Vous pourrez le publier à nouveau quand vous voulez.'
+              )}
               onConfirm={handleUnpublish}
-              okText={t('Oui')}
-              cancelText={t('Non')}
+              okText={t('Retirer du portail')}
             >
-              <Button icon={<EyeInvisibleOutlined />} loading={publishing} block>
+              <Button icon={<EyeInvisibleOutlined />} loading={publishing} disabled={publishing} block>
                 {t('Retirer du portail public')}
               </Button>
-            </Popconfirm>
+            </ConfirmAction>
           ) : (
-            <Button type="primary" icon={<GlobalOutlined />} onClick={handlePublish} loading={publishing} block>
+            <Button
+              type="primary"
+              icon={<GlobalOutlined />}
+              onClick={handlePublish}
+              loading={publishing}
+              disabled={publishing}
+              block
+            >
               {t('Publier sur le portail public')}
             </Button>
           )}

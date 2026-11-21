@@ -4,7 +4,7 @@ import { Button, Card, Descriptions, Skeleton, Space, Typography } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { getSaleMandate, listSaleMandates } from '../../services/sales-service';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
-import { MoneyValue, StatusTag } from '../primitives';
+import { MoneyValue, StateBlock } from '../primitives';
 import { t } from '../../i18n/t';
 import { HelpSectionTitle } from '../../help';
 import { SaleStatusTag } from '../../pages/sales/SaleStatusTag';
@@ -24,7 +24,12 @@ interface PropertySaleCardProps {
  * créer un — la modale de `SaleMandates.tsx` lit `?new=1&propertyId=…`.
  */
 export const PropertySaleCard: React.FC<PropertySaleCardProps> = ({ tenantId, propertyId }) => {
-  const { data: mandates, isLoading: mandatesLoading } = useQuery({
+  const {
+    data: mandates,
+    isLoading: mandatesLoading,
+    isError: mandatesError,
+    refetch: refetchMandates
+  } = useQuery({
     queryKey: queryKey('sale-mandates-for-property', tenantId, { propertyId }),
     queryFn: () => listSaleMandates(tenantId, { propertyId }),
     enabled: Boolean(tenantId && propertyId),
@@ -46,6 +51,19 @@ export const PropertySaleCard: React.FC<PropertySaleCardProps> = ({ tenantId, pr
     return (
       <Card title={<HelpSectionTitle title={t('Vente')} helpId="commercial.biens.detail.vente" />}>
         <Skeleton active paragraph={{ rows: 2 }} />
+      </Card>
+    );
+  }
+
+  if (mandatesError) {
+    return (
+      <Card title={<HelpSectionTitle title={t('Vente')} helpId="commercial.biens.detail.vente" />}>
+        <StateBlock
+          variant="error"
+          title={t('Impossible de charger la vente')}
+          description={t('Les mandats de vente de ce bien ne se sont pas chargés.')}
+          onRetry={() => void refetchMandates()}
+        />
       </Card>
     );
   }

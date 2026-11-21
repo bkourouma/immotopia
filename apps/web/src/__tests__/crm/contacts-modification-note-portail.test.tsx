@@ -17,6 +17,9 @@ const listContacts = vi.fn();
 const getContact = vi.fn();
 const listTags = vi.fn();
 
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));
 vi.mock('../../services/membership-service', () => ({
   listAssignableMembers: vi.fn(async () => ({ success: true, data: [] }))
 }));
@@ -84,7 +87,7 @@ describe('Contacts — fenêtre « Modifier »', { timeout: 60_000 }, () => {
     mount();
 
     await waitFor(() => expect(document.querySelector('.ant-spin-blur')).toBeNull(), { timeout: 8000 });
-    await user.click(await screen.findByRole('button', { name: /edit/i }, { timeout: 8000 }));
+    await user.click(await screen.findByRole('button', { name: /modifier/i }, { timeout: 8000 }));
 
     const note = await screen.findByTestId('portal-email-notice', {}, { timeout: 8000 });
     expect(getContact).toHaveBeenCalledWith('agence-1', 'c1');
@@ -98,7 +101,7 @@ describe('Contacts — fenêtre « Modifier »', { timeout: 60_000 }, () => {
     mount();
 
     await waitFor(() => expect(document.querySelector('.ant-spin-blur')).toBeNull(), { timeout: 8000 });
-    await user.click(await screen.findByRole('button', { name: /edit/i }, { timeout: 8000 }));
+    await user.click(await screen.findByRole('button', { name: /modifier/i }, { timeout: 8000 }));
 
     expect(await screen.findByDisplayValue('nouvelle@example.ci', {}, { timeout: 8000 })).toBeInTheDocument();
     await waitFor(() => expect(getContact).toHaveBeenCalled());

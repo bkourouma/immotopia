@@ -424,7 +424,7 @@ export const PropertyVisitScheduler: React.FC<PropertyVisitSchedulerProps> = ({
       {/* Submit */}
       <Form.Item>
         <Button type="primary" htmlType="submit" loading={loading} icon={<CalendarOutlined />} block>
-          {loading ? 'Planification...' : t('Planifier la visite')}
+          {loading ? t('Planification...') : t('Planifier la visite')}
         </Button>
       </Form.Item>
     </Form>

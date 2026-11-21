@@ -100,7 +100,7 @@ export const ClaimTransitionActions: React.FC<Props> = ({ tenantId, claim, onCha
                 label={t('Montant indemnisé ({{devise}})', { devise })}
                 rules={required}
               >
-                <InputNumber min={0} max={claim.claimedAmount} style={{ width: '100%' }} />
+                <InputNumber autoFocus min={0} max={claim.claimedAmount} style={{ width: '100%' }} />
               </Form.Item>
               <Form.Item name="deductible" label={t('Franchise ({{devise}})', { devise })}>
                 <InputNumber min={0} style={{ width: '100%' }} />
@@ -108,7 +108,7 @@ export const ClaimTransitionActions: React.FC<Props> = ({ tenantId, claim, onCha
             </>
           ) : (
             <Form.Item name="rejectionReason" label={t('Motif du rejet')} rules={required}>
-              <Input.TextArea rows={3} />
+              <Input.TextArea autoFocus rows={3} />
             </Form.Item>
           )}
           <Form.Item name="note" label={t('Note (facultative)')}>
