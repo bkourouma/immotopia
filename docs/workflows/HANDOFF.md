@@ -17,6 +17,14 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 
 Modèle de section : voir le bloc « Modèle de section » plus bas.
 
+## Recette des reversements propriétaires — 2026-11-21
+
+**État** — Branche `docs/recette-reversements-proprietaires` (depuis `origin/main`). Scénario `docs/recette/gestion-locative/SCENARIO-REVERSEMENTS-PROPRIETAIRES.md` (GL-REV-001 à 041) joué sur la démo : 17 passés, 1 échoué, 4 bloqués. Les anomalies sont dans le bus local `.agent-bus/bugs/BUG-2026-11-21-001` à `005` (ignoré par git).
+
+**À corriger** — BUG-004 (important, à arbitrer) : le reversement n'apparaît pas sur le relevé suivant, la génération des relevés ne lit pas les reversements. BUG-003 : « Dernier reversement » prend le plus ancien du jour (`owner-account/service.ts`, tri par `paidAt` seul). BUG-001 : message « taux non fixé » trompeur sur un relevé sans encaissement (`OwnerStatementDetailPage.tsx`). BUG-002 : 409 super-admin avec plusieurs invitations en attente. BUG-005 : échec SMTP en 500 générique.
+
+**Bloqués** — GL-REV-006, 020, 021 (portail), 031, 041 (export CSV) : `api-demo` n'a pas de puits SMTP, donc aucun mot de passe de portail propriétaire. À rejouer avec un SMTP local.
+
 ## Revue Syndic et Gestion locative — 2026-11-20
 
 **Branche :** `orch/2026-11-20-revue-syndic-locatif`, base `origin/main` `25e340fe` ; dernier commit : voir `git log` de la branche. Pull request https://github.com/bkourouma/immotopia/pull/234 (fusion par l'utilisateur).
