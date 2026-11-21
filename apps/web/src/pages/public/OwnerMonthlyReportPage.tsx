@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom';
 import { Button, Card, Descriptions, Pagination, Space, Tag, Typography } from 'antd';
 import { fetchPublicOwnerMonthlyReport } from '../../services/patrimoine-service';
 import type { OwnerMonthlyReportDto } from '../../types/patrimoine-types';
-import { ListSearch, MoneyValue, StateBlock, Table } from '../../components/primitives';
+import { ListSearch, MoneyValue, namedPageItemRender, StateBlock, Table } from '../../components/primitives';
 import { useLocalListSearch } from '../../utils/list-search';
 import { activeLocale } from '../../i18n/format';
 import { t } from '../../i18n/t';
@@ -177,6 +177,7 @@ const SearchableProperties: React.FC<PropertiesProps> = ({ properties, currency,
           total={local.total}
           showSizeChanger={false}
           hideOnSinglePage
+          itemRender={namedPageItemRender(local.page)}
           onChange={page => local.setPage(page)}
         />
       </div>
