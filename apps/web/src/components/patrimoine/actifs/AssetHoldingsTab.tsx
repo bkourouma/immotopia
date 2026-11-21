@@ -16,6 +16,7 @@ import { activeLocale } from '../../../i18n/format';
 import { t } from '../../../i18n/t';
 import { apiErrorMessage, formatDay } from './asset-format';
 import { HelpSectionTitle } from '../../../help';
+import { submitOnEnter } from './form-helpers';
 
 interface HoldingFormValues {
   entityId: string;
@@ -90,17 +91,28 @@ const HoldingFormModal: React.FC<{
       destroyOnHidden
     >
       {errorMessage && <Alert type="error" showIcon title={errorMessage} style={{ marginBottom: 'var(--space-3)' }} />}
-      <Form form={form} layout="vertical">
+      <Form form={form} layout="vertical" onKeyDown={submitOnEnter(handleOk, submitting)}>
         <Form.Item
           name="entityId"
           label={t('Entité détentrice')}
           rules={[{ required: true, message: t('Champ obligatoire') }]}
+          extra={
+            entities.error ? (
+              <span role="alert">
+                {t('Impossible de charger les entités.')}{' '}
+                <Button type="link" size="small" style={{ paddingInline: 0 }} onClick={() => entities.refetch()}>
+                  {t('Réessayer')}
+                </Button>
+              </span>
+            ) : undefined
+          }
         >
           <Select
             disabled={Boolean(holding)}
             showSearch
             optionFilterProp="label"
             loading={entities.isPending}
+            autoFocus={!holding}
             options={(entities.data ?? []).map(entity => ({ value: entity.id, label: entity.name }))}
           />
         </Form.Item>
@@ -117,7 +129,7 @@ const HoldingFormModal: React.FC<{
             }
           ]}
         >
-          <InputNumber style={{ width: '100%' }} />
+          <InputNumber style={{ width: '100%' }} suffix="%" />
         </Form.Item>
         <Form.Item name="effectiveFrom" label={t('Détenue depuis')}>
           <Input type="date" />
@@ -160,26 +172,22 @@ export const AssetHoldingsTab: React.FC<{ tenantId: string; asset: AssetDto }> =
     }
   };
 
+  const openCreate = () => {
+    setEditing(null);
+    setModalOpen(true);
+  };
+
   return (
     <Card
       title={<HelpSectionTitle title={t('Détenteurs')} helpId="patrimoine.actif.detenteurs" />}
       extra={
-        <Button
-          icon={<PlusOutlined />}
-          onClick={() => {
-            setEditing(null);
-            setModalOpen(true);
-          }}
-        >
+        <Button icon={<PlusOutlined />} onClick={openCreate}>
           {t('Ajouter un détenteur')}
         </Button>
       }
     >
       {holdingsQuery.error ? (
-        <StateBlock
-          variant="error"
-          actions={[{ label: t('Réessayer'), onClick: () => holdingsQuery.refetch(), primary: true }]}
-        />
+        <StateBlock variant="error" onRetry={() => holdingsQuery.refetch()} />
       ) : (
         <>
           {total > 100 && (
@@ -198,7 +206,16 @@ export const AssetHoldingsTab: React.FC<{ tenantId: string; asset: AssetDto }> =
             loading={holdingsQuery.isPending}
             dataSource={holdings}
             pagination={false}
-            locale={{ emptyText: t('Aucun détenteur déclaré pour cet actif.') }}
+            locale={{
+              emptyText: (
+                <StateBlock
+                  variant="empty"
+                  title={t('Aucun détenteur déclaré pour cet actif.')}
+                  description=""
+                  actions={[{ label: t('Ajouter un détenteur'), onClick: openCreate, primary: true }]}
+                />
+              )
+            }}
             columns={[
               { title: t('Entité'), dataIndex: 'entityName' },
               {

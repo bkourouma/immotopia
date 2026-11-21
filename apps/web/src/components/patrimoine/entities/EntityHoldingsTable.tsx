@@ -12,6 +12,8 @@ import type { Property } from '../../../types/property-types';
 import { listProperties } from '../../../services/property-service';
 import { ConfirmAction, Table } from '../../primitives';
 import { t } from '../../../i18n/t';
+import { activeLocale, dateFormat } from '../../../i18n/format';
+import { useBreakpoint } from '../../../hooks/useBreakpoint';
 import { useLocalListSearch } from '../../../utils/list-search';
 import type { SearchCriterion } from '../../../utils/list-search';
 import { apiErrorMessage } from '../patrimoine-labels';
@@ -52,6 +54,7 @@ export const EntityHoldingsTable: React.FC<EntityHoldingsTableProps> = ({
   onRemove
 }) => {
   const { message } = App.useApp();
+  const { isMobile } = useBreakpoint();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<EntityHolding | null>(null);
   const [form] = Form.useForm<FormValues>();
@@ -140,34 +143,30 @@ export const EntityHoldingsTable: React.FC<EntityHoldingsTableProps> = ({
       dataIndex: 'sharePercent',
       key: 'sharePercent',
       align: 'end',
-      render: (value: number) => `${value.toLocaleString('fr-FR')} %`
+      render: (value: number) => `${value.toLocaleString(activeLocale())} %`
     },
     {
       title: t('Total sur le bien'),
       dataIndex: 'propertyTotalSharePercent',
       key: 'propertyTotalSharePercent',
       align: 'end',
-      render: (value: number) => `${value.toLocaleString('fr-FR')} %`
+      render: (value: number) => `${value.toLocaleString(activeLocale())} %`
     },
     {
       title: t('Depuis'),
       dataIndex: 'effectiveFrom',
       key: 'effectiveFrom',
-      render: (value: string | null) => value ?? '—'
+      render: (value: string | null) => (value ? dayjs(value).format(dateFormat('short')) : '—')
     },
     {
       title: t('Actions'),
       key: 'actions',
       render: (_: unknown, holding: EntityHolding) => (
         <Space>
-          <Button
-            size="small"
-            icon={<EditOutlined />}
-            aria-label={t('Modifier la quote-part')}
-            onClick={() => openEdit(holding)}
-          />
+          <Button icon={<EditOutlined />} aria-label={t('Modifier la quote-part')} onClick={() => openEdit(holding)} />
           <ConfirmAction
             title={t('Retirer {{bien}} de cette entité ?', { bien: holding.property.title })}
+            okText={t('Retirer')}
             danger
             onConfirm={async () => {
               try {
@@ -177,7 +176,7 @@ export const EntityHoldingsTable: React.FC<EntityHoldingsTableProps> = ({
               }
             }}
           >
-            <Button size="small" danger icon={<DeleteOutlined />} aria-label={t('Retirer')} />
+            <Button danger icon={<DeleteOutlined />} aria-label={t('Retirer')} />
           </ConfirmAction>
         </Space>
       )
@@ -199,6 +198,7 @@ export const EntityHoldingsTable: React.FC<EntityHoldingsTableProps> = ({
         rowKey={holding => holding.id}
         columns={columns}
         size="middle"
+        scroll={{ x: 'max-content' }}
         aria-label={t('Biens rattachés')}
         locale={local.isFiltered ? undefined : { emptyText: t('Aucun bien rattaché') }}
       />
@@ -219,6 +219,7 @@ export const EntityHoldingsTable: React.FC<EntityHoldingsTableProps> = ({
         confirmLoading={submitting}
         okText={t('Enregistrer')}
         cancelText={t('Annuler')}
+        width={isMobile ? 'calc(100vw - 16px)' : 520}
         destroyOnHidden
       >
         {errorMessage && (
@@ -235,6 +236,7 @@ export const EntityHoldingsTable: React.FC<EntityHoldingsTableProps> = ({
             >
               <Select
                 showSearch
+                autoFocus
                 optionFilterProp="label"
                 options={properties.map(property => ({
                   value: property.id,
@@ -248,10 +250,18 @@ export const EntityHoldingsTable: React.FC<EntityHoldingsTableProps> = ({
             label={t('Quote-part (%)')}
             rules={[{ required: true, message: t('La quote-part est requise') }]}
           >
-            <InputNumber min={0.0001} max={100} step={1} style={{ width: '100%' }} />
+            <InputNumber
+              min={0.0001}
+              max={100}
+              step={1}
+              style={{ width: '100%' }}
+              inputMode="decimal"
+              suffix="%"
+              autoFocus={Boolean(editing)}
+            />
           </Form.Item>
           <Form.Item name="effectiveFrom" label={t("Date d'effet")}>
-            <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
+            <DatePicker style={{ width: '100%' }} format={dateFormat('short')} />
           </Form.Item>
           <Form.Item name="notes" label={t('Notes')}>
             <Input.TextArea rows={2} maxLength={2000} />

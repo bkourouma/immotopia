@@ -7,6 +7,7 @@ import { httpStatusOf, landErrorMessage } from './land-errors';
 import { LandValidationAlert } from './LandValidationAlert';
 import { queryKey, STALE_TIME } from '../../../lib/query-keys';
 import { t } from '../../../i18n/t';
+import { useBreakpoint } from '../../../hooks/useBreakpoint';
 import { HelpSectionTitle } from '../../../help';
 import { createLandRegularization, listLandTracks } from './land-regularization-service';
 import type { LandRegularizationDetail, LandTrackKey } from './land-types';
@@ -53,6 +54,7 @@ export const LandCreateModal: React.FC<LandCreateModalProps> = ({
   onCreated
 }) => {
   const [form] = Form.useForm<FormValues>();
+  const { isMobile } = useBreakpoint();
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -161,7 +163,7 @@ export const LandCreateModal: React.FC<LandCreateModalProps> = ({
       cancelText={t('Annuler')}
       confirmLoading={submitting}
       destroyOnHidden
-      width={640}
+      width={isMobile ? 'calc(100vw - 16px)' : 640}
     >
       <Form
         form={form}
@@ -178,12 +180,15 @@ export const LandCreateModal: React.FC<LandCreateModalProps> = ({
         <Form.Item name="propertyId" label={t('Bien')} rules={[{ required: true, message: t('Choisissez un bien.') }]}>
           <Select
             showSearch
+            autoFocus={!defaultPropertyId}
             filterOption={false}
             onSearch={setSearch}
             loading={propertiesQuery.isFetching}
             options={propertyOptions}
             placeholder={t('Rechercher un bien')}
-            notFoundContent={t('Aucun bien trouvé.')}
+            notFoundContent={
+              propertiesQuery.isError ? t('Impossible de charger les biens. Réessayez.') : t('Aucun bien trouvé.')
+            }
           />
         </Form.Item>
 
@@ -196,6 +201,7 @@ export const LandCreateModal: React.FC<LandCreateModalProps> = ({
             loading={tracksQuery.isPending}
             options={tracks.map(item => ({ value: item.key, label: item.label }))}
             placeholder={t('Choisir une filière')}
+            notFoundContent={tracksQuery.isError ? t('Impossible de charger les filières. Réessayez.') : undefined}
           />
         </Form.Item>
 

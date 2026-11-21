@@ -306,4 +306,40 @@ export function operationErrors(error: unknown): { byIndex: Map<number, Operatio
   return { byIndex, general };
 }
 
+const REQUIRED_FIELDS: Record<OperationType, string[]> = {
+  SELL_ASSET: ['assetId', 'year'],
+  BUY_ASSET: ['assetClass', 'name', 'price', 'year'],
+  TAKE_LOAN: ['amount', 'annualRatePercent', 'termYears', 'year'],
+  PREPAY_LOAN: ['loanId', 'amount', 'year'],
+  MONTHLY_SAVING: ['amount', 'fromYear']
+};
+
+const OPTIONAL_NUMBERS: Record<OperationType, string[]> = {
+  SELL_ASSET: ['salePrice', 'feesPercent'],
+  BUY_ASSET: ['growthPercent'],
+  TAKE_LOAN: [],
+  PREPAY_LOAN: [],
+  MONTHLY_SAVING: ['toYear']
+};
+
+const TEXT_FIELDS = new Set(['assetId', 'loanId', 'assetClass', 'name']);
+
+/**
+ * Champs à corriger quand `buildOperation` refuse la saisie : clé du champ et
+ * message à afficher à son niveau (obligatoire manquant, ou valeur non numérique).
+ */
+export function invalidOperationFields(type: OperationType, v: OperationValues): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const key of REQUIRED_FIELDS[type]) {
+    const raw = v[key]?.trim() ?? '';
+    if (raw === '') result[key] = t('Champ obligatoire');
+    else if (!TEXT_FIELDS.has(key) && !Number.isFinite(Number(raw))) result[key] = t('Valeur invalide');
+  }
+  for (const key of OPTIONAL_NUMBERS[type]) {
+    const raw = v[key]?.trim() ?? '';
+    if (raw !== '' && !Number.isFinite(Number(raw))) result[key] = t('Valeur invalide');
+  }
+  return result;
+}
+
 export { formatAmount };

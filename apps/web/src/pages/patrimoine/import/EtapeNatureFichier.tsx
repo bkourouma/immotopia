@@ -36,7 +36,7 @@ export const EtapeNature: React.FC<EtapeNatureProps> = props => {
       >
         <Space orientation="vertical" size="middle">
           {descripteurs.map(nature => (
-            <Radio key={nature.cle} value={nature.cle}>
+            <Radio key={nature.cle} value={nature.cle} style={{ minHeight: 40 }}>
               <Text strong>{t(nature.libelle)}</Text>
               <Paragraph type="secondary" style={{ marginBlockEnd: 0, maxWidth: 560 }}>
                 {t(nature.description)}
@@ -61,6 +61,7 @@ export const EtapeNature: React.FC<EtapeNatureProps> = props => {
 
       <Button
         type="primary"
+        style={{ minHeight: 40 }}
         disabled={natureCle === null || chargementEnCours || erreurChargement}
         loading={natureCle !== null && chargementEnCours}
         onClick={onContinuer}
@@ -96,7 +97,7 @@ export const EtapeFichier: React.FC<EtapeFichierProps> = props => {
   return (
     <Space orientation="vertical" size="middle" style={{ width: '100%', maxWidth: 640 }}>
       <Text>{t('Nature choisie : {{nature}}', { nature: t(descripteur.libelle) })}</Text>
-      <Button icon={<DownloadOutlined />} onClick={onTelechargerGabarit}>
+      <Button icon={<DownloadOutlined />} style={{ minHeight: 40 }} onClick={onTelechargerGabarit}>
         {t('Télécharger le gabarit Excel')}
       </Button>
       <Paragraph type="secondary" style={{ marginBlockEnd: 0 }}>
@@ -107,9 +108,17 @@ export const EtapeFichier: React.FC<EtapeFichierProps> = props => {
         })}
       </Paragraph>
 
-      {erreurLecture ? <Alert type="error" showIcon role="alert" message={erreurLecture} /> : null}
+      {erreurLecture ? (
+        <Alert
+          type="error"
+          showIcon
+          role="alert"
+          message={erreurLecture}
+          description={t('Vérifiez le fichier ou choisissez-en un autre ci-dessous.')}
+        />
+      ) : null}
 
-      <Upload.Dragger {...proprietes} disabled={lectureEnCours}>
+      <Upload.Dragger {...proprietes} disabled={lectureEnCours} aria-label={t('Choisir le fichier à importer')}>
         <p className="ant-upload-drag-icon">
           <InboxOutlined />
         </p>
@@ -121,7 +130,7 @@ export const EtapeFichier: React.FC<EtapeFichierProps> = props => {
           {t('Lecture du fichier…')}
         </Text>
       ) : null}
-      <Button disabled={lectureEnCours} onClick={onRevenir}>
+      <Button style={{ minHeight: 40 }} disabled={lectureEnCours} onClick={onRevenir}>
         {t('Revenir à la nature')}
       </Button>
     </Space>

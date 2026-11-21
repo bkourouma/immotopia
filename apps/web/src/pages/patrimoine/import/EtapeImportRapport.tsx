@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { Alert, Button, Descriptions, Progress, Space, Typography } from 'antd';
+import { useNavigate, useParams } from 'react-router-dom';
 import type { CompteRenduImport } from '../../../lib/importation/execution';
 import { libelleStatut } from '../../../lib/importation/rapport';
 import type { LigneRapport } from '../../../lib/importation/rapport';
@@ -97,6 +98,8 @@ interface EtapeRapportProps {
 /** Étape 6 — le rapport. */
 export const EtapeRapport: React.FC<EtapeRapportProps> = props => {
   const { lignes, compteRendu } = props;
+  const navigate = useNavigate();
+  const { tenantId } = useParams<{ tenantId: string }>();
   const c = compterRapport(lignes);
   const incertaines = new Set(
     (compteRendu?.echouees ?? [])
@@ -133,7 +136,7 @@ export const EtapeRapport: React.FC<EtapeRapportProps> = props => {
         />
       ) : null}
 
-      <Descriptions size="small" column={2} bordered title={t('Rapport')}>
+      <Descriptions size="small" column={{ xs: 1, sm: 2 }} bordered title={t('Rapport')}>
         <Descriptions.Item label={t('Importées')}>{c.importees}</Descriptions.Item>
         <Descriptions.Item label={t('Ignorées')}>{c.ignorees}</Descriptions.Item>
         <Descriptions.Item label={t('En erreur')}>{c.enErreur}</Descriptions.Item>
@@ -184,7 +187,16 @@ export const EtapeRapport: React.FC<EtapeRapportProps> = props => {
       ) : null}
 
       <Space wrap>
-        <Button type="primary" onClick={props.onTelecharger}>
+        {c.importees > 0 && tenantId ? (
+          <Button type="primary" style={{ minHeight: 40 }} onClick={() => navigate(`/tenant/${tenantId}/properties`)}>
+            {t('Voir les biens importés')}
+          </Button>
+        ) : null}
+        <Button
+          type={c.importees > 0 && tenantId ? 'default' : 'primary'}
+          style={{ minHeight: 40 }}
+          onClick={props.onTelecharger}
+        >
           {t('Télécharger le rapport (CSV)')}
         </Button>
         {props.nbARelancer > 0 ? (

@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { App, Card, Pagination, Space, Tag, Typography } from 'antd';
+import { App, Button, Card, Pagination, Space, Typography } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -12,7 +12,14 @@ import {
 import type { CreateHoldingEntityInput, HoldingEntitySummary } from '../../../types/patrimoine-entities-types';
 import { useAuth } from '../../../hooks/useAuth';
 import { queryKey, STALE_TIME } from '../../../lib/query-keys';
-import { ListSearch, PageHeader, StateBlock, SkeletonList, ConfirmAction } from '../../../components/primitives';
+import {
+  ListSearch,
+  PageHeader,
+  StateBlock,
+  StatusTag,
+  SkeletonList,
+  ConfirmAction
+} from '../../../components/primitives';
 import { HoldingEntityFormModal } from '../../../components/patrimoine/entities/HoldingEntityFormModal';
 import {
   fiscalCountryLabel,
@@ -151,7 +158,7 @@ export const HoldingEntitiesPage: React.FC = () => {
         <StateBlock
           variant="error"
           description={t('Impossible de charger les entités détentrices.')}
-          actions={[{ label: t('Réessayer'), onClick: () => entitiesQuery.refetch(), primary: true }]}
+          onRetry={() => entitiesQuery.refetch()}
         />
       ) : entitiesQuery.isPending ? (
         <SkeletonList rows={5} aria-label={t('Entités en cours de chargement')} />
@@ -184,26 +191,34 @@ export const HoldingEntitiesPage: React.FC = () => {
                 key={entity.id}
                 title={
                   <span>
-                    {entity.name} {!entity.isActive && <Tag>{t('Inactive')}</Tag>}
+                    {entity.name}{' '}
+                    {!entity.isActive && <StatusTag status="INACTIVE" tone="neutral" label={t('Inactive')} />}
                   </span>
                 }
                 extra={
-                  <Space>
-                    <a onClick={() => navigate(`/tenant/${agence}/patrimoine/entities/${entity.id}`)}>{t('Voir')}</a>
-                    <a
+                  <Space size={0} wrap>
+                    <Button type="link" onClick={() => navigate(`/tenant/${agence}/patrimoine/entities/${entity.id}`)}>
+                      {t('Voir')}
+                    </Button>
+                    <Button
+                      type="link"
                       onClick={() => {
                         setEditing(entity);
                         setModalOpen(true);
                       }}
                     >
                       {t('Modifier')}
-                    </a>
+                    </Button>
                     <ConfirmAction
                       title={t('Supprimer {{nom}} ?', { nom: entity.name })}
+                      description={t('Cette suppression est définitive.')}
+                      okText={t('Supprimer')}
                       danger
                       onConfirm={() => handleDelete(entity)}
                     >
-                      <a>{t('Supprimer')}</a>
+                      <Button type="link" danger>
+                        {t('Supprimer')}
+                      </Button>
                     </ConfirmAction>
                   </Space>
                 }

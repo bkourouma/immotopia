@@ -130,15 +130,13 @@ export const NetWorthPage: React.FC = () => {
         title={t('Valeur nette')}
         subtitle={t('Ce que vous possédez, ce que vous devez, et ce qui vous reste')}
         primaryAction={{ label: t('Ajouter un actif'), icon: <PlusOutlined />, onClick: openDrawer }}
+        extra={data && !empty ? <NetWorthExportButtons tenantId={agence} /> : undefined}
       />
 
       <AssetUsageBanner tenantId={agence} />
 
       {netWorth.error ? (
-        <StateBlock
-          variant="error"
-          actions={[{ label: t('Réessayer'), onClick: () => netWorth.refetch(), primary: true }]}
-        />
+        <StateBlock variant="error" onRetry={() => netWorth.refetch()} />
       ) : netWorth.isPending || !data ? (
         <SkeletonStats rows={3} aria-label={t('Valeur nette en cours de chargement')} />
       ) : empty ? (
@@ -152,7 +150,6 @@ export const NetWorthPage: React.FC = () => {
         />
       ) : (
         <>
-          <NetWorthExportButtons tenantId={agence} />
           <ExclusionBanner tenantId={agence} result={data} assets={assetsQuery.data ?? []} />
           <Row gutter={[16, 16]} style={{ marginBottom: 'var(--space-4)' }}>
             <Col xs={24} md={8}>
@@ -201,7 +198,7 @@ export const NetWorthPage: React.FC = () => {
                 <StateBlock
                   variant="error"
                   description={t("Impossible de charger l'évolution de la valeur nette.")}
-                  actions={[{ label: t('Réessayer'), onClick: () => history.refetch(), primary: true }]}
+                  onRetry={() => history.refetch()}
                 />
               ) : (
                 <NetWorthHistoryCard points={history.data ?? []} />

@@ -396,7 +396,7 @@ describe('PropertyPatrimoineTab — coffre-fort documentaire', () => {
     const dateInput = within(modale).getByLabelText('Date expiration (optionnelle)');
     await userEvent.type(dateInput, '2030-01-01T00:00');
 
-    await userEvent.click(within(modale).getByRole('button', { name: /ok/i }));
+    await userEvent.click(within(modale).getByRole('button', { name: /Enregistrer|Ajouter/ }));
 
     await waitFor(() => {
       expect(propertyService.uploadDocument).toHaveBeenCalledWith(
@@ -425,7 +425,7 @@ describe('PropertyPatrimoineTab — coffre-fort documentaire', () => {
     const input = modale.querySelector('input[type="file"]') as HTMLInputElement;
     await userEvent.upload(input, fichier);
 
-    await userEvent.click(within(modale).getByRole('button', { name: /ok/i }));
+    await userEvent.click(within(modale).getByRole('button', { name: /Enregistrer|Ajouter/ }));
 
     await waitFor(() => {
       expect(screen.getByText('Fichier trop volumineux')).toBeInTheDocument();
@@ -444,7 +444,7 @@ describe('PropertyPatrimoineTab — coffre-fort documentaire', () => {
     const carte = titreCarte.closest('.ant-card') as HTMLElement;
     await within(carte).findByText('doc.pdf');
     await userEvent.click(within(carte).getByRole('button', { name: 'Supprimer' }));
-    await userEvent.click(await screen.findByRole('button', { name: /ok/i }));
+    await userEvent.click((await screen.findAllByRole('button', { name: 'Supprimer' })).at(-1) as HTMLElement);
 
     await waitFor(() => {
       expect(propertyService.deletePropertyDocument).toHaveBeenCalledWith('tenant-1', 'property-1', 'doc-1');
@@ -482,7 +482,7 @@ describe('PropertyPatrimoineTab — travaux rattachés à un chantier', () => {
     const modale = await screen.findByRole('dialog');
     expect(within(modale).getByText(/Coût réel alimenté par le chantier Résidence Les Palmiers/)).toBeInTheDocument();
 
-    await userEvent.click(within(modale).getByRole('button', { name: /ok/i }));
+    await userEvent.click(within(modale).getByRole('button', { name: /Enregistrer|Ajouter/ }));
 
     await waitFor(() => {
       expect(patrimoineService.updateWorkProgram).toHaveBeenCalled();

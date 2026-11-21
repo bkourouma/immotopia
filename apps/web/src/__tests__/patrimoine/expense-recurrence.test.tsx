@@ -112,7 +112,7 @@ describe('Dépense d’un bien — périodicité', () => {
     await remplirDepense(dialog);
     await choisirPeriodicite(dialog, 'Mensuelle');
     await userEvent.type(await within(dialog).findByLabelText('Date de fin'), '2027-12-31');
-    await userEvent.click(within(dialog).getByRole('button', { name: /OK|Enregistrer/ }));
+    await userEvent.click(within(dialog).getByRole('button', { name: /Enregistrer/ }));
 
     await waitFor(() => expect(createExpense).toHaveBeenCalled());
     const payload = createExpense.mock.calls[0][2] as Record<string, unknown>;
@@ -127,7 +127,7 @@ describe('Dépense d’un bien — périodicité', () => {
     await userEvent.type(within(dialog).getByLabelText('Montant'), '45000');
     await userEvent.type(within(dialog).getByLabelText('Date de paiement'), '2099-01-05T09:00');
     await choisirPeriodicite(dialog, 'Mensuelle');
-    await userEvent.click(within(dialog).getByRole('button', { name: /OK|Enregistrer/ }));
+    await userEvent.click(within(dialog).getByRole('button', { name: /Enregistrer/ }));
 
     expect(
       await within(dialog).findByText("La date de paiement d'une dépense périodique ne peut pas être dans le futur")
@@ -139,7 +139,7 @@ describe('Dépense d’un bien — périodicité', () => {
     mount();
     const dialog = await ouvrirModaleDepense();
     await remplirDepense(dialog);
-    await userEvent.click(within(dialog).getByRole('button', { name: /OK|Enregistrer/ }));
+    await userEvent.click(within(dialog).getByRole('button', { name: /Enregistrer/ }));
 
     await waitFor(() => expect(createExpense).toHaveBeenCalled());
     const payload = createExpense.mock.calls[0][2] as Record<string, unknown>;

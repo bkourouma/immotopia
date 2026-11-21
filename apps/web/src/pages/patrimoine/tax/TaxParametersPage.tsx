@@ -1,13 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Select, Tag, Typography } from 'antd';
+import { Select, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useQuery } from '@tanstack/react-query';
 import { getTaxParameters } from '../../../services/patrimoine-entities-service';
 import type { TaxParametersData } from '../../../types/patrimoine-entities-types';
 import { useAuth } from '../../../hooks/useAuth';
 import { queryKey, STALE_TIME } from '../../../lib/query-keys';
-import { PageHeader, StateBlock, SkeletonTable, Table } from '../../../components/primitives';
+import { PageHeader, StateBlock, StatusTag, SkeletonTable, Table } from '../../../components/primitives';
 import {
   fiscalCountryOptions,
   occupancySelectorLabel,
@@ -146,7 +146,11 @@ export const TaxParametersPage: React.FC = () => {
       dataIndex: 'status',
       key: 'status',
       render: (value: ParameterRow['status']) => (
-        <Tag color={value === 'VALIDE' ? 'success' : 'warning'}>{parameterStatusLabel(value)}</Tag>
+        <StatusTag
+          status={value}
+          tone={value === 'VALIDE' ? 'success' : 'warning'}
+          label={parameterStatusLabel(value)}
+        />
       )
     },
     { title: t('Notes'), dataIndex: 'notes', key: 'notes', render: (value: string | null) => value ?? '—' }
@@ -163,7 +167,13 @@ export const TaxParametersPage: React.FC = () => {
         subtitle={t('Référentiel CI/ML utilisé par le moteur fiscal')}
         extra={
           <>
-            <Select value={country} style={{ width: 160 }} options={fiscalCountryOptions()} onChange={setCountry} />
+            <Select
+              value={country}
+              style={{ width: 160 }}
+              options={fiscalCountryOptions()}
+              onChange={setCountry}
+              aria-label={t('Pays')}
+            />
             <Select
               allowClear
               placeholder={t('Année')}
@@ -194,7 +204,7 @@ export const TaxParametersPage: React.FC = () => {
         <StateBlock
           variant="error"
           description={t('Impossible de charger les paramètres fiscaux.')}
-          actions={[{ label: t('Réessayer'), onClick: () => parametersQuery.refetch(), primary: true }]}
+          onRetry={() => parametersQuery.refetch()}
         />
       ) : parametersQuery.isPending ? (
         <SkeletonTable rows={8} columns={columns.length} aria-label={t('Paramètres en cours de chargement')} />
@@ -207,6 +217,7 @@ export const TaxParametersPage: React.FC = () => {
           rowKey="id"
           columns={columns}
           size="middle"
+          scroll={{ x: 'max-content' }}
           aria-label={t('Paramètres fiscaux')}
           locale={local.isFiltered ? undefined : { emptyText: t('Aucun paramètre pour ce pays et cette année') }}
         />

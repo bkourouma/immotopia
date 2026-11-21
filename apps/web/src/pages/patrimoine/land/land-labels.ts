@@ -97,3 +97,21 @@ export function formatLandDate(iso?: string | null): string {
 export function toDateInput(iso?: string | null): string {
   return iso ? iso.slice(0, 10) : '';
 }
+
+type LandTone = 'neutral' | 'info' | 'success' | 'warning' | 'danger';
+
+/** Intention visuelle d'un statut de dossier, pour `<StatusTag tone>` (le libellé reste celui ci-dessus). */
+export function regularizationStatusTone(status: LandRegularizationStatus): LandTone {
+  return status === 'EN_COURS' ? 'info' : status === 'TERMINEE' ? 'success' : 'neutral';
+}
+
+/** Intention visuelle d'un statut d'étape, pour `<StatusTag tone>`. */
+export function stepStatusTone(status: LandStepStatus): LandTone {
+  return status === 'EN_COURS'
+    ? 'info'
+    : status === 'TERMINEE'
+      ? 'success'
+      : status === 'BLOQUEE'
+        ? 'danger'
+        : 'neutral';
+}

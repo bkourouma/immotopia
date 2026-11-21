@@ -116,10 +116,7 @@ export const AssetsPage: React.FC = () => {
       <AssetUsageBanner tenantId={agence} />
 
       {assetsQuery.error ? (
-        <StateBlock
-          variant="error"
-          actions={[{ label: t('Réessayer'), onClick: () => assetsQuery.refetch(), primary: true }]}
-        />
+        <StateBlock variant="error" onRetry={() => assetsQuery.refetch()} />
       ) : assetsQuery.isPending ? (
         <SkeletonList rows={5} aria-label={t('Actifs en cours de chargement')} />
       ) : total === 0 && !search.isFiltered ? (

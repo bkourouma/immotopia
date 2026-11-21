@@ -8,6 +8,7 @@ import { StateBlock, SkeletonList, Table } from '../../../components/primitives'
 import { activeLocale } from '../../../i18n/format';
 import { queryKey } from '../../../lib/query-keys';
 import { t } from '../../../i18n/t';
+import { useBreakpoint } from '../../../hooks/useBreakpoint';
 import { useListSearch } from '../../../hooks/useListSearch';
 import type { SearchCriterion } from '../../../utils/list-search';
 import { accessLogActionLabel, accessSectionLabel } from './external-access-labels';
@@ -31,6 +32,7 @@ interface Props {
 /** Journal des consultations, téléchargements et envois d'un accès. */
 export const ExternalAccessLogModal: React.FC<Props> = ({ tenantId, grant, onClose }) => {
   const [, setSearchParams] = useSearchParams();
+  const { isMobile } = useBreakpoint();
   const actionOptions = ACTIONS.map(action => ({ value: action, label: accessLogActionLabel(action) }));
   const criteres: SearchCriterion[] = [
     {
@@ -87,7 +89,7 @@ export const ExternalAccessLogModal: React.FC<Props> = ({ tenantId, grant, onClo
   return (
     <Modal
       open={grant !== null}
-      width={760}
+      width={isMobile ? 'calc(100vw - 16px)' : 760}
       title={grant ? t('Journal — {{name}}', { name: grant.recipientName }) : ''}
       onCancel={close}
       footer={null}
@@ -97,7 +99,7 @@ export const ExternalAccessLogModal: React.FC<Props> = ({ tenantId, grant, onClo
         <StateBlock
           variant="error"
           description={t('Impossible de charger le journal.')}
-          actions={[{ label: t('Réessayer'), onClick: () => logQuery.refetch(), primary: true }]}
+          onRetry={() => logQuery.refetch()}
         />
       ) : logQuery.isPending ? (
         <SkeletonList rows={4} aria-label={t('Journal en cours de chargement')} />

@@ -69,6 +69,7 @@ export const OwnerStatementGenerator: React.FC<Props> = ({
         <Form.Item
           name="period"
           label={t('Période (YYYY-MM)')}
+          extra={t('Mois du relevé, par exemple 2026-03 pour mars 2026.')}
           rules={[
             { required: true, message: t('Période requise') },
             { pattern: /^\d{4}-\d{2}$/, message: t('Format YYYY-MM') }
@@ -89,6 +90,9 @@ export const OwnerStatementGenerator: React.FC<Props> = ({
             loading={propertyLoading}
             disabled={!ownerContactId || propertyLoading}
             placeholder={t('Sélectionnez les biens')}
+            notFoundContent={
+              ownerContactId && !propertyLoading ? t('Aucun bien éligible pour ce propriétaire.') : undefined
+            }
           />
         </Form.Item>
         <Button htmlType="submit" type="primary" loading={loading}>

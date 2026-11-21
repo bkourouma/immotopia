@@ -8,6 +8,8 @@ import { HelpSectionTitle } from '../../../help';
 import { activeLocale } from '../../../i18n/format';
 import { ASSET_CLASS_COLORS, assetClassLabel } from './asset-classes';
 import { formatAmount, formatShare } from './asset-format';
+import { useBreakpoint } from '../../../hooks/useBreakpoint';
+import { CHART_SERIES, compactNumber } from '../chart-palette';
 import { computeClassBreakdown, type ClassBreakdownRow } from './net-worth-helpers';
 
 /**
@@ -103,43 +105,58 @@ function monthLabel(date: string): string {
 
 /** Courbe d'évolution de la valeur nette (12 derniers mois par défaut côté serveur). */
 export const NetWorthHistoryCard: React.FC<{ points: NetWorthHistoryPoint[] }> = ({ points }) => {
-  const compact = (value: unknown) =>
-    new Intl.NumberFormat(activeLocale(), { notation: 'compact', maximumFractionDigits: 1 }).format(Number(value ?? 0));
+  const { isMobile } = useBreakpoint();
+  const compact = (value: unknown) => compactNumber(value, activeLocale());
   const full = (value: unknown) => formatAmount(Number(Array.isArray(value) ? value[0] : (value ?? 0)), 'XOF');
+  const first = points[0];
+  const last = points[points.length - 1];
+  const summary = first
+    ? t(
+        'Courbes de la valeur nette, du total des actifs et du total des dettes, de {{debut}} à {{fin}} : valeur nette de {{valeurDebut}} à {{valeurFin}}.',
+        {
+          debut: monthLabel(first.date),
+          fin: monthLabel(last.date),
+          valeurDebut: full(first.netWorth),
+          valeurFin: full(last.netWorth)
+        }
+      )
+    : t('Courbes de la valeur nette, du total des actifs et du total des dettes : aucune donnée.');
   return (
     <Card
       title={<HelpSectionTitle title={t('Évolution de la valeur nette')} helpId="patrimoine.valeur-nette.evolution" />}
     >
-      <div style={{ width: '100%', height: 300 }}>
+      <div role="img" aria-label={summary} style={{ width: '100%', height: isMobile ? 240 : 300 }}>
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={points} margin={{ top: 8, right: 20, left: 12, bottom: 8 }}>
+          <LineChart data={points} margin={{ top: 8, right: isMobile ? 8 : 20, left: isMobile ? 0 : 12, bottom: 8 }}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="date" tickFormatter={monthLabel} />
-            <YAxis width={70} tickFormatter={compact} />
+            <YAxis width={isMobile ? 48 : 70} tickFormatter={compact} />
             <Tooltip formatter={full} labelFormatter={label => monthLabel(String(label))} />
-            <Legend />
+            <Legend wrapperStyle={{ whiteSpace: 'normal' }} />
             <Line
               type="monotone"
               dataKey="netWorth"
               name={t('Valeur nette')}
-              stroke="#1677ff"
-              strokeWidth={2}
+              stroke={CHART_SERIES.primary.color}
+              strokeWidth={3}
               dot={false}
             />
             <Line
               type="monotone"
               dataKey="totalAssets"
               name={t('Total des actifs')}
-              stroke="#52c41a"
-              strokeWidth={1}
+              stroke={CHART_SERIES.secondary.color}
+              strokeDasharray={CHART_SERIES.secondary.dash}
+              strokeWidth={2}
               dot={false}
             />
             <Line
               type="monotone"
               dataKey="totalDebts"
               name={t('Total des dettes')}
-              stroke="#f5222d"
-              strokeWidth={1}
+              stroke={CHART_SERIES.tertiary.color}
+              strokeDasharray={CHART_SERIES.tertiary.dash}
+              strokeWidth={2}
               dot={false}
             />
           </LineChart>

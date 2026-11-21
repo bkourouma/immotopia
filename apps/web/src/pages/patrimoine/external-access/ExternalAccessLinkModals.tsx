@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Alert, App, Button, Checkbox, Form, InputNumber, Modal, Space, Typography } from 'antd';
-import { CopyOutlined } from '@ant-design/icons';
+import { CheckOutlined, CopyOutlined } from '@ant-design/icons';
 import { sendExternalAccessLink } from '../../../services/external-access-service';
 import type {
   ExternalAccessEmailResult,
@@ -43,25 +43,33 @@ interface RevealProps {
  */
 export const ExternalAccessLinkReveal: React.FC<RevealProps> = ({ revealed, onClose }) => {
   const { message } = App.useApp();
+  const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
     if (!revealed) return;
-    if (await copyToClipboard(revealed.link.url)) message.success(t('Lien copié.'));
-    else message.error(t('Copie impossible : sélectionnez le lien et copiez-le à la main.'));
+    if (await copyToClipboard(revealed.link.url)) {
+      setCopied(true);
+      message.success(t('Lien copié.'));
+    } else message.error(t('Copie impossible : sélectionnez le lien et copiez-le à la main.'));
   };
 
   // Monté seulement tant qu'un lien est à montrer : fermé, plus rien de l'URL ne reste dans la page.
   if (!revealed) return null;
 
+  const close = () => {
+    setCopied(false);
+    onClose();
+  };
+
   return (
     <Modal
       open
       title={<HelpSectionTitle title={t('Lien d’accès')} helpId="patrimoine.acces-tiers.lien" />}
-      onCancel={onClose}
+      onCancel={close}
       destroyOnHidden
       mask={{ closable: false }}
       footer={
-        <Button type="primary" onClick={onClose}>
+        <Button type={copied ? 'primary' : 'default'} onClick={close}>
           {t('J’ai copié le lien, fermer')}
         </Button>
       }
@@ -85,8 +93,14 @@ export const ExternalAccessLinkReveal: React.FC<RevealProps> = ({ revealed, onCl
           >
             {revealed.link.url}
           </Paragraph>
-          <Button icon={<CopyOutlined />} onClick={handleCopy}>
-            {t('Copier le lien')}
+          <Button
+            block
+            type={copied ? 'default' : 'primary'}
+            icon={copied ? <CheckOutlined /> : <CopyOutlined />}
+            onClick={handleCopy}
+            aria-live="polite"
+          >
+            {copied ? t('Lien copié') : t('Copier le lien')}
           </Button>
           <Text type="secondary">
             {t('Ce lien est valable jusqu’au {{date}}.', {
