@@ -6,6 +6,7 @@ import { logAuditEvent, recordAuditEvent } from '../../services/audit-service';
 import { badRequest, conflict, notFound } from '../errors';
 import { roundMoney } from '../finance/money';
 import { buildInstallmentForPeriod } from '../finance/installment-builder';
+import { calculatePeriodEnd, listBillingPeriods } from '../rental/installment-periods';
 import { appendThirdPartyMovementTx } from '../finance/ledger';
 import {
   annulerPieceTx,
@@ -33,6 +34,14 @@ import { auPlusDeuxDecimales } from '../../utils/montant';
  * résilier annule les échéances non réglées postérieures à la fin, avec leur
  * contre-passation. Une échéance réglée n'est jamais réécrite : la révision la
  * refuse, la résiliation la compte, pour un avoir à faire à la main.
+ *
+ * **Prorata au jour (décision H5).** La première et la dernière période d'un bail
+ * sont facturées au nombre de jours couverts (`installment-builder`). Le
+ * renouvellement complète donc le dernier mois de l'ancienne fin (jusque-là
+ * prorata) quand le bail se prolonge, et la résiliation ramène le mois de fin au
+ * prorata des jours jusqu'à la date de fin : dans les deux cas seulement si
+ * l'échéance n'est ni réglée ni réglée en partie, sinon elle ne bouge pas et
+ * l'événement le signale pour un avoir ou un complément à faire à la main.
  *
  * Avant ce lot, modifier le loyer d'un bail ne changeait que le bail : les
  * échéances déjà générées gardaient l'ancien montant, sans que rien le dise.
@@ -105,8 +114,8 @@ async function loadLease(tenantId: string, leaseId: string) {
   return lease;
 }
 
-async function isTerminated(leaseId: string) {
-  return (await prisma.leaseEvent.count({ where: { leaseId, type: LeaseEventType.TERMINATION } })) > 0;
+async function isTerminated(tenantId: string, leaseId: string) {
+  return (await prisma.leaseEvent.count({ where: { tenantId, leaseId, type: LeaseEventType.TERMINATION } })) > 0;
 }
 
 type EventRow = Prisma.LeaseEventGetPayload<Record<string, never>>;
@@ -202,6 +211,7 @@ export async function getLeaseEvents(tenantId: string, leaseId: string) {
       status: lease.status,
       startDate: lease.start_date.toISOString(),
       endDate: iso(lease.end_date),
+      currency: lease.currency,
       rentAmount: Number(lease.rent_amount),
       serviceChargeAmount: Number(lease.service_charge_amount),
       moveOutDate: iso(lease.move_out_date),
@@ -239,6 +249,12 @@ const SETTLED: Prisma.RentalInstallmentWhereInput = {
   OR: [{ amount_paid: { gt: 0 } }, { status: { in: [RentalInstallmentStatus.PAID, RentalInstallmentStatus.PARTIAL] } }]
 };
 
+/** Bail nécessaire au calcul d'une échéance (dates, cycle, devise) : le prorata (H5) en dépend. */
+type PricedLease = Pick<
+  Prisma.RentalLeaseGetPayload<Record<string, never>>,
+  'id' | 'tenant_id' | 'start_date' | 'end_date' | 'billing_frequency' | 'due_day_of_month' | 'currency'
+>;
+
 /**
  * Recalcule les échéances non réglées d'un bail à partir d'un mois, dans la
  * transaction de l'appelant. Une échéance déjà facturée voit son écart inscrit
@@ -253,9 +269,10 @@ async function reprice(
     from: { year: number; month: number };
     rent: number;
     charges: number;
+    lease: PricedLease;
   }
 ) {
-  const { tenantId, leaseId, eventId, from, rent, charges } = params;
+  const { tenantId, leaseId, eventId, from, rent, charges, lease } = params;
   const targets = await tx.rentalInstallment.findMany({
     where: {
       tenant_id: tenantId,
@@ -295,8 +312,20 @@ async function reprice(
       revisions,
       new Date(Date.UTC(inst.period_year, inst.period_month - 1, 1, 12))
     );
-    const periodRent = effective.rent;
-    const periodCharges = effective.charges;
+    // Le montant passe par le même calcul que la génération (prorata au jour, H5) :
+    // la première et la dernière période restent au prorata, arrondies par devise.
+    const built = buildInstallmentForPeriod(
+      {
+        ...lease,
+        rent_amount: new Prisma.Decimal(effective.rent),
+        service_charge_amount: new Prisma.Decimal(effective.charges)
+      },
+      inst.period_year,
+      inst.period_month
+    );
+    if (!built.included) continue;
+    const periodRent = Number(built.data.amount_rent);
+    const periodCharges = Number(built.data.amount_service);
     // Une échéance dont le loyer EFFECTIF ne change pas (une révision existante
     // l'emporte sur le loyer de base de la fiche) n'est ni écrite ni comptée :
     // annoncer « N échéances recalculées » pour rien trompait l'utilisateur.
@@ -343,6 +372,117 @@ async function reprice(
   return repriced;
 }
 
+type AdjustableInstallment = {
+  id: string;
+  status: RentalInstallmentStatus;
+  period_year: number;
+  period_month: number;
+  due_date: Date;
+  amount_rent: Prisma.Decimal;
+  amount_service: Prisma.Decimal;
+  amount_other_fees: Prisma.Decimal;
+  penalty_amount: Prisma.Decimal;
+  amount_paid: Prisma.Decimal;
+};
+
+const ADJUSTABLE_SELECT = {
+  id: true,
+  status: true,
+  period_year: true,
+  period_month: true,
+  due_date: true,
+  amount_rent: true,
+  amount_service: true,
+  amount_other_fees: true,
+  penalty_amount: true,
+  amount_paid: true
+} as const;
+
+/** Échéance non réglée : aucun paiement, statut Brouillon, À payer ou En retard. */
+function isUntouchedInstallment(inst: Pick<AdjustableInstallment, 'status' | 'amount_paid'>) {
+  return (UNPAID_STATUSES as RentalInstallmentStatus[]).includes(inst.status) && Number(inst.amount_paid) === 0;
+}
+
+/**
+ * Réécrit le loyer et les charges d'une échéance NON réglée, et inscrit l'écart
+ * au compte du locataire (`ADJUSTMENT`, origine `LEASE_REVISION`, pièce
+ * `<échéance>:<motif>` : `soldePieceTx` la retrouve pour une annulation
+ * ultérieure). Même mécanisme que `reprice`. Un brouillon n'a rien inscrit : ses
+ * montants changent, le compte non. Retourne vrai si quelque chose a changé.
+ */
+async function adjustInstallmentAmountsTx(
+  tx: PrismaTransactionClient,
+  params: {
+    tenantId: string;
+    leaseId: string;
+    inst: AdjustableInstallment;
+    rent: number;
+    charges: number;
+    reason: string;
+    label: string;
+  }
+): Promise<boolean> {
+  const { tenantId, leaseId, inst, rent, charges, reason, label } = params;
+  if (
+    roundMoney(rent) === roundMoney(Number(inst.amount_rent)) &&
+    roundMoney(charges) === roundMoney(Number(inst.amount_service))
+  ) {
+    return false;
+  }
+  const before = installmentTotal(inst);
+  await tx.rentalInstallment.update({
+    where: { id: inst.id, tenant_id: tenantId },
+    data: { amount_rent: new Prisma.Decimal(rent), amount_service: new Prisma.Decimal(charges) }
+  });
+  await tx.rentalInstallmentItem.updateMany({
+    where: { tenant_id: tenantId, installment_id: inst.id, charge_type: 'RENT' },
+    data: { amount: new Prisma.Decimal(rent) }
+  });
+  await tx.rentalInstallmentItem.updateMany({
+    where: { tenant_id: tenantId, installment_id: inst.id, charge_type: 'SERVICE_CHARGE' },
+    data: { amount: new Prisma.Decimal(charges) }
+  });
+  if (inst.status === RentalInstallmentStatus.DRAFT) return true;
+  const account = await compteLocataireDuBailTx(tx, tenantId, leaseId);
+  if (!account) return true;
+  const diff = roundMoney(rent + charges + Number(inst.amount_other_fees) + Number(inst.penalty_amount) - before);
+  if (diff === 0) return true;
+  await appendThirdPartyMovementTx(tx, {
+    tenantId,
+    accountId: account.accountId,
+    type: 'ADJUSTMENT',
+    billed: diff > 0 ? diff : undefined,
+    settled: diff < 0 ? -diff : undefined,
+    label,
+    sourceType: 'LEASE_REVISION',
+    sourceId: `${inst.id}:${reason}`,
+    leaseId,
+    movementDate: inst.due_date
+  } as any);
+  return true;
+}
+
+/**
+ * Dernière période de facturation d'un bail jusqu'à `end` : son (année, mois) et
+ * si elle est écourtée par `end` (fin avant le dernier jour de la période
+ * nominale). `null` si le bail n'a aucune période à cette date.
+ */
+function lastPeriodUntil(
+  startDate: Date,
+  end: Date,
+  frequency: Parameters<typeof listBillingPeriods>[2]
+): { year: number; month: number; shortened: boolean } | null {
+  const periods = listBillingPeriods(new Date(startDate), new Date(end), frequency);
+  const last = periods[periods.length - 1];
+  if (!last) return null;
+  const nominalEnd = calculatePeriodEnd(last.start, frequency);
+  return {
+    year: last.start.getFullYear(),
+    month: last.start.getMonth() + 1,
+    shortened: last.end.getTime() < nominalEnd.getTime()
+  };
+}
+
 /**
  * Modification du loyer ou des charges par la fiche du bail : recalcule, dans
  * la transaction de l'appelant, les échéances NON COMMENCÉES (période après le
@@ -352,11 +492,15 @@ async function reprice(
  */
 export async function repriceUnstartedInstallmentsTx(
   tx: PrismaTransactionClient,
-  params: { tenantId: string; leaseId: string; rent: number; charges: number; now?: Date }
+  params: { tenantId: string; leaseId: string; rent: number; charges: number; now?: Date; lease?: PricedLease }
 ) {
   const now = params.now ?? new Date();
   const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  const lease =
+    params.lease ?? (await tx.rentalLease.findFirst({ where: { id: params.leaseId, tenant_id: params.tenantId } }));
+  if (!lease) throw notFound('Bail introuvable');
   return reprice(tx, {
+    lease,
     tenantId: params.tenantId,
     leaseId: params.leaseId,
     eventId: `EDIT-${now.getTime()}`,
@@ -369,7 +513,7 @@ export async function repriceUnstartedInstallmentsTx(
 export async function reviseRent(tenantId: string, leaseId: string, body: unknown, actorUserId?: string) {
   const input = parseInput(revisionSchema, body);
   const lease = await loadLease(tenantId, leaseId);
-  if (await isTerminated(leaseId)) throw conflict('Ce bail est résilié : son loyer ne se révise plus.');
+  if (await isTerminated(tenantId, leaseId)) throw conflict('Ce bail est résilié : son loyer ne se révise plus.');
   if (lease.status === RentalLeaseStatus.CANCELED) throw conflict('Ce bail est annulé.');
 
   const [year, monthNumber] = input.effectiveMonth.split('-').map(Number);
@@ -381,6 +525,7 @@ export async function reviseRent(tenantId: string, leaseId: string, body: unknow
   // Une échéance réglée, même en partie, ne se réécrit pas.
   const settled = await prisma.rentalInstallment.count({
     where: {
+      tenant_id: tenantId,
       lease_id: leaseId,
       status: { not: RentalInstallmentStatus.CANCELED },
       AND: [SETTLED, periodFrom(year, monthNumber)]
@@ -392,22 +537,36 @@ export async function reviseRent(tenantId: string, leaseId: string, body: unknow
     );
   }
 
-  const newCharges = input.newCharges ?? Number(lease.service_charge_amount);
   const effectiveDate = new Date(Date.UTC(year, monthNumber - 1, 1, 12));
   // Une révision a une date d'effet : le loyer du bail ne change que ce jour-là
   // (`applyDueRevisions`). Avant, la révision est « planifiée » et les
   // indicateurs gardent l'ancien loyer (BUG-2026-09-30-068).
   const planned = effectiveDate.getTime() > Date.now();
   const event = await prisma.$transaction(async tx => {
+    // Loyer et charges EFFECTIFS juste avant cette date d'effet : le « précédent »
+    // d'une révision n'est pas le loyer courant du bail, qui peut déjà porter une
+    // révision appliquée (datée plus tard) ou ignorer une révision planifiée
+    // (datée plus tôt).
+    const existing = await tx.leaseEvent.findMany({
+      where: { tenantId, leaseId, type: LeaseEventType.REVISION },
+      orderBy: [{ createdAt: 'asc' }],
+      select: { effectiveDate: true, newRent: true, newCharges: true, previousRent: true, previousCharges: true }
+    });
+    const before = effectiveRentAt(
+      { rent_amount: lease.rent_amount, service_charge_amount: lease.service_charge_amount },
+      existing,
+      effectiveDate
+    );
+    const newCharges = input.newCharges ?? before.charges;
     const created = await tx.leaseEvent.create({
       data: {
         tenantId,
         leaseId,
         type: LeaseEventType.REVISION,
         effectiveDate,
-        previousRent: lease.rent_amount,
+        previousRent: new Prisma.Decimal(before.rent),
         newRent: new Prisma.Decimal(input.newRent),
-        previousCharges: lease.service_charge_amount,
+        previousCharges: new Prisma.Decimal(before.charges),
         newCharges: new Prisma.Decimal(newCharges),
         details: { planned },
         revisionRate:
@@ -448,7 +607,8 @@ export async function reviseRent(tenantId: string, leaseId: string, body: unknow
       eventId: created.id,
       from: { year, month: monthNumber },
       rent: input.newRent,
-      charges: newCharges
+      charges: newCharges,
+      lease
     });
     return tx.leaseEvent.update({
       where: { id: created.id, tenantId },
@@ -473,7 +633,7 @@ const renewalSchema = z.object({
 export async function renewLease(tenantId: string, leaseId: string, body: unknown, actorUserId?: string) {
   const input = parseInput(renewalSchema, body);
   const lease = await loadLease(tenantId, leaseId);
-  if (await isTerminated(leaseId)) throw conflict('Ce bail est résilié : il ne se renouvelle plus.');
+  if (await isTerminated(tenantId, leaseId)) throw conflict('Ce bail est résilié : il ne se renouvelle plus.');
   if (lease.status === RentalLeaseStatus.CANCELED) throw conflict('Ce bail est annulé.');
   if (!lease.end_date) {
     throw badRequest('Ce bail est à durée indéterminée : il n’a pas de fin à repousser.');
@@ -533,7 +693,17 @@ export async function renewLease(tenantId: string, leaseId: string, body: unknow
 
     // Échéances de la nouvelle période, au loyer en vigueur, sans doublon.
     let created = 0;
-    let cursor = { ...firstNew };
+    // Un bail qui finit un 1er du mois (hors mois de début) n'a jamais facturé ce
+    // mois-là : le générateur retire une période réduite au seul dernier jour. Le
+    // renouvellement la facture, sinon un mois de loyer manquerait entre les deux
+    // périodes. `exists` écarte toute échéance déjà présente.
+    const startsInOldEndMonth =
+      oldEnd.getUTCDate() === 1 &&
+      periodIndex(oldEnd.getUTCFullYear(), oldEnd.getUTCMonth() + 1) >
+        periodIndex(lease.start_date.getUTCFullYear(), lease.start_date.getUTCMonth() + 1);
+    let cursor = startsInOldEndMonth
+      ? { year: oldEnd.getUTCFullYear(), month: oldEnd.getUTCMonth() + 1 }
+      : { ...firstNew };
     const last = periodIndex(newEnd.getUTCFullYear(), newEnd.getUTCMonth() + 1);
     // Chaque période prend le loyer EFFECTIF à sa date : les révisions déjà
     // planifiées comptent, et le nouveau prix du renouvellement (inscrit plus
@@ -543,9 +713,84 @@ export async function renewLease(tenantId: string, leaseId: string, body: unknow
       orderBy: { createdAt: 'asc' },
       select: { effectiveDate: true, newRent: true, newCharges: true, previousRent: true, previousCharges: true }
     });
+    // Loyer et charges EFFECTIFS à la date du renouvellement : le « précédent » des
+    // événements n'est pas le loyer courant du bail (révision déjà appliquée plus
+    // tard ou révision planifiée ignorée).
+    const beforeRenewal = effectiveRentAt(
+      { rent_amount: Number(lease.rent_amount), service_charge_amount: Number(lease.service_charge_amount) },
+      plannedRevisions,
+      renewalEffective
+    );
     const revisionsForPeriods = priceChanges
       ? [...plannedRevisions, { effectiveDate: renewalEffective, newRent: rent, newCharges: charges }]
       : plannedRevisions;
+    // Prorata au jour (décision H5) : si la période de l'ancienne fin avait été
+    // facturée au prorata (fin de bail en cours de période), le bail se prolonge
+    // au-delà : elle est complétée au montant de la nouvelle fin (mois plein, ou
+    // prorata de la nouvelle fin). Seulement si elle porte encore exactement le
+    // montant prorata de l'ancienne fin (une échéance générée avant la décision H5,
+    // ou modifiée à la main, n'est pas recalculée) et si elle n'est ni réglée ni
+    // réglée en partie ; sinon elle ne bouge pas et l'événement le signale.
+    let proratedMonthCompleted = false;
+    let proratedMonthNotCompleted = false;
+    const oldLast = lastPeriodUntil(lease.start_date, oldEnd, lease.billing_frequency);
+    if (oldLast?.shortened) {
+      const inst = await tx.rentalInstallment.findFirst({
+        where: { tenant_id: tenantId, lease_id: leaseId, period_year: oldLast.year, period_month: oldLast.month },
+        select: ADJUSTABLE_SELECT
+      });
+      if (inst && inst.status !== RentalInstallmentStatus.CANCELED) {
+        const periodDate = new Date(Date.UTC(oldLast.year, oldLast.month - 1, 1, 12));
+        const base = {
+          rent_amount: Number(lease.rent_amount),
+          service_charge_amount: Number(lease.service_charge_amount)
+        };
+        const asOld = effectiveRentAt(base, plannedRevisions, periodDate);
+        const asNew = effectiveRentAt(base, revisionsForPeriods, periodDate);
+        const builtOld = buildInstallmentForPeriod(
+          {
+            ...lease,
+            rent_amount: new Prisma.Decimal(asOld.rent),
+            service_charge_amount: new Prisma.Decimal(asOld.charges)
+          },
+          oldLast.year,
+          oldLast.month
+        );
+        const builtNew = buildInstallmentForPeriod(
+          {
+            ...updatedLease,
+            rent_amount: new Prisma.Decimal(asNew.rent),
+            service_charge_amount: new Prisma.Decimal(asNew.charges)
+          },
+          oldLast.year,
+          oldLast.month
+        );
+        if (builtOld.included && builtNew.included) {
+          const same = (a: unknown, b: unknown) => roundMoney(Number(a)) === roundMoney(Number(b));
+          const wasProrated =
+            same(inst.amount_rent, builtOld.data.amount_rent) &&
+            same(inst.amount_service, builtOld.data.amount_service);
+          const changes =
+            !same(builtOld.data.amount_rent, builtNew.data.amount_rent) ||
+            !same(builtOld.data.amount_service, builtNew.data.amount_service);
+          if (wasProrated && changes) {
+            if (isUntouchedInstallment(inst)) {
+              proratedMonthCompleted = await adjustInstallmentAmountsTx(tx, {
+                tenantId,
+                leaseId,
+                inst,
+                rent: Number(builtNew.data.amount_rent),
+                charges: Number(builtNew.data.amount_service),
+                reason: `RENEWAL-${input.newEndDate}`,
+                label: `Renouvellement du bail — échéance ${String(inst.period_month).padStart(2, '0')}/${inst.period_year} complétée`
+              });
+            } else {
+              proratedMonthNotCompleted = true;
+            }
+          }
+        }
+      }
+    }
     while (periodIndex(cursor.year, cursor.month) <= last) {
       const effective = effectiveRentAt(
         { rent_amount: Number(lease.rent_amount), service_charge_amount: Number(lease.service_charge_amount) },
@@ -589,12 +834,18 @@ export async function renewLease(tenantId: string, leaseId: string, body: unknow
         effectiveDate: new Date(Date.UTC(firstNew.year, firstNew.month - 1, 1, 12)),
         previousEndDate: oldEnd,
         newEndDate: newEnd,
-        previousRent: lease.rent_amount,
+        previousRent: new Prisma.Decimal(beforeRenewal.rent),
         newRent: new Prisma.Decimal(rent),
-        previousCharges: lease.service_charge_amount,
+        previousCharges: new Prisma.Decimal(beforeRenewal.charges),
         newCharges: new Prisma.Decimal(charges),
         summary: input.summary,
-        details: { installmentsCreated: created },
+        details: {
+          installmentsCreated: created,
+          ...(proratedMonthCompleted ? { proratedMonthCompleted: true } : {}),
+          // Mois de l'ancienne fin facturé au prorata mais déjà réglé (même en
+          // partie) : il garde son montant, le complément est à facturer à la main.
+          ...(proratedMonthNotCompleted ? { proratedMonthNotCompleted: true } : {})
+        },
         createdByUserId: actorUserId ?? null
       }
     });
@@ -608,9 +859,9 @@ export async function renewLease(tenantId: string, leaseId: string, body: unknow
             leaseId,
             type: LeaseEventType.REVISION,
             effectiveDate: new Date(Date.UTC(firstNew.year, firstNew.month - 1, 1, 12)),
-            previousRent: lease.rent_amount,
+            previousRent: new Prisma.Decimal(beforeRenewal.rent),
             newRent: new Prisma.Decimal(rent),
-            previousCharges: lease.service_charge_amount,
+            previousCharges: new Prisma.Decimal(beforeRenewal.charges),
             newCharges: new Prisma.Decimal(charges),
             summary: 'Nouveau loyer au renouvellement',
             details: { installmentsUpdated: 0, planned: plannedPrice },
@@ -673,7 +924,7 @@ const terminationSchema = z.object({
 export async function terminateLease(tenantId: string, leaseId: string, body: unknown, actorUserId?: string) {
   const input = parseInput(terminationSchema, body);
   const lease = await loadLease(tenantId, leaseId);
-  if (await isTerminated(leaseId)) throw conflict('Ce bail est déjà résilié.');
+  if (await isTerminated(tenantId, leaseId)) throw conflict('Ce bail est déjà résilié.');
   if (lease.status === RentalLeaseStatus.CANCELED) throw conflict('Ce bail est annulé.');
 
   const notice = parseDay(input.noticeDate, 'La date de préavis');
@@ -683,7 +934,8 @@ export async function terminateLease(tenantId: string, leaseId: string, body: un
   if (notice.getTime() > end.getTime()) throw badRequest('Le préavis ne peut pas être postérieur à la date de fin.');
 
   // Les périodes qui commencent après le mois de fin ne sont plus dues. Le
-  // mois de fin lui-même reste dû en entier : pas de prorata au jour.
+  // mois de fin lui-même est dû au prorata des jours jusqu'à la date de fin
+  // (décision H5), voir plus bas.
   const after = { year: end.getUTCFullYear(), month: end.getUTCMonth() + 2 };
   if (after.month > 12) {
     after.month -= 12;
@@ -695,6 +947,7 @@ export async function terminateLease(tenantId: string, leaseId: string, body: un
     // locataire (ajustements de révision compris, voir `soldePieceTx`).
     const toCancel = await tx.rentalInstallment.findMany({
       where: {
+        tenant_id: tenantId,
         lease_id: leaseId,
         status: { in: UNPAID_STATUSES },
         amount_paid: 0,
@@ -718,15 +971,70 @@ export async function terminateLease(tenantId: string, leaseId: string, body: un
     }
     if (toCancel.length) {
       await tx.rentalInstallment.updateMany({
-        where: { id: { in: toCancel.map(inst => inst.id) } },
+        where: { tenant_id: tenantId, id: { in: toCancel.map(inst => inst.id) } },
         data: { status: RentalInstallmentStatus.CANCELED }
       });
     }
     const canceled = { count: toCancel.length };
 
+    // Période de fin (décision H5) : due au prorata des jours jusqu'à la date de
+    // fin. Réécrite seulement si elle n'est ni réglée ni réglée en partie ; sinon
+    // elle garde son montant et l'événement le signale (avoir à faire à la main).
+    let endMonthProrated = false;
+    let endMonthNotAdjusted = false;
+    const revisions = await tx.leaseEvent.findMany({
+      where: { tenantId, leaseId, type: LeaseEventType.REVISION },
+      orderBy: { createdAt: 'asc' },
+      select: { effectiveDate: true, newRent: true, newCharges: true, previousRent: true, previousCharges: true }
+    });
+    const base = { rent_amount: Number(lease.rent_amount), service_charge_amount: Number(lease.service_charge_amount) };
+    const endLast = lastPeriodUntil(lease.start_date, end, lease.billing_frequency);
+    if (endLast?.shortened) {
+      const inst = await tx.rentalInstallment.findFirst({
+        where: { tenant_id: tenantId, lease_id: leaseId, period_year: endLast.year, period_month: endLast.month },
+        select: ADJUSTABLE_SELECT
+      });
+      if (inst && inst.status !== RentalInstallmentStatus.CANCELED) {
+        const effective = effectiveRentAt(base, revisions, new Date(Date.UTC(endLast.year, endLast.month - 1, 1, 12)));
+        const built = buildInstallmentForPeriod(
+          {
+            ...lease,
+            end_date: end,
+            rent_amount: new Prisma.Decimal(effective.rent),
+            service_charge_amount: new Prisma.Decimal(effective.charges)
+          },
+          endLast.year,
+          endLast.month
+        );
+        if (built.included) {
+          const rent = Number(built.data.amount_rent);
+          const charges = Number(built.data.amount_service);
+          const differs =
+            roundMoney(rent) !== roundMoney(Number(inst.amount_rent)) ||
+            roundMoney(charges) !== roundMoney(Number(inst.amount_service));
+          if (differs) {
+            if (isUntouchedInstallment(inst)) {
+              endMonthProrated = await adjustInstallmentAmountsTx(tx, {
+                tenantId,
+                leaseId,
+                inst,
+                rent,
+                charges,
+                reason: `TERMINATION-${input.effectiveDate}`,
+                label: `Résiliation du bail — échéance ${String(inst.period_month).padStart(2, '0')}/${inst.period_year} au prorata`
+              });
+            } else {
+              endMonthNotAdjusted = true;
+            }
+          }
+        }
+      }
+    }
+
     // Réglées, même en partie, après la fin : un avoir à faire à la main.
     const billedAfterEnd = await tx.rentalInstallment.count({
       where: {
+        tenant_id: tenantId,
         lease_id: leaseId,
         status: { not: RentalInstallmentStatus.CANCELED },
         AND: [SETTLED, periodFrom(after.year, after.month)]
@@ -767,7 +1075,13 @@ export async function terminateLease(tenantId: string, leaseId: string, body: un
         initiatedBy: input.initiatedBy,
         moveOutDate: moveOut,
         summary: input.summary,
-        details: { installmentsCanceled: canceled.count, billedAfterEnd },
+        details: {
+          installmentsCanceled: canceled.count,
+          billedAfterEnd,
+          ...(endMonthProrated ? { endMonthProrated: true } : {}),
+          // Période de fin déjà réglée (même en partie) : montant inchangé, avoir à faire à la main.
+          ...(endMonthNotAdjusted ? { endMonthNotAdjusted: true } : {})
+        },
         createdByUserId: actorUserId ?? null
       }
     });

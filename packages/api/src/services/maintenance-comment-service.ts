@@ -2,6 +2,7 @@ import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
 import { CreateCommentRequest } from '../types/maintenance-types';
 import { MaintenanceTicketCommentAuthorType } from '@prisma/client';
+import { badRequest, notFound } from '../lib/errors';
 
 /**
  * Add a comment to a ticket
@@ -30,16 +31,16 @@ export async function addComment(
   });
 
   if (!ticket) {
-    throw new Error('Ticket introuvable');
+    throw notFound('Ticket introuvable');
   }
 
   // Validate author based on author type
   if (authorType === MaintenanceTicketCommentAuthorType.MANAGER && !authorUserId) {
-    throw new Error('Un utilisateur est requis pour les commentaires de type MANAGER');
+    throw badRequest('Un utilisateur est requis pour les commentaires de type MANAGER');
   }
 
   if (authorType === MaintenanceTicketCommentAuthorType.TENANT && !authorContactId) {
-    throw new Error('Un contact est requis pour les commentaires de type TENANT');
+    throw badRequest('Un contact est requis pour les commentaires de type TENANT');
   }
 
   // Le contact auteur (venant du corps de la requête ou de la résolution du
@@ -53,7 +54,7 @@ export async function addComment(
       }
     });
     if (!contact) {
-      throw new Error('Contact introuvable');
+      throw notFound('Contact introuvable');
     }
   }
 
@@ -112,7 +113,7 @@ export async function getTicketComments(tenantId: string, ticketId: string) {
   });
 
   if (!ticket) {
-    throw new Error('Ticket introuvable');
+    throw notFound('Ticket introuvable');
   }
 
   // Get all comments ordered by creation date

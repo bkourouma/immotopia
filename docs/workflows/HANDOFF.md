@@ -25,6 +25,36 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 **Pièges** — Les chefs de lot calent (watchdog 600 s) dès qu'un run vitest multi-dossiers dure : lancer les suites en arrière-plan avec sortie redirigée, un seul runner à la fois. Le push de gros diffs échoue parfois (« connection reset ») : réessayer avec `-c http.postBuffer=524288000 -c http.version=HTTP/1.1`. `i18n:check` échoue s'il reste des `*.orphans.json`. Worktrees des lots sous `D:/APP/Immobillier-worktrees/ux21-*` avec jonctions `node_modules` : retirer les jonctions (rmdir) AVANT `git worktree remove`.
 
+## Revue Syndic et Gestion locative — 2026-11-20
+
+**Branche :** `orch/2026-11-20-revue-syndic-locatif`, base `origin/main` `25e340fe` ; dernier commit : voir `git log` de la branche. Pull request https://github.com/bkourouma/immotopia/pull/234 (fusion par l'utilisateur).
+
+**Fait :** revue en 6 lots, tous fusionnés sur la branche : syndic financier ; AG et portail copropriétaire ; bail ; paiements, portails et maintenance ; décisions syndic H2/H3 ; décisions locatif H1/H3/H4/H5. Lot final : catalogues i18n web et API complétés en anglais et en arabe (`i18n:check` vert dans les deux paquets), textes encore en dur enveloppés dans `t()` (AllocatePaymentForm, PaymentDetailPage, OwnerPortal/Documents, LeaseDetailPage), classeur des fonctionnalités mis à jour (+22 lignes, ligne « Supprimer un bail » précisée) et miroir régénéré (`wiki:check` vert).
+
+**Reste (recommandations non traitées) :**
+
+- Règles AG : date et type modifiables, mandant indivisaire, plafonnement des voix, statut Reporté, quorum bloquant ou indicatif.
+- Canal des relances manuelles.
+- Référence de bail en champ libre dans SyndicLots.
+- Permission dédiée SYNDIC_DELETE / RENTAL_LEASES_DELETE.
+- Première et dernière période au prorata arrondies séparément (écart possible de 1 FCFA).
+- Échéance d'un jour à la résiliation.
+- Alignement des types front sur les décimaux en chaînes.
+- SUSPENDED en lecture seule ; agence multi-portail.
+- Migration éventuelle des données historiques ; exports de paiements du report-generator.
+- Alignement éventuel des anciennes données de dépôt de garantie en FCFA avec décimales.
+- PR #226 (relevé vide) à fermer : son patch est repris ici.
+- Deux messages Zod de `lib/lease-inspections/service.ts` (« Nombre de clés trop élevé. », « Le montant de la retenue est trop élevé. ») ne sont pas recensés par l'extracteur API : non traduits.
+- Retouches de textes français : aucune traduction orpheline à reporter identifiée ; `--prune` non lancé (464 non référencées web, 167 API conservées).
+
+**Pièges :**
+
+- Client Prisma et `node_modules` du checkout principal périmés : `subset-font` et `yauzl` absents, antd 6.6.3 au lieu de ^6.7.0, donc des tests de pagination « Page 2 » rouges en local.
+- Suites API jouées avec une config `isolatedModules`.
+- Verrous consultatifs et `updateMany` de trésorerie testés sur mocks seulement.
+- Relevés propriétaires de version < 4 à recalculer.
+- Aucune migration de données : budgets et appels avec centimes en base non arrondis.
+
 ## feat/lien-invitation-agence — 2026-11-19
 
 **État** — Branche depuis `origin/main` `25e340fe`, avant pull request (fusion par l'utilisateur). Rien déployé, aucune migration.
@@ -36,6 +66,8 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 **Reste** — `routes-inventory.test.ts` n'a pas tourné sur ce poste (module `yauzl` absent du `node_modules` partagé) : le relancer ou laisser la CI. Aucune recette navigateur ni appel sur une vraie base.
 
 **Pièges** — Le typecheck API de ce worktree affiche des erreurs étrangères (client Prisma partagé généré depuis une autre branche). `i18n:extract` ajoute des clés vides sans rapport : ne garder que les siennes.
+
+> > > > > > > origin/main
 
 ## feat/integration-copro-20261118 — 2026-11-18
 

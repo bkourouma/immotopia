@@ -120,43 +120,59 @@ export async function buildOwnerAccountStatementPdf(
   });
   y -= 24;
 
-  draw('Date', { x: left, y, size: 9, font: bold });
-  draw('Type', { x: left + 70, y, size: 9, font: bold });
-  draw('Libellé', { x: left + 140, y, size: 9, font: bold });
-  draw('Débit', { x: left + 330, y, size: 9, font: bold });
-  draw('Crédit', { x: left + 410, y, size: 9, font: bold });
-  draw('Solde', { x: left + 490, y, size: 9, font: bold });
-  y -= 11;
-  // Legende plutot qu'une mention repetee sur chaque ligne (la colonne est
-  // trop etroite pour "12 345 FCFA (Debiteur)" a 8pt) : le signe du solde
-  // courant de chaque mouvement se lit ainsi sans connaitre la convention.
-  draw('(positif = le copropriétaire doit, négatif = il a une avance)', {
-    x: left + 140,
-    y,
-    size: 7,
-    font,
-    color: rgb(0.4, 0.4, 0.4)
-  });
-  y -= 13;
+  const drawTableHeader = (target: typeof page, top: number, withLegend: boolean): number => {
+    let line = top;
+    const put = (text: string, options: Parameters<typeof page.drawText>[1]) =>
+      target.drawText(sanitizeForPdf(text), options);
+    put('Date', { x: left, y: line, size: 9, font: bold });
+    put('Type', { x: left + 70, y: line, size: 9, font: bold });
+    put('Libellé', { x: left + 140, y: line, size: 9, font: bold });
+    put('Débit', { x: left + 330, y: line, size: 9, font: bold });
+    put('Crédit', { x: left + 410, y: line, size: 9, font: bold });
+    put('Solde', { x: left + 490, y: line, size: 9, font: bold });
+    line -= 11;
+    if (withLegend) {
+      // Legende plutot qu'une mention repetee sur chaque ligne (la colonne est
+      // trop etroite pour "12 345 FCFA (Debiteur)" a 8pt) : le signe du solde
+      // courant de chaque mouvement se lit ainsi sans connaitre la convention.
+      put('(positif = le copropriétaire doit, négatif = il a une avance)', {
+        x: left + 140,
+        y: line,
+        size: 7,
+        font,
+        color: rgb(0.4, 0.4, 0.4)
+      });
+      line -= 13;
+    }
+    return line;
+  };
+
+  y = drawTableHeader(page, y, true);
 
   // Place réservée en bas de page au bloc de signature (cachet + signature).
   const bottomLimit = branding ? 150 : 60;
-  const rows = payload.transactions.slice(0, 30);
-  for (const tx of rows) {
+  // Toutes les lignes sont imprimées : un relevé tronqué à la 30e ligne
+  // afficherait un solde final que ses lignes ne permettent pas de retrouver.
+  // Une page de suite reprend l'en-tête du tableau.
+  let currentPage = page;
+  for (const tx of payload.transactions) {
     if (y < bottomLimit) {
-      break;
+      currentPage = pdfDoc.addPage([595, 842]);
+      y = drawTableHeader(currentPage, height - 50, false);
     }
-    draw(new Date(tx.transactionDate).toLocaleDateString('fr-FR'), { x: left, y, size: 8, font });
-    draw(movementTypeLabel(tx.type), { x: left + 70, y, size: 8, font });
-    draw(tx.label.slice(0, 38), { x: left + 140, y, size: 8, font });
-    draw(tx.debit ? money(Number(tx.debit), payload.currency) : '-', { x: left + 330, y, size: 8, font });
-    draw(tx.credit ? money(Number(tx.credit), payload.currency) : '-', { x: left + 410, y, size: 8, font });
-    draw(money(Number(tx.balanceAfter), payload.currency), { x: left + 490, y, size: 8, font });
+    const put = (text: string, options: Parameters<typeof page.drawText>[1]) =>
+      currentPage.drawText(sanitizeForPdf(text), options);
+    put(new Date(tx.transactionDate).toLocaleDateString('fr-FR'), { x: left, y, size: 8, font });
+    put(movementTypeLabel(tx.type), { x: left + 70, y, size: 8, font });
+    put(tx.label.slice(0, 38), { x: left + 140, y, size: 8, font });
+    put(tx.debit ? money(Number(tx.debit), payload.currency) : '-', { x: left + 330, y, size: 8, font });
+    put(tx.credit ? money(Number(tx.credit), payload.currency) : '-', { x: left + 410, y, size: 8, font });
+    put(money(Number(tx.balanceAfter), payload.currency), { x: left + 490, y, size: 8, font });
     y -= 12;
   }
 
   if (branding) {
-    await drawSignatureBlock(pdfDoc, page, branding, { x: 360, y: 125, label: 'Pour le syndic' });
+    await drawSignatureBlock(pdfDoc, currentPage, branding, { x: 360, y: 125, label: 'Pour le syndic' });
   }
 
   const bytes = await pdfDoc.save();

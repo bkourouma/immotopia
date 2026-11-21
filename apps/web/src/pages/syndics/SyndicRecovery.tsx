@@ -34,6 +34,7 @@ import {
   ReminderBatchResult
 } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
+import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { computeLatePenaltyPreview, MAX_MONTHLY_PENALTY_RATE } from '../../utils/syndic-penalty';
 import { t } from '../../i18n/t';
 import { useFormFieldModes } from '../../hooks/useFormFieldModes';
@@ -76,6 +77,11 @@ export const SyndicRecovery: React.FC = () => {
 
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
   const [activeTab, setActiveTab] = useTabParam<RecoveryTab>(RECOVERY_TABS, 'retards');
+
+  // Relancer, appliquer ou remettre une pénalité, créer un échéancier exigent SYNDIC_EDIT (l'API répondrait 403).
+  // L'API reste l'autorité : on ne grise que lorsque l'absence du droit est connue (lecture, échec réseau : pas de filtre).
+  const { permissions, ready: permissionsReady } = useMyMenuAccess(effectiveTenantId);
+  const canEdit = !(permissionsReady && permissions !== null && !permissions.has('SYNDIC_EDIT'));
 
   const ready = Boolean(effectiveTenantId && syndicId);
   const tenantKey = effectiveTenantId ?? '';
@@ -258,6 +264,11 @@ export const SyndicRecovery: React.FC = () => {
       } else {
         message.success(t('Relance créée'));
       }
+      // Spec 047 (R14) : une relance manuelle reste permise, mais le gestionnaire doit voir qu'un paiement
+      // mobile money déclaré attend déjà sa vérification pour cet appel (l'API le renvoie, le service le laisse passer).
+      if (reminder.pendingDeclaration) {
+        message.warning(t('Un paiement mobile money déclaré attend déjà sa vérification pour cet appel.'));
+      }
       setManualOpen(false);
       manualForm.resetFields();
       await refreshAfterWrite('reminders');
@@ -374,6 +385,7 @@ export const SyndicRecovery: React.FC = () => {
               type="primary"
               onClick={() => void handleOpenBatchPreview()}
               loading={previewLoading}
+              disabled={!canEdit}
               block={isMobile}
             >
               {t('Lancer les relances groupées')}
@@ -381,7 +393,7 @@ export const SyndicRecovery: React.FC = () => {
             <Button
               onClick={() => setManualOpen(true)}
               icon={<PlusOutlined />}
-              disabled={dashboard.items.length === 0}
+              disabled={!canEdit || dashboard.items.length === 0}
               block={isMobile}
             >
               {t('Relance manuelle')}
@@ -389,7 +401,7 @@ export const SyndicRecovery: React.FC = () => {
             <Button
               onClick={() => setPenaltyOpen(true)}
               icon={<ExclamationCircleOutlined />}
-              disabled={dashboard.items.length === 0}
+              disabled={!canEdit || dashboard.items.length === 0}
               block={isMobile}
             >
               {t('Appliquer pénalité')}
@@ -397,7 +409,7 @@ export const SyndicRecovery: React.FC = () => {
             <Button
               onClick={() => setScheduleOpen(true)}
               icon={<ClockCircleOutlined />}
-              disabled={dashboard.items.length === 0}
+              disabled={!canEdit || dashboard.items.length === 0}
               block={isMobile}
             >
               {t('Créer échéancier')}
@@ -458,6 +470,7 @@ export const SyndicRecovery: React.FC = () => {
                 <PenaltiesTab
                   tenantId={tenantKey}
                   syndicId={syndicKey}
+                  canWaive={canEdit}
                   onWaive={penalty => {
                     setSelectedPenalty(penalty);
                     setWaiveOpen(true);
@@ -522,6 +535,9 @@ export const SyndicRecovery: React.FC = () => {
                 label={t('Canal d’envoi')}
                 name="channel"
                 rules={[{ required: true, message: t('Choisissez le canal d’envoi') }]}
+                extra={t(
+                  "Le canal est consigné dans l'historique ; l'envoi part par e-mail et par WhatsApp selon la configuration de l'agence."
+                )}
               >
                 <Select showSearch optionFilterProp="label" options={reminderChannelOptions} />
               </Form.Item>

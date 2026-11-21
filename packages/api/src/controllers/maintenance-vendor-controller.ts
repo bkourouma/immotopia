@@ -1,5 +1,5 @@
 import { NextFunction, Request, Response } from 'express';
-import { AppError } from '../middleware/error-middleware';
+import { AppError, BadRequestError } from '../middleware/error-middleware';
 import { getTenantIdFromRequest } from '../middleware/tenant-isolation-middleware';
 import {
   createVendor,
@@ -13,6 +13,20 @@ import {
 import { createVendorSchema, updateVendorSchema } from '../types/maintenance-types';
 import { parsePagination } from '../utils/pagination-helper';
 import { respondWithAppError } from '../utils/app-error-response';
+import { parseBooleanParam } from '../utils/query-params';
+import { zSearch } from '../utils/list-query-schemas';
+import { t } from '../i18n';
+
+/** Recherche libre : rognée, 100 caractères au plus ; un tableau ou un texte trop long est un 400. */
+function parseSearchParam(raw: unknown): string | undefined {
+  const parsed = zSearch(100).safeParse(raw);
+  if (!parsed.success) {
+    throw new BadRequestError(t('Paramètre invalide : {{name}}.', { name: 'search' }), [
+      { field: 'search', message: t('Texte trop long ou mal formé.') }
+    ]);
+  }
+  return parsed.data;
+}
 
 /**
  * Transform vendor from Prisma format (snake_case) to frontend format (camelCase)
@@ -60,7 +74,10 @@ export async function createVendorHandler(req: Request, res: Response, next: Nex
       data: transformVendor(vendor)
     });
   } catch (error) {
-    if (error instanceof AppError) {
+    // Corps illisible (Zod) : le middleware central le rend en 400. Sans cela,
+    // le message JSON de la ZodError ne contenait ni « invalide » ni « requis »
+    // et tombait en 500.
+    if (error instanceof AppError || (error as { name?: string } | null)?.name === 'ZodError') {
       next(error);
       return;
     }
@@ -100,11 +117,13 @@ export async function listVendorsHandler(req: Request, res: Response): Promise<v
     const tenantId = getTenantIdFromRequest(req);
 
     const filters: any = {};
-    if (req.query.isActive !== undefined) {
-      filters.isActive = req.query.isActive === 'true';
+    const isActive = parseBooleanParam(req.query.isActive, 'isActive');
+    if (isActive !== undefined) {
+      filters.isActive = isActive;
     }
-    if (req.query.search) {
-      filters.search = req.query.search as string;
+    const search = parseSearchParam(req.query.search);
+    if (search) {
+      filters.search = search;
     }
 
     const { page, limit } = parsePagination(req.query, { defaultPage: 1, defaultLimit: 20 });
@@ -143,6 +162,8 @@ export async function getVendorHandler(req: Request, res: Response): Promise<voi
       data: transformVendor(vendor)
     });
   } catch (error) {
+    // Erreurs typées du service (404, 400) : leur statut et leur message priment.
+    if (respondWithAppError(res, error)) return;
     console.error('Error getting vendor:', error);
     if (error instanceof Error) {
       if (error.message.includes('introuvable')) {
@@ -191,7 +212,10 @@ export async function updateVendorHandler(req: Request, res: Response, next: Nex
       data: transformVendor(vendor)
     });
   } catch (error) {
-    if (error instanceof AppError) {
+    // Corps illisible (Zod) : le middleware central le rend en 400. Sans cela,
+    // le message JSON de la ZodError ne contenait ni « invalide » ni « requis »
+    // et tombait en 500.
+    if (error instanceof AppError || (error as { name?: string } | null)?.name === 'ZodError') {
       next(error);
       return;
     }
@@ -256,6 +280,8 @@ export async function deactivateVendorHandler(req: Request, res: Response): Prom
       data: vendor
     });
   } catch (error) {
+    // Erreurs typées du service (404, 400) : leur statut et leur message priment.
+    if (respondWithAppError(res, error)) return;
     console.error('Error deactivating vendor:', error);
     if (error instanceof Error) {
       if (error.message.includes('introuvable')) {
@@ -310,6 +336,8 @@ export async function deleteVendorHandler(req: Request, res: Response): Promise<
       data: result
     });
   } catch (error) {
+    // Erreurs typées du service (404, 400) : leur statut et leur message priment.
+    if (respondWithAppError(res, error)) return;
     console.error('Error deleting vendor:', error);
     if (error instanceof Error) {
       if (error.message.includes('introuvable')) {

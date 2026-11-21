@@ -6,7 +6,9 @@ import {
   computeOutstanding,
   deriveChargeCallStatus,
   isJournalEntryBalanced,
-  roundMoney
+  isZeroDecimalCurrency,
+  roundMoney,
+  roundMoneyForCurrency
 } from './finance-utils';
 import {
   computeMeetingAttendance,
@@ -593,8 +595,27 @@ export async function deleteEmptySyndicateByTenant(
       prisma.chargePayment.count({ where: { lot: { syndicateId } } })
     ]);
 
+  // Prélèvements automatiques (relations Restrict) : créancier, remises et imports de retours rattachés à la
+  // copropriété. Sans ce contrôle, la suppression finissait en erreur de clé étrangère (500) au lieu d'un 409.
+  const [directDebitCreditors, directDebitRemittances, directDebitReturnImports] = await Promise.all([
+    prisma.directDebitCreditor.count({ where: { syndicateId } }),
+    prisma.directDebitRemittance.count({ where: { syndicateId } }),
+    prisma.directDebitReturnImport.count({ where: { syndicateId } })
+  ]);
+
   if (
-    lots + budgets + chargeCalls + meetings + documents + contracts + incidents + ownerAccounts + chargePayments >
+    lots +
+      budgets +
+      chargeCalls +
+      meetings +
+      documents +
+      contracts +
+      incidents +
+      ownerAccounts +
+      chargePayments +
+      directDebitCreditors +
+      directDebitRemittances +
+      directDebitReturnImports >
     0
   ) {
     throw conflict(
@@ -1371,6 +1392,20 @@ export async function addLotTenantBySyndicate(
   await assertLeaseBelongsToTenant(tenantId, data.leaseId);
 
   return prisma.$transaction(async tx => {
+    // Le nouveau locataire remplace l'actuel : l'ancienne affectation est close, et son historique garde une date
+    // de fin (celle d'entrée du nouveau) au lieu d'une affectation « terminée » sans fin.
+    await tx.lotTenantAssignment.updateMany({
+      where: {
+        lotId,
+        isActive: true,
+        endDate: null,
+        startDate: { lte: data.startDate }
+      },
+      data: {
+        isActive: false,
+        endDate: data.startDate
+      }
+    });
     await tx.lotTenantAssignment.updateMany({
       where: {
         lotId,
@@ -1418,18 +1453,20 @@ export async function deactivateLotTenantAssignmentBySyndicate(
         }
       }
     },
-    select: { id: true }
+    select: { id: true, isActive: true, endDate: true }
   });
 
   if (!assignment) {
     throw notFound('Assignation locataire introuvable ou inaccessible');
   }
 
+  // Affectation déjà terminée (remplacée par un autre locataire, ou fin déjà saisie) : sa date de fin est
+  // conservée, on ne la réécrit pas à « aujourd'hui ».
   return prisma.lotTenantAssignment.update({
     where: { id: assignmentId },
     data: {
       isActive: false,
-      endDate: new Date()
+      ...(assignment.endDate ? {} : { endDate: new Date() })
     }
   });
 }
@@ -1722,6 +1759,24 @@ async function createLotChargeCallTx(
   return chargeCall;
 }
 
+/**
+ * Echeance de la `index`-ieme occurrence d'un appel recurrent, en mois calendaires : le jour est ramene au
+ * dernier jour du mois cible (31 janvier + 1 mois = 28/29 fevrier, et non le 3 mars que donne `setMonth` seul).
+ */
+export function shiftChargeDueDate(baseDate: Date, frequency: 'MONTHLY' | 'QUARTERLY' | 'ANNUAL', index: number): Date {
+  const next = new Date(baseDate);
+  if (index <= 0) {
+    return next;
+  }
+  const months = frequency === 'MONTHLY' ? index : frequency === 'QUARTERLY' ? index * 3 : index * 12;
+  const day = next.getDate();
+  next.setDate(1);
+  next.setMonth(next.getMonth() + months);
+  const lastDayOfTarget = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+  next.setDate(Math.min(day, lastDayOfTarget));
+  return next;
+}
+
 export async function createChargeCallAndUpdateStatus(
   tenantId: string,
   data: {
@@ -1858,22 +1913,7 @@ export async function createChargeCallAndUpdateStatus(
   const recurrenceCount = data.isRecurring ? Math.max(1, data.recurrenceCount ?? 1) : 1;
   const recurrenceFrequency = data.recurrenceFrequency ?? 'MONTHLY';
 
-  const addRecurrence = (baseDate: Date, index: number) => {
-    const next = new Date(baseDate);
-    if (index <= 0) {
-      return next;
-    }
-    if (recurrenceFrequency === 'MONTHLY') {
-      next.setMonth(next.getMonth() + index);
-      return next;
-    }
-    if (recurrenceFrequency === 'QUARTERLY') {
-      next.setMonth(next.getMonth() + index * 3);
-      return next;
-    }
-    next.setFullYear(next.getFullYear() + index);
-    return next;
-  };
+  const addRecurrence = (baseDate: Date, index: number) => shiftChargeDueDate(baseDate, recurrenceFrequency, index);
 
   const resolvePeriodLabel = (index: number) => {
     if (recurrenceCount <= 1) {
@@ -2287,6 +2327,14 @@ export async function updateMeetingByTenant(
 
   return prisma.$transaction(async tx => {
     const existing = await findMeetingForTenant(tx, tenantId, syndicateId, meetingId);
+    // Meme garde qu'a la creation : les heures saisies doivent rester dans l'ordre.
+    if (has('startTime') || has('endTime')) {
+      const start = has('startTime') ? data.startTime : existing.startTime;
+      const end = has('endTime') ? data.endTime : existing.endTime;
+      if (start && end && start > end) {
+        throw unprocessableEntity("L'heure de debut doit etre inferieure a l'heure de fin");
+      }
+    }
     // Verrou de l'AG : un vote ou un emargement simultane ne se perd pas dans le recalcul de cloture.
     await lockMeetingTx(tx, meetingId);
 
@@ -3149,6 +3197,10 @@ export async function createMaintenanceContract(
     throw notFound('Prestataire introuvable ou inaccessible');
   }
 
+  if (data.endDate && data.endDate < data.startDate) {
+    throw unprocessableEntity('La date de fin du contrat doit etre posterieure a sa date de debut');
+  }
+
   await assertNoOverlappingContract(data.syndicateId, {
     providerId: data.providerId,
     nature: data.nature,
@@ -3200,11 +3252,29 @@ export async function updateMaintenanceContractByTenant(
         tenantId
       }
     },
-    select: { id: true }
+    select: { id: true, startDate: true, endDate: true }
   });
 
   if (!existing) {
     throw notFound('Contrat introuvable ou inaccessible');
+  }
+
+  // Un prestataire d'une autre agence ne peut pas etre rattache au contrat (meme 404 qu'un inexistant).
+  if (data.providerId) {
+    const provider = await prisma.serviceProvider.findFirst({
+      where: { id: data.providerId, tenantId },
+      select: { id: true }
+    });
+    if (!provider) {
+      throw notFound('Prestataire introuvable ou inaccessible');
+    }
+  }
+
+  // La fin ne precede jamais le debut, sur les valeurs finales (saisies ou deja enregistrees).
+  const finalStart = data.startDate ?? existing.startDate;
+  const finalEnd = data.endDate === undefined ? existing.endDate : data.endDate;
+  if (finalStart && finalEnd && finalEnd < finalStart) {
+    throw unprocessableEntity('La date de fin du contrat doit etre posterieure a sa date de debut');
   }
 
   return prisma.maintenanceContract.update({
@@ -3249,8 +3319,10 @@ export async function listDocumentsBySyndicate(
     }
   });
 
+  // Copropriété d'une autre agence ou inexistante : 404, comme les autres lectures (et non une liste vide
+  // qui laissait croire à un coffre sans document).
   if (!syndicate?.id) {
-    return [];
+    throw notFound('Copropriété introuvable ou inaccessible');
   }
 
   return prisma.syndicateDocument.findMany({
@@ -3333,6 +3405,14 @@ export async function updateDocumentForSyndicate(
 }
 
 export async function listFundsBySyndicate(tenantId: string, syndicateId: string) {
+  // Copropriete d'une autre agence ou inexistante : 404, comme les autres lectures (et non une liste vide).
+  const syndicate = await prisma.syndicate.findFirst({
+    where: { id: syndicateId, tenantId },
+    select: { id: true }
+  });
+  if (!syndicate?.id) {
+    throw notFound('Copropriété introuvable ou inaccessible');
+  }
   return prisma.syndicateFund.findMany({
     where: {
       syndicateId,
@@ -3952,9 +4032,19 @@ export async function createLatePaymentPenaltyForChargeCall(
   const computedDaysLate = Math.max(0, Math.floor((appliedAt.getTime() - dueDate.getTime()) / (24 * 60 * 60 * 1000)));
   const daysLate = data.daysLate ?? computedDaysLate;
 
-  const computedPenalty = computeLatePenalty(outstanding, data.penaltyRate, daysLate);
+  // Devise de l'appel : en FCFA (XOF, XAF...) la penalite est un nombre entier de francs.
+  const callCurrency = (call as { currency?: string | null }).currency;
+  const computedPenalty = computeLatePenalty(outstanding, data.penaltyRate, daysLate, callCurrency);
   // Un montant saisi est plafonné au reste dû, comme le calcul (computeLatePenalty).
-  const penaltyAmount = Math.min(roundMoney(data.penaltyAmount ?? computedPenalty), roundMoney(outstanding));
+  const penaltyAmount = Math.min(
+    roundMoneyForCurrency(data.penaltyAmount ?? computedPenalty, callCurrency),
+    roundMoneyForCurrency(outstanding, callCurrency)
+  );
+
+  // Une penalite creee deja remise ne debite rien : sinon le compte du lot porterait un
+  // debit sans credit de remise (et la remise, refusee sur une penalite deja remise,
+  // ne pourrait jamais le compenser).
+  const createdWaived = data.waived === true;
 
   return prisma.$transaction(async tx => {
     const penalty = await tx.latePaymentPenalty.create({
@@ -3965,12 +4055,13 @@ export async function createLatePaymentPenaltyForChargeCall(
         penaltyRate: data.penaltyRate,
         penaltyAmount,
         appliedAt,
-        waived: data.waived ?? false,
+        waived: createdWaived,
+        ...(createdWaived ? { waivedAt: appliedAt } : {}),
         waivedReason: data.waivedReason
       }
     });
 
-    const account = await ensureOwnerAccountForLotTx(tx, tenantId, syndicateId, call.lotId);
+    const account = createdWaived ? null : await ensureOwnerAccountForLotTx(tx, tenantId, syndicateId, call.lotId);
     if (account) {
       await appendOwnerAccountTransactionTx(tx, {
         accountId: account.id,
@@ -4003,7 +4094,8 @@ export async function waiveLatePaymentPenaltyByTenant(
     select: {
       id: true,
       penaltyAmount: true,
-      lotId: true
+      lotId: true,
+      waived: true
     }
   });
 
@@ -4011,7 +4103,21 @@ export async function waiveLatePaymentPenaltyByTenant(
     throw notFound('Penalite introuvable ou inaccessible');
   }
 
+  // Une remise ne se rejoue pas : sinon chaque appel recredite le compte du lot.
+  if (penalty.waived) {
+    throw conflict('Cette penalite a deja ete remise');
+  }
+
   return prisma.$transaction(async tx => {
+    // Bascule atomique : sous deux requetes simultanees, une seule passe de `waived: false` a `true`.
+    const switched = await tx.latePaymentPenalty.updateMany({
+      where: { id: penaltyId, waived: false },
+      data: { waived: true }
+    });
+    if (switched.count === 0) {
+      throw conflict('Cette penalite a deja ete remise');
+    }
+
     const updated = await tx.latePaymentPenalty.update({
       where: { id: penaltyId },
       data: {
@@ -4772,14 +4878,22 @@ type LotDistributionInput = {
   specialShares: number | null;
 };
 
+/**
+ * Repartit un poste entre les lots. Devise sans sous-unite (FCFA) : parts en
+ * francs entiers ; sinon au centime. Le dernier lot absorbe le reste, donc la
+ * somme des parts egale toujours le montant du poste arrondi selon la devise.
+ */
 function distributeLineAmount(
   amount: number,
   lots: LotDistributionInput[],
-  key: BudgetLineDistributionInput['distributionKey']
+  key: BudgetLineDistributionInput['distributionKey'],
+  currency?: string | null
 ) {
   if (lots.length === 0) return [];
+  const round = (value: number) => roundMoneyForCurrency(value, currency);
+  const total = round(amount);
   if (lots.length === 1) {
-    return [{ lotId: lots[0].id, allocated: roundMoney(amount) }];
+    return [{ lotId: lots[0].id, allocated: total }];
   }
 
   let weights = lots.map(() => 1);
@@ -4796,16 +4910,20 @@ function distributeLineAmount(
   }
 
   const totalWeight = weights.reduce((acc, value) => acc + value, 0) || lots.length;
+  // Devise entiere : plancher par lot, le dernier lot absorbe un reste toujours
+  // positif (jamais de part negative). Sinon arrondi au centime par lot.
+  const integerCurrency = isZeroDecimalCurrency(currency);
   const out = lots.map((lot, index) => {
     if (index === lots.length - 1) {
       return { lotId: lot.id, allocated: 0 };
     }
-    const allocated = roundMoney((amount * weights[index]) / totalWeight);
+    const raw = (total * weights[index]) / totalWeight;
+    const allocated = integerCurrency ? Math.floor(raw) : round(raw);
     return { lotId: lot.id, allocated };
   });
 
   const partial = out.reduce((acc, item) => acc + item.allocated, 0);
-  out[out.length - 1].allocated = roundMoney(amount - partial);
+  out[out.length - 1].allocated = round(total - partial);
   return out;
 }
 
@@ -4832,13 +4950,27 @@ export async function listBudgetsBySyndicate(
   return attachBudgetActuals(tenantId, syndicateId, budgets);
 }
 
+/**
+ * Un total saisi n'est qu'une verification : il doit egaler la somme des
+ * lignes, a l'arrondi de la devise pres. Sinon 422 (jamais de total libre).
+ */
+function assertBudgetTotalMatchesLines(provided: number | undefined, linesTotal: number, currency: string) {
+  if (provided === undefined || provided === null) return;
+  if (roundMoneyForCurrency(provided, currency) !== linesTotal) {
+    throw unprocessableEntity(
+      `Le total du budget (${provided}) doit être égal à la somme des lignes budgétaires (${linesTotal}).`
+    );
+  }
+}
+
 export async function createBudgetBySyndicate(
   tenantId: string,
   syndicateId: string,
   data: {
     fiscalYear: number;
     label: string;
-    totalAmount: number;
+    /** Optionnel : le total enregistre est toujours la somme des lignes (un total fourni doit lui etre egal). */
+    totalAmount?: number;
     currency?: string;
     lines: Array<{
       category: string;
@@ -4873,18 +5005,27 @@ export async function createBudgetBySyndicate(
     }
   }
 
+  // Le total d'un budget est la somme de ses lignes (lignes arrondies selon la devise).
+  const budgetCurrency = data.currency || 'XOF';
+  const roundedLineAmounts = data.lines.map(line => roundMoneyForCurrency(line.amountForecast, budgetCurrency));
+  const linesTotal = roundMoneyForCurrency(
+    roundedLineAmounts.reduce((sum, amount) => sum + amount, 0),
+    budgetCurrency
+  );
+  assertBudgetTotalMatchesLines(data.totalAmount, linesTotal, budgetCurrency);
+
   const budget = await prisma.syndicateBudget.create({
     data: {
       syndicateId,
       fiscalYear: data.fiscalYear,
       label: data.label,
-      totalAmount: roundMoney(data.totalAmount),
-      currency: data.currency || 'XOF',
+      totalAmount: linesTotal,
+      currency: budgetCurrency,
       lines: {
-        create: data.lines.map(line => ({
+        create: data.lines.map((line, index) => ({
           category: line.category,
           description: line.description,
-          amountForecast: roundMoney(line.amountForecast),
+          amountForecast: roundedLineAmounts[index],
           distributionKey: line.distributionKey as any,
           accountId: line.accountId ?? undefined,
           fundId: line.fundId ?? undefined
@@ -4893,7 +5034,18 @@ export async function createBudgetBySyndicate(
     }
   });
 
-  await recomputeBudgetAllocationsByBudget(tenantId, syndicateId, budget.id);
+  try {
+    await recomputeBudgetAllocationsByBudget(tenantId, syndicateId, budget.id);
+  } catch (error) {
+    // Repartition impossible (ex. copropriete sans lot) : on ne laisse pas un budget orphelin,
+    // sans allocations, alors que l'appelant recoit une erreur.
+    try {
+      await prisma.syndicateBudget.delete({ where: { id: budget.id } });
+    } catch {
+      // Le nettoyage est au mieux : l'erreur d'origine reste celle que l'appelant doit voir.
+    }
+    throw error;
+  }
 
   return prisma.syndicateBudget.findUnique({
     where: { id: budget.id },
@@ -4948,7 +5100,7 @@ export async function updateBudgetBySyndicate(
 
   const budget = await prisma.syndicateBudget.findFirst({
     where: { id: budgetId, syndicateId },
-    select: { id: true, status: true }
+    select: { id: true, status: true, currency: true, lines: { select: { amountForecast: true } } }
   });
 
   if (!budget) {
@@ -4957,6 +5109,15 @@ export async function updateBudgetBySyndicate(
 
   if (budget.status === 'CLOSED') {
     throw conflict('Budget clôturé : il ne peut plus être modifié.');
+  }
+
+  if (data.totalAmount !== undefined) {
+    // Le total n'est pas modifiable librement : il doit egaler la somme des lignes existantes.
+    const existingLinesTotal = roundMoneyForCurrency(
+      budget.lines.reduce((sum, line) => sum + Number(line.amountForecast), 0),
+      budget.currency
+    );
+    assertBudgetTotalMatchesLines(data.totalAmount, existingLinesTotal, budget.currency);
   }
 
   if (data.status && data.status !== budget.status) {
@@ -5008,8 +5169,9 @@ export async function updateBudgetBySyndicate(
       label: data.label,
       status: data.status as any,
       approvedByResolutionId: data.approvedByResolutionId,
-      approvedAt: data.status === 'APPROVED' ? new Date() : undefined,
-      totalAmount: data.totalAmount !== undefined ? roundMoney(data.totalAmount) : undefined
+      // La date d'approbation ne se reecrit que lors d'un passage a APPROVED (pas a chaque modification).
+      approvedAt: data.status === 'APPROVED' && budget.status !== 'APPROVED' ? new Date() : undefined
+      // Jamais de total libre : un total fourni a ete valide egal a la somme des lignes (deja stockee).
     },
     include: {
       lines: true,
@@ -5045,6 +5207,7 @@ export async function recomputeBudgetAllocationsByBudget(tenantId: string, syndi
   if (budget.status === 'CLOSED') {
     throw conflict('Budget clôturé : il ne peut plus être modifié.');
   }
+  const budgetCurrency = budget.currency;
 
   const lots = await prisma.syndicateLot.findMany({
     where: { syndicateId },
@@ -5083,12 +5246,16 @@ export async function recomputeBudgetAllocationsByBudget(tenantId: string, syndi
     const distributed = distributeLineAmount(
       Number(line.amountForecast),
       distributionLots as LotDistributionInput[],
-      line.distributionKey
+      line.distributionKey,
+      budgetCurrency
     );
     for (const lineAllocation of distributed) {
       const lotAllocation = allocationsByLot.get(lineAllocation.lotId);
       if (!lotAllocation) continue;
-      lotAllocation.totalAllocated = roundMoney(lotAllocation.totalAllocated + lineAllocation.allocated);
+      lotAllocation.totalAllocated = roundMoneyForCurrency(
+        lotAllocation.totalAllocated + lineAllocation.allocated,
+        budgetCurrency
+      );
       lotAllocation.breakdown.push({
         lineId: line.id,
         category: line.category,
@@ -5104,7 +5271,7 @@ export async function recomputeBudgetAllocationsByBudget(tenantId: string, syndi
       data: Array.from(allocationsByLot.entries()).map(([lotId, value]) => ({
         budgetId,
         lotId,
-        totalAllocated: roundMoney(value.totalAllocated),
+        totalAllocated: roundMoneyForCurrency(value.totalAllocated, budgetCurrency),
         breakdown: value.breakdown as any
       }))
     });
@@ -5123,7 +5290,7 @@ export async function listChargeCallBatchesBySyndicate(
   filters?: { status?: 'DRAFT' | 'SENT' | 'CLOSED'; period?: string }
 ) {
   await assertSyndicateTenantOwnership(tenantId, syndicateId);
-  return prisma.chargeCallBatch.findMany({
+  const batches = await prisma.chargeCallBatch.findMany({
     where: {
       syndicateId,
       ...(filters?.status ? { status: filters.status as any } : {}),
@@ -5135,6 +5302,20 @@ export async function listChargeCallBatchesBySyndicate(
     },
     orderBy: [{ createdAt: 'desc' }]
   });
+  // Affichage toujours coherent, meme sur des donnees historiques : un lot qui
+  // porte des appels affiche la somme de ces appels. Un lot sans appel (campagne
+  // declarative) garde son total declare.
+  return batches.map(batch =>
+    batch.chargeCalls.length > 0
+      ? {
+          ...batch,
+          totalAmount: roundMoneyForCurrency(
+            batch.chargeCalls.reduce((sum, call) => sum + Number(call.amount), 0),
+            batch.currency
+          )
+        }
+      : batch
+  );
 }
 
 export async function createChargeCallBatchBySyndicate(
@@ -5168,6 +5349,10 @@ export async function createChargeCallBatchBySyndicate(
   }
 
   const bounds = resolvePeriodBounds(data);
+  // Meme regle que la generation depuis le budget : un seul lot d'appels ordinaire par periode.
+  if (data.batchType === 'REGULAR') {
+    await assertNoRegularBatchForPeriodTx(prisma as unknown as PrismaTransactionClient, syndicateId, bounds);
+  }
   return prisma.chargeCallBatch.create({
     data: {
       syndicateId,
@@ -5178,7 +5363,8 @@ export async function createChargeCallBatchBySyndicate(
       dueDate: data.dueDate,
       batchType: data.batchType as any,
       budgetId: data.budgetId ?? undefined,
-      totalAmount: roundMoney(data.totalAmount),
+      // Campagne sans appel : le total est declare (pas une somme d'appels), arrondi selon la devise.
+      totalAmount: roundMoneyForCurrency(data.totalAmount, data.currency || 'XOF'),
       currency: data.currency || 'XOF',
       status: 'SENT'
     },
@@ -5241,7 +5427,6 @@ export async function createChargeCallBatchWithCallsTx(
     dueDate: Date;
     batchType: 'REGULAR' | 'EXCEPTIONAL';
     budgetId?: string | null;
-    totalAmount: number;
     currency: string;
     lots: LotCallAmount[];
     /** Mode de repartition ecrit sur le lot d'appels (defaut SHARES). */
@@ -5252,6 +5437,14 @@ export async function createChargeCallBatchWithCallsTx(
   issued: IssuedChargeDocument[] = []
 ) {
   if (data.batchType === 'REGULAR') await assertNoRegularBatchForPeriodTx(tx, data.syndicateId, data.bounds);
+  // Montants des appels a creer : arrondis selon la devise, lots a montant nul exclus.
+  const callAmounts = data.lots
+    .map(lot => ({ lotId: lot.lotId, amount: roundMoneyForCurrency(lot.amount, data.currency) }))
+    .filter(lot => lot.amount > 0);
+  const batchTotal = roundMoneyForCurrency(
+    callAmounts.reduce((sum, lot) => sum + lot.amount, 0),
+    data.currency
+  );
   const batch = await tx.chargeCallBatch.create({
     data: {
       syndicateId: data.syndicateId,
@@ -5262,7 +5455,7 @@ export async function createChargeCallBatchWithCallsTx(
       dueDate: data.dueDate,
       batchType: data.batchType,
       ...(data.budgetId ? { budgetId: data.budgetId } : {}),
-      totalAmount: roundMoney(data.totalAmount),
+      totalAmount: batchTotal,
       currency: data.currency,
       allocationMethod: data.allocationMethod ?? 'SHARES',
       status: 'SENT'
@@ -5271,9 +5464,7 @@ export async function createChargeCallBatchWithCallsTx(
 
   // Un lot dont la quote-part est nulle (ex. sans tantiemes speciaux) n'a rien a payer : ni appel,
   // ni debit, ni avis, ni relance possible (BUG-050).
-  const lotsInLockOrder = data.lots
-    .filter(lot => roundMoney(lot.amount) > 0)
-    .sort((a, b) => compareLotIdsForLocking(a.lotId, b.lotId));
+  const lotsInLockOrder = callAmounts.sort((a, b) => compareLotIdsForLocking(a.lotId, b.lotId));
   const chargeCalls: Array<Awaited<ReturnType<typeof createLotChargeCallTx>>> = [];
   const fundCredits: FundCreditItem[] = [];
   for (const lot of lotsInLockOrder) {
@@ -5287,7 +5478,7 @@ export async function createChargeCallBatchWithCallsTx(
           batchId: batch.id,
           period: data.period,
           bounds: data.bounds,
-          amount: roundMoney(lot.amount),
+          amount: lot.amount,
           currency: data.currency,
           dueDate: data.dueDate
         },
@@ -5384,14 +5575,29 @@ export async function generateChargeCallsFromBudget(
     lotId: allocation.lotId,
     amount:
       periodsPerYear === 1
-        ? roundMoney(Number(allocation.totalAllocated))
-        : annualShareForPeriod(Number(allocation.totalAllocated), periodsPerYear, periodIndex)
+        ? roundMoneyForCurrency(Number(allocation.totalAllocated), budget.currency)
+        : annualShareForPeriod(Number(allocation.totalAllocated), periodsPerYear, periodIndex, budget.currency)
   }));
-  // Annee entiere : total du budget, comme avant le lot S4 ; sinon la somme des parts de la periode.
-  const totalAmount =
-    periodsPerYear === 1
-      ? Number(budget.totalAmount)
-      : fromCents(lots.reduce((sum, lot) => sum + toCents(lot.amount), 0));
+  // Annee entiere et budget entierement reparti : si l'arrondi des parts fait deriver la somme
+  // du total du budget (arrondi selon la devise), le dernier lot absorbe l'ecart. Le total du
+  // lot d'appels reste, lui, la somme des appels crees (calculee a l'ecriture).
+  if (periodsPerYear === 1 && lots.length > 0) {
+    const allocatedTotal = roundMoneyForCurrency(
+      allocations.reduce((sum, allocation) => sum + Number(allocation.totalAllocated), 0),
+      budget.currency
+    );
+    const budgetTotal = roundMoneyForCurrency(Number(budget.totalAmount), budget.currency);
+    if (allocatedTotal === budgetTotal) {
+      const drift = roundMoneyForCurrency(
+        budgetTotal - lots.reduce((sum, lot) => sum + lot.amount, 0),
+        budget.currency
+      );
+      if (drift !== 0) {
+        const last = lots[lots.length - 1];
+        last.amount = roundMoneyForCurrency(last.amount + drift, budget.currency);
+      }
+    }
+  }
   const issued: IssuedChargeDocument[] = [];
   const generated = await prisma.$transaction(async tx => {
     // Constat de recette : `createMany` (avant ce correctif) ne renvoie que
@@ -5410,7 +5616,6 @@ export async function generateChargeCallsFromBudget(
         dueDate: data.dueDate,
         batchType: data.batchType,
         budgetId,
-        totalAmount,
         currency: budget.currency,
         lots,
         actorUserId: data.actorUserId ?? null
@@ -5750,6 +5955,11 @@ export async function updateLotOwnerProfileBySyndicate(
   const nextUntil = data.ownedUntil === undefined ? profile.ownedUntil : data.ownedUntil;
   const nextActive = data.isActive ?? profile.isActive;
   const willCount = nextActive && (!nextUntil || nextUntil > new Date());
+  // Même règle qu'à la création : on ne cesse pas d'être propriétaire avant de l'être devenu.
+  if (nextUntil && nextUntil < (data.ownedSince ?? profile.ownedSince)) {
+    const message = t('La date de fin de propriété doit être postérieure ou égale à la date de début.');
+    throw unprocessableEntity(message);
+  }
 
   return prisma.$transaction(async tx => {
     if (willCount) {
@@ -5994,7 +6204,7 @@ export async function updateIncidentBySyndicate(
   await assertSyndicateTenantOwnership(tenantId, syndicateId);
   const incident = await prisma.syndicateIncident.findFirst({
     where: { id: incidentId, syndicateId },
-    select: { id: true }
+    select: { id: true, resolvedAt: true }
   });
   if (!incident) {
     throw notFound('Incident introuvable');
@@ -6010,12 +6220,21 @@ export async function updateIncidentBySyndicate(
     }
   }
 
+  // La date de résolution suit le statut quand l'appelant ne la fixe pas : « Résolu » / « Clôturé » la posent à
+  // aujourd'hui (si elle est vide), et rouvrir l'incident l'efface.
+  let resolvedAt: Date | null | undefined = data.resolvedAt;
+  if (resolvedAt === undefined && data.status !== undefined) {
+    const closing = data.status === 'RESOLVED' || data.status === 'CLOSED';
+    if (closing && !incident.resolvedAt) resolvedAt = new Date();
+    else if (!closing && incident.resolvedAt) resolvedAt = null;
+  }
+
   return prisma.syndicateIncident.update({
     where: { id: incidentId },
     data: {
       status: data.status as any,
       providerId: data.providerId === null ? null : data.providerId,
-      resolvedAt: data.resolvedAt === null ? null : data.resolvedAt,
+      resolvedAt: resolvedAt === null ? null : resolvedAt,
       description: data.description
     },
     include: {

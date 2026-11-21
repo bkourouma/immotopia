@@ -13,7 +13,7 @@ import { RentalDepositMovementType } from '@prisma/client';
 
 const createDepositMovementSchema = z.object({
   type: z.enum(['COLLECT', 'HOLD', 'RELEASE', 'REFUND', 'FORFEIT', 'ADJUSTMENT']),
-  amount: z.coerce.number().positive(),
+  amount: z.coerce.number().finite().positive(),
   paymentId: z.string().uuid().optional().nullable(),
   installmentId: z.string().uuid().optional().nullable(),
   note: z.string().optional().nullable(),

@@ -58,7 +58,7 @@ export const LeaseDetailPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { permissions, ready } = useMyMenuAccess(tenantId);
   // Modifier le bail et changer son statut exigent RENTAL_LEASES_EDIT (BUG-2026-11-03-011).
-  const peutModifier = permissions === null || permissions.has('RENTAL_LEASES_EDIT');
+  const peutModifier = ready && (permissions === null || permissions.has('RENTAL_LEASES_EDIT'));
   const peutVoirPrelevements = ready && (permissions === null || permissions.has('RENTAL_DIRECT_DEBIT_VIEW'));
 
   // L'onglet principal actif vit dans l'URL (`tab`) : il survit au rechargement

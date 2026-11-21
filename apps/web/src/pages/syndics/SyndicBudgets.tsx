@@ -36,6 +36,12 @@ import {
 import { montantSaisiProps } from '../../utils/montant-saisi';
 import { displayCurrency } from '../../utils/syndic-currency';
 import {
+  budgetDisplayTotal,
+  currencyFractionDigits,
+  roundToCurrency,
+  sumAmounts
+} from '../../components/syndics/budget-money';
+import {
   assignBudgetLineFund,
   createBudget,
   createChargeCallBatch,
@@ -59,6 +65,7 @@ import {
 import { useTabParam } from '../../components/syndics/finances/url-params';
 import { useLocalListSearch } from '../../utils/list-search';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
+import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { getLotTypeLabel } from '../../utils/syndic-lot-label';
 import { t } from '../../i18n/t';
 import { useFormFieldModes } from '../../hooks/useFormFieldModes';
@@ -169,13 +176,12 @@ interface BudgetLineFormValue {
   fundId?: string | null;
 }
 
-/** Somme des montants prévus saisis (arrondie au centime pour éviter les dérives de flottants). */
-function sumFormLines(lines: BudgetLineFormValue[] | undefined): number {
-  const total = (lines || []).reduce((acc, line) => {
-    const amount = Number(line?.amountForecast);
-    return acc + (Number.isFinite(amount) ? amount : 0);
-  }, 0);
-  return Math.round(total * 100) / 100;
+/** Somme des montants prévus saisis (arrondie à la précision de la devise : entier en FCFA). */
+function sumFormLines(lines: BudgetLineFormValue[] | undefined, currency?: string | null): number {
+  return sumAmounts(
+    (lines || []).map(line => line?.amountForecast),
+    currency
+  );
 }
 
 /**
@@ -229,6 +235,11 @@ export const SyndicBudgets: React.FC = () => {
 
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
 
+  // Créer, approuver, répartir, générer et affecter un fonds exigent SYNDIC_EDIT (l'API répondrait 403).
+  // L'API reste l'autorité : on ne grise que lorsque l'absence du droit est connue (lecture, échec réseau : pas de filtre).
+  const { permissions, ready: permissionsReady } = useMyMenuAccess(effectiveTenantId);
+  const canEdit = !(permissionsReady && permissions !== null && !permissions.has('SYNDIC_EDIT'));
+
   const [tab, setTab] = useTabParam(BUDGET_TABS, 'budgets');
   // Incrémenté pour relire les données de l'onglet actif après une action ou un clic sur « Actualiser ».
   const [refresh, setRefresh] = useState(0);
@@ -257,8 +268,9 @@ export const SyndicBudgets: React.FC = () => {
   const linesLayout = useModalLayout(720);
   const [budgetForm] = Form.useForm();
   const watchedBudgetLines = Form.useWatch('lines', budgetForm) as BudgetLineFormValue[] | undefined;
-  const budgetFormTotal = sumFormLines(watchedBudgetLines);
   const watchedBudgetCurrency = Form.useWatch('currency', budgetForm) as string | undefined;
+  const budgetFormTotal = sumFormLines(watchedBudgetLines, watchedBudgetCurrency);
+  const budgetLineDigits = currencyFractionDigits(watchedBudgetCurrency);
   const [generateForm] = Form.useForm();
   const watchedGeneratePeriods = Form.useWatch('periodsPerYear', generateForm) as number | undefined;
   const periodTouched = useRef(false);
@@ -463,12 +475,12 @@ export const SyndicBudgets: React.FC = () => {
       const created = await createBudget(effectiveTenantId, syndicId, {
         fiscalYear: values.fiscalYear,
         label: values.label,
-        totalAmount: sumFormLines(formLines),
+        totalAmount: sumFormLines(formLines, values.currency || 'XOF'),
         currency: values.currency || 'XOF',
         lines: formLines.map(line => ({
           category: String(line.category),
           description: String(line.description),
-          amountForecast: Number(line.amountForecast),
+          amountForecast: roundToCurrency(Number(line.amountForecast), values.currency || 'XOF'),
           distributionKey: values.distributionKey,
           ...(fm.isVisible('lines[].fundId') ? { fundId: line.fundId || undefined } : {})
         }))
@@ -515,7 +527,7 @@ export const SyndicBudgets: React.FC = () => {
     handleChangeBudgetStatus(budgetId, 'REVISED', t('Budget repassé en révision'), t('Révision impossible'));
 
   const handleCloseBudget = (budget: SyndicateBudget) => {
-    const budgeted = Number(budget.totalAmount || 0);
+    const budgeted = budgetDisplayTotal(budget);
     const actual = budgetActualTotal(budget);
     const gap = budgeted - actual;
     Modal.confirm({
@@ -627,7 +639,7 @@ export const SyndicBudgets: React.FC = () => {
         batchType: values.batchType,
         // Rattachée au budget affiché, sinon elle disparaîtrait du tableau filtré.
         budgetId: filterBudget?.id,
-        totalAmount: values.totalAmount,
+        totalAmount: roundToCurrency(Number(values.totalAmount), values.currency || 'XOF'),
         currency: values.currency || 'XOF'
       });
       message.success(t('Campagne créée'));
@@ -676,7 +688,14 @@ export const SyndicBudgets: React.FC = () => {
       title: t('Montant'),
       dataIndex: 'totalAmount',
       align: 'end',
-      render: (value: number | string) => <MoneyValue value={value} />
+      exportValue: (budget: SyndicateBudget) => budgetDisplayTotal(budget),
+      render: (_: unknown, budget: SyndicateBudget) => (
+        <MoneyValue
+          value={budgetDisplayTotal(budget)}
+          currency={budget.currency}
+          fractionDigits={currencyFractionDigits(budget.currency)}
+        />
+      )
     },
     {
       title: t('Réalisé'),
@@ -689,8 +708,8 @@ export const SyndicBudgets: React.FC = () => {
       title: t('Écart'),
       key: 'gap',
       align: 'end',
-      exportValue: (budget: SyndicateBudget) => Number(budget.totalAmount || 0) - budgetActualTotal(budget),
-      render: (_, budget) => <GapValue gap={Number(budget.totalAmount || 0) - budgetActualTotal(budget)} />
+      exportValue: (budget: SyndicateBudget) => budgetDisplayTotal(budget) - budgetActualTotal(budget),
+      render: (_, budget) => <GapValue gap={budgetDisplayTotal(budget) - budgetActualTotal(budget)} />
     },
     { title: t('Allocations'), render: (_, budget) => budget.allocations?.length || 0 },
     {
@@ -708,28 +727,55 @@ export const SyndicBudgets: React.FC = () => {
         return (
           <Space wrap>
             {(budget.status === 'DRAFT' || budget.status === 'REVISED') && (
-              <Button size="small" icon={<CheckOutlined />} onClick={() => void handleApproveBudget(budget.id)}>
+              <Button
+                size="small"
+                icon={<CheckOutlined />}
+                disabled={!canEdit}
+                onClick={() => void handleApproveBudget(budget.id)}
+              >
                 {t('Approuver')}
               </Button>
             )}
             {budget.status === 'APPROVED' && (
-              <Button size="small" icon={<UndoOutlined />} onClick={() => void handleReviseBudget(budget.id)}>
+              <Button
+                size="small"
+                icon={<UndoOutlined />}
+                disabled={!canEdit}
+                onClick={() => void handleReviseBudget(budget.id)}
+              >
                 {t('Réviser')}
               </Button>
             )}
             {(budget.status === 'APPROVED' || budget.status === 'REVISED') && (
-              <Button size="small" danger icon={<LockOutlined />} onClick={() => handleCloseBudget(budget)}>
+              <Button
+                size="small"
+                danger
+                icon={<LockOutlined />}
+                disabled={!canEdit}
+                onClick={() => handleCloseBudget(budget)}
+              >
                 {t('Clôturer')}
               </Button>
             )}
-            <Button size="small" disabled={isClosed} onClick={() => void handleRecompute(budget.id)}>
+            <Button size="small" disabled={isClosed || !canEdit} onClick={() => void handleRecompute(budget.id)}>
               {t('Répartir')}
             </Button>
             <Button size="small" onClick={() => setLinesBudget(budget)}>
               {t('Postes et fonds')}
             </Button>
+            {/* L'API n'émet des appels que depuis un budget APPROVED (422 sinon). */}
             {!isClosed && (
-              <Button size="small" type="primary" onClick={() => openGenerateFor(budget)}>
+              <Button
+                size="small"
+                type="primary"
+                disabled={!canEdit || budget.status !== 'APPROVED'}
+                title={
+                  budget.status !== 'APPROVED'
+                    ? t('Le budget doit être approuvé avant de générer les appels.')
+                    : undefined
+                }
+                onClick={() => openGenerateFor(budget)}
+              >
                 {t('Générer appels')}
               </Button>
             )}
@@ -778,7 +824,13 @@ export const SyndicBudgets: React.FC = () => {
       title: t('Montant'),
       dataIndex: 'totalAmount',
       align: 'end',
-      render: (value: number | string) => <MoneyValue value={value} />
+      render: (_: unknown, batch: ChargeCallBatch) => (
+        <MoneyValue
+          value={batch.totalAmount}
+          currency={batch.currency}
+          fractionDigits={currencyFractionDigits(batch.currency)}
+        />
+      )
     },
     { title: t('Charges'), render: (_, batch) => batch.chargeCalls?.length || 0 },
     {
@@ -791,7 +843,7 @@ export const SyndicBudgets: React.FC = () => {
   /** Carte mobile d'un budget : l'action la plus probable en vue, le reste derrière « ⋮ ». */
   const renderBudgetCard = (budget: SyndicateBudget) => {
     const isClosed = budget.status === 'CLOSED';
-    const budgeted = Number(budget.totalAmount || 0);
+    const budgeted = budgetDisplayTotal(budget);
     const actual = budgetActualTotal(budget);
     const canApprove = budget.status === 'DRAFT' || budget.status === 'REVISED';
     const menu: NonNullable<MenuProps['items']> = [
@@ -801,6 +853,7 @@ export const SyndicBudgets: React.FC = () => {
               key: 'revise',
               icon: <UndoOutlined />,
               label: t('Réviser'),
+              disabled: !canEdit,
               onClick: () => void handleReviseBudget(budget.id)
             }
           ]
@@ -812,6 +865,7 @@ export const SyndicBudgets: React.FC = () => {
               icon: <LockOutlined />,
               danger: true,
               label: t('Clôturer'),
+              disabled: !canEdit,
               onClick: () => handleCloseBudget(budget)
             }
           ]
@@ -819,27 +873,43 @@ export const SyndicBudgets: React.FC = () => {
       {
         key: 'recompute',
         label: t('Répartir'),
-        disabled: isClosed,
+        disabled: isClosed || !canEdit,
         onClick: () => void handleRecompute(budget.id)
       },
       { key: 'lines', label: t('Postes et fonds'), onClick: () => setLinesBudget(budget) },
-      ...(canApprove ? [{ key: 'generate', label: t('Générer appels'), onClick: () => openGenerateFor(budget) }] : [])
+      ...(budget.status === 'APPROVED'
+        ? [
+            {
+              key: 'generate',
+              label: t('Générer appels'),
+              disabled: !canEdit,
+              onClick: () => openGenerateFor(budget)
+            }
+          ]
+        : [])
     ];
     const primaryAction = canApprove
       ? {
           label: t('Approuver'),
           icon: <CheckOutlined />,
           onClick: () => void handleApproveBudget(budget.id),
-          loading: submitting
+          loading: submitting,
+          disabled: !canEdit
         }
-      : !isClosed
-        ? { label: t('Générer appels'), onClick: () => openGenerateFor(budget) }
+      : !isClosed && budget.status === 'APPROVED'
+        ? { label: t('Générer appels'), onClick: () => openGenerateFor(budget), disabled: !canEdit }
         : { label: t('Postes et fonds'), onClick: () => setLinesBudget(budget) };
     return (
       <DataCard
         title={budget.label}
         subtitle={t('Exercice {{year}}', { year: budget.fiscalYear })}
-        highlight={<MoneyValue value={budgeted} />}
+        highlight={
+          <MoneyValue
+            value={budgeted}
+            currency={budget.currency}
+            fractionDigits={currencyFractionDigits(budget.currency)}
+          />
+        }
         status={<Tag color={budgetStatusColors[budget.status]}>{budgetStatusLabel(budget.status)}</Tag>}
         fields={[
           { label: t('Réalisé'), value: <MoneyValue value={actual} /> },
@@ -868,7 +938,13 @@ export const SyndicBudgets: React.FC = () => {
     <DataCard
       title={batch.label}
       subtitle={batch.period}
-      highlight={<MoneyValue value={batch.totalAmount} />}
+      highlight={
+        <MoneyValue
+          value={batch.totalAmount}
+          currency={batch.currency}
+          fractionDigits={currencyFractionDigits(batch.currency)}
+        />
+      }
       status={<Tag>{batchStatusLabel(batch.status)}</Tag>}
       fields={[
         { label: t('Type'), value: batchTypeLabel(batch.batchType) },
@@ -891,10 +967,10 @@ export const SyndicBudgets: React.FC = () => {
             </Paragraph>
           </Space>
           <Space wrap>
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpenBudgetModal(true)}>
+            <Button type="primary" icon={<PlusOutlined />} disabled={!canEdit} onClick={() => setOpenBudgetModal(true)}>
               {t('Nouveau budget')}
             </Button>
-            <Button icon={<PlusOutlined />} onClick={() => setOpenBatchModal(true)}>
+            <Button icon={<PlusOutlined />} disabled={!canEdit} onClick={() => setOpenBatchModal(true)}>
               {t('Nouvelle campagne')}
             </Button>
             <Button icon={<ReloadOutlined />} onClick={reload}>
@@ -1131,6 +1207,7 @@ export const SyndicBudgets: React.FC = () => {
                         ]}
                       >
                         <InputNumber
+                          precision={budgetLineDigits}
                           style={{ width: '100%' }}
                           inputMode="numeric"
                           suffix={displayCurrency(watchedBudgetCurrency || 'XOF') ?? undefined}
@@ -1173,7 +1250,11 @@ export const SyndicBudgets: React.FC = () => {
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 12 }}>
               <Typography.Text strong>{t('Total du budget')}</Typography.Text>
               <Typography.Text strong>
-                <MoneyValue value={budgetFormTotal} />
+                <MoneyValue
+                  value={budgetFormTotal}
+                  currency={watchedBudgetCurrency || 'XOF'}
+                  fractionDigits={budgetLineDigits}
+                />
               </Typography.Text>
             </div>
           </FormSection>
@@ -1275,7 +1356,7 @@ export const SyndicBudgets: React.FC = () => {
                     optionFilterProp="label"
                     style={{ minWidth: 200 }}
                     placeholder={t('Aucun fonds')}
-                    disabled={funds.length === 0 || savingLineId === line.id}
+                    disabled={!canEdit || funds.length === 0 || savingLineId === line.id}
                     value={line.fundId ?? undefined}
                     onChange={value => void handleAssignLineFund(line, value)}
                     options={fundSelectOptions}
@@ -1501,9 +1582,15 @@ export const SyndicBudgets: React.FC = () => {
           >
             <Row gutter={12}>
               <Col xs={24} md={12}>
-                <Form.Item label={t('Montant total')} name="totalAmount" rules={[{ required: true }]}>
+                <Form.Item
+                  label={t('Montant total')}
+                  name="totalAmount"
+                  rules={[{ required: true }]}
+                  extra={t("Le total d'une campagne est la somme de ses appels une fois ceux-ci émis.")}
+                >
                   <InputNumber
                     min={1}
+                    precision={currencyFractionDigits(watchedBatchCurrency || 'XOF')}
                     style={{ width: '100%' }}
                     inputMode="numeric"
                     suffix={displayCurrency(watchedBatchCurrency || 'XOF') ?? undefined}

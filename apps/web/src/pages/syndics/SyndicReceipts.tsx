@@ -320,7 +320,10 @@ export const SyndicReceipts: React.FC = () => {
       for (let iteration = 0; iteration < MAX_BACKFILL_ITERATIONS; iteration += 1) {
         const result = await backfillMissingReceipts(tenantId, syndicId);
         totalCreated += result.created;
-        totalSkipped += result.skipped;
+        // `skipped` est un total ABSOLU à chaque passage : il compte déjà les quittances créées par les
+        // passages précédents. On retire donc ce qui vient d'être créé avant ce passage pour ne garder
+        // que les appels laissés de côté (déjà quittancés ou non soldés), sans les compter plusieurs fois.
+        totalSkipped = Math.max(0, result.skipped - (totalCreated - result.created));
         if (result.remaining <= 0) break;
         message.loading({
           key: 'backfill-progress',

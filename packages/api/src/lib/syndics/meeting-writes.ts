@@ -81,12 +81,16 @@ export async function createMeetingForTenant(
     });
 
     if (data.resolutions.length > 0) {
+      // `createdAt` strictement croissant : la lecture trie les resolutions par date de creation,
+      // et un createMany leur donne sinon toutes la meme date (ordre de lecture aleatoire).
+      const baseTime = Date.now();
       await tx.gMResolution.createMany({
-        data: data.resolutions.map(r => ({
+        data: data.resolutions.map((r, index) => ({
           meetingId: meeting.id,
           title: r.title,
           description: r.description,
-          majorityRule: r.majorityRule?.trim() || DEFAULT_MAJORITY_RULE
+          majorityRule: r.majorityRule?.trim() || DEFAULT_MAJORITY_RULE,
+          createdAt: new Date(baseTime + index)
         }))
       });
     }

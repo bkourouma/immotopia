@@ -262,6 +262,20 @@ describe('PATCH /owner-statements/:id — mise à jour', () => {
     expect(res.body).toEqual({ success: true, data: baseStatement({ status: 'PAID' }) });
   });
 
+  it("409 : passer à « Envoyé » un relevé de l'ancien calcul est refusé, le service n'est pas appelé", async () => {
+    updateOwnerStatement.mockClear();
+    getOwnerStatementById.mockResolvedValue(
+      baseStatement({ computationVersion: OWNER_STATEMENT_COMPUTATION_VERSION - 1 })
+    );
+
+    const res = await request(buildApp())
+      .patch(`/tenants/${TENANT}/owner-statements/${STATEMENT_ID}`)
+      .send({ status: 'SENT' });
+
+    expect(res.status).toBe(409);
+    expect(updateOwnerStatement).not.toHaveBeenCalled();
+  });
+
   it('400 : `paidAt` n’est plus modifiable (seul le reversement le pose), le service n’est pas appelé', async () => {
     updateOwnerStatement.mockClear();
 

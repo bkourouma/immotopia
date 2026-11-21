@@ -95,6 +95,16 @@ describe('startSyndicCheckout — montant et périmètre', () => {
     expect(Number(checkout.amount)).toBe(50001);
   });
 
+  it('reste fractionnaire historique 1000,60 : montant envoyé 1001 francs entiers', async () => {
+    db.store.calls.find(c => c.id === IDS.C1)!.amount = 1000.6;
+
+    const { checkout } = await startSyndicCheckout(base({ chargeCallIds: [IDS.C1] }));
+
+    expect(Number(checkout.amount)).toBe(1001);
+    const [, request] = db.engine.client.buildAway.mock.calls[0];
+    expect(request).toMatchObject({ montant: 1001 });
+  });
+
   it('un appel d’un autre lot de la même copropriété est un 404, sans tentative ni appel fournisseur', async () => {
     await expectAppError(startSyndicCheckout(base({ chargeCallIds: [IDS.C1, IDS.C3] })), 404);
     expect(db.store.checkouts).toHaveLength(0);

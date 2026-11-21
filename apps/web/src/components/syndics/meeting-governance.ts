@@ -144,6 +144,15 @@ export function describeConvocation(result: MeetingConvocationResult | null | un
       failed: true
     };
   }
+  // Renvoi : l'API ne relance que les copropriétaires non servis et indique combien l'étaient déjà.
+  const alreadyServed = result.alreadyServed ?? 0;
+  if (result.owners === 0 && alreadyServed > 0) {
+    return {
+      type: 'info',
+      text: t('Tous les copropriétaires ont déjà été convoqués : aucun renvoi nécessaire.'),
+      failed: false
+    };
+  }
   if (result.skipped === 'NO_OWNER_CONTACT' || result.owners === 0) {
     return { type: 'info', text: t('Aucun copropriétaire à convoquer pour cette copropriété.'), failed: false };
   }

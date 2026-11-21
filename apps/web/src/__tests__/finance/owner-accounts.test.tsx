@@ -239,6 +239,38 @@ describe('Compte propriétaire — détail', () => {
     expect(screen.getAllByText(/450\s000\sFCFA/).length).toBeGreaterThan(0);
   });
 
+  it('affiche retenue à la source, dépôt conservé et autres mouvements quand ils pèsent sur le solde', async () => {
+    getOwnerAccount.mockResolvedValue(
+      detailCompte({
+        totals: {
+          rentCollected: 900_000,
+          fees: 90_000,
+          vat: 16_200,
+          expenses: 143_800,
+          payouts: 200_000,
+          withholdingTax: 54_000,
+          depositRetained: 25_000,
+          otherMovements: -1_000
+        }
+      })
+    );
+    mountDetail();
+
+    expect(await screen.findByText('Retenue à la source', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(screen.getByText('Dépôt de garantie conservé')).toBeInTheDocument();
+    expect(screen.getByText('Autres mouvements')).toBeInTheDocument();
+    expect(screen.getAllByText(/54\s000\sFCFA/).length).toBeGreaterThan(0);
+  });
+
+  it("n'affiche pas ces trois indicateurs quand ils sont nuls", async () => {
+    getOwnerAccount.mockResolvedValue(detailCompte());
+    mountDetail();
+
+    await screen.findByText('Loyers encaissés', {}, { timeout: 8000 });
+    expect(screen.queryByText('Retenue à la source')).not.toBeInTheDocument();
+    expect(screen.queryByText('Autres mouvements')).not.toBeInTheDocument();
+  });
+
   it('affiche les mouvements du compte avec leur étiquette', async () => {
     getOwnerAccount.mockResolvedValue(detailCompte());
     mountDetail();

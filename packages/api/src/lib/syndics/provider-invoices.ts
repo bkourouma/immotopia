@@ -346,6 +346,12 @@ async function findInvoiceOrThrow(tenantId: string, syndicateId: string, invoice
 // Verrous et fonds
 // ---------------------------------------------------------------------------
 
+/** Verrou consultatif de transaction : serialise la creation et le renommage de factures d'un meme prestataire. */
+async function lockInvoiceNumbersTx(tx: Tx, tenantId: string, syndicateId: string, providerId: string) {
+  const key = `syndic-provider-invoice-number:${tenantId}:${syndicateId}:${providerId}`;
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
+}
+
 /** Verrou de ligne sur la facture (ordre : facture, puis fonds). */
 async function lockInvoiceTx(tx: Tx, tenantId: string, invoiceId: string) {
   await tx.$queryRaw`SELECT id FROM syndic_provider_invoices WHERE id = ${invoiceId}::uuid AND tenant_id = ${tenantId} FOR UPDATE`;
@@ -520,6 +526,23 @@ async function recordInvoiceTx(
 ) {
   const { budgetLine, explicitExpenseAccountId, actorUserId } = extra;
   return prisma.$transaction(async tx => {
+    // Le controle de doublon fait avant la transaction ne protege pas d'un
+    // double envoi (double clic, deux onglets) : deux requetes simultanees le
+    // passaient toutes les deux et enregistraient la facture deux fois (charge
+    // et dette doublees). Verrou par prestataire, puis relecture sous verrou.
+    await lockInvoiceNumbersTx(tx, tenantId, syndicateId, input.providerId);
+    const duplicate = await tx.syndicProviderInvoice.findFirst({
+      where: {
+        tenantId,
+        syndicateId,
+        providerId: input.providerId,
+        number: { equals: input.number, mode: 'insensitive' },
+        status: { not: 'CANCELLED' }
+      },
+      select: { id: true }
+    });
+    if (duplicate) throw invoiceNumberConflict();
+
     await assertFiscalYearOpenTx(tx, syndicateId, input.invoiceDate);
     const accounts = await ensureSyndicProviderAccountsTx(tx, tenantId, syndicateId);
     const expenseAccountId = explicitExpenseAccountId ?? accounts.get(input.expenseKind === 'WORKS' ? '6241' : '624')!;
@@ -614,6 +637,7 @@ export async function updateProviderInvoice(
       throw unprocessableEntity("L'échéance ne peut pas précéder la date de facture");
     }
     if (input.number && input.number !== invoice.number) {
+      await lockInvoiceNumbersTx(tx, tenantId, syndicateId, invoice.providerId);
       const duplicate = await tx.syndicProviderInvoice.findFirst({
         where: {
           tenantId,

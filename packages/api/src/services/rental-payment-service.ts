@@ -13,6 +13,8 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { appendThirdPartyMovementTx } from '../lib/finance/ledger';
 import { syncDirectRentPaymentEntryTx } from '../lib/finance/rental-direct-ledger';
 import { roundMoney } from '../lib/finance/money';
+import { isWholeUnitCurrency, roundForCurrency } from '../lib/finance/currency-rounding';
+import { hasForbiddenDecimals } from '../lib/rental/payment-schemas';
 import { assertTreasuryAccountUsableTx } from '../lib/treasury/accounts';
 import {
   annulerPieceTx,
@@ -273,6 +275,16 @@ export function resolvePaymentDate(paidAt: string | undefined, now: Date = new D
   return chosen === today ? now : date;
 }
 
+/**
+ * En FCFA/XOF/XAF, un montant saisi (règlement ou affectation manuelle) est
+ * entier : refus 400, jamais d'arrondi silencieux (revue locative, décision H3).
+ */
+export function assertAmountMatchesCurrency(amount: number, currency?: string | null): void {
+  if (hasForbiddenDecimals(amount, currency)) {
+    throw new BadRequestError(t('Le montant doit être un nombre entier en FCFA.'));
+  }
+}
+
 /** FCFA, CFA et XOF désignent la même monnaie ; toute autre devise reste telle quelle. */
 function normaliserDevise(code: string | null | undefined): string {
   const c = (code ?? '').trim().toUpperCase();
@@ -367,6 +379,7 @@ export async function createPayment(tenantId: string, data: CreatePaymentData, a
   try {
     // Avant tout accès à la base : une date refusée ne doit rien laisser derrière elle.
     const paidAt = resolvePaymentDate(data.paidAt);
+    assertAmountMatchesCurrency(data.amount, data.currency || 'FCFA');
 
     // Check for idempotency - if payment with this key exists, return it
     const existingPayment = await prisma.rentalPayment.findFirst({
@@ -474,7 +487,7 @@ export async function createPayment(tenantId: string, data: CreatePaymentData, a
           renter_client_id: data.renterClientId ?? locatairePrincipalDuBail,
           invoice_id: data.invoiceId,
           method: data.method,
-          amount: new Decimal(data.amount),
+          amount: new Decimal(roundForCurrency(data.amount, data.currency || 'FCFA')),
           currency: data.currency || 'FCFA',
           mm_operator: data.mmOperator as any,
           mm_phone: data.mmPhone,
@@ -629,9 +642,17 @@ export async function allocatePaymentTx(
     );
   }
 
+  // Montants d'affectation saisis à la main : entiers en FCFA (refus, pas d'arrondi).
+  for (const manuel of Object.values(data.amounts ?? {})) {
+    assertAmountMatchesCurrency(Number(manuel), payment.currency);
+  }
+
   // Calculate allocations
   const allocations: any[] = [];
   let amountToAllocate = remainingAmount;
+  const arrondir = (valeur: number) => roundForCurrency(valeur, payment.currency);
+  const entiere = isWholeUnitCurrency(payment.currency);
+  const soldees: any[] = [];
 
   for (const installment of installments) {
     if (amountToAllocate <= 0) break;
@@ -642,27 +663,37 @@ export async function allocatePaymentTx(
       where: { installment_id: installment.id, tenant_id: tenantId }
     });
 
-    const allocatedToInstallment = existingAllocations.reduce((sum, alloc) => sum + Number(alloc.amount), 0);
+    // Arrondi au centime à chaque étape : en flottant, 0,1 + 0,2 n'est pas 0,3 et un reste
+    // dû de 1e-13 laissait l'échéance « Partiellement payée » ou créait une affectation fantôme.
+    const allocatedToInstallment = roundMoney(
+      existingAllocations.reduce((sum, alloc) => sum + Number(alloc.amount), 0)
+    );
 
     // Calculate total amount due (rent + service + other fees + penalties)
-    const totalAmountDue =
+    const totalAmountDue = roundMoney(
       Number(installment.amount_rent) +
-      Number(installment.amount_service) +
-      Number(installment.amount_other_fees) +
-      Number(installment.penalty_amount);
+        Number(installment.amount_service) +
+        Number(installment.amount_other_fees) +
+        Number(installment.penalty_amount)
+    );
 
-    const remainingDue = totalAmountDue - allocatedToInstallment;
+    const remainingDue = roundMoney(totalAmountDue - allocatedToInstallment);
 
     if (remainingDue <= 0) continue;
 
-    // Determine allocation amount
-    let allocationAmount: number;
-    if (data.amounts && data.amounts[installment.id]) {
-      // Use manually specified amount, but don't exceed remaining due
-      allocationAmount = Math.min(data.amounts[installment.id], remainingDue, amountToAllocate);
-    } else {
-      // Auto-allocate: use minimum of remaining due and remaining payment
-      allocationAmount = Math.min(remainingDue, amountToAllocate);
+    // Plafond : jamais plus que le reste dû ni que le disponible. En devise entière
+    // (FCFA/XOF/XAF) on arrondit VERS LE BAS : un arrondi au plus proche pouvait dépasser
+    // de moins d'un franc le paiement ou le reste dû (1000,5 devenait 1001).
+    const plafond =
+      data.amounts && data.amounts[installment.id]
+        ? Math.min(data.amounts[installment.id], remainingDue, amountToAllocate)
+        : Math.min(remainingDue, amountToAllocate);
+    const allocationAmount = entiere ? Math.floor(roundMoney(plafond)) : arrondir(plafond);
+
+    // Reliquat fractionnaire sous 1 franc : l'échéance est soldée, sans affectation de 0.
+    if (entiere && allocationAmount <= 0 && remainingDue < 1) {
+      soldees.push(installment);
+      continue;
     }
 
     if (allocationAmount > 0) {
@@ -674,11 +705,11 @@ export async function allocatePaymentTx(
         currency: payment.currency
       });
 
-      amountToAllocate -= allocationAmount;
+      amountToAllocate = arrondir(amountToAllocate - allocationAmount);
     }
   }
 
-  if (allocations.length === 0) {
+  if (allocations.length === 0 && soldees.length === 0) {
     throw new BadRequestError(t('Aucune allocation possible'));
   }
 
@@ -722,17 +753,18 @@ export async function allocatePaymentTx(
       });
 
       // Calculate total allocated - allAllocations already includes the newly created allocation
-      const totalAllocated = allAllocations.reduce((sum, alloc) => sum + Number(alloc.amount), 0);
+      const totalAllocated = roundMoney(allAllocations.reduce((sum, alloc) => sum + Number(alloc.amount), 0));
 
       // Calculate total amount due
-      const totalAmountDue =
+      const totalAmountDue = roundMoney(
         Number(installment.amount_rent) +
-        Number(installment.amount_service) +
-        Number(installment.amount_other_fees) +
-        Number(installment.penalty_amount);
+          Number(installment.amount_service) +
+          Number(installment.amount_other_fees) +
+          Number(installment.penalty_amount)
+      );
 
       let newStatus = installment.status;
-      if (totalAllocated >= totalAmountDue) {
+      if (totalAllocated >= totalAmountDue || (entiere && roundMoney(totalAmountDue - totalAllocated) < 1)) {
         newStatus = RentalInstallmentStatus.PAID;
       } else if (totalAllocated > 0) {
         newStatus = RentalInstallmentStatus.PARTIAL;
@@ -752,6 +784,15 @@ export async function allocatePaymentTx(
       // qui n'a jamais été débité (BUG-2026-09-30-058). Idempotent : clé
       // `(RENTAL_INSTALLMENT, id, INSTALLMENT)`.
       await inscrireEcheanceFactureeTx(tx, tenantId, echeanceMiseAJour);
+    }
+
+    // Échéances dont il ne reste qu'un reliquat inférieur à 1 franc : soldées.
+    for (const installment of soldees) {
+      const echeanceSoldee = await tx.rentalInstallment.update({
+        where: { id: installment.id, tenant_id: tenantId },
+        data: { status: RentalInstallmentStatus.PAID, paid_at: new Date() }
+      });
+      await inscrireEcheanceFactureeTx(tx, tenantId, echeanceSoldee);
     }
 
     // Ce qui reste non affecté après cette opération est une avance reçue.
@@ -964,13 +1005,14 @@ async function reverseInstallmentAllocations(
       where: { installment_id: installmentId, tenant_id: tenantId },
       select: { amount: true }
     });
-    const totalPaid = remaining.reduce((sum, alloc) => sum + Number(alloc.amount), 0);
+    const totalPaid = roundMoney(remaining.reduce((sum, alloc) => sum + Number(alloc.amount), 0));
 
-    const totalDue =
+    const totalDue = roundMoney(
       Number(installment.amount_rent) +
-      Number(installment.amount_service) +
-      Number(installment.amount_other_fees) +
-      Number(installment.penalty_amount);
+        Number(installment.amount_service) +
+        Number(installment.amount_other_fees) +
+        Number(installment.penalty_amount)
+    );
 
     const dueDate = new Date(installment.due_date);
     dueDate.setHours(0, 0, 0, 0);

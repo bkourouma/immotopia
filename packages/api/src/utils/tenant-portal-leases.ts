@@ -13,21 +13,32 @@ import { prisma } from './database';
 import { NotFoundError } from '../middleware/error-middleware';
 import { isUuid } from '../lib/signature/sources/guards';
 
-/** Filtre « baux actifs de ce locataire » — le même que celui du middleware d'accès. */
-export function portalLeaseWhere(tenantId: string, tenantClientId: string) {
+/**
+ * Mode lecture seule (H4) : le client n'a AUCUN bail actif mais au moins un bail
+ * terminé ou suspendu. Il voit alors ces baux-là (jamais les actifs d'un autre
+ * client). Le mode est passé explicitement, jamais lu dans un état global.
+ */
+export const READ_ONLY_LEASE_STATUSES: RentalLeaseStatus[] = [RentalLeaseStatus.ENDED, RentalLeaseStatus.SUSPENDED];
+
+/** Filtre « baux de ce locataire » — le même que celui du middleware d'accès. */
+export function portalLeaseWhere(tenantId: string, tenantClientId: string, readOnly = false) {
   return {
     tenant_id: tenantId,
-    status: RentalLeaseStatus.ACTIVE,
+    status: readOnly ? { in: READ_ONLY_LEASE_STATUSES } : RentalLeaseStatus.ACTIVE,
     OR: [{ primary_renter_client_id: tenantClientId }, { coRenters: { some: { renter_client_id: tenantClientId } } }]
   };
 }
 
-/** Identifiants des baux actifs du locataire, du plus ancien au plus récent (ordre stable). */
-export async function listPortalLeaseIds(tenantId: string, tenantClientId: string): Promise<string[]> {
+/** Identifiants des baux du locataire (actifs, ou terminés/suspendus en lecture seule), ordre stable. */
+export async function listPortalLeaseIds(
+  tenantId: string,
+  tenantClientId: string,
+  readOnly = false
+): Promise<string[]> {
   const leases = await prisma.rentalLease.findMany({
-    where: portalLeaseWhere(tenantId, tenantClientId),
+    where: portalLeaseWhere(tenantId, tenantClientId, readOnly),
     select: { id: true },
-    orderBy: [{ start_date: 'asc' }, { id: 'asc' }]
+    orderBy: readOnly ? [{ start_date: 'desc' }, { id: 'asc' }] : [{ start_date: 'asc' }, { id: 'asc' }]
   });
   return leases.map(lease => lease.id);
 }

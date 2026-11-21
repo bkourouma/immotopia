@@ -22,6 +22,7 @@ import { useQuery } from '@tanstack/react-query';
 import { tenantPortalService } from '../../services/tenantPortalService';
 import InstallmentDetails from '../../components/TenantPortal/InstallmentDetails';
 import { TenantPaymentAccountsSection } from '../../components/TenantPortal/TenantPaymentAccountsSection';
+import { ReadOnlyBanner, isReadOnlyLeases } from './readOnly';
 import PaymentDeclarationModal from '../../components/TenantPortal/PaymentDeclarationModal';
 import MyDeclarationsList from '../../components/TenantPortal/declared-payment/MyDeclarationsList';
 import type { PendingDeclarationSummary } from '../../types/rental-declared-payment';
@@ -83,6 +84,30 @@ interface InstallmentsData {
   };
 }
 
+/** Lignes demandées par page : le maximum accepté par le serveur. */
+const RELEVE_TAILLE_PAGE = 200;
+/** Garde-fou : au-delà (10 000 lignes), on s'arrête plutôt que de boucler. */
+const RELEVE_PAGES_MAX = 50;
+
+/**
+ * Relevé COMPLET du locataire. Le serveur répond 50 lignes par défaut : lire une
+ * seule page coupait le relevé d'un bail ancien (le solde de clôture annoncé ne
+ * correspondait plus aux lignes, et l'export sortait tronqué). La première page
+ * est demandée sans paramètre ; les suivantes, tant qu'il en reste, par `skip`/`take`
+ * (le « Solde après » est recalculé côté serveur à partir des lignes sautées).
+ */
+async function lireReleveComplet() {
+  const premier = await getMyStatement();
+  const mouvements = [...(premier.movements ?? [])];
+  const total = premier.total ?? mouvements.length;
+  for (let page = 0; page < RELEVE_PAGES_MAX && mouvements.length < total; page += 1) {
+    const suite = await getMyStatement({ skip: mouvements.length, take: RELEVE_TAILLE_PAGE });
+    if (!suite.movements?.length) break;
+    mouvements.push(...suite.movements);
+  }
+  return { ...premier, movements: mouvements };
+}
+
 /**
  * Onglet « Mon relevé » — Récit 6 du spec, tâche 1.15 du plan.
  *
@@ -113,7 +138,7 @@ function MonReleve() {
     refetch
   } = useQuery({
     queryKey: ['account-statement', 'portail', tenantId],
-    queryFn: () => getMyStatement(),
+    queryFn: lireReleveComplet,
     enabled: Boolean(tenantId)
   });
   const local = useReleveSearch(releve?.movements);
@@ -437,12 +462,14 @@ export default function TenantPayments() {
     queryKey: ['tenant-portal-leases'],
     queryFn: async () => {
       const response = await tenantPortalService.getLeases();
-      return (response.data?.data ?? []) as Array<{ id: string; leaseNumber: string }>;
+      return (response.data?.data ?? []) as Array<{ id: string; leaseNumber: string; status?: string }>;
     },
     staleTime: 60_000,
     retry: false
   });
   const hasSeveralLeases = (leases?.length ?? 0) > 1;
+  // H4 : bail terminé ou suspendu => aucune action d'écriture (payer, déclarer).
+  const readOnly = isReadOnlyLeases(leases);
 
   // Motif à recopier : la plus ancienne échéance non soldée de TOUTES les échéances, pas
   // seulement de la page affichée (filtrée, paginée). Requête légère dédiée, revue quand
@@ -742,7 +769,7 @@ export default function TenantPayments() {
       width: 190,
       render: (_: any, record: InstallmentItem) => (
         <Space>
-          {isPayable(record) && (
+          {!readOnly && isPayable(record) && (
             <Button
               size="small"
               icon={<DollarOutlined aria-hidden />}
@@ -822,7 +849,7 @@ export default function TenantPayments() {
         title={t('Paiements et échéances')}
         subtitle={t("Suivez vos échéances et l'historique de vos paiements")}
         primaryAction={
-          availability?.available
+          readOnly || availability?.available
             ? undefined
             : {
                 label: t('Déclarer un paiement'),
@@ -832,7 +859,7 @@ export default function TenantPayments() {
               }
         }
         extra={
-          availability?.available ? (
+          availability?.available && !readOnly ? (
             <Button
               icon={<PlusOutlined aria-hidden />}
               onClick={ouvrirDeclaration}
@@ -845,13 +872,17 @@ export default function TenantPayments() {
         }
       />
 
-      <TenantPaymentAccountsSection
-        suggestedReason={suggestedReason}
-        onDeclare={() => {
-          setDeclarationFor(null);
-          setDeclarationModalVisible(true);
-        }}
-      />
+      {readOnly ? <ReadOnlyBanner /> : null}
+
+      {readOnly ? null : (
+        <TenantPaymentAccountsSection
+          suggestedReason={suggestedReason}
+          onDeclare={() => {
+            setDeclarationFor(null);
+            setDeclarationModalVisible(true);
+          }}
+        />
+      )}
 
       {/* Summary Cards (T054) */}
       {ongletActif === 'echeances' && data?.summary && (
@@ -953,7 +984,7 @@ export default function TenantPayments() {
                     style={{ marginBottom: 16 }}
                   />
                 ) : null}
-                {availability?.available ? (
+                {availability?.available && !readOnly ? (
                   <Space direction="vertical" size="small" style={{ width: '100%', marginBottom: 16 }}>
                     {availability.mode === 'SIMULATOR' ? (
                       <Alert type="info" showIcon message={t('Mode démonstration')} />
@@ -1024,7 +1055,7 @@ export default function TenantPayments() {
                       size="middle"
                       scroll={{ x: 1000 }}
                       rowSelection={
-                        availability?.available
+                        availability?.available && !readOnly
                           ? {
                               selectedRowKeys: selectedInstallmentIds,
                               onChange: keys => {

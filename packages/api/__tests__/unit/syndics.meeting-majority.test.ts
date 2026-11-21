@@ -178,6 +178,21 @@ describe('computeMeetingAttendance', () => {
       onlineLots: 0
     });
   });
+
+  it('ignore un lot a 0 tantieme meme s il a vote ou emarge', () => {
+    const lots: MajorityLot[] = [...LOTS, { id: 'A0', generalShares: 0, coownerId: 'c0', ownerContactId: 'c0' }];
+    const attendance = computeMeetingAttendance(
+      lots,
+      [{ lotId: 'A1' }, { lotId: 'A0' }],
+      [{ lotId: 'A0', status: 'PRESENT', mode: 'ONLINE' } as any, { lotId: 'A2', status: 'REPRESENTED' } as any]
+    );
+    expect(attendance.totalLots).toBe(4);
+    expect(attendance.presentLots).toBe(1);
+    expect(attendance.representedOnlyLots).toBe(1);
+    expect(attendance.representedLots).toBe(2);
+    expect(attendance.onlineLots).toBe(0);
+    expect(attendance.totalShares).toBe(1000);
+  });
 });
 
 describe('computeResolutionTally - lot emarge ABSENT', () => {
@@ -193,5 +208,28 @@ describe('computeResolutionTally - lot emarge ABSENT', () => {
     expect(computeResolutionTally('ARTICLE_24', lots, votes).result).toBe('REJECTED');
     const tally = computeResolutionTally('ARTICLE_24', lots, votes, [{ lotId: 'b', status: 'ABSENT' }]);
     expect(tally).toMatchObject({ votesAgainst: 0, votesFor: 1, result: 'APPROVED' });
+  });
+});
+
+describe('computeResolutionTally - lot desactive (0 tantieme)', () => {
+  const withZero: MajorityLot[] = [...LOTS, { id: 'Z0', generalShares: 0, coownerId: 'c0', ownerContactId: 'c0' }];
+
+  it('un lot a 0 tantieme n empeche pas l unanimite (il ne vote pas)', () => {
+    const tally = computeResolutionTally('UNANIMITE', withZero, votes({ A1: 'FOR', A2: 'FOR', A3: 'FOR', A4: 'FOR' }));
+    expect(tally.totalLots).toBe(4);
+    expect(tally.result).toBe('APPROVED');
+  });
+
+  it('un lot a 0 tantieme ne compte pas parmi les coproprietaires de l article 26', () => {
+    const tally = computeResolutionTally('ARTICLE_26', withZero, votes({ A1: 'FOR', A3: 'FOR', A4: 'FOR' }));
+    expect(tally.totalOwners).toBe(4);
+    expect(tally.ownersFor).toBe(3);
+    expect(tally.result).toBe('APPROVED');
+  });
+
+  it('le bulletin d un lot a 0 tantieme est ignore', () => {
+    const tally = computeResolutionTally('ARTICLE_24', withZero, votes({ Z0: 'FOR' }));
+    expect(tally.votesFor).toBe(0);
+    expect(tally.result).toBeNull();
   });
 });

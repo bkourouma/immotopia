@@ -358,7 +358,7 @@ describe('SyndicCharges page', () => {
       periodEnd: dayjs('2026-09-30T00:00:00.000Z'),
       amount: 85000,
       currency: 'XOF',
-      dueDate: dayjs('2026-07-15T00:00:00.000Z')
+      dueDate: dayjs('2026-07-15T12:00:00')
     });
 
     renderWithRoute();
@@ -374,7 +374,7 @@ describe('SyndicCharges page', () => {
           period: '2026-07-01 au 2026-09-30',
           amount: 85000,
           currency: 'XOF',
-          dueDate: '2026-07-15T00:00:00.000Z'
+          dueDate: '2026-07-15'
         })
       );
     });

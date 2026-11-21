@@ -22,6 +22,7 @@ import { applyLeaseSearch } from '../lib/rental/lease-list-filters';
 import { generateLeaseNumber, isLeaseNumberCollision } from './rental-lease-number';
 import { toRentalDocumentDto } from './rental-document-service';
 import { repriceUnstartedInstallmentsTx } from '../lib/lease-lifecycle/service';
+import { cancelOpenRequestsForTarget } from '../lib/signature/cancel';
 import { assertNoLeaseOverlapTx } from '../lib/lease-lifecycle/period-overlap';
 import { env } from '../config/env';
 
@@ -170,23 +171,37 @@ export async function createLease(
 
   // Controles de refus sans ecriture : appartenance a l'agence du locataire
   // et du bailleur designes par leur client.
+  let renterUserId: string | null | undefined;
+  let ownerUserId: string | null | undefined;
   if (data.primaryRenterClientId) {
     const primaryRenter = await prisma.tenantClient.findFirst({
       where: { id: data.primaryRenterClientId, tenantId: tenantId },
-      select: { id: true }
+      select: { id: true, userId: true }
     });
     if (!primaryRenter) {
       throw new BadRequestError(t("Locataire principal introuvable ou n'appartenant pas à cette agence"));
     }
+    renterUserId = primaryRenter.userId;
   }
   if (data.ownerClientId) {
     const ownerClient = await prisma.tenantClient.findFirst({
       where: { id: data.ownerClientId, tenantId: tenantId },
-      select: { id: true }
+      select: { id: true, userId: true }
     });
     if (!ownerClient) {
       throw new BadRequestError(t("Propriétaire introuvable ou n'appartenant pas à cette agence"));
     }
+    ownerUserId = ownerClient.userId;
+  }
+  // Le locataire ne peut pas être le propriétaire du bien qu'il loue : même client,
+  // même contact CRM, ou même compte utilisateur.
+  const sameParty = () =>
+    Boolean(data.primaryRenterClientId && data.primaryRenterClientId === data.ownerClientId) ||
+    Boolean(data.primaryRenterContactId && data.primaryRenterContactId === data.ownerContactId) ||
+    Boolean(renterUserId && ownerUserId && renterUserId === ownerUserId);
+  const MESSAGE_LOCATAIRE_PROPRIETAIRE = () => t('Le locataire ne peut pas être aussi le propriétaire du bien');
+  if (sameParty()) {
+    throw new BadRequestError(MESSAGE_LOCATAIRE_PROPRIETAIRE());
   }
 
   // Create lease — un bail ACTIVE fait compter le logement (D1) : entree au
@@ -234,6 +249,12 @@ export async function createLease(
             passwordResetToken: result.passwordResetToken,
             user: result.user
           };
+        }
+        // Contacts distincts mais même adresse e-mail : les deux rôles tombent sur le même compte.
+        renterUserId = primaryRenterResult?.user?.id ?? renterUserId;
+        ownerUserId = ownerResult?.user?.id ?? ownerUserId;
+        if (sameParty()) {
+          throw new BadRequestError(MESSAGE_LOCATAIRE_PROPRIETAIRE());
         }
         // Un seul bail en cours par période et par bien (H39) : contrôlé ici, bien
         // verrouillé, sans se fier au statut « Loué » du bien.
@@ -1029,7 +1050,8 @@ export async function updateLease(
           tenantId,
           leaseId,
           rent: Number(data.rentAmount ?? existingLease.rent_amount),
-          charges: Number(data.serviceChargeAmount ?? existingLease.service_charge_amount)
+          charges: Number(data.serviceChargeAmount ?? existingLease.service_charge_amount),
+          lease
         })
       : 0;
     return { lease, installmentsRepriced };
@@ -1055,6 +1077,19 @@ export async function updateLease(
   return { ...withPublicDocuments(lease), installmentsRepriced } as unknown as LeaseDetail & {
     installmentsRepriced: number;
   };
+}
+
+/** Annule les demandes de signature ouvertes d'un bail ; un échec n'arrête pas l'opération en cours. */
+async function cancelSignatureRequestsOfLease(tenantId: string, leaseId: string, actorUserId: string): Promise<void> {
+  try {
+    await cancelOpenRequestsForTarget({ tenantId, userId: actorUserId }, 'RentalLease', leaseId);
+  } catch (error) {
+    logger.error('Signature : annulation des demandes du bail en échec', {
+      tenantId,
+      leaseId,
+      error: error instanceof Error ? error.name : 'inconnue'
+    });
+  }
 }
 
 /** Libellé affichable d'un statut de bail (jamais le code Prisma brut dans un message). */
@@ -1181,6 +1216,11 @@ export async function updateLeaseStatus(
     newStatus
   });
 
+  // Un bail terminé ou annulé ne se signe plus : les demandes en cours tombent.
+  if (newStatus === RentalLeaseStatus.ENDED || newStatus === RentalLeaseStatus.CANCELED) {
+    await cancelSignatureRequestsOfLease(tenantId, leaseId, actorUserId);
+  }
+
   // When lease ends or is canceled, revert property status to AVAILABLE if no other active leases
   if (
     (newStatus === RentalLeaseStatus.ENDED || newStatus === RentalLeaseStatus.CANCELED) &&
@@ -1248,6 +1288,10 @@ export async function addCoRenter(
     where: {
       id: leaseId,
       tenant_id: tenantId
+    },
+    include: {
+      primaryRenter: { select: { userId: true } },
+      ownerClient: { select: { userId: true } }
     }
   });
 
@@ -1266,6 +1310,17 @@ export async function addCoRenter(
 
   if (!renterClient) {
     throw new BadRequestError(t("Colocataire introuvable ou n'appartenant pas à cette agence"));
+  }
+
+  // Le locataire principal et le propriétaire sont déjà parties au bail : ni l'un
+  // ni l'autre (client ou même compte utilisateur) ne peut en être le colocataire.
+  const partyUserIds = [lease.primaryRenter?.userId, lease.ownerClient?.userId].filter(Boolean);
+  if (
+    renterClientId === lease.primary_renter_client_id ||
+    renterClientId === lease.owner_client_id ||
+    (renterClient.userId && partyUserIds.includes(renterClient.userId))
+  ) {
+    throw new BadRequestError(t('Le colocataire ne peut pas être le locataire principal ni le propriétaire du bail'));
   }
 
   // Check if co-renter already exists
@@ -1438,6 +1493,39 @@ export async function deleteLease(tenantId: string, leaseId: string, actorUserId
       "Impossible de supprimer le bail : certaines échéances ont des paiements alloués. Supprimez d'abord les paiements."
     );
   }
+
+  // Ce que la suppression emporterait sans bruit : les paiements perdraient leur
+  // bail (clé étrangère remise à vide), le dépôt de garantie et ses mouvements
+  // partent en cascade, et la preuve d'un bail signé disparaîtrait de la fiche.
+  // Dans ces cas on annule le bail (statut « Annulé »), on ne l'efface pas.
+  const paymentCount = await prisma.rentalPayment.count({ where: { tenant_id: tenantId, lease_id: leaseId } });
+  if (paymentCount > 0) {
+    throw new BadRequestError(
+      t(
+        'Impossible de supprimer le bail : des paiements y sont enregistrés. Annulez le bail plutôt que de le supprimer.'
+      )
+    );
+  }
+  const depositMovementCount = await prisma.rentalDepositMovement.count({
+    where: { tenant_id: tenantId, deposit: { lease_id: leaseId } }
+  });
+  if (depositMovementCount > 0) {
+    throw new BadRequestError(
+      t(
+        'Impossible de supprimer le bail : son dépôt de garantie a des mouvements enregistrés. Annulez le bail plutôt que de le supprimer.'
+      )
+    );
+  }
+  if (lease.signed_at) {
+    throw new BadRequestError(
+      t(
+        'Impossible de supprimer le bail : il a été signé électroniquement. Annulez le bail plutôt que de le supprimer.'
+      )
+    );
+  }
+
+  // Une demande de signature encore ouverte ne doit pas survivre à son bail.
+  await cancelSignatureRequestsOfLease(tenantId, leaseId, actorUserId);
 
   // Check if lease is ACTIVE - warn but allow deletion
   if (lease.status === RentalLeaseStatus.ACTIVE) {

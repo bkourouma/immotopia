@@ -333,8 +333,10 @@ describe('SyndicReceipts (lot S3, besoin 1)', () => {
   it('génère les quittances manquantes, en relançant automatiquement tant que « remaining » n’est pas à zéro', async () => {
     listSyndicateReceipts.mockResolvedValue({ items: [], pagination: { page: 1, limit: 20, total: 0, totalPages: 1 } });
     backfillMissingReceipts
-      .mockResolvedValueOnce({ created: 500, skipped: 0, remaining: 20 })
-      .mockResolvedValueOnce({ created: 20, skipped: 7, remaining: 0 });
+      // `skipped` est un total absolu à chaque passage : 7 appels déjà quittancés au départ, puis les
+      // 500 créés au premier passage s'y ajoutent au second.
+      .mockResolvedValueOnce({ created: 500, skipped: 7, remaining: 20 })
+      .mockResolvedValueOnce({ created: 20, skipped: 507, remaining: 0 });
 
     renderWithRoute();
     await waitFor(() => expect(listSyndicateReceipts).toHaveBeenCalled());
@@ -348,5 +350,7 @@ describe('SyndicReceipts (lot S3, besoin 1)', () => {
     await waitFor(() => expect(backfillMissingReceipts).toHaveBeenCalledTimes(2));
     expect(backfillMissingReceipts).toHaveBeenNthCalledWith(1, 'tenant-1', 'syndic-1');
     expect(backfillMissingReceipts).toHaveBeenNthCalledWith(2, 'tenant-1', 'syndic-1');
+    // Bilan : 520 créées et 7 déjà à jour (et non 514 en recomptant les quittances créées au premier passage).
+    expect(await screen.findByText('520 quittance(s) créée(s), 7 déjà à jour.')).toBeTruthy();
   });
 });

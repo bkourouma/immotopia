@@ -20,9 +20,12 @@ import { PageHeader, SkeletonDetail, StateBlock } from '../../components/primiti
 
 import { activeLocale } from '../../i18n/format';
 import { formatMontantLocatif } from '../../lib/rental-labels';
+import { ReadOnlyBanner } from './readOnly';
 const { Text } = Typography;
 
 interface DashboardData {
+  /** Bail terminé ou suspendu, aucun bail actif : consultation seule (H4). */
+  readOnly?: boolean;
   /** Présent seulement avec plusieurs baux actifs : un résumé par bail. */
   leases?: Array<{
     id: string;
@@ -167,7 +170,7 @@ export default function TenantDashboard() {
     );
   }
 
-  const peutPayerEnLigne = Boolean(onlinePaymentAvailability?.available) && data.currentBalance > 0;
+  const peutPayerEnLigne = !data.readOnly && Boolean(onlinePaymentAvailability?.available) && data.currentBalance > 0;
   const enRetard = (data.overdueInstallmentsCount ?? 0) > 0;
 
   return (
@@ -186,6 +189,8 @@ export default function TenantDashboard() {
             : undefined
         }
       />
+
+      {data.readOnly ? <ReadOnlyBanner /> : null}
 
       {/* En tête : ce que le locataire vient chercher, solde puis prochaine échéance. */}
       <Row gutter={[16, 16]}>

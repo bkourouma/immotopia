@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { App, Card, Typography, Space, Button, Divider, Input } from 'antd';
-import { ArrowLeftOutlined, SendOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, PaperClipOutlined, SendOutlined } from '@ant-design/icons';
 import { TicketStatusBadge } from '../../../components/maintenance/TicketStatusBadge';
 import { TicketTimeline } from '../../../components/maintenance/TicketTimeline';
 import { CommentThread } from '../../../components/maintenance/CommentThread';
 import { AttachmentList } from '../../../components/maintenance/AttachmentList';
+import { FileUploader } from '../../../components/maintenance/FileUploader';
 import { tenantMaintenanceService } from '../../../services/maintenance-service';
 import { TicketDetail as TicketDetailType, MaintenanceTicketStatus } from '../../../types/maintenance-types';
 import { useAuth } from '../../../hooks/useAuth';
@@ -16,6 +17,9 @@ import { HelpSectionTitle } from '../../../help';
 import { localizedRecord } from '../../../i18n/localized';
 
 const { Title, Text, Paragraph } = Typography;
+
+/** Nombre maximum de pièces jointes par ticket (règle de l'API : `validateFileUpload`). */
+const MAX_ATTACHMENTS = 10;
 const { TextArea } = Input;
 
 const categoryLabels: Record<string, string> = localizedRecord(() => ({
@@ -46,6 +50,11 @@ export const TicketDetail: React.FC = () => {
   const [commentContent, setCommentContent] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
   const [canceling, setCanceling] = useState(false);
+  // Pièces à ajouter après coup : l'écran de création annonce « vous pouvez la rajouter
+  // depuis le ticket », mais aucun écran ne permettait de le faire.
+  const [newFiles, setNewFiles] = useState<File[]>([]);
+  const [uploaderKey, setUploaderKey] = useState(0);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     if (effectiveTenantId && ticketId) {
@@ -102,6 +111,34 @@ export const TicketDetail: React.FC = () => {
       message.error(error.response?.data?.message || t("Erreur lors de l'annulation du ticket"));
     } finally {
       setCanceling(false);
+    }
+  };
+
+  const handleUploadFiles = async () => {
+    if (!effectiveTenantId || !ticketId || newFiles.length === 0 || uploading) return;
+
+    setUploading(true);
+    try {
+      const results = await Promise.allSettled(
+        newFiles.map(file => tenantMaintenanceService.uploadAttachment(effectiveTenantId, ticketId, file))
+      );
+      const failed = newFiles.filter((_, index) => results[index].status === 'rejected');
+      if (failed.length > 0) {
+        message.warning({
+          content: t("Certaines pièces jointes n'ont pas pu être envoyées : {{files}}.", {
+            files: failed.map(file => file.name).join(', ')
+          }),
+          duration: 10
+        });
+      } else {
+        message.success(t('Pièces jointes ajoutées'));
+      }
+      // Les fichiers envoyés ne restent pas dans la sélection : seuls les échecs peuvent être renvoyés.
+      setNewFiles([]);
+      setUploaderKey(key => key + 1);
+      await loadTicket();
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -221,6 +258,31 @@ export const TicketDetail: React.FC = () => {
                     source={{ kind: 'agency', tenantId: effectiveTenantId }}
                   />
                 )}
+
+                {ticket.status !== MaintenanceTicketStatus.CANCELED &&
+                  (MAX_ATTACHMENTS - (ticket.attachments || []).length > 0 ? (
+                    <div style={{ marginTop: 16 }}>
+                      <FileUploader
+                        key={uploaderKey}
+                        onFilesChange={setNewFiles}
+                        maxFiles={MAX_ATTACHMENTS - (ticket.attachments || []).length}
+                        maxSize={5}
+                      />
+                      <Button
+                        icon={<PaperClipOutlined />}
+                        style={{ marginTop: 8 }}
+                        onClick={handleUploadFiles}
+                        loading={uploading}
+                        disabled={newFiles.length === 0}
+                      >
+                        {t('Ajouter les pièces jointes')}
+                      </Button>
+                    </div>
+                  ) : (
+                    <Text type="secondary" style={{ display: 'block', marginTop: 16 }}>
+                      {t('Nombre maximum de pièces jointes atteint pour ce ticket.')}
+                    </Text>
+                  ))}
               </div>
 
               <Divider />

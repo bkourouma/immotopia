@@ -2,8 +2,25 @@
 // partagees avec les futurs comptes de tiers (lot 1, decision D1). Re-exportees
 // ici pour que les nombreux imports existants depuis finance-utils continuent
 // de fonctionner sans modification, et reimportees pour l'usage local ci-dessous.
-import { MONEY_PRECISION, roundMoney } from '../finance/money';
+import { MONEY_PRECISION, roundMoney, roundMoneyXof } from '../finance/money';
+import { allocationPrecisionFor } from './charge-allocation-methods';
 export { MONEY_PRECISION, roundMoney };
+
+/**
+ * Devise sans sous-unite (XOF, XAF, FCFA...) : jamais de decimale.
+ * Delegue a `allocationPrecisionFor`, source unique de la liste des devises.
+ */
+export function isZeroDecimalCurrency(currency?: string | null): boolean {
+  return allocationPrecisionFor(currency) === 'UNIT';
+}
+
+/**
+ * Arrondi d'un montant selon la devise : au franc (demie vers le haut, jamais -0)
+ * pour une devise sans sous-unite, au centime sinon. Devise absente : centime.
+ */
+export function roundMoneyForCurrency(value: number, currency?: string | null): number {
+  return isZeroDecimalCurrency(currency) ? roundMoneyXof(value) : roundMoney(value);
+}
 
 export function clampNonNegative(value: number): number {
   return value < 0 ? 0 : value;
@@ -46,11 +63,16 @@ export function deriveChargeCallStatus(
   return status;
 }
 
-export function allocateAmountByShares(totalAmount: number, shares: number, totalShares: number): number {
+export function allocateAmountByShares(
+  totalAmount: number,
+  shares: number,
+  totalShares: number,
+  currency?: string | null
+): number {
   if (totalShares <= 0) {
     return 0;
   }
-  return roundMoney((totalAmount * shares) / totalShares);
+  return roundMoneyForCurrency((totalAmount * shares) / totalShares, currency);
 }
 
 /**
@@ -98,7 +120,12 @@ export const MAX_MONTHLY_PENALTY_RATE = 10;
  * Au moins un jour de retard est compte. Exemple : 300 000 a 10 % pendant
  * 15 jours = 15 000.
  */
-export function computeLatePenalty(outstanding: number, monthlyRatePercent: number, daysLate: number): number {
-  const raw = roundMoney((outstanding * monthlyRatePercent * Math.max(daysLate, 1)) / 3000);
-  return Math.min(raw, roundMoney(outstanding));
+export function computeLatePenalty(
+  outstanding: number,
+  monthlyRatePercent: number,
+  daysLate: number,
+  currency?: string | null
+): number {
+  const raw = roundMoneyForCurrency((outstanding * monthlyRatePercent * Math.max(daysLate, 1)) / 3000, currency);
+  return Math.min(raw, roundMoneyForCurrency(outstanding, currency));
 }

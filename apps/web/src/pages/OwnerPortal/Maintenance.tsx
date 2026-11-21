@@ -81,12 +81,10 @@ interface TicketDetails {
       changedByUser: PortalPerson | null;
     }>;
     assignedVendor: {
-      id: string;
       name: string;
       phone: string | null;
-      email: string | null;
     } | null;
-    assignedToUser: (PortalPerson & { id: string }) | null;
+    assignedToUser: PortalPerson | null;
   };
 }
 
@@ -105,13 +103,13 @@ const getStatusConfig = (status: string): { label: string; color: string } => {
   return statusMap[status] || { label: status, color: 'default' };
 };
 
-/** Libellé lisible d'un statut (l'historique affichait les codes bruts « DECLARED → IN_PROGRESS »). */
-const getStatusLabel = (status: string) => getStatusConfig(status).label;
-
 const getStatusTag = (status: string) => {
   const config = getStatusConfig(status);
   return <Tag color={config.color}>{config.label}</Tag>;
 };
+
+/** Libellé d'un statut (jamais le code brut) pour l'historique des statuts. */
+const getStatusLabel = (status: string) => getStatusConfig(status).label;
 
 const getPriorityTag = (priority: string) => {
   const priorityMap: Record<string, { label: string; color: string }> = {

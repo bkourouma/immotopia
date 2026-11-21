@@ -192,13 +192,25 @@ function renderWithAuthAndRoute(route: string, element: React.ReactElement) {
   );
 }
 
+/**
+ * Réponse de la liste des copropriétés, routée par URL : la liste lit aussi les droits de la personne
+ * (`/roles/menu-access/me`), un appel qui ne doit pas consommer la réponse de la liste.
+ */
+function mockSyndicsListResponse(response: unknown) {
+  mockApiClient.get.mockImplementation(((url: string) => {
+    if (url === '/roles/menu-access/me') return Promise.resolve({ data: { success: true, data: {} } });
+    if (url === '/tenants/tenant-1/syndics') return Promise.resolve(response);
+    return Promise.reject(new Error(`non mocké : ${url}`));
+  }) as never);
+}
+
 describe('Syndics pages', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   it('renders syndics list from API', async () => {
-    mockApiClient.get.mockResolvedValueOnce({
+    mockSyndicsListResponse({
       data: {
         success: true,
         data: [
@@ -228,7 +240,7 @@ describe('Syndics pages', () => {
   });
 
   it('désactive « Supprimer » quand la liste sait déjà que la copropriété n’est pas vide (écart recette #8)', async () => {
-    mockApiClient.get.mockResolvedValueOnce({
+    mockSyndicsListResponse({
       data: {
         success: true,
         data: [

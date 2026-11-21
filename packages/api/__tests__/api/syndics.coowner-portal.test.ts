@@ -98,6 +98,15 @@ jest.mock('../../src/lib/syndics/queries', () => ({
   castVoteAndRecomputeResolutionCounters: (...args: any[]) => (mockCastVote as any)(...args)
 }));
 
+// Verrou et recalcul des résultats d'AG : testés avec les assemblées de la gestion ; ici on vérifie seulement
+// que le vote du portail les appelle, sans la base de gestion complète.
+const mockRecomputeResults = jest.fn(async (..._args: unknown[]) => undefined);
+jest.mock('../../src/lib/syndics/meeting-results', () => ({
+  ...jest.requireActual('../../src/lib/syndics/meeting-results'),
+  lockMeetingTx: jest.fn(async () => undefined),
+  recomputeMeetingResultsTx: (...args: unknown[]) => mockRecomputeResults(...args)
+}));
+
 import coOwnerPortalRoutes from '../../src/routes/coowner-portal-routes';
 import syndicRoutes from '../../src/routes/syndic-routes';
 import { errorHandler } from '../../src/middleware/error-middleware';
@@ -771,40 +780,144 @@ describe('Portail copropriétaire — ce que voit chaque copropriétaire', () =>
 });
 
 describe('Portail copropriétaire — vote sur une résolution', () => {
+  const MEETING_LIVE = id(703);
+  const RESOLUTION_LIVE_OPEN = id(803);
+  const RESOLUTION_LIVE_PENDING = id(804);
+
   const vote = (userId: string, resolutionId: string, body: unknown) =>
     request(app)
       .put(`/api/portal/copropriete/resolutions/${resolutionId}/vote`)
       .set(as(userId))
       .send(body as object);
+  const votesOf = (resolutionId: string) =>
+    mockPrisma.gMVote.rows.filter((row: any) => row.resolutionId === resolutionId);
 
-  it('enregistre le vote d’un lot du copropriétaire, modifiable, et le lui renvoie', async () => {
-    const first = await vote(USER_AWA, RESOLUTION_OPEN, { lotId: L1, vote: 'FOR' });
+  // AG en cours (spec 043) : une résolution au vote ouvert, une pas encore soumise.
+  beforeEach(() => {
+    mockRecomputeResults.mockClear();
+    const meeting = {
+      id: MEETING_LIVE,
+      syndicateId: S1,
+      type: 'ORDINARY',
+      scheduledAt: new Date('2026-06-01T00:00:00.000Z'),
+      location: 'Salle C',
+      status: 'IN_PROGRESS',
+      createdAt: PAST,
+      syndicate: mockPrisma.syndicate.rows.find((row: any) => row.id === S1)
+    };
+    mockPrisma.generalMeeting.rows.push(meeting);
+    // Relation `syndicate` lue par le filtre d'agence du vote, posée sur toutes les assemblées du jeu.
+    for (const row of mockPrisma.generalMeeting.rows) {
+      row.syndicate = mockPrisma.syndicate.rows.find((syndicate: any) => syndicate.id === row.syndicateId);
+    }
+    for (const [resolutionId, voteStatus] of [
+      [RESOLUTION_LIVE_OPEN, 'OPEN'],
+      [RESOLUTION_LIVE_PENDING, 'PENDING']
+    ]) {
+      mockPrisma.gMResolution.rows.push({
+        id: resolutionId,
+        meetingId: MEETING_LIVE,
+        title: 'Resolution en direct',
+        description: null,
+        majorityRule: 'ARTICLE_24',
+        result: null,
+        voteStatus,
+        createdAt: PAST,
+        meeting
+      });
+    }
+  });
+
+  it('enregistre le vote d’un lot du copropriétaire (origine CO_OWNER), modifiable, avec émargement', async () => {
+    const first = await vote(USER_AWA, RESOLUTION_LIVE_OPEN, { lotId: L1, vote: 'FOR' });
     expect(first.status).toBe(200);
-    const second = await vote(USER_AWA, RESOLUTION_OPEN, { lotId: L1, vote: 'AGAINST' });
+    const second = await vote(USER_AWA, RESOLUTION_LIVE_OPEN, { lotId: L1, vote: 'AGAINST' });
     expect(second.status).toBe(200);
+    expect(second.body.data).toEqual({ resolutionId: RESOLUTION_LIVE_OPEN, lotId: L1, vote: 'AGAINST' });
 
-    const res = await request(app).get('/api/portal/copropriete/assemblees').set(as(USER_AWA));
-    const planned = res.body.data.find((meeting: any) => meeting.id === MEETING_PLANNED);
-    expect(planned.votableLots.map((lot: any) => lot.lotId).sort()).toEqual([L1]);
-    expect(planned.resolutions[0].myVotes).toEqual([{ lotId: L1, lotNumber: 'A1', vote: 'AGAINST' }]);
-    expect(mockPrisma.gMVote.rows.filter((row: any) => row.resolutionId === RESOLUTION_OPEN)).toHaveLength(1);
+    // Un seul vote par lot, avec son origine et son auteur : jamais « MANAGER ».
+    expect(votesOf(RESOLUTION_LIVE_OPEN)).toHaveLength(1);
+    expect(votesOf(RESOLUTION_LIVE_OPEN)[0]).toMatchObject({
+      lotId: L1,
+      vote: 'AGAINST',
+      source: 'CO_OWNER',
+      castByContactId: CONTACT_AWA
+    });
+    expect(mockPrisma.gMAttendance.rows).toEqual([
+      expect.objectContaining({ meetingId: MEETING_LIVE, lotId: L1, status: 'PRESENT', mode: 'ONLINE' })
+    ]);
+    expect(mockRecomputeResults).toHaveBeenCalledTimes(2);
+    // Le service de saisie du gestionnaire n'est jamais utilisé par le portail.
+    expect(mockCastVote).not.toHaveBeenCalled();
   });
 
   it('refuse le lot d’un autre copropriétaire comme un lot inexistant', async () => {
-    const res = await vote(USER_AWA, RESOLUTION_OPEN, { lotId: L2, vote: 'FOR' });
+    const res = await vote(USER_AWA, RESOLUTION_LIVE_OPEN, { lotId: L2, vote: 'FOR' });
     expect(res.status).toBe(404);
-    expect(mockPrisma.gMVote.rows.some((row: any) => row.resolutionId === RESOLUTION_OPEN)).toBe(false);
+    expect(votesOf(RESOLUTION_LIVE_OPEN)).toHaveLength(0);
   });
 
-  it('transmet au service partagé la copropriété du lot, jamais celle de la requête', async () => {
-    await vote(USER_AWA, RESOLUTION_OPEN, { lotId: L1, vote: 'FOR' });
-    expect(mockCastVote).toHaveBeenCalledWith(TENANT_A, S1, RESOLUTION_OPEN, L1, 'FOR');
+  it('refuse une assemblée planifiée ou clôturée (409) : seule une assemblée en cours reçoit des votes', async () => {
+    const planned = await vote(USER_AWA, RESOLUTION_OPEN, { lotId: L1, vote: 'FOR' });
+    expect(planned.status).toBe(409);
+    expect(votesOf(RESOLUTION_OPEN)).toHaveLength(0);
+
+    const closed = await vote(USER_AWA, RESOLUTION, { lotId: L1, vote: 'AGAINST' });
+    expect(closed.status).toBe(409);
+    expect(votesOf(RESOLUTION).find((row: any) => row.lotId === L1)).toMatchObject({ vote: 'FOR' });
+    expect(mockRecomputeResults).not.toHaveBeenCalled();
+  });
+
+  it('refuse une résolution dont le vote n’est pas ouvert (409)', async () => {
+    const res = await vote(USER_AWA, RESOLUTION_LIVE_PENDING, { lotId: L1, vote: 'FOR' });
+    expect(res.status).toBe(409);
+    expect(votesOf(RESOLUTION_LIVE_PENDING)).toHaveLength(0);
+    expect(mockPrisma.gMAttendance.rows).toHaveLength(0);
+  });
+
+  it('ne remplace jamais un vote saisi par le syndic (409)', async () => {
+    mockPrisma.gMVote.rows.push({
+      id: 'v-manager',
+      resolutionId: RESOLUTION_LIVE_OPEN,
+      lotId: L1,
+      vote: 'FOR',
+      source: 'MANAGER'
+    });
+    const res = await vote(USER_AWA, RESOLUTION_LIVE_OPEN, { lotId: L1, vote: 'AGAINST' });
+    expect(res.status).toBe(409);
+    expect(votesOf(RESOLUTION_LIVE_OPEN)).toEqual([expect.objectContaining({ vote: 'FOR', source: 'MANAGER' })]);
+  });
+
+  it('refuse un lot émargé absent (409), sans écrire de vote', async () => {
+    mockPrisma.gMAttendance.rows.push({
+      id: 'att-absent',
+      tenantId: TENANT_A,
+      meetingId: MEETING_LIVE,
+      lotId: L1,
+      status: 'ABSENT'
+    });
+    const res = await vote(USER_AWA, RESOLUTION_LIVE_OPEN, { lotId: L1, vote: 'FOR' });
+    expect(res.status).toBe(409);
+    expect(votesOf(RESOLUTION_LIVE_OPEN)).toHaveLength(0);
+  });
+
+  it('ne rétrograde pas un émargement « représenté » existant', async () => {
+    mockPrisma.gMAttendance.rows.push({
+      id: 'att-rep',
+      tenantId: TENANT_A,
+      meetingId: MEETING_LIVE,
+      lotId: L1,
+      status: 'REPRESENTED'
+    });
+    const res = await vote(USER_AWA, RESOLUTION_LIVE_OPEN, { lotId: L1, vote: 'FOR' });
+    expect(res.status).toBe(200);
+    expect(mockPrisma.gMAttendance.rows).toEqual([expect.objectContaining({ id: 'att-rep', status: 'REPRESENTED' })]);
   });
 
   it('refuse une résolution d’une autre copropriété (404) et un corps invalide (400)', async () => {
-    const otherSyndicate = await vote(USER_AWA, RESOLUTION_OPEN, { lotId: L3, vote: 'FOR' });
+    const otherSyndicate = await vote(USER_AWA, RESOLUTION_LIVE_OPEN, { lotId: L3, vote: 'FOR' });
     expect(otherSyndicate.status).toBe(404);
-    const invalid = await vote(USER_AWA, RESOLUTION_OPEN, { lotId: L1, vote: 'MAYBE' });
+    const invalid = await vote(USER_AWA, RESOLUTION_LIVE_OPEN, { lotId: L1, vote: 'MAYBE' });
     expect(invalid.status).toBe(400);
   });
 });

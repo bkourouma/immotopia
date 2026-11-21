@@ -193,7 +193,9 @@ async function evaluateCandidates(
           where: {
             tenantId,
             installmentId: { in: installments.map(installment => installment.id) },
-            status: 'PENDING',
+            // Une ligne réglée garde l'échéance (activeKey, ADR-007 §6) : sans elle ici, une échéance
+            // encore due après un règlement plafonné serait « retenue » puis ferait échouer toute la remise.
+            status: { in: ['PENDING', 'SETTLED'] },
             ...(ownRemittanceId ? { remittanceId: { not: ownRemittanceId } } : {})
           },
           select: { installmentId: true }

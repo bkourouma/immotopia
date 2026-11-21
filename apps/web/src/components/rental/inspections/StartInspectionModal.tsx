@@ -47,6 +47,11 @@ export const StartInspectionModal: React.FC<StartInspectionModalProps> = ({
     if (open) setTemplate(defaultTemplate);
   }, [open, defaultTemplate]);
 
+  // ... et de la date du jour (sinon la date choisie la fois précédente reste).
+  useEffect(() => {
+    if (open) setDate(dayjs());
+  }, [open]);
+
   return (
     <Modal
       title={

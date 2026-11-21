@@ -54,6 +54,7 @@ import { HelpButton, HelpSectionTitle } from '../../help';
 import { displayCurrency } from '../../utils/syndic-currency';
 import { montantSaisiProps } from '../../utils/montant-saisi';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { currencyFractionDigits } from './budget-money';
 
 const { Paragraph, Title, Text } = Typography;
 
@@ -594,6 +595,7 @@ export const ProviderInvoicesTab: React.FC<ProviderInvoicesTabProps> = ({
               >
                 <InputNumber
                   {...montantSaisiProps}
+                  precision={currencyFractionDigits(createCurrency)}
                   min={0}
                   inputMode="decimal"
                   style={{ width: '100%' }}
@@ -606,6 +608,7 @@ export const ProviderInvoicesTab: React.FC<ProviderInvoicesTabProps> = ({
               <Form.Item label={t('TVA')} name="vatAmount">
                 <InputNumber
                   {...montantSaisiProps}
+                  precision={currencyFractionDigits(createCurrency)}
                   min={0}
                   inputMode="decimal"
                   style={{ width: '100%' }}

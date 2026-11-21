@@ -58,6 +58,8 @@ export const AllocatePaymentForm: React.FC<AllocatePaymentFormProps> = ({
       if (response.success) {
         // Filter to show only installments that are not fully paid
         const unpaidInstallments = response.data.filter(inst => {
+          // Une échéance annulée ne reçoit aucune affectation (l'API répond « Aucune échéance trouvée »).
+          if (inst.status === 'CANCELED') return false;
           const totalDue =
             Number(inst.amount_rent || 0) +
             Number(inst.amount_service || 0) +
@@ -260,7 +262,7 @@ export const AllocatePaymentForm: React.FC<AllocatePaymentFormProps> = ({
           </Button>
         )}
         <Button type="submit" disabled={isSubmitting || loading || installments.length === 0}>
-          {isSubmitting || loading ? 'Allocation...' : t('Allouer le paiement')}
+          {isSubmitting || loading ? t('Allocation...') : t('Allouer le paiement')}
         </Button>
       </div>
     </form>

@@ -27,6 +27,7 @@ const PAYOUT_ROW = {
 
 const tx: any = {
   $queryRaw: (...a: any[]) => queryRaw(...(a as [TemplateStringsArray])),
+  $executeRaw: jest.fn(async () => 1),
   thirdPartyAccount: {
     findUnique: jest.fn(async () => {
       calls.push('read-balance');

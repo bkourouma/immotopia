@@ -217,6 +217,45 @@ describe('runRentBilling — dernier jour du bail', () => {
   });
 });
 
+describe('runRentBilling — prorata au jour (H5)', () => {
+  const run = (year: number, month: number) =>
+    runRentBilling(TENANT_ID, { periodYear: year, periodMonth: month }, ACTOR_ID);
+  const rentOf = (year: number, month: number) =>
+    Number(store.installments.find(i => i.period_year === year && i.period_month === month)?.amount_rent);
+
+  it('bail sans date de fin démarrant le 15/07/2026 : première échéance 17/31, ensuite des mois pleins', async () => {
+    seedLease({ start_date: new Date(2026, 6, 15), end_date: null, rent_amount: 155000 });
+
+    for (const [y, m] of [
+      [2026, 7],
+      [2026, 8],
+      [2027, 8]
+    ]) {
+      await run(y, m);
+    }
+
+    expect(rentOf(2026, 7)).toBe(85000);
+    expect(rentOf(2026, 8)).toBe(155000);
+    expect(rentOf(2027, 8)).toBe(155000);
+  });
+
+  it('bail 15/07/2026 -> 14/07/2027 : dernière échéance 14/31, somme des extrémités = un mois', async () => {
+    seedLease({ start_date: new Date(2026, 6, 15), end_date: new Date(2027, 6, 14), rent_amount: 155000 });
+
+    await run(2026, 7);
+    await run(2027, 7);
+
+    expect(rentOf(2026, 7) + rentOf(2027, 7)).toBe(155000);
+    expect(rentOf(2027, 7)).toBe(70000);
+  });
+
+  it('bail démarrant le 1er : montants pleins, inchangés', async () => {
+    seedLease({ rent_amount: 155000 });
+    await run(2026, 7);
+    expect(rentOf(2026, 7)).toBe(155000);
+  });
+});
+
 describe('buildInstallmentForPeriod — même règle que listBillingPeriods', () => {
   const frequencies = [
     RentalBillingFrequency.MONTHLY,

@@ -42,6 +42,7 @@ import {
 import { useFormFieldModes } from '../../hooks/useFormFieldModes';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { montantSaisiProps } from '../../utils/montant-saisi';
+import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { CoOwnerInvitationResult } from '../../components/syndics/CoOwnerInvitationResult';
 import { useTabParam } from '../../components/syndics/finances/url-params';
 import { IncidentsTab } from '../../components/syndics/profiles/IncidentsTab';
@@ -157,6 +158,10 @@ export const SyndicProfilesIncidents: React.FC = () => {
 
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
   const [activeTab, setActiveTab] = useTabParam<ProfileTab>(PROFILE_TABS, 'proprietaires');
+  // Créer un profil ou un incident exige SYNDIC_EDIT (l'API répondrait 403). L'API reste l'autorité : on ne grise
+  // que lorsque l'absence du droit est connue (chargement ou échec réseau : pas de filtre).
+  const { permissions, ready: permissionsReady } = useMyMenuAccess(effectiveTenantId);
+  const canEdit = !(permissionsReady && permissions !== null && !permissions.has('SYNDIC_EDIT'));
 
   const ready = Boolean(effectiveTenantId && syndicId);
   const tenantKey = effectiveTenantId ?? '';
@@ -620,6 +625,14 @@ export const SyndicProfilesIncidents: React.FC = () => {
       payload.resolvedAt = resolvedAt;
     }
 
+    // Rien n'a changé : l'API refuse une modification vide (400), on referme simplement la fenêtre.
+    if (Object.keys(payload).length === 0) {
+      setOpenEditIncident(false);
+      setEditingIncident(null);
+      editIncidentForm.resetFields();
+      return;
+    }
+
     setSubmitting(true);
     try {
       await updateSyndicIncident(effectiveTenantId, syndicId, editingIncident.id, payload);
@@ -751,13 +764,13 @@ export const SyndicProfilesIncidents: React.FC = () => {
             </Paragraph>
           </Space>
           <Space wrap>
-            <Button icon={<PlusOutlined />} onClick={openOwnerModal}>
+            <Button icon={<PlusOutlined />} disabled={!canEdit} onClick={openOwnerModal}>
               {t('Profil propriétaire')}
             </Button>
-            <Button icon={<PlusOutlined />} onClick={openTenantModal}>
+            <Button icon={<PlusOutlined />} disabled={!canEdit} onClick={openTenantModal}>
               {t('Profil locataire')}
             </Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={openIncidentModal}>
+            <Button type="primary" icon={<PlusOutlined />} disabled={!canEdit} onClick={openIncidentModal}>
               {t('Nouvel incident')}
             </Button>
           </Space>

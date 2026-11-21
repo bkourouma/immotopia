@@ -23,7 +23,8 @@ export enum RentalInstallmentStatus {
   DUE = 'DUE',
   PARTIAL = 'PARTIAL',
   PAID = 'PAID',
-  OVERDUE = 'OVERDUE'
+  OVERDUE = 'OVERDUE',
+  CANCELED = 'CANCELED'
 }
 
 export enum RentalPaymentMethod {
@@ -284,6 +285,22 @@ export async function listCoRenters(tenantId: string, leaseId: string): Promise<
 
 // ==================== INSTALLMENTS ====================
 
+/** Affectation d'un paiement à une échéance, telle que l'API la renvoie dans `payments`. */
+export interface AffectationEcheance {
+  id: string;
+  amount: number | string;
+  currency?: string | null;
+  created_at: string;
+  payment?: {
+    id: string;
+    method: string;
+    status: string;
+    currency?: string | null;
+    initiated_at?: string | null;
+    succeeded_at?: string | null;
+  } | null;
+}
+
 export interface RentalInstallment {
   id: string;
   tenant_id: string;
@@ -301,6 +318,8 @@ export interface RentalInstallment {
   paid_at?: string | null;
   created_at: string;
   updated_at: string;
+  /** Paiements affectés à l'échéance (détail uniquement) : affectation et paiement lié. */
+  payments?: AffectationEcheance[];
   /** Rattachement renvoye par la liste : bail, bien et locataire principal. */
   lease?: {
     id: string;
@@ -637,6 +656,8 @@ export interface RentalPenalty {
   is_manual_override?: boolean;
   created_at: string;
   updated_at: string;
+  /** Échéance concernée, quand la liste la joint. */
+  installment?: Partial<RentalInstallment> | null;
 }
 
 export interface PenaltyFilters {
@@ -822,6 +843,9 @@ export interface RentalDocument {
   created_by_user_id: string;
   created_at: string;
   updated_at: string;
+  /** Renvoyé par l'API : faux quand aucun fichier n'existe ou que le document est annulé. */
+  downloadable?: boolean;
+  download_url?: string | null;
 }
 
 export interface GenerateDocumentRequest {

@@ -322,3 +322,14 @@ describe('programmation FIXED', () => {
     );
   });
 });
+
+describe('aperçu en devise sans sous-unité (FCFA)', () => {
+  it('FCFA et CFA se répartissent au franc, comme XOF', () => {
+    for (const currency of ['FCFA', 'cfa', 'XOF']) {
+      expect(allocationPrecisionFor(currency)).toBe('UNIT');
+    }
+    const lots = [lot('a', 'A-01'), lot('b', 'A-02'), lot('c', 'A-03')];
+    const result = previewAllocation({ method: 'EQUAL', lots, totalAmount: 1000, currency: 'FCFA' });
+    expect(amounts(result)).toEqual([333, 333, 334]);
+  });
+});

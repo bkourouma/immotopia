@@ -202,6 +202,10 @@ export const InspectionCompareModal: React.FC<InspectionCompareModalProps> = ({ 
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
+    // Repartir à blanc : ni anciennes lignes pendant le chargement ou après un échec, ni ancien filtre.
+    setRows([]);
+    setSummary(null);
+    setGapsOnly(false);
     setLoading(true);
     setError(null);
     compareInspections(tenantId, leaseId)

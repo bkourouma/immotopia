@@ -283,11 +283,12 @@ describe('repartition, garde-fous et verrous', () => {
     const call = await createCall('2026-T1', 250000, '2026-03-05');
     (mockPrisma.chargeCall.rows.find(row => row.id === call.id) as any).batch = { budgetId: BUDGET };
 
-    await recordLotPayment(pay(1000.01, '2026-03-10'));
+    await recordLotPayment(pay(1001, '2026-03-10'));
 
+    // FCFA : jamais de centimes, la somme des parts vaut exactement le paiement.
     const total = balanceOf(COURANT) + balanceOf(TRAVAUX);
-    expect(Math.round(total * 100)).toBe(100001);
-    expect([balanceOf(COURANT), balanceOf(TRAVAUX)].sort()).toEqual([500, 500.01]);
+    expect(total).toBe(1001);
+    expect([balanceOf(COURANT), balanceOf(TRAVAUX)].sort()).toEqual([500, 501]);
   });
 
   it("ecarte le fonds d'une autre copropriete ecrit par l'ancien code", async () => {

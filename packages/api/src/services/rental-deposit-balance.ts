@@ -11,5 +11,7 @@ export function depositCurrentBalance(deposit: {
   refunded_amount: unknown;
   forfeited_amount: unknown;
 }): number {
-  return Number(deposit.collected_amount) - Number(deposit.refunded_amount) - Number(deposit.forfeited_amount);
+  const solde = Number(deposit.collected_amount) - Number(deposit.refunded_amount) - Number(deposit.forfeited_amount);
+  // Arrondi au centime : `100,10 - 100` ne doit pas donner `0,0999999…`.
+  return Math.round((solde + Number.EPSILON) * 100) / 100;
 }

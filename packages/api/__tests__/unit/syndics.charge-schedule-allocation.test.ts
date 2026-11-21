@@ -284,7 +284,7 @@ describe('BUDGET : méthode forcée à SHARES', () => {
 
     const result = await executeChargeScheduleNow(TENANT_A, S1, schedule.id, NOW);
     expect(result.run.status).toBe('SUCCESS');
-    expect(amountsByLot(calls())).toEqual({ [L1]: 1000, [L2]: 666.66 });
+    expect(amountsByLot(calls())).toEqual({ [L1]: 1000, [L2]: 666 });
     expect(batches()[0].allocationMethod).toBe('SHARES');
   });
 });

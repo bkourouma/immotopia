@@ -15,6 +15,52 @@ import {
   parseOwnerPortalMaintenanceQuery,
   parseOwnerPortalPaymentsQuery
 } from '../services/portal-list-filters/owner-portal-list-filters';
+import { PropertyStatus, PropertyTransactionMode, PropertyType } from '@prisma/client';
+import { BadRequestError } from '../middleware/error-middleware';
+import { t } from '../i18n';
+
+const REPORT_FORMATS = ['pdf', 'csv', 'excel'] as const;
+type ReportFormat = (typeof REPORT_FORMATS)[number];
+
+/**
+ * Borne de période reçue en JSON ou en query : `aaaa-mm-jj` ou date ISO
+ * complète, valide, sinon 400 (jamais un `Invalid Date` qui ferait lever
+ * Prisma, soit un 500). Un jour seul couvre la journée entière (UTC) : la
+ * borne de fin (`endOfDay`) vaut 23:59:59.999Z, pour que le dernier jour choisi
+ * reste inclus — comme les listes du portail (`owner-portal-list-filters`).
+ * Absente ou vide : `undefined`.
+ */
+export function parsePortalDateBoundary(raw: unknown, field: string, endOfDay: boolean): Date | undefined {
+  if (raw === undefined || raw === null || raw === '') return undefined;
+  const invalid = () =>
+    new BadRequestError(t('Paramètres de recherche invalides.'), [{ field, message: t('Date invalide.') }]);
+  if (typeof raw !== 'string') throw invalid();
+  const value = raw.trim();
+  if (!/^\d{4}-\d{2}-\d{2}([T ].+)?$/.test(value)) throw invalid();
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) throw invalid();
+  if (value.length === 10) {
+    // Un jour inexistant (2026-02-31) se « corrige » en mars : on le refuse.
+    if (parsed.toISOString().slice(0, 10) !== value) throw invalid();
+    return new Date(`${value}T${endOfDay ? '23:59:59.999' : '00:00:00.000'}Z`);
+  }
+  return parsed;
+}
+
+function parseEnumQuery<T extends string>(raw: unknown, field: string, values: Record<string, T>): T | undefined {
+  if (raw === undefined || raw === '') return undefined;
+  if (typeof raw === 'string' && (Object.values(values) as string[]).includes(raw)) return raw as T;
+  throw new BadRequestError(t('Paramètres de recherche invalides.'), [{ field, message: t('Format invalide.') }]);
+}
+
+function parseReportFormat(raw: unknown): ReportFormat {
+  if (typeof raw === 'string' && (REPORT_FORMATS as readonly string[]).includes(raw)) {
+    return raw as ReportFormat;
+  }
+  throw new BadRequestError(t('Paramètres de recherche invalides.'), [
+    { field: 'format', message: t('Format invalide.') }
+  ]);
+}
 
 export class OwnerPortalController {
   private service: OwnerPortalService;
@@ -55,7 +101,8 @@ export class OwnerPortalController {
       });
       res.status(500).json({
         success: false,
-        message: error.message || 'Erreur lors du chargement du tableau de bord.'
+        // Jamais le message brut (erreur Prisma, noms de colonnes) dans une réponse de portail.
+        message: 'Erreur lors du chargement du tableau de bord.'
       });
     }
   }
@@ -73,9 +120,10 @@ export class OwnerPortalController {
       const { propertyIds, tenantId } = req.ownerPortal;
 
       // Parse query parameters
-      const status = req.query.status as string | undefined;
-      const propertyType = req.query.propertyType as string | undefined;
-      const transactionMode = req.query.transactionMode as string | undefined;
+      // Une valeur hors enum ferait lever Prisma (500) : 400 typé à la place.
+      const status = parseEnumQuery(req.query.status, 'status', PropertyStatus);
+      const propertyType = parseEnumQuery(req.query.propertyType, 'propertyType', PropertyType);
+      const transactionMode = parseEnumQuery(req.query.transactionMode, 'transactionMode', PropertyTransactionMode);
 
       const filters: any = {};
       if (status) filters.status = status;
@@ -95,6 +143,7 @@ export class OwnerPortalController {
         data: propertiesData
       });
     } catch (error: any) {
+      if (respondWithAppError(res, error)) return;
       logger.error('Error getting owner properties:', {
         error: error.message,
         stack: error.stack,
@@ -232,9 +281,9 @@ export class OwnerPortalController {
 
       const { propertyIds, tenantId } = req.ownerPortal;
 
-      const startDate = req.query.startDate ? new Date(req.query.startDate as string) : undefined;
-      const endDate = req.query.endDate ? new Date(req.query.endDate as string) : undefined;
-      const propertyId = req.query.propertyId as string | undefined;
+      const startDate = parsePortalDateBoundary(req.query.startDate, 'startDate', false);
+      const endDate = parsePortalDateBoundary(req.query.endDate, 'endDate', true);
+      const propertyId = typeof req.query.propertyId === 'string' ? req.query.propertyId : undefined;
       const groupBy = req.query.groupBy as 'month' | 'year' | 'property' | undefined;
 
       const filters: any = {};
@@ -250,6 +299,7 @@ export class OwnerPortalController {
         data: revenues
       });
     } catch (error) {
+      if (respondWithAppError(res, error)) return;
       logger.error('Error getting owner revenues:', error);
       res.status(500).json({
         success: false,
@@ -296,8 +346,8 @@ export class OwnerPortalController {
 
       const { propertyIds, tenantId } = req.ownerPortal;
 
-      const startDate = req.query.startDate ? new Date(req.query.startDate as string) : undefined;
-      const endDate = req.query.endDate ? new Date(req.query.endDate as string) : undefined;
+      const startDate = parsePortalDateBoundary(req.query.startDate, 'startDate', false);
+      const endDate = parsePortalDateBoundary(req.query.endDate, 'endDate', true);
 
       const filters: any = {};
       if (startDate) filters.startDate = startDate;
@@ -310,6 +360,7 @@ export class OwnerPortalController {
         data: revenuesByProperty
       });
     } catch (error) {
+      if (respondWithAppError(res, error)) return;
       logger.error('Error getting revenues by property:', error);
       res.status(500).json({
         success: false,
@@ -664,10 +715,19 @@ export class OwnerPortalController {
         return;
       }
 
+      parseReportFormat(outputFormat);
+      const start = parsePortalDateBoundary(startDate, 'startDate', false) as Date;
+      const end = parsePortalDateBoundary(endDate, 'endDate', true) as Date;
+      if (start.getTime() > end.getTime()) {
+        throw new BadRequestError(t('Paramètres de recherche invalides.'), [
+          { field: 'startDate', message: t('Date invalide.') }
+        ]);
+      }
+
       const buffer = await this.service.generateRevenueReport(propertyIds, tenantId, {
-        startDate: new Date(startDate),
-        endDate: new Date(endDate),
-        propertyId,
+        startDate: start,
+        endDate: end,
+        propertyId: typeof propertyId === 'string' && propertyId ? propertyId : undefined,
         format: outputFormat
       });
 
@@ -717,8 +777,9 @@ export class OwnerPortalController {
         return;
       }
 
+      parseReportFormat(outputFormat);
       const buffer = await this.service.generateOccupancyReport(propertyIds, tenantId, {
-        asOfDate: new Date(asOfDate),
+        asOfDate: parsePortalDateBoundary(asOfDate, 'asOfDate', false) as Date,
         format: outputFormat
       });
 
@@ -789,9 +850,9 @@ export class OwnerPortalController {
 
       const buffer = await this.service.exportData(propertyIds, tenantId, {
         entityType,
-        startDate: startDate ? new Date(startDate) : undefined,
-        endDate: endDate ? new Date(endDate) : undefined,
-        propertyId,
+        startDate: parsePortalDateBoundary(startDate, 'startDate', false),
+        endDate: parsePortalDateBoundary(endDate, 'endDate', true),
+        propertyId: typeof propertyId === 'string' && propertyId ? propertyId : undefined,
         format: outputFormat
       });
 
@@ -830,7 +891,7 @@ export class OwnerPortalController {
       logger.error('Error getting preferences:', error);
       res.status(500).json({
         success: false,
-        message: error.message || 'Erreur lors du chargement des préférences.'
+        message: 'Erreur lors du chargement des préférences.'
       });
     }
   }
@@ -844,14 +905,20 @@ export class OwnerPortalController {
         res.status(403).json({ success: false, message: 'Accès portail propriétaire requis.' });
         return;
       }
-      const { newsletterConsent } = req.body as { newsletterConsent?: boolean };
+      const { newsletterConsent } = (req.body ?? {}) as { newsletterConsent?: unknown };
+      if (newsletterConsent !== undefined && typeof newsletterConsent !== 'boolean') {
+        throw new BadRequestError(t('Paramètres de recherche invalides.'), [
+          { field: 'newsletterConsent', message: t('Format invalide.') }
+        ]);
+      }
       const data = await this.service.updatePreferences(req.ownerPortal.tenantClientId, { newsletterConsent });
       res.json({ success: true, data });
     } catch (error: any) {
+      if (respondWithAppError(res, error)) return;
       logger.error('Error updating preferences:', error);
       res.status(500).json({
         success: false,
-        message: error.message || 'Erreur lors de la mise à jour des préférences.'
+        message: 'Erreur lors de la mise à jour des préférences.'
       });
     }
   }

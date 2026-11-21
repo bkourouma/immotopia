@@ -7,6 +7,7 @@ const clientFindFirst = jest.fn();
 const payoutRows = jest.fn();
 const tx: any = {
   $queryRaw: jest.fn(async () => [{ id: 'acc-1' }]),
+  $executeRaw: jest.fn(async () => 1),
   thirdPartyAccount: { findUnique: jest.fn(async () => ({ balance: -500000 })) },
   ownerPayout: {
     findFirst: jest.fn(async (args: any) => {
@@ -128,13 +129,45 @@ describe('createOwnerPayout : relevé rattaché', () => {
   });
 });
 
+describe('createOwnerPayout : numérotation REV-', () => {
+  it('pose un verrou consultatif par agence avant de lire le dernier numéro', async () => {
+    const order: string[] = [];
+    tx.$executeRaw.mockImplementationOnce(async (strings: TemplateStringsArray, key: string) => {
+      order.push('advisory');
+      expect(strings.join(' ')).toMatch(/pg_advisory_xact_lock/);
+      expect(key).toContain(TENANT);
+      return 1;
+    });
+    tx.ownerPayout.findFirst.mockImplementationOnce(async () => {
+      order.push('read-last');
+      return null;
+    });
+    await createOwnerPayout(TENANT, 'owner-1', { amount: 1000, paidAt: '2026-01-05', method: 'CASH' }, 'u1');
+    expect(order).toEqual(['advisory', 'read-last']);
+  });
+});
+
 describe('voidOwnerPayout', () => {
   it("l'annulation ramène un relevé PAID non couvert à SENT", async () => {
     payoutRows.mockReturnValue([]);
-    statementFindFirst.mockResolvedValue({ id: ST, netAmount: 100000, status: 'PAID' });
+    statementFindFirst.mockResolvedValue({
+      id: ST,
+      netAmount: 100000,
+      status: 'PAID',
+      sentAt: new Date('2026-01-03')
+    });
     await voidOwnerPayout(TENANT, 'owner-1', 'po-1', { reason: 'Erreur de saisie' }, 'u1');
     expect(tx.ownerStatement.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ status: 'SENT' }) })
+    );
+  });
+
+  it("l'annulation ramène à BROUILLON un relevé réglé sans avoir jamais été envoyé", async () => {
+    payoutRows.mockReturnValue([]);
+    statementFindFirst.mockResolvedValue({ id: ST, netAmount: 100000, status: 'PAID', sentAt: null });
+    await voidOwnerPayout(TENANT, 'owner-1', 'po-1', { reason: 'Erreur de saisie' }, 'u1');
+    expect(tx.ownerStatement.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'DRAFT', paidAt: null }) })
     );
   });
 

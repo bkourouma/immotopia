@@ -404,6 +404,16 @@ describe('Suivi mensuel', () => {
     expect(await screen.findAllByLabelText('Avant votre acquisition', {}, WAIT)).toHaveLength(3);
   });
 
+  it("exercice antérieur à l'acquisition (404) : message clair, pas une panne", async () => {
+    listMyLots.mockResolvedValue([lot()]);
+    getCoOwnerLotMonthlyTracking.mockRejectedValue({ response: { status: 404 } });
+
+    mount('/copropriete/suivi-mensuel', <CoOwnerMonthlyTracking />);
+
+    expect(await screen.findByText(/précède votre acquisition de ce lot/, {}, WAIT)).toBeInTheDocument();
+    expect(screen.queryByText('Impossible de charger le suivi mensuel.')).not.toBeInTheDocument();
+  });
+
   it("ne masque aucun mois quand il n'y a pas de borne de visibilité, même acquis aujourd'hui", async () => {
     listMyLots.mockResolvedValue([lot()]);
     getCoOwnerLotMonthlyTracking.mockResolvedValue({

@@ -92,9 +92,13 @@ function montantAffecte(paiement: RentalPayment): number {
 }
 
 function resteAAffecter(paiement: RentalPayment): number {
-  // Un paiement échoué ou annulé n'a encaissé aucun argent : rien à affecter (BUG-2026-10-02-017).
-  if (paiement.status === 'FAILED' || paiement.status === 'CANCELED') return 0;
-  return Number(paiement.amount || 0) - montantAffecte(paiement);
+  // Seul un paiement encaissé (« Réussi ») s'affecte : l'API répond 409 pour tout autre statut
+  // (en attente, échoué, annulé, remboursé : l'argent n'est pas reçu — BUG-2026-10-02-017).
+  if (paiement.status !== 'SUCCESS') return 0;
+  // Sans bail il n'y a aucune échéance où affecter (l'API répond 400) : pas de bouton « Affecter ».
+  if (!paiement.lease_id) return 0;
+  // Arrondi au centime : 0,1 + 0,2 en flottant laissait un « reste » de 1e-13 et un bouton fantôme.
+  return Math.round((Number(paiement.amount || 0) - montantAffecte(paiement)) * 100) / 100;
 }
 
 function dateCourte(iso: string): string {

@@ -168,6 +168,31 @@ describe('SyndicMeetingProjection', () => {
     expect(getLiveMeeting).toHaveBeenCalledTimes(calls);
   });
 
+  it('montre le résultat d’une résolution jamais ouverte mais votée à la main, une fois l’AG terminée', async () => {
+    const view = live('COMPLETED');
+    view.resolutions.push({
+      id: 'r3',
+      title: 'Travaux de toiture',
+      description: null,
+      majorityRule: 'ARTICLE_24',
+      voteStatus: 'PENDING',
+      voteOpenedAt: null,
+      voteClosedAt: null,
+      ballotCount: 1,
+      tally: { ...tally, sharesFor: 150, sharesAgainst: 0, result: 'APPROVED' },
+      votes: [
+        { lotId: 'l1', vote: 'FOR', source: 'MANAGER', castByContactId: null, updatedAt: '2026-10-20T10:00:00.000Z' }
+      ]
+    });
+    getLiveMeeting.mockResolvedValue(view);
+    mount();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByText('Travaux de toiture')).toBeTruthy();
+    expect(screen.getByText('Pour 150 · Contre 0 · Abstention 0')).toBeTruthy();
+  });
+
   it('garde l’écran lors d’un échec de lecture', async () => {
     getLiveMeeting.mockResolvedValueOnce(live());
     getLiveMeeting.mockRejectedValue(new Error('réseau'));

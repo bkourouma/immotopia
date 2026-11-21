@@ -481,6 +481,47 @@ describe('MeetingLivePage', () => {
     expect(vote).toHaveBeenCalledWith(TOKEN, 'r1', [{ lotId: 'l2', vote: 'FOR' }]);
   });
 
+  it('écarte de « Pour tous mes lots » le lot par pouvoir dont le copropriétaire a déjà voté', async () => {
+    const lots = [
+      {
+        lotId: 'l1',
+        lotNumber: 'A1',
+        generalShares: 100,
+        role: 'OWNER' as const,
+        grantorName: null,
+        attendanceStatus: 'PRESENT' as const
+      },
+      {
+        lotId: 'l2',
+        lotNumber: 'B2',
+        generalShares: 50,
+        role: 'PROXY' as const,
+        grantorName: 'Moussa Diallo',
+        attendanceStatus: 'REPRESENTED' as const
+      }
+    ];
+    fetchState.mockResolvedValue(
+      ok(
+        view({
+          myLots: lots,
+          resolutions: [resolution({ myVotes: [{ lotId: 'l2', vote: 'AGAINST', source: 'CO_OWNER' }] })]
+        })
+      )
+    );
+    vote.mockResolvedValue(ok(view()));
+    render(<MeetingLivePage />);
+    await flush();
+    expect(screen.getByText(/a déjà voté lui-même/)).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Lot B2 : Pour' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Lot A1 : Pour' }) as HTMLButtonElement).disabled).toBe(false);
+
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole('button', { name: 'Pour' })[0]);
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(vote).toHaveBeenCalledWith(TOKEN, 'r1', [{ lotId: 'l1', vote: 'FOR' }]);
+  });
+
   it('n’empile pas « Vous avez rejoint » avec une erreur d’action', async () => {
     fetchState.mockResolvedValue(ok(view()));
     vote.mockResolvedValue({ status: 'conflict', message: 'Le vote est clos.' });

@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { asyncHandler, BadRequestError, ForbiddenError, NotFoundError } from '../middleware/error-middleware';
+import { AppError, asyncHandler, BadRequestError, ForbiddenError, NotFoundError } from '../middleware/error-middleware';
+import { PORTAL_READ_ONLY_CODE } from '../middleware/tenant-portal-access';
+import { t } from '../i18n';
 import { assertRentalOnlinePaymentAllowed } from '../lib/payment-gateway/availability';
 import { prisma } from '../utils/database';
 import { listPortalLeaseIds } from '../utils/tenant-portal-leases';
@@ -43,7 +45,11 @@ const startCheckoutSchema = z.object({
  * Les limiteurs de débit sont posés sur les routes (`routes/tenant-portal-routes.ts`).
  */
 export const startOnlinePaymentHandler = asyncHandler(async (req: Request, res: Response) => {
-  const { tenantId, tenantClientId } = requirePortalContext(req);
+  const { tenantId, tenantClientId, readOnly } = requirePortalContext(req);
+  // H4 : aucun paiement en ligne en lecture seule (en plus de la garde du middleware).
+  if (readOnly) {
+    throw new AppError(t('Votre bail est terminé : le portail est en lecture seule.'), 403, PORTAL_READ_ONLY_CODE);
+  }
   await assertRentalOnlinePaymentAllowed(tenantId);
   const { installmentIds } = startCheckoutSchema.parse(req.body);
 

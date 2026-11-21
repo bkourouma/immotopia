@@ -4,15 +4,23 @@ import dayjs, { Dayjs } from 'dayjs';
 import { ReviseLeaseRequest } from '../../../services/lease-lifecycle-service';
 import { t } from '../../../i18n/t';
 import { HelpSectionTitle } from '../../../help';
+import { deviseAffichee } from '../../../lib/rental-labels';
 
 /** Plus grand montant que la base sait porter (Decimal 12,2), aligné sur l'API. */
 const MONTANT_MAX = 9_999_999_999.99;
 const MESSAGE_MONTANT_MAX = 'Le montant dépasse le maximum autorisé (9 999 999 999,99).';
 
+/** Devises sans subdivision : le franc CFA (FCFA, XOF, CFA) et XAF. */
+function deviseSansDecimale(devise?: string | null): boolean {
+  return deviseAffichee(devise) === 'FCFA' || String(devise ?? '').toUpperCase() === 'XAF';
+}
+
 interface RevisionModalProps {
   open: boolean;
   currentRent: number;
   currentCharges: number;
+  /** Devise du bail : FCFA/XOF/XAF s'arrondissent à l'unité, les autres au centime. */
+  currency?: string | null;
   onCancel: () => void;
   onSubmit: (data: ReviseLeaseRequest) => Promise<void>;
 }
@@ -36,6 +44,7 @@ export const RevisionModal: React.FC<RevisionModalProps> = ({
   open,
   currentRent,
   currentCharges,
+  currency,
   onCancel,
   onSubmit
 }) => {
@@ -58,7 +67,10 @@ export const RevisionModal: React.FC<RevisionModalProps> = ({
 
   const handleRateChange = (rate: number | null) => {
     if (rate == null) return;
-    const nouveauLoyer = Math.round(currentRent * (1 + rate / 100));
+    const brut = currentRent * (1 + rate / 100);
+    const nouveauLoyer = deviseSansDecimale(currency)
+      ? Math.round(brut)
+      : Math.round((brut + Number.EPSILON) * 100) / 100;
     form.setFieldsValue({ newRent: nouveauLoyer });
   };
 

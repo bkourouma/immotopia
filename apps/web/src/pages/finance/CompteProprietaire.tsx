@@ -541,6 +541,20 @@ export const CompteProprietaire: React.FC = () => {
         <StatCard label={t('TVA')} value={<MoneyValue value={data.totals.vat} />} />
         <StatCard label={t('Dépenses')} value={<MoneyValue value={data.totals.expenses} />} />
         <StatCard label={t('Reversements')} value={<MoneyValue value={data.totals.payouts} />} />
+        {/* Ces trois lignes pèsent sur le solde : sans elles, les indicateurs
+            ci-dessus n'expliquent pas le solde dû affiché. */}
+        {(data.totals.withholdingTax ?? 0) !== 0 && (
+          <StatCard label={t('Retenue à la source')} value={<MoneyValue value={data.totals.withholdingTax} />} />
+        )}
+        {(data.totals.depositRetained ?? 0) !== 0 && (
+          <StatCard
+            label={t('Dépôt de garantie conservé')}
+            value={<MoneyValue value={data.totals.depositRetained} />}
+          />
+        )}
+        {(data.totals.otherMovements ?? 0) !== 0 && (
+          <StatCard label={t('Autres mouvements')} value={<MoneyValue value={data.totals.otherMovements} signed />} />
+        )}
       </div>
 
       {/* Deux sections, une seule requête (`getOwnerAccount`) : seul l'onglet

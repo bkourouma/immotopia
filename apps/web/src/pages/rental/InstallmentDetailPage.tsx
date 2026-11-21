@@ -1,8 +1,8 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Card, Row, Col, Tag, Typography, Descriptions, Space } from 'antd';
+import { Card, Row, Col, Typography, Descriptions, Space, Table } from 'antd';
 import { DollarOutlined, CalendarOutlined } from '@ant-design/icons';
-import { getInstallment, RentalInstallment, RentalInstallmentStatus } from '../../services/rental-service';
+import { getInstallment, RentalInstallment, AffectationEcheance } from '../../services/rental-service';
 import { InstallmentPaymentLinksPanel } from '../../components/rental/InstallmentPaymentLinksPanel';
 import { InstallmentReminderButton } from '../../components/rental/reminders/InstallmentReminderButton';
 import { InstallmentRemindersHistoryPanel } from '../../components/rental/reminders/InstallmentRemindersHistoryPanel';
@@ -12,6 +12,8 @@ import { formatMoney } from '../../components/primitives/MoneyValue';
 import { PageHeader } from '../../components/primitives/PageHeader';
 import { StateBlock } from '../../components/primitives/StateBlock';
 import { SkeletonDetail } from '../../components/primitives/Skeleton';
+import { StatusTag } from '../../components/primitives';
+import { libelleMethodePaiement } from '../../lib/rental-payment-status';
 import { deviseAffichee, libellePeriodeEcheance } from '../../lib/rental-labels';
 import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 
@@ -51,17 +53,9 @@ export const InstallmentDetailPage: React.FC = () => {
     }
   };
 
-  const getStatusTag = (status: RentalInstallmentStatus) => {
-    const statusMap: Partial<Record<RentalInstallmentStatus, { label: string; color: string }>> = {
-      DRAFT: { label: t('Brouillon'), color: 'default' },
-      DUE: { label: t('Échéance'), color: 'blue' },
-      PARTIAL: { label: t('Partiel'), color: 'orange' },
-      PAID: { label: t('Payé'), color: 'green' },
-      OVERDUE: { label: t('En retard'), color: 'red' }
-    };
-    const config = statusMap[status] || { label: status, color: 'default' };
-    return <Tag color={config.color}>{config.label}</Tag>;
-  };
+  // Même pastille que la liste (« À échoir », « Annulé »…) : l'ancienne table locale
+  // écrivait « Échéance » pour DUE et le code brut « CANCELED » pour une échéance annulée.
+  const getStatusTag = (status: string) => <StatusTag status={status} />;
 
   const formatDate = (dateString: string | null | undefined) => {
     if (!dateString) return '-';
@@ -99,7 +93,14 @@ export const InstallmentDetailPage: React.FC = () => {
   }
 
   const totalDue = calculateTotalDue(installment);
-  const remaining = totalDue - Number(installment.amount_paid || 0);
+  // Au centime (virgule flottante : 0,1 + 0,2 - 0,3 ≠ 0) ; une échéance annulée ne doit plus rien.
+  const remaining =
+    String(installment.status) === 'CANCELED'
+      ? 0
+      : Math.round((totalDue - Number(installment.amount_paid || 0)) * 100) / 100;
+  const affectations = (installment.payments ?? [])
+    .slice()
+    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
 
   return (
     <>
@@ -208,6 +209,40 @@ export const InstallmentDetailPage: React.FC = () => {
             </Card>
           </Col>
         </Row>
+
+        <Card title={t('Paiements affectés')}>
+          <Table<AffectationEcheance>
+            size="small"
+            rowKey={a => a.id}
+            pagination={false}
+            dataSource={affectations}
+            locale={{ emptyText: t('Aucun paiement affecté à cette échéance.') }}
+            scroll={{ x: 'max-content' }}
+            columns={[
+              {
+                title: t('Date'),
+                key: 'date',
+                render: (_, a) => formatDate(a.payment?.succeeded_at ?? a.payment?.initiated_at ?? a.created_at)
+              },
+              {
+                title: t('Mode de paiement'),
+                key: 'mode',
+                render: (_, a) => (a.payment ? libelleMethodePaiement(a.payment.method) : '-')
+              },
+              {
+                title: t('Statut'),
+                key: 'statut',
+                render: (_, a) => (a.payment ? <StatusTag status={a.payment.status} /> : '-')
+              },
+              {
+                title: t('Montant affecté'),
+                key: 'montant',
+                align: 'end',
+                render: (_, a) => formatCurrency(Number(a.amount), a.currency || installment.currency)
+              }
+            ]}
+          />
+        </Card>
 
         {tenantId && installmentId && ready && (
           <InstallmentPaymentLinksPanel

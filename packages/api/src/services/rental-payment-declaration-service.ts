@@ -11,6 +11,7 @@ import { compteLocataireTx, inscrireEcheanceFactureeTx, libellePeriodeEcheance }
 import { inscrireAllocationTx, inscrireReliquatTx, libelleMoyen } from './rental-payment-service';
 import { assertTreasuryAccountUsableTx } from '../lib/treasury/accounts';
 import { syncDirectRentPaymentEntryTx } from '../lib/finance/rental-direct-ledger';
+import { roundMoney } from '../lib/finance/money';
 import { t } from '../i18n';
 import { AppError, ConflictError, ErrorCode, NotFoundError } from '../middleware/error-middleware';
 import { logAuditEvent } from './audit-service';
@@ -195,34 +196,44 @@ export async function approvePaymentDeclaration(
 
       // Allocate payment to installment if specified
       if (declaration.installment_id) {
+        // Même verrou de ligne que `allocatePaymentTx` : deux approbations visant la
+        // même échéance lisaient le même « reste dû » et la surpayaient à deux.
+        await tx.$queryRaw`SELECT id FROM rental_installments WHERE id = ${declaration.installment_id}::uuid AND tenant_id = ${tenantId} FOR UPDATE`;
+
         const installment = await tx.rentalInstallment.findFirst({
           where: {
             id: declaration.installment_id,
             tenant_id: tenantId,
-            lease_id: declaration.lease_id
+            lease_id: declaration.lease_id,
+            // Une échéance annulée ne reçoit aucune affectation (comme `allocatePaymentTx`) :
+            // le montant approuvé reste alors tout entier une avance reçue.
+            status: { not: RentalInstallmentStatus.CANCELED }
           }
         });
 
         if (installment) {
           // Get existing allocations for this installment
           const existingAllocations = await tx.rentalPaymentAllocation.findMany({
-            where: { installment_id: installment.id }
+            where: { installment_id: installment.id, tenant_id: tenantId }
           });
 
-          const allocatedToInstallment = existingAllocations.reduce((sum, alloc) => sum + Number(alloc.amount), 0);
+          const allocatedToInstallment = roundMoney(
+            existingAllocations.reduce((sum, alloc) => sum + Number(alloc.amount), 0)
+          );
 
           // Calculate total amount due
-          const totalAmountDue =
+          const totalAmountDue = roundMoney(
             Number(installment.amount_rent) +
-            Number(installment.amount_service) +
-            Number(installment.amount_other_fees) +
-            Number(installment.penalty_amount);
+              Number(installment.amount_service) +
+              Number(installment.amount_other_fees) +
+              Number(installment.penalty_amount)
+          );
 
-          const remainingDue = totalAmountDue - allocatedToInstallment;
+          const remainingDue = roundMoney(totalAmountDue - allocatedToInstallment);
           const paymentAmount = acceptedAmount;
 
           // Allocate the payment (up to remaining due amount)
-          const allocationAmount = Math.min(paymentAmount, remainingDue);
+          const allocationAmount = roundMoney(Math.min(paymentAmount, remainingDue));
 
           if (allocationAmount > 0) {
             const allocation = await tx.rentalPaymentAllocation.create({
@@ -244,7 +255,7 @@ export async function approvePaymentDeclaration(
             };
 
             // Calculate new total allocated
-            const newTotalAllocated = allocatedToInstallment + allocationAmount;
+            const newTotalAllocated = roundMoney(allocatedToInstallment + allocationAmount);
 
             // Determine new status
             let newStatus = installment.status;
@@ -268,7 +279,7 @@ export async function approvePaymentDeclaration(
               id: installment.id,
               status: String(echeanceMiseAJour.status),
               amountPaid: newTotalAllocated,
-              remainingDue: Math.max(0, totalAmountDue - newTotalAllocated)
+              remainingDue: roundMoney(Math.max(0, totalAmountDue - newTotalAllocated))
             };
 
             // L'échéance réglée est exigible : sa créance est portée au compte

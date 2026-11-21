@@ -4,6 +4,33 @@ import { RentalLeaseStatus, TenantStatus } from '@prisma/client';
 import { t } from '../i18n';
 import { runWithTenantContext } from '../utils/tenant-context';
 import { setAuditActor } from '../utils/request-context';
+import { READ_ONLY_LEASE_STATUSES } from '../utils/tenant-portal-leases';
+
+export const PORTAL_READ_ONLY_CODE = 'PORTAL_READ_ONLY';
+
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+/**
+ * Liste BLANCHE des écritures permises en lecture seule : la messagerie (répondre à
+ * l'agence, p. ex. pour récupérer le dépôt de garantie) et le marquage « lu » des
+ * notifications. Tout le reste est refusé par défaut, y compris les routes ajoutées
+ * plus tard. Hypothèse métier H4 : voir le rapport du lot.
+ */
+const READ_ONLY_WRITE_ALLOWLIST: RegExp[] = [
+  /^\/messages\/conversations$/,
+  /^\/messages\/conversations\/[^/]+\/messages$/,
+  /^\/messages\/conversations\/[^/]+\/read$/,
+  /^\/notifications\/read-all$/,
+  /^\/notifications\/[^/]+\/read$/
+];
+
+export function isReadOnlyPortalRequestAllowed(method: string, path: string): boolean {
+  const verb = method.toUpperCase();
+  if (SAFE_METHODS.has(verb)) return true;
+  if (verb !== 'POST') return false;
+  const normalized = path.length > 1 ? path.replace(/\/+$/, '') : path;
+  return READ_ONLY_WRITE_ALLOWLIST.some(pattern => pattern.test(normalized));
+}
 
 /** Header a client can send to pick which agency's portal it wants (B3 b). */
 const PORTAL_TENANT_HEADER = 'x-portal-tenant-id';
@@ -18,7 +45,8 @@ function readPortalTenantHeader(req: Request): string | undefined {
  * Middleware to require tenant portal access
  * Verifies that the authenticated user:
  * 1. Is linked to a TenantClient
- * 2. Has an active lease (as primary renter or co-renter)
+ * 2. Has an active lease (as primary renter or co-renter), or, failing that, an
+ *    ended/suspended one (read-only mode, H4: `req.tenantPortal.readOnly`)
  * Stores portal context in req.tenantPortal for use in controllers/services
  *
  * ---------------------------------------------------------------------------
@@ -110,22 +138,16 @@ export const requireTenantPortalAccess = async (req: Request, res: Response, nex
 
     const tenantClient = selected;
 
-    // Find active lease where tenant is primary renter or co-renter
+    // Bail ACTIF où le client est locataire principal ou co-locataire (comportement historique).
+    const leaseOwnership = {
+      tenant_id: tenantClient.tenantId,
+      OR: [
+        { primary_renter_client_id: tenantClient.id },
+        { coRenters: { some: { renter_client_id: tenantClient.id } } }
+      ]
+    };
     const activeLease = await prisma.rentalLease.findFirst({
-      where: {
-        tenant_id: tenantClient.tenantId,
-        status: RentalLeaseStatus.ACTIVE,
-        OR: [
-          { primary_renter_client_id: tenantClient.id },
-          {
-            coRenters: {
-              some: {
-                renter_client_id: tenantClient.id
-              }
-            }
-          }
-        ]
-      },
+      where: { ...leaseOwnership, status: RentalLeaseStatus.ACTIVE },
       select: {
         id: true
       },
@@ -134,18 +156,45 @@ export const requireTenantPortalAccess = async (req: Request, res: Response, nex
       orderBy: [{ start_date: 'asc' }, { id: 'asc' }]
     });
 
-    if (!activeLease) {
+    // H4 : sans bail actif, un bail TERMINÉ ou SUSPENDU donne un accès en LECTURE
+    // SEULE (le plus récent d'abord, id en second critère). Un bail annulé,
+    // brouillon ou futur n'ouvre rien : 403 comme avant.
+    let portalLeaseId = activeLease?.id;
+    let readOnly = false;
+    if (!portalLeaseId) {
+      const closedLease = await prisma.rentalLease.findFirst({
+        where: { ...leaseOwnership, status: { in: READ_ONLY_LEASE_STATUSES } },
+        select: { id: true },
+        orderBy: [{ start_date: 'desc' }, { id: 'asc' }]
+      });
+      portalLeaseId = closedLease?.id;
+      readOnly = Boolean(closedLease);
+    }
+
+    if (!portalLeaseId) {
       res.status(403).json({ success: false, message: 'Aucun bail actif trouvé.' });
+      return;
+    }
+
+    // Garde d'écriture CENTRALE, fail-closed : en lecture seule, toute méthode autre
+    // que GET/HEAD/OPTIONS est refusée, sauf la liste blanche de la messagerie.
+    if (readOnly && !isReadOnlyPortalRequestAllowed(req.method, req.path)) {
+      res.status(403).json({
+        success: false,
+        code: PORTAL_READ_ONLY_CODE,
+        message: t('Votre bail est terminé : le portail est en lecture seule.')
+      });
       return;
     }
 
     // Store portal context in request
     req.tenantPortal = {
-      leaseId: activeLease.id,
+      leaseId: portalLeaseId,
       tenantClientId: tenantClient.id,
       tenantId: tenantClient.tenantId,
-      lease: { id: activeLease.id },
-      availableTenantIds
+      lease: { id: portalLeaseId },
+      availableTenantIds,
+      readOnly
     };
 
     // Les événements d'audit de cette requête sont ceux d'un portail, pas d'un collaborateur.
@@ -174,6 +223,8 @@ declare module 'express-serve-static-core' {
       lease: any; // Will be properly typed in tenant-portal-types.ts
       /** Agences (tenantId) où ce client a un compte — pour un sélecteur front (B3 d). */
       availableTenantIds: string[];
+      /** Bail terminé ou suspendu, aucun bail actif : consultation seule (H4). */
+      readOnly?: boolean;
     };
   }
 }

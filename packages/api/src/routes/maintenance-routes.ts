@@ -32,6 +32,7 @@ import {
   deleteVendorHandler
 } from '../controllers/maintenance-vendor-controller';
 import multer from 'multer';
+import { uuidPathParam } from '../utils/maintenance-params';
 
 const router = Router({ mergeParams: true });
 
@@ -65,6 +66,8 @@ tenantRouter.use(authenticate);
 tenantRouter.use(requireTenantAccess);
 tenantRouter.use(enforceTenantIsolation);
 tenantRouter.use(requireMaintenanceTenantPermission);
+// Identifiant de ticket qui n'est pas un UUID : 404, jamais un 500 de Prisma.
+tenantRouter.param('ticketId', uuidPathParam('Ticket introuvable'));
 
 // Ticket routes
 tenantRouter.get('/tickets', listTenantTicketsHandler);
@@ -87,6 +90,8 @@ adminRouter.use(authenticate);
 adminRouter.use(requireTenantAccess);
 adminRouter.use(enforceTenantIsolation);
 adminRouter.use(requireMaintenanceAdminPermission);
+adminRouter.param('ticketId', uuidPathParam('Ticket introuvable'));
+adminRouter.param('vendorId', uuidPathParam('Prestataire introuvable'));
 
 // Manager ticket routes
 adminRouter.get('/tickets', listAllTicketsHandler);

@@ -127,7 +127,13 @@ export const SyndicProviders: React.FC = () => {
 
   const handleSubmitProvider = async () => {
     if (!effectiveTenantId || !syndicId) return;
-    const values = await providerForm.validateFields();
+    let values: ProviderFormValues;
+    try {
+      values = await providerForm.validateFields();
+    } catch {
+      // Champ invalide : Ant Design l'affiche déjà sous le champ.
+      return;
+    }
     setSubmittingProvider(true);
     try {
       let provider: ServiceProvider;
@@ -193,7 +199,13 @@ export const SyndicProviders: React.FC = () => {
 
   const handleCreateContract = async () => {
     if (!effectiveTenantId || !syndicId) return;
-    const values = await contractForm.validateFields();
+    let values;
+    try {
+      values = await contractForm.validateFields();
+    } catch {
+      // Champ invalide : Ant Design l'affiche déjà sous le champ.
+      return;
+    }
     setSubmittingContract(true);
     try {
       await createContract(effectiveTenantId, syndicId, {

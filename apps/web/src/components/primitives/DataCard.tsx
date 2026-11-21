@@ -51,7 +51,13 @@ export interface DataCardProps {
   /** Ouvre le détail. Rend la carte entière actionnable. */
   onOpen?: () => void;
   /** L'unique action explicite de la carte. */
-  primaryAction?: { label: string; onClick: () => void; icon?: React.ReactNode; loading?: boolean };
+  primaryAction?: {
+    label: string;
+    onClick: () => void;
+    icon?: React.ReactNode;
+    loading?: boolean;
+    disabled?: boolean;
+  };
   /** Tout le reste, derrière « ⋮ ». */
   secondaryActions?: MenuProps['items'];
   /** Nom accessible de la carte quand `title` n'est pas du texte simple. */
@@ -201,6 +207,7 @@ export const DataCard: React.FC<DataCardProps> = ({
               type="primary"
               icon={primaryAction.icon}
               loading={primaryAction.loading}
+              disabled={primaryAction.disabled}
               onClick={primaryAction.onClick}
             >
               {primaryAction.label}

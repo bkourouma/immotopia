@@ -22,7 +22,12 @@ import { escapeLike } from '../../utils/like-escape';
  *
  * Numérotation annuelle : même motif que `createOwnerPayout`
  * (`lib/owner-account/service.ts`) — on relit le dernier numéro de l'année
- * dans la transaction, jamais de compteur séparé.
+ * dans la transaction, jamais de compteur séparé, sous un verrou consultatif
+ * par agence (clé propre à chaque série : VIR-, DGI-) posé avant la lecture.
+ *
+ * Annulation : atomique. Le statut attendu (VALIDATED) est vérifié DANS la
+ * transaction par un `updateMany` conditionnel ; une seconde annulation
+ * concurrente lève un 409 et ne contre-passe rien.
  *
  * Chaque lecture et chaque écriture est filtrée par `tenantId` : une agence ne
  * voit et ne touche que sa propre trésorerie.
@@ -461,6 +466,9 @@ export async function createTransfer(
     // écriture.
     await assertTreasuryCanPayTx(tx, tenantId, from, amount);
     const year = input.transferredAt.getUTCFullYear();
+    // Deux virements de comptes différents liraient le même dernier numéro :
+    // verrou consultatif par agence (même motif que REV-), posé avant la lecture.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`treasury-transfer-seq:${tenantId}`}))`;
     const last = await tx.treasuryTransfer.findFirst({
       where: { tenantId, year },
       orderBy: { sequence: 'desc' },
@@ -525,6 +533,20 @@ export async function voidTransfer(
   const now = new Date();
   const number = transferNumber(transfer.year, transfer.sequence);
   const updated = await prisma.$transaction(async tx => {
+    // Le statut lu plus haut peut être périmé : on le revérifie ICI, de façon
+    // atomique. L'`updateMany` conditionnel prend le verrou de la ligne ; une
+    // annulation concurrente attend, puis voit count = 0 et s'arrête avant toute
+    // contre-passation.
+    const claimed = await tx.treasuryTransfer.updateMany({
+      where: { id: transfer.id, tenantId, status: TreasuryDocumentStatus.VALIDATED },
+      data: {
+        status: TreasuryDocumentStatus.VOIDED,
+        voidReason: input.reason,
+        voidedAt: now,
+        voidedByUserId: userId ?? null
+      }
+    });
+    if (claimed.count !== 1) throw conflict('Ce virement est déjà annulé.');
     const journalFor = journalResolver(tx, tenantId);
     await reverseDocumentEntryTx(tx, {
       tenantId,
@@ -534,16 +556,9 @@ export async function voidTransfer(
       description: `Annulation du virement ${number} — ${input.reason}`,
       journalFor
     });
-    return tx.treasuryTransfer.update({
-      // `tenantId` en plus de l'id : anticipe le futur garde-fou Prisma (lot D).
-      where: { id: transfer.id, tenantId },
-      data: {
-        status: TreasuryDocumentStatus.VOIDED,
-        voidReason: input.reason,
-        voidedAt: now,
-        voidedByUserId: userId ?? null
-      }
-    });
+    const row = await tx.treasuryTransfer.findFirst({ where: { id: transfer.id, tenantId } });
+    if (!row) throw notFound('Virement introuvable');
+    return row;
   });
 
   const [labels, names] = await Promise.all([
@@ -565,10 +580,13 @@ export interface WithholdingSummaryDto {
   due: number;
 }
 
-async function computeWithholdingDue(tenantId: string): Promise<{ collected: number; remitted: number; due: number }> {
+async function computeWithholdingDue(
+  tenantId: string,
+  db: Pick<PrismaTransactionClient, 'rentWithholding' | 'taxRemittance'> = prisma
+): Promise<{ collected: number; remitted: number; due: number }> {
   const [collectedAgg, remittedAgg] = await Promise.all([
-    prisma.rentWithholding.aggregate({ where: { tenantId }, _sum: { amount: true } }),
-    prisma.taxRemittance.aggregate({
+    db.rentWithholding.aggregate({ where: { tenantId }, _sum: { amount: true } }),
+    db.taxRemittance.aggregate({
       where: { tenantId, status: TreasuryDocumentStatus.VALIDATED },
       _sum: { amount: true }
     })
@@ -708,13 +726,6 @@ export async function createTaxRemittance(
   const input = createRemittanceSchema.parse(body);
   const amount = roundMoney(input.amount);
 
-  const { due } = await computeWithholdingDue(tenantId);
-  if (amount > due) {
-    throw conflict(
-      `Le versement (${amount.toLocaleString('fr-FR')} FCFA) dépasse le montant dû à la DGI (${due.toLocaleString('fr-FR')} FCFA).`
-    );
-  }
-
   const treasury = await prisma.treasuryAccount.findFirst({ where: { id: input.treasuryAccountId, tenantId } });
   if (!treasury) throw badRequest('Compte de trésorerie introuvable');
   if (!treasury.isActive) throw badRequest('Ce compte de trésorerie est désactivé');
@@ -723,6 +734,16 @@ export async function createTaxRemittance(
   const withholdingAccountNumber = settings.withholdingAccountNumber ?? DEFAULT_WITHHOLDING_ACCOUNT;
 
   const created = await prisma.$transaction(async tx => {
+    // Verrou par agence AVANT de lire le dû : deux versements concurrents se
+    // sérialisent, le second voit le premier dans le « déjà versé » et ne peut
+    // pas dépasser le dû. Le même verrou protège la numérotation DGI-.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`tax-remittance-seq:${tenantId}`}))`;
+    const { due } = await computeWithholdingDue(tenantId, tx);
+    if (amount > due) {
+      throw conflict(
+        `Le versement (${amount.toLocaleString('fr-FR')} FCFA) dépasse le montant dû à la DGI (${due.toLocaleString('fr-FR')} FCFA).`
+      );
+    }
     // Un versement à la DGI est une sortie de trésorerie : même contrôle de solde.
     await assertTreasuryCanPayTx(tx, tenantId, treasury, amount);
     const year = input.paidAt.getUTCFullYear();
@@ -793,6 +814,17 @@ export async function voidTaxRemittance(
   const now = new Date();
   const number = remittanceNumber(remittance.year, remittance.sequence);
   const updated = await prisma.$transaction(async tx => {
+    // Même garde atomique que `voidTransfer` : le statut est revérifié dans la transaction.
+    const claimed = await tx.taxRemittance.updateMany({
+      where: { id: remittance.id, tenantId, status: TreasuryDocumentStatus.VALIDATED },
+      data: {
+        status: TreasuryDocumentStatus.VOIDED,
+        voidReason: input.reason,
+        voidedAt: now,
+        voidedByUserId: userId ?? null
+      }
+    });
+    if (claimed.count !== 1) throw conflict('Ce versement est déjà annulé.');
     const journalFor = journalResolver(tx, tenantId);
     await reverseDocumentEntryTx(tx, {
       tenantId,
@@ -802,16 +834,9 @@ export async function voidTaxRemittance(
       description: `Annulation du versement DGI ${number} — ${input.reason}`,
       journalFor
     });
-    return tx.taxRemittance.update({
-      // `tenantId` en plus de l'id : anticipe le futur garde-fou Prisma (lot D).
-      where: { id: remittance.id, tenantId },
-      data: {
-        status: TreasuryDocumentStatus.VOIDED,
-        voidReason: input.reason,
-        voidedAt: now,
-        voidedByUserId: userId ?? null
-      }
-    });
+    const row = await tx.taxRemittance.findFirst({ where: { id: remittance.id, tenantId } });
+    if (!row) throw notFound('Versement DGI introuvable');
+    return row;
   });
 
   const [labels, names] = await Promise.all([

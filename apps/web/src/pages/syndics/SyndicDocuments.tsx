@@ -138,7 +138,9 @@ export const SyndicDocuments: React.FC = () => {
           primaryAction={{
             label: t('Ajouter un document'),
             icon: <PlusOutlined />,
-            onClick: () => setOpenCreate(true)
+            onClick: () => setOpenCreate(true),
+            // Ajouter un document exige SYNDIC_EDIT (403 sinon) : grisé seulement si l'absence du droit est connue.
+            disabled: permissionsReady && permissions !== null && !permissions.has('SYNDIC_EDIT')
           }}
         />
 

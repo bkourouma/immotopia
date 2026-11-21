@@ -135,6 +135,11 @@ const mockPrisma: Row = {
       const row = store.treasuryTransfers.find(r => r.id === where.id)!;
       Object.assign(row, data);
       return row;
+    }),
+    updateMany: jest.fn(async ({ where, data }: Row) => {
+      const rows = store.treasuryTransfers.filter(r => matchesFlat(r, where));
+      rows.forEach(r => Object.assign(r, data));
+      return { count: rows.length };
     })
   },
   taxRemittance: {
@@ -155,6 +160,11 @@ const mockPrisma: Row = {
       const row = store.taxRemittances.find(r => r.id === where.id)!;
       Object.assign(row, data);
       return row;
+    }),
+    updateMany: jest.fn(async ({ where, data }: Row) => {
+      const rows = store.taxRemittances.filter(r => matchesFlat(r, where));
+      rows.forEach(r => Object.assign(r, data));
+      return { count: rows.length };
     }),
     aggregate: jest.fn(async ({ where }: Row) => {
       const rows = store.taxRemittances.filter(r => matchesFlat(r, where));
@@ -464,7 +474,8 @@ describe('Sorties de trésorerie — jamais de solde négatif (BUG-2026-09-29-00
     mockPrisma.$executeRaw.mockClear();
     mockPrisma.journalEntryLine.aggregate.mockClear();
     await service.createTransfer(TENANT, 'user-1', transferBody(from, to, 5_000));
-    expect(mockPrisma.$executeRaw).toHaveBeenCalledTimes(1);
+    // Verrou du compte, puis verrou de numérotation VIR-.
+    expect(mockPrisma.$executeRaw).toHaveBeenCalledTimes(2);
     expect(mockPrisma.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
       mockPrisma.journalEntryLine.aggregate.mock.invocationCallOrder[0]
     );
@@ -483,6 +494,138 @@ describe('Sorties de trésorerie — jamais de solde négatif (BUG-2026-09-29-00
       })
     ).rejects.toMatchObject({ status: 400, message: expect.stringContaining('Solde insuffisant') });
     expect(store.taxRemittances).toHaveLength(0);
+  });
+});
+
+describe('Concurrence — annulations, numérotation et dû DGI (revue lot 6)', () => {
+  it('double annulation concurrente d’un virement : une seule contre-passation, la seconde est un 409', async () => {
+    const from = addAccount({ accountNumber: '5711', kind: 'CASH' });
+    const to = addAccount({ accountNumber: '5211', kind: 'BANK' });
+    fund(from, 5_000);
+    const transfer = await service.createTransfer(TENANT, 'user-1', {
+      fromTreasuryAccountId: from.id,
+      toTreasuryAccountId: to.id,
+      amount: 1_000,
+      transferredAt: '2026-01-01'
+    });
+    reverseDocumentEntryTx.mockClear();
+
+    // Les deux appels lisent le statut VALIDATED avant que l'un ou l'autre n'écrive.
+    const results = await Promise.allSettled([
+      service.voidTransfer(TENANT, 'user-2', transfer.id, { reason: 'Premier' }),
+      service.voidTransfer(TENANT, 'user-3', transfer.id, { reason: 'Second' })
+    ]);
+    expect(results.filter(r => r.status === 'fulfilled')).toHaveLength(1);
+    const rejected = results.find(r => r.status === 'rejected') as PromiseRejectedResult;
+    expect(rejected.reason).toMatchObject({ status: 409 });
+    expect(reverseDocumentEntryTx).toHaveBeenCalledTimes(1);
+  });
+
+  it('annulation : le statut est revérifié dans la transaction même si la lecture initiale était périmée', async () => {
+    const from = addAccount({ accountNumber: '5711', kind: 'CASH' });
+    const to = addAccount({ accountNumber: '5211', kind: 'BANK' });
+    fund(from, 5_000);
+    const transfer = await service.createTransfer(TENANT, 'user-1', {
+      fromTreasuryAccountId: from.id,
+      toTreasuryAccountId: to.id,
+      amount: 1_000,
+      transferredAt: '2026-01-01'
+    });
+    reverseDocumentEntryTx.mockClear();
+    // Lecture hors transaction : « validé » ; entre-temps un autre appel a annulé.
+    mockPrisma.treasuryTransfer.findFirst.mockImplementationOnce(async () => {
+      const stale = { ...store.treasuryTransfers[0] };
+      store.treasuryTransfers[0].status = 'VOIDED';
+      return stale;
+    });
+    await expect(service.voidTransfer(TENANT, 'user-2', transfer.id, { reason: 'Tardif' })).rejects.toMatchObject({
+      status: 409
+    });
+    expect(reverseDocumentEntryTx).not.toHaveBeenCalled();
+  });
+
+  it('double annulation concurrente d’un versement DGI : une seule contre-passation, la seconde est un 409', async () => {
+    const treasury = addAccount({ accountNumber: '5711', kind: 'CASH' });
+    fund(treasury, 50_000);
+    store.rentWithholdings.push({ tenantId: TENANT, amount: 10_000 });
+    const remittance = await service.createTaxRemittance(TENANT, 'user-1', {
+      amount: 4_000,
+      paidAt: '2026-01-31',
+      periodLabel: 'Janvier 2026',
+      treasuryAccountId: treasury.id
+    });
+    reverseDocumentEntryTx.mockClear();
+
+    const results = await Promise.allSettled([
+      service.voidTaxRemittance(TENANT, 'user-2', remittance.id, { reason: 'Premier' }),
+      service.voidTaxRemittance(TENANT, 'user-3', remittance.id, { reason: 'Second' })
+    ]);
+    expect(results.filter(r => r.status === 'fulfilled')).toHaveLength(1);
+    const rejected = results.find(r => r.status === 'rejected') as PromiseRejectedResult;
+    expect(rejected.reason).toMatchObject({ status: 409 });
+    expect(reverseDocumentEntryTx).toHaveBeenCalledTimes(1);
+  });
+
+  it('virement : le verrou de numérotation par agence est pris avant la lecture de la dernière séquence', async () => {
+    const from = addAccount({ accountNumber: '5711', kind: 'CASH' });
+    const to = addAccount({ accountNumber: '5211', kind: 'BANK' });
+    fund(from, 20_000);
+    mockPrisma.$executeRaw.mockClear();
+    mockPrisma.treasuryTransfer.findFirst.mockClear();
+    await service.createTransfer(TENANT, 'user-1', {
+      fromTreasuryAccountId: from.id,
+      toTreasuryAccountId: to.id,
+      amount: 5_000,
+      transferredAt: '2026-01-15'
+    });
+    const calls = mockPrisma.$executeRaw.mock.calls as any[][];
+    const seqCall = calls.findIndex(call => call.slice(1).includes(`treasury-transfer-seq:${TENANT}`));
+    expect(seqCall).toBeGreaterThanOrEqual(0);
+    expect(mockPrisma.$executeRaw.mock.invocationCallOrder[seqCall]).toBeLessThan(
+      mockPrisma.treasuryTransfer.findFirst.mock.invocationCallOrder[0]
+    );
+  });
+
+  it('versement DGI : verrou de numérotation avant la lecture de séquence, dû lu dans la transaction sous ce verrou', async () => {
+    const treasury = addAccount({ accountNumber: '5711', kind: 'CASH' });
+    fund(treasury, 50_000);
+    store.rentWithholdings.push({ tenantId: TENANT, amount: 10_000 });
+    mockPrisma.$executeRaw.mockClear();
+    mockPrisma.taxRemittance.findFirst.mockClear();
+    mockPrisma.rentWithholding.aggregate.mockClear();
+    mockPrisma.taxRemittance.aggregate.mockClear();
+    mockPrisma.$transaction.mockClear();
+
+    await service.createTaxRemittance(TENANT, 'user-1', {
+      amount: 6_000,
+      paidAt: '2026-01-31',
+      periodLabel: 'Janvier 2026',
+      treasuryAccountId: treasury.id
+    });
+
+    const calls = mockPrisma.$executeRaw.mock.calls as any[][];
+    const lockIndex = calls.findIndex(call => call.slice(1).includes(`tax-remittance-seq:${TENANT}`));
+    expect(lockIndex).toBeGreaterThanOrEqual(0);
+    const lockOrder = mockPrisma.$executeRaw.mock.invocationCallOrder[lockIndex];
+    // Le dû (collecté et versé) est lu après le verrou, et avant la lecture de séquence.
+    expect(lockOrder).toBeLessThan(mockPrisma.rentWithholding.aggregate.mock.invocationCallOrder[0]);
+    expect(lockOrder).toBeLessThan(mockPrisma.taxRemittance.aggregate.mock.invocationCallOrder[0]);
+    expect(mockPrisma.taxRemittance.aggregate.mock.invocationCallOrder[0]).toBeLessThan(
+      mockPrisma.taxRemittance.findFirst.mock.invocationCallOrder[0]
+    );
+    // Tout cela dans la transaction (le dû n'est plus lu avant son ouverture).
+    const txOrder = mockPrisma.$transaction.mock.invocationCallOrder[0];
+    expect(txOrder).toBeLessThan(mockPrisma.rentWithholding.aggregate.mock.invocationCallOrder[0]);
+  });
+
+  it('deux versements DGI successifs ne peuvent pas dépasser le dû : le second voit le premier', async () => {
+    const treasury = addAccount({ accountNumber: '5711', kind: 'CASH' });
+    fund(treasury, 50_000);
+    store.rentWithholdings.push({ tenantId: TENANT, amount: 10_000 });
+    const body = { amount: 6_000, paidAt: '2026-01-31', periodLabel: 'Janvier 2026', treasuryAccountId: treasury.id };
+    await service.createTaxRemittance(TENANT, 'user-1', body);
+    await expect(service.createTaxRemittance(TENANT, 'user-1', body)).rejects.toMatchObject({ status: 409 });
+    expect(store.taxRemittances).toHaveLength(1);
   });
 });
 

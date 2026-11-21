@@ -23,6 +23,19 @@ import { HelpButton, HelpSectionTitle } from '../../help';
 import { activeLocale } from '../../i18n/format';
 const { Text, Title } = Typography;
 
+/**
+ * Le dépôt renvoyé par l'API porte aussi les cumuls (`held_amount`, …), que
+ * l'interface du service ne déclare pas ; les décimaux Prisma arrivent en chaîne.
+ */
+type DepositWithHold = RentalSecurityDeposit & { held_amount?: number | string | null };
+
+/**
+ * Sens d'un mouvement sur le montant REMBOURSABLE (détenu moins bloqué) : la
+ * collecte, l'ajustement et la libération l'augmentent ; le blocage, le
+ * remboursement et la confiscation le réduisent.
+ */
+const MOUVEMENTS_POSITIFS = new Set(['COLLECT', 'ADJUSTMENT', 'RELEASE']);
+
 interface DepositsProps {
   leaseId?: string;
 }
@@ -34,7 +47,7 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
   const leaseId = propLeaseId || paramLeaseId;
   const { permissions, ready } = useMyMenuAccess(tenantId);
   const peutModifierDepot = ready && (permissions === null || permissions.has('RENTAL_DEPOSITS_EDIT'));
-  const [deposit, setDeposit] = useState<RentalSecurityDeposit | null>(null);
+  const [deposit, setDeposit] = useState<DepositWithHold | null>(null);
   const [movements, setMovements] = useState<RentalDepositMovement[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -125,21 +138,21 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
 
   const getMovementTypeLabel = (type: string) => {
     const typeMap: Record<string, string> = {
-      COLLECT: 'Collecte',
-      HOLD: 'Blocage',
+      COLLECT: t('Collecte'),
+      HOLD: t('Blocage'),
       RELEASE: t('Libération'),
-      REFUND: 'Remboursement',
-      FORFEIT: 'Confiscation',
-      ADJUSTMENT: 'Ajustement'
+      REFUND: t('Remboursement'),
+      FORFEIT: t('Confiscation'),
+      ADJUSTMENT: t('Ajustement')
     };
     return typeMap[type] || type;
   };
 
   const getMovementTypeIcon = (type: string) => {
-    if (type === 'COLLECT' || type === 'ADJUSTMENT') {
+    if (MOUVEMENTS_POSITIFS.has(type)) {
       return <ArrowUpOutlined style={{ color: '#52c41a' }} />;
     }
-    if (type === 'RELEASE' || type === 'REFUND' || type === 'FORFEIT') {
+    if (type === 'REFUND' || type === 'FORFEIT') {
       return <ArrowDownOutlined style={{ color: '#ff4d4f' }} />;
     }
     return <SafetyOutlined style={{ color: '#1890ff' }} />;
@@ -159,6 +172,8 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
     }
     return loadingContent;
   }
+
+  const heldAmount = Number(deposit?.held_amount ?? 0) || 0;
 
   const content = (
     <>
@@ -232,6 +247,22 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
                   </div>
                 </Col>
               </Row>
+              {heldAmount > 0 && (
+                <Row gutter={16} style={{ marginTop: 16 }}>
+                  <Col xs={24} md={8}>
+                    <Text type="secondary">{t('Bloqué')}</Text>
+                    <Title level={4} style={{ margin: '4px 0 0 0' }}>
+                      {formatCurrency(heldAmount, deposit.currency)}
+                    </Title>
+                  </Col>
+                  <Col xs={24} md={8}>
+                    <Text type="secondary">{t('Remboursable')}</Text>
+                    <Title level={4} style={{ margin: '4px 0 0 0' }}>
+                      {formatCurrency(Math.max(0, Number(deposit.current_balance) - heldAmount), deposit.currency)}
+                    </Title>
+                  </Col>
+                </Row>
+              )}
             </Card>
 
             {showMovementForm && peutModifierDepot && (
@@ -255,7 +286,7 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
                 rowKey="id"
                 scroll={{ x: 'max-content' }}
                 locale={{
-                  emptyText: 'Aucun mouvement enregistré'
+                  emptyText: t('Aucun mouvement enregistré')
                 }}
                 columns={[
                   {
@@ -278,9 +309,9 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
                     key: 'amount',
                     // Montant signé, en nombre pur : Excel peut le sommer.
                     exportValue: record =>
-                      record.type === 'COLLECT' || record.type === 'ADJUSTMENT' ? record.amount : -record.amount,
+                      MOUVEMENTS_POSITIFS.has(record.type) ? Number(record.amount) : -Number(record.amount),
                     render: (_, record) => {
-                      const isPositive = record.type === 'COLLECT' || record.type === 'ADJUSTMENT';
+                      const isPositive = MOUVEMENTS_POSITIFS.has(record.type);
                       return (
                         <Text type={isPositive ? 'success' : 'danger'} strong>
                           {isPositive ? '+' : '-'}
@@ -299,7 +330,9 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
             </Card>
           </>
         ) : (
-          <Empty description={t('Aucun dépôt de garantie configuré pour ce bail')} />
+          // En cas d'échec du chargement, le bandeau d'erreur parle seul : dire
+          // « aucun dépôt configuré » serait faux.
+          !error && <Empty description={t('Aucun dépôt de garantie configuré pour ce bail')} />
         )}
       </Space>
     </>

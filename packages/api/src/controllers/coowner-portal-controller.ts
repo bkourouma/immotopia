@@ -135,7 +135,7 @@ const resolutionParamsSchema = z.object({ resolutionId: z.string().uuid() });
 export const castCoOwnerVoteHandler = asyncHandler(async (req: Request, res: Response) => {
   const { resolutionId } = resolutionParamsSchema.parse(req.params);
   const { lotId, vote } = castVoteBodySchema.parse(req.body ?? {});
-  const result = await castCoOwnerVote(scopeOf(req), resolutionId, lotId, vote);
+  const result = await castCoOwnerVote(scopeOf(req), resolutionId, lotId, vote, req.user?.userId ?? null);
   res.json({ success: true, data: result });
 });
 

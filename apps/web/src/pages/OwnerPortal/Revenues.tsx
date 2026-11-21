@@ -197,7 +197,9 @@ export default function Revenues() {
             <Text strong>{t('Période')}</Text>
             <RangePicker
               value={dateRange}
-              onChange={dates => setDateRange(dates as [dayjs.Dayjs | null, dayjs.Dayjs | null])}
+              onChange={dates =>
+                setDateRange((dates as [dayjs.Dayjs | null, dayjs.Dayjs | null] | null) ?? [null, null])
+              }
               format="DD/MM/YYYY"
               aria-label={t('Période')}
             />

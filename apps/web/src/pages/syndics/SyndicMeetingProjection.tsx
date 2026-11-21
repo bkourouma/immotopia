@@ -113,8 +113,13 @@ export const SyndicMeetingProjection: React.FC = () => {
 
   const { meeting, attendance, resolutions } = live;
   const open = resolutions.filter(resolution => resolution.voteStatus === 'OPEN');
-  const closed = resolutions.filter(resolution => resolution.voteStatus === 'CLOSED');
-  const pending = resolutions.filter(resolution => resolution.voteStatus === 'PENDING');
+  // Séance terminée : une résolution jamais ouverte mais dont des votes ont été saisis (saisie manuelle) a un
+  // résultat, comme sur la page des copropriétaires (le résultat est visible dès la clôture de l'AG).
+  const completed = meeting.status === 'COMPLETED';
+  const hasResult = (resolution: LiveResolutionRow) =>
+    resolution.voteStatus === 'CLOSED' || (completed && resolution.votes.length > 0);
+  const closed = resolutions.filter(hasResult);
+  const pending = resolutions.filter(resolution => resolution.voteStatus === 'PENDING' && !hasResult(resolution));
   const quorum = clampPercent(attendance.quorumPercent);
 
   return (

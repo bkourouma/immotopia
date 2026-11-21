@@ -19,7 +19,9 @@ import {
   MaintenanceSummary
 } from '../types/tenant-portal-types';
 import {
+  RentalDocumentStatus,
   RentalInstallmentStatus,
+  RentalLeaseStatus,
   RentalPaymentStatus,
   MaintenanceTicketStatus,
   MaintenanceTicketCommentAuthorType,
@@ -40,6 +42,7 @@ import { BadRequestError, NotFoundError } from '../middleware/error-middleware';
 import { isUuid } from '../lib/signature/sources/guards';
 import { detectDocumentKind, detectImageKind, extensionForKind } from '../utils/file-signature';
 import { PORTAL_RENTAL_DOCUMENT_SELECT, toPortalAttachment, toPortalRentalDocument } from '../lib/files/portal-files';
+import { contactNameOnly, staffNameOnly, type ContactRef, type StaffRef } from '../lib/maintenance/portal-people';
 import {
   buildTenantDeclarationsFilters,
   buildTenantInstallmentsSearch,
@@ -78,6 +81,65 @@ function installmentRemaining(inst: {
     0
   );
   return installmentTotal(inst) - Math.max(fromAllocations, Number(inst.amount_paid || 0));
+}
+
+/**
+ * Payé, reste dû et statut affichés pour une échéance : la règle de la LISTE
+ * (cumul des allocations SUCCESS ou `amount_paid`, le plus grand), pour que la
+ * fiche et la liste disent la même chose d'une même échéance. Un brouillon futur
+ * et une annulée gardent leur statut stocké.
+ */
+function installmentDisplay(
+  inst: Parameters<typeof installmentRemaining>[0] & { status: RentalInstallmentStatus; due_date: Date | string },
+  today: Date = startOfToday()
+): { totalAmount: number; paid: number; balance: number; status: RentalInstallmentStatus } {
+  const totalAmount = installmentTotal(inst);
+  const balance = installmentRemaining(inst);
+  const paid = totalAmount - balance;
+  const frozen =
+    (inst.status === RentalInstallmentStatus.DRAFT && !isOverdueDraft(inst, today)) ||
+    inst.status === RentalInstallmentStatus.CANCELED;
+  if (frozen) return { totalAmount, paid, balance, status: inst.status };
+  const dueDate = new Date(inst.due_date);
+  dueDate.setHours(0, 0, 0, 0);
+  let status: RentalInstallmentStatus = inst.status;
+  if (paid >= totalAmount && totalAmount > 0) {
+    status = RentalInstallmentStatus.PAID;
+  } else if (paid > 0) {
+    status = RentalInstallmentStatus.PARTIAL;
+  } else if (dueDate < today) {
+    status = RentalInstallmentStatus.OVERDUE;
+  } else if (inst.status !== RentalInstallmentStatus.PAID && inst.status !== RentalInstallmentStatus.PARTIAL) {
+    status = RentalInstallmentStatus.DUE;
+  }
+  return { totalAmount, paid, balance, status };
+}
+
+/**
+ * Détail de ticket tel que le locataire le voit : le personnel de l'agence n'y
+ * apparaît que par son nom (jamais son e-mail ni son identifiant de compte),
+ * et l'historique de statuts ne dit pas qui a changé quoi.
+ */
+function toPortalTicketDetails<
+  T extends {
+    assignedToUser?: StaffRef;
+    assignedVendor?: { name?: string } | null;
+    comments?: Array<{ authorUser?: StaffRef; authorContact?: ContactRef }>;
+    statusHistory?: Array<{ changedByUser?: StaffRef }>;
+  }
+>(details: T): T {
+  return {
+    ...details,
+    assignedToUser: staffNameOnly(details.assignedToUser),
+    // Prestataire : son nom seulement (ni téléphone, ni e-mail, ni spécialités).
+    assignedVendor: details.assignedVendor?.name ? { name: details.assignedVendor.name } : null,
+    comments: (details.comments ?? []).map(comment => ({
+      ...comment,
+      authorUser: staffNameOnly(comment.authorUser),
+      authorContact: contactNameOnly(comment.authorContact)
+    })),
+    statusHistory: (details.statusHistory ?? []).map(entry => ({ ...entry, changedByUser: null }))
+  };
 }
 
 /**
@@ -172,6 +234,7 @@ export class TenantPortalService {
         end_date: true,
         rent_amount: true,
         service_charge_amount: true,
+        status: true,
         property: { select: { address: true, title: true } }
       },
       orderBy: [{ start_date: 'asc' }, { id: 'asc' }]
@@ -184,6 +247,7 @@ export class TenantPortalService {
       endDate: row.end_date,
       monthlyRent: Number(row.rent_amount),
       serviceCharges: Number(row.service_charge_amount),
+      status: row.status,
       isDefault: row.id === defaultLeaseId
     }));
   }
@@ -1006,22 +1070,16 @@ export class TenantPortalService {
         take: 10
       });
 
+      // Même règle que la liste : payé, reste dû et statut calculés (brouillon échu :
+      // « En retard » comme à l'agence, H30), pas la colonne stockée seule.
+      const display = installmentDisplay(installment);
       const installmentDetailsData = {
         installment: {
           ...installment,
-          // Brouillon échu : « En retard » à l'affichage, comme à l'agence (H30).
-          status: isOverdueDraft(installment) ? RentalInstallmentStatus.OVERDUE : installment.status,
-          totalAmount:
-            Number(installment.amount_rent) +
-            Number(installment.amount_service) +
-            Number(installment.amount_other_fees) +
-            Number(installment.penalty_amount || 0),
-          balance:
-            Number(installment.amount_rent) +
-            Number(installment.amount_service) +
-            Number(installment.amount_other_fees) +
-            Number(installment.penalty_amount || 0) -
-            Number(installment.amount_paid)
+          status: display.status,
+          amount_paid: display.paid,
+          totalAmount: display.totalAmount,
+          balance: display.balance
         },
         relatedPayments
       };
@@ -1083,7 +1141,9 @@ export class TenantPortalService {
           where: {
             id: data.installmentId,
             lease_id: { in: leaseIds && leaseIds.length > 0 ? leaseIds : [defaultLeaseId] },
-            tenant_id: tenantId
+            tenant_id: tenantId,
+            // Défense en profondeur (H4) : aucune déclaration sur un bail non actif.
+            lease: { status: RentalLeaseStatus.ACTIVE }
           }
         });
 
@@ -1553,10 +1613,12 @@ export class TenantPortalService {
   ): Promise<any> {
     try {
       // Get lease to get property ID (T085)
+      // Défense en profondeur (H4) : jamais de ticket sur un bail terminé ou suspendu.
       const lease = await prisma.rentalLease.findFirst({
         where: {
           id: leaseId,
-          tenant_id: tenantId
+          tenant_id: tenantId,
+          status: RentalLeaseStatus.ACTIVE
         },
         include: {
           property: {
@@ -1743,7 +1805,7 @@ export class TenantPortalService {
       // ne recopie que l'identifiant, le nom, le type, la taille, la date, et
       // ajoute `downloadPath`.
       const ticket = {
-        ...details,
+        ...toPortalTicketDetails(details),
         attachments: (attachments ?? []).map(attachment => toPortalAttachment(attachment, visible.id, 'tenant'))
       };
 
@@ -1812,7 +1874,12 @@ export class TenantPortalService {
         commentId: createdComment.id
       });
 
-      return createdComment;
+      // Un commentaire de locataire : son auteur est lui-même ; aucun e-mail de personnel.
+      return {
+        ...createdComment,
+        authorUser: staffNameOnly(createdComment.authorUser),
+        authorContact: contactNameOnly(createdComment.authorContact)
+      };
     } catch (error) {
       logger.error('Error adding maintenance comment', {
         error,
@@ -1847,9 +1914,8 @@ export class TenantPortalService {
       const where: any = {
         lease_id: { in: leaseIds && leaseIds.length > 0 ? leaseIds : [leaseId] },
         tenant_id: tenantId,
-        status: {
-          not: 'VOID'
-        }
+        // Documents finaux seuls : ni brouillon, ni remplacé, ni annulé (H4).
+        status: RentalDocumentStatus.FINAL
       };
 
       if (filters?.type) {
@@ -1921,9 +1987,7 @@ export class TenantPortalService {
           id: documentId,
           lease_id: { in: leaseIds && leaseIds.length > 0 ? leaseIds : [leaseId] },
           tenant_id: tenantId,
-          status: {
-            not: 'VOID'
-          }
+          status: RentalDocumentStatus.FINAL
         }
       });
 

@@ -110,10 +110,16 @@ export class ChargeAllocationError extends Error {
 }
 
 /** Devises sans sous-unité en usage courant : le FCFA se répartit au franc près. */
-const ZERO_DECIMAL_CURRENCIES = new Set(['XOF', 'XAF', 'XPF', 'GNF', 'KMF', 'DJF', 'BIF', 'RWF']);
+const ZERO_DECIMAL_CURRENCIES = new Set(['XOF', 'XAF', 'FCFA', 'CFA', 'XPF', 'GNF', 'KMF', 'DJF', 'BIF', 'RWF']);
 
 export function allocationPrecisionFor(currency: string | null | undefined): AllocationPrecision {
-  return ZERO_DECIMAL_CURRENCIES.has(String(currency ?? '').toUpperCase()) ? 'UNIT' : 'CENT';
+  return ZERO_DECIMAL_CURRENCIES.has(
+    String(currency ?? '')
+      .replace(/\s/g, '')
+      .toUpperCase()
+  )
+    ? 'UNIT'
+    : 'CENT';
 }
 
 export function isChargeAllocationMethod(value: unknown): value is ChargeAllocationMethodKey {
