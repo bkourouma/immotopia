@@ -82,11 +82,24 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
     return claimPageHelp();
   }, [claimsPage, available, claimPageHelp]);
 
+  // Titre d'onglet / d'historique : un lecteur d'écran et la liste d'onglets
+  // du navigateur annoncent l'écran courant. Restauré au démontage.
+  useEffect(() => {
+    if (!title) return undefined;
+    const previous = document.title;
+    document.title = `${title} · ImmoTopia`;
+    return () => {
+      document.title = previous;
+    };
+  }, [title]);
+
   const titleNode = (
     <Title
       level={1}
       style={{
         margin: 0,
+        // Un titre très long (nom de bien, référence) ne déborde pas de l'écran.
+        overflowWrap: 'anywhere',
         fontSize: 'var(--font-size-h1)',
         lineHeight: 'var(--line-height-h1)',
         fontWeight: 'var(--font-weight-h1)' as unknown as number

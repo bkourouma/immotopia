@@ -88,6 +88,9 @@ export const DataCard: React.FC<DataCardProps> = ({
       onKeyDown={
         interactive
           ? event => {
+              // Seules les touches pressées sur la carte elle-même l'ouvrent : Entrée sur un
+              // bouton interne (« Encaisser », « ⋮ ») remontait jusqu'ici et ouvrait aussi la fiche.
+              if (event.target !== event.currentTarget) return;
               if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault();
                 onOpen?.();
@@ -207,7 +210,11 @@ export const DataCard: React.FC<DataCardProps> = ({
             <Dropdown menu={{ items: secondaryActions }} trigger={['click']} placement="bottomRight">
               {/* `aria-label` explicite : une icône seule n'a pas de nom
                   accessible, et « ⋮ » ne se prononce pas. */}
-              <Button icon={<MoreOutlined />} aria-label={t('Autres actions')} />
+              <Button
+                icon={<MoreOutlined />}
+                aria-label={t('Autres actions')}
+                style={{ minWidth: 44, minHeight: 44 }}
+              />
             </Dropdown>
           )}
         </div>

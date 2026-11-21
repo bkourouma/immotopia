@@ -1,8 +1,9 @@
 import React, { useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { Card, Result } from 'antd';
+import { Card } from 'antd';
 import { PublicSigningFlow } from '../../components/signature/PublicSigningFlow';
 import { t } from '../../i18n/t';
+import { PublicLinkProblem } from './PublicLinkState';
 
 /**
  * Page publique `/signer/:token` (spec 044) : hors coquille authentifiée,
@@ -33,7 +34,7 @@ export const SignaturePage: React.FC = () => {
           <PublicSigningFlow token={token} />
         </Card>
       ) : (
-        <Result status="404" title={t('Lien invalide ou expiré')} />
+        <PublicLinkProblem kind="invalid" />
       )}
     </main>
   );

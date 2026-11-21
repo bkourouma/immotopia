@@ -134,6 +134,16 @@ describe('MessageComposer', () => {
     expect(box).toHaveValue('a\nb');
   });
 
+  it('rappelle le raccourci clavier et garde le focus dans la zone après envoi', async () => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    render(<MessageComposer onSend={onSend} />);
+    expect(screen.getByText('Entrée pour envoyer, Maj+Entrée pour un saut de ligne')).toBeInTheDocument();
+    const box = screen.getByRole('textbox');
+    await userEvent.type(box, 'Salut{Enter}');
+    await waitFor(() => expect(box).toHaveValue(''));
+    await waitFor(() => expect(box).toHaveFocus());
+  });
+
   it("conserve le texte quand l'envoi échoue", async () => {
     const onSend = vi.fn().mockRejectedValue(new Error('x'));
     render(<MessageComposer onSend={onSend} />);

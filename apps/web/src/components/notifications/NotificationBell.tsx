@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Alert, Badge, Button, Drawer, Space, Switch, Typography } from 'antd';
+import { Alert, App, Badge, Button, Drawer, Space, Switch, Typography } from 'antd';
 import { BellOutlined } from '@ant-design/icons';
 import { useVisiblePolling } from '../../hooks/useVisiblePolling';
 import {
@@ -34,6 +34,7 @@ export interface NotificationBellProps {
  */
 export const NotificationBell: React.FC<NotificationBellProps> = ({ scope, allHref = '/notifications' }) => {
   const navigate = useNavigate();
+  const { message: toast } = App.useApp();
   const [count, setCount] = useState(0);
   const [open, setOpen] = useState(false);
   const [unreadOnly, setUnreadOnly] = useState(false);
@@ -91,6 +92,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ scope, allHr
       setCount(0);
       await loadItems();
       refresh();
+      toast.success(t('Toutes les notifications sont marquées comme lues.'));
     } catch {
       setError(true);
     }
@@ -144,11 +146,23 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ scope, allHr
               {t('Tout marquer comme lu')}
             </Button>
           </Space>
-          {error && <Alert type="error" showIcon message={t('Les notifications ne se sont pas chargées.')} />}
+          {error && (
+            <Alert
+              type="error"
+              showIcon
+              message={t('Les notifications ne se sont pas chargées.')}
+              action={
+                <Button size="small" onClick={() => void loadItems()}>
+                  {t('Réessayer')}
+                </Button>
+              }
+            />
+          )}
           <NotificationList
             compact
             items={items}
             loading={loading}
+            emptyText={unreadOnly ? t('Vous êtes à jour : aucune notification non lue.') : undefined}
             onMarkRead={item => void handleMarkRead(item)}
             onOpen={item => void handleOpenItem(item)}
           />
