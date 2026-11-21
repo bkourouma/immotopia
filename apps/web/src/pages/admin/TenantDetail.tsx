@@ -6,7 +6,9 @@ import {
   Tenant,
   TenantStats,
   suspendTenant,
-  activateTenant
+  activateTenant,
+  getTenantInvitationLink,
+  TenantInvitationLink
 } from '../../services/tenant-service';
 import type { TenantWithBranding } from '../../services/tenant-branding-service';
 import { SubscriptionTab } from '../../components/admin/tenant-detail/SubscriptionTab';
@@ -16,7 +18,7 @@ import { DataExportTab } from '../../components/admin/tenant-detail/DataExportTa
 import { CollaboratorsTab } from '../../components/admin/tenant-detail/CollaboratorsTab';
 import { TenantFormUnlocksTab } from '../../components/admin/tenant-detail/TenantFormUnlocksTab';
 import { Building2, CreditCard, Receipt, Activity, BarChart3, Users, DatabaseBackup, ListChecks } from 'lucide-react';
-import { App } from 'antd';
+import { App, Input, Modal } from 'antd';
 import { StatusTag, useConfirmAction, PageHeader, StateBlock, SkeletonDetail } from '../../components/primitives';
 import { getModuleKeyLabelFr } from '../../constants/module-labels';
 import { t } from '../../i18n/t';
@@ -51,6 +53,7 @@ const isTenantDetailTab = (value: string | null): value is TenantDetailTab =>
 export const TenantDetail: React.FC = () => {
   const { message } = App.useApp();
   const confirmAction = useConfirmAction();
+  const [invitationLink, setInvitationLink] = useState<TenantInvitationLink | null>(null);
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
   const [tenant, setTenant] = useState<Tenant | null>(null);
@@ -137,6 +140,32 @@ export const TenantDetail: React.FC = () => {
     });
   };
 
+  const handleCopyInvitationLink = () => {
+    if (!tenantId) return;
+    confirmAction({
+      title: t("Générer un nouveau lien d'invitation ?"),
+      description: t(
+        "Un nouveau lien invalide le précédent, y compris celui déjà envoyé par e-mail. Aucun message n'est envoyé."
+      ),
+      okText: t('Générer le lien'),
+      onConfirm: async () => {
+        try {
+          const link = await getTenantInvitationLink(tenantId);
+          try {
+            await navigator.clipboard.writeText(link.acceptUrl);
+            message.success(t("Lien d'invitation copié"));
+          } catch {
+            message.warning(t('Copie impossible : copiez le lien affiché.'));
+          }
+          // Toujours affiché : la copie peut échouer (HTTP local, navigateur restreint).
+          setInvitationLink(link);
+        } catch (err: any) {
+          message.error(err.response?.data?.message || t("Erreur lors de la génération du lien d'invitation"));
+        }
+      }
+    });
+  };
+
   const getStatusBadge = (status: string) => <StatusTag status={status} />;
 
   // L'onglet actif reste visible quand la barre défile (mobile).
@@ -165,6 +194,28 @@ export const TenantDetail: React.FC = () => {
 
   return (
     <>
+      <Modal
+        open={invitationLink !== null}
+        title={t("Lien d'invitation")}
+        onCancel={() => setInvitationLink(null)}
+        footer={null}
+        destroyOnClose
+      >
+        {invitationLink && (
+          <div className="space-y-3">
+            <p className="text-sm text-slate-600">{t('Destinataire : {{value}}', { value: invitationLink.email })}</p>
+            <Input
+              readOnly
+              value={invitationLink.acceptUrl}
+              aria-label={t("Lien d'invitation")}
+              onFocus={e => e.target.select()}
+            />
+            <p className="text-sm text-slate-600">
+              {t("Valable jusqu'au {{value}}", { value: formatDateTime(invitationLink.expiresAt) })}
+            </p>
+          </div>
+        )}
+      </Modal>
       <div className="space-y-6">
         <PageHeader
           title={tenant.name}
@@ -182,8 +233,14 @@ export const TenantDetail: React.FC = () => {
           }
           secondaryActions={
             tenant.status === 'ACTIVE'
-              ? [{ key: 'suspend', label: t('Suspendre'), danger: true, onClick: handleSuspend }]
-              : [{ key: 'edit', label: t('Modifier'), onClick: () => navigate(`/admin/tenants/${tenantId}/edit`) }]
+              ? [
+                  { key: 'suspend', label: t('Suspendre'), danger: true, onClick: handleSuspend },
+                  { key: 'invitation-link', label: t("Copier le lien d'invitation"), onClick: handleCopyInvitationLink }
+                ]
+              : [
+                  { key: 'edit', label: t('Modifier'), onClick: () => navigate(`/admin/tenants/${tenantId}/edit`) },
+                  { key: 'invitation-link', label: t("Copier le lien d'invitation"), onClick: handleCopyInvitationLink }
+                ]
           }
         />
 

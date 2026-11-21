@@ -25,6 +25,18 @@ Modèle de section : voir le bloc « Modèle de section » plus bas.
 
 **Pièges** — Les chefs de lot calent (watchdog 600 s) dès qu'un run vitest multi-dossiers dure : lancer les suites en arrière-plan avec sortie redirigée, un seul runner à la fois. Le push de gros diffs échoue parfois (« connection reset ») : réessayer avec `-c http.postBuffer=524288000 -c http.version=HTTP/1.1`. `i18n:check` échoue s'il reste des `*.orphans.json`. Worktrees des lots sous `D:/APP/Immobillier-worktrees/ux21-*` avec jonctions `node_modules` : retirer les jonctions (rmdir) AVANT `git worktree remove`.
 
+## feat/lien-invitation-agence — 2026-11-19
+
+**État** — Branche depuis `origin/main` `25e340fe`, avant pull request (fusion par l'utilisateur). Rien déployé, aucune migration.
+
+**Fait** — Bouton « Copier le lien d'invitation » sur la fiche d'agence du super-admin (`pages/admin/TenantDetail.tsx`). Il appelle `POST /api/admin/tenants/:tenantId/invitation-link` (`PLATFORM_TENANTS_EDIT`, limiteur 20 par 10 min) qui régénère le jeton de l'unique invitation en attente (même expirée ; plusieurs en attente : 409), sans e-mail ni WhatsApp, `Cache-Control: no-store`. L'ancien lien, y compris celui de l'e-mail, est invalidé (seul le hash est stocké). Ligne ajoutée au classeur des fonctionnalités.
+
+**Vérifié** — Service : 7 tests ; bouton : 3 tests ; `check:architecture` propre ; ESLint sans erreur.
+
+**Reste** — `routes-inventory.test.ts` n'a pas tourné sur ce poste (module `yauzl` absent du `node_modules` partagé) : le relancer ou laisser la CI. Aucune recette navigateur ni appel sur une vraie base.
+
+**Pièges** — Le typecheck API de ce worktree affiche des erreurs étrangères (client Prisma partagé généré depuis une autre branche). `i18n:extract` ajoute des clés vides sans rapport : ne garder que les siennes.
+
 ## feat/integration-copro-20261118 — 2026-11-18
 
 **État :** intégration terminée, tests web verts (8 fichiers corrigés, voir ci-dessous) ; tests serveur à confirmer. Branche depuis `origin/main` `1a8caaa6`, avant pull request (fusion par l'utilisateur) puis validation staging. Rien n'est déployé.
@@ -607,7 +619,7 @@ Compose des piles confirme l’absence de `AI_TRANSCRIPTION_OPENAI_KEY` et de `G
 
 **État :** 6 visuels 1080×1350 (`slide-1..6.png`) dans `docs/marketing/carrousel-signalement-maintenance/` (`generate.mjs` → HTML, `render.ps1` → PNG via Chrome headless). Ils intègrent de vraies captures de l'écran « Créer un ticket de maintenance » (`src/cap-*.png`, données de démo, formulaire jamais envoyé) et les logos officiels. Rien de commité.
 **Reste à faire :** valider la palette et retirer la mention « Palette provisoire » ; la capture montre le bien démo FLB-A2 alors que le texte parle de DEMO-12 (texte imposé, non modifié). Pour refaire des captures : `apps/web` doit tourner sur le port 3000 (l'API n'autorise que cette origine ; `launch.json` pose 3002).
-**Piège :** ce fichier contient des marqueurs de conflit `<<<<<<< HEAD` hérités du merge, à résoudre séparément.
+**Piège :** ce fichier contenait des marqueurs de conflit hérités d'un merge (résolus depuis).
 
 ## Reel FB07 « Retrouver la quittance » — 2026-11-10
 
