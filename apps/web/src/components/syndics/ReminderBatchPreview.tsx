@@ -4,6 +4,7 @@ import { ReminderBatchPreview as ReminderBatchPreviewData } from '../../types/sy
 import { reminderExclusionLabel } from './reminder-failure';
 import { t } from '../../i18n/t';
 import { HelpSectionTitle } from '../../help';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 
 const { Text } = Typography;
 
@@ -26,6 +27,7 @@ export const ReminderBatchPreview: React.FC<ReminderBatchPreviewProps> = ({
   const eligible = preview?.eligible ?? [];
   const excluded = preview?.excluded ?? [];
   const count = eligible.length;
+  const { isMobile } = useBreakpoint();
 
   return (
     <Modal
@@ -34,17 +36,25 @@ export const ReminderBatchPreview: React.FC<ReminderBatchPreviewProps> = ({
       onCancel={onCancel}
       onOk={onConfirm}
       okText={t('Envoyer {{count}} relance(s)', { count })}
-      cancelText={count === 0 ? t('Fermer') : t('Annuler')}
       okButtonProps={count === 0 ? { style: { display: 'none' } } : undefined}
+      cancelText={count === 0 ? t('Fermer') : t('Annuler')}
       confirmLoading={confirming}
       width={680}
+      style={isMobile ? { top: 16 } : undefined}
     >
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         {count === 0 ? (
           <Alert type="info" showIcon message={t('Aucune relance à envoyer pour le moment.')} />
         ) : (
           <>
-            <Text strong>{t('{{count}} relance(s) vont partir par e-mail :', { count })}</Text>
+            <Alert
+              type="warning"
+              showIcon
+              message={t('{{count}} relance(s) vont partir par e-mail', { count })}
+              description={t(
+                'L’envoi est immédiat et ne peut pas être annulé : chaque copropriétaire concerné reçoit son e-mail. Vérifiez la liste avant de confirmer.'
+              )}
+            />
             <Table
               size="small"
               rowKey="chargeCallId"

@@ -46,6 +46,20 @@ function googleOAuthErrorMessage(reason: string | null): string | null {
   return null;
 }
 
+/**
+ * Un échec réseau remonte avec le texte brut du navigateur (« Network Error »,
+ * « Failed to fetch »), en anglais et sans piste : on le remplace par une
+ * phrase qui dit quoi faire. Les refus du serveur (identifiants, compte
+ * verrouillé…) arrivent déjà rédigés et passent tels quels.
+ */
+function messageDeConnexion(message: string | null): string | null {
+  if (!message) return null;
+  if (/network error|failed to fetch|load failed|timeout/i.test(message)) {
+    return t('Impossible de joindre le serveur. Vérifiez votre connexion internet puis réessayez.');
+  }
+  return message;
+}
+
 export const Login: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -68,7 +82,9 @@ export const Login: React.FC = () => {
   };
 
   const googleError = googleOAuthErrorMessage(searchParams.get('error'));
-  const displayedError = error || googleError;
+  const displayedError = messageDeConnexion(error) || googleError;
+  // Retour de l'écran d'acceptation d'invitation : on dit que la suite logique est de se connecter.
+  const invitationAcceptee = searchParams.get('invite') === 'accepted';
 
   const handleGoogleLogin = (): void => {
     window.location.href = `${API_ORIGIN}/api/auth/google`;
@@ -127,7 +143,9 @@ export const Login: React.FC = () => {
           </div>
 
           <Card>
-            <Form form={form} layout="vertical" onFinish={handleSubmit} autoComplete="off">
+            {/* Pas d'`autoComplete="off"` : il empêche le gestionnaire de mots de passe de remplir
+                les champs. Chaque champ déclare lui-même son `autoComplete`. */}
+            <Form form={form} layout="vertical" onFinish={handleSubmit} scrollToFirstError={{ focus: true }}>
               {DevAccountsSelect && (
                 <Form.Item style={{ marginBottom: 'var(--space-4)' }}>
                   <Suspense fallback={null}>
@@ -138,6 +156,15 @@ export const Login: React.FC = () => {
                     />
                   </Suspense>
                 </Form.Item>
+              )}
+
+              {invitationAcceptee && !displayedError && (
+                <Alert
+                  message={t('Invitation acceptée. Connectez-vous pour accéder à votre espace.')}
+                  type="success"
+                  showIcon
+                  style={{ marginBottom: 'var(--space-4)' }}
+                />
               )}
 
               {displayedError && (
@@ -161,7 +188,14 @@ export const Login: React.FC = () => {
               >
                 {/* Pas de `size` explicite : `componentSize` du ConfigProvider
                     donne 44 px et 16 px sous 992 px, 36 px et 14 px au-dessus. */}
-                <Input placeholder={t('vous@example.com')} autoComplete="email" />
+                <Input
+                  placeholder={t('vous@example.com')}
+                  autoComplete="username"
+                  inputMode="email"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  autoFocus
+                />
               </Form.Item>
 
               <Form.Item

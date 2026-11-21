@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useId, useState } from 'react';
 import { Button } from '../ui/button';
 import { PropertyStatus } from '../../types/property-types';
 import { ArrowRight, CheckCircle, XCircle, Clock, Loader2 } from 'lucide-react';
@@ -6,6 +6,8 @@ import apiClient from '../../utils/api-client';
 import { App } from 'antd';
 import { t } from '../../i18n/t';
 import { localizedRecord } from '../../i18n/localized';
+import { useConfirmAction } from '../primitives';
+import { apiErrorText } from './property-api-errors';
 
 interface PropertyStatusWorkflowProps {
   propertyId: string;
@@ -59,6 +61,20 @@ const statusConfig: Record<PropertyStatus, { label: string; color: string; icon:
   })
 );
 
+/** Ce que change le passage à ce statut, dit avant de confirmer (texte seul : les règles métier sont côté API). */
+const consequences = (): Partial<Record<PropertyStatus, string>> => ({
+  [PropertyStatus.DRAFT]: t("Le bien repasse en brouillon : il n'est plus proposé tant qu'il n'est pas complété."),
+  [PropertyStatus.UNDER_REVIEW]: t("Le bien est soumis à relecture avant d'être mis en ligne."),
+  [PropertyStatus.AVAILABLE]: t('Le bien est disponible : il peut être proposé aux clients et publié.'),
+  [PropertyStatus.RESERVED]: t("Le bien est réservé pour un client : il n'est plus présenté comme libre."),
+  [PropertyStatus.UNDER_OFFER]: t('Une offre est en cours sur ce bien.'),
+  [PropertyStatus.RENTED]: t('Le bien est loué : il sort des biens disponibles.'),
+  [PropertyStatus.SOLD]: t('Le bien est vendu : la transaction est considérée comme conclue.'),
+  [PropertyStatus.ARCHIVED]: t(
+    'Le bien sort de la liste active et ne compte plus dans le quota de lots. Vous pourrez le rétablir ensuite.'
+  )
+});
+
 // Allowed transitions from each status
 const ALLOWED_TRANSITIONS: Record<PropertyStatus, PropertyStatus[]> = {
   [PropertyStatus.DRAFT]: [PropertyStatus.UNDER_REVIEW, PropertyStatus.ARCHIVED],
@@ -83,13 +99,32 @@ export const PropertyStatusWorkflow: React.FC<PropertyStatusWorkflowProps> = ({
   onStatusChange
 }) => {
   const { message } = App.useApp();
+  const confirm = useConfirmAction();
+  const notesId = useId();
   const [selectedStatus, setSelectedStatus] = useState<PropertyStatus | null>(null);
   const [notes, setNotes] = useState('');
   const [updating, setUpdating] = useState(false);
 
   const allowedNextStatuses = ALLOWED_TRANSITIONS[currentStatus] || [];
 
-  const handleStatusChange = async () => {
+  const handleStatusChange = () => {
+    if (!selectedStatus || updating) return;
+    // Statuts difficiles à défaire : une confirmation qui nomme le changement.
+    if (selectedStatus === PropertyStatus.ARCHIVED || selectedStatus === PropertyStatus.SOLD) {
+      const cible = statusConfig[selectedStatus].label;
+      confirm({
+        title: t('Passer ce bien au statut « {{statut}} » ?', { statut: cible }),
+        description: consequences()[selectedStatus],
+        okText: t('Changer vers {{statut}}', { statut: cible }),
+        danger: selectedStatus === PropertyStatus.ARCHIVED,
+        onConfirm: applyStatusChange
+      });
+      return;
+    }
+    void applyStatusChange();
+  };
+
+  const applyStatusChange = async () => {
     if (!selectedStatus) return;
 
     setUpdating(true);
@@ -99,13 +134,14 @@ export const PropertyStatusWorkflow: React.FC<PropertyStatusWorkflowProps> = ({
         notes: notes.trim() || undefined
       });
 
+      message.success(t('Statut mis à jour : {{statut}}.', { statut: statusConfig[selectedStatus].label }));
       setSelectedStatus(null);
       setNotes('');
       if (onStatusChange) {
         onStatusChange();
       }
     } catch (error: any) {
-      message.error(error.response?.data?.error || t('Erreur lors du changement de statut'));
+      message.error(apiErrorText(error, t('Erreur lors du changement de statut')));
     } finally {
       setUpdating(false);
     }
@@ -136,7 +172,8 @@ export const PropertyStatusWorkflow: React.FC<PropertyStatusWorkflowProps> = ({
                   key={status}
                   type="button"
                   onClick={() => setSelectedStatus(status)}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg border-2 transition-colors ${
+                  aria-pressed={selectedStatus === status}
+                  className={`flex items-center gap-2 px-3 py-2 min-h-[44px] rounded-lg border-2 transition-colors ${
                     selectedStatus === status ? 'border-primary bg-primary-bg' : 'border-gray-200 hover:border-gray-300'
                   }`}
                 >
@@ -150,9 +187,17 @@ export const PropertyStatusWorkflow: React.FC<PropertyStatusWorkflowProps> = ({
           {/* Notes and Submit */}
           {selectedStatus && (
             <div className="space-y-3 pt-4 border-t">
+              {consequences()[selectedStatus] && (
+                <p role="status" className="text-sm text-gray-700">
+                  {consequences()[selectedStatus]}
+                </p>
+              )}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{t('Notes (optionnel)')}</label>
+                <label htmlFor={notesId} className="block text-sm font-medium text-gray-700 mb-1">
+                  {t('Notes (optionnel)')}
+                </label>
                 <textarea
+                  id={notesId}
                   value={notes}
                   onChange={e => setNotes(e.target.value)}
                   rows={3}
@@ -160,7 +205,7 @@ export const PropertyStatusWorkflow: React.FC<PropertyStatusWorkflowProps> = ({
                   placeholder={t('Ajouter des notes sur ce changement de statut...')}
                 />
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-col-reverse sm:flex-row gap-2">
                 <Button onClick={handleStatusChange} disabled={updating} className="flex-1">
                   {updating ? (
                     <>

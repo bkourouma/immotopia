@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Row, Col, Typography, Spin, Alert, Space, Tag, List, Empty, Button } from 'antd';
+import { Button, Card, Row, Col, Typography, Space, Tag, List, Empty } from 'antd';
 import {
   BankOutlined,
   DollarOutlined,
@@ -12,11 +12,12 @@ import {
 } from '@ant-design/icons';
 import { ownerPortalService } from '../../services/ownerPortalService';
 import { StatCard } from '../../components/OwnerPortal/StatCard';
+import { PageHeader, SkeletonList, SkeletonStats, StateBlock } from '../../components/primitives';
 import { t } from '../../i18n/t';
 import { HelpSectionTitle, helpAnchor } from '../../help';
 
 import { activeLocale, formatFcfa } from '../../i18n/format';
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 interface DashboardData {
   portfolioSummary: {
@@ -104,7 +105,7 @@ export default function OwnerDashboard() {
       CHECK: t('Chèque'),
       MOBILE_MONEY: t('Mobile Money'),
       DIRECT_DEBIT: t('Prélèvement bancaire'),
-      CARD: t('Carte'),
+      CARD: t('Carte bancaire'),
       OTHER: t('Autre')
     };
     return methods[method] || method;
@@ -123,41 +124,49 @@ export default function OwnerDashboard() {
     return <Tag color={config.color}>{config.label}</Tag>;
   };
 
-  if (loading) {
+  if (loading && !data) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <Spin size="large" tip={t('Chargement du tableau de bord...')} />
-      </div>
+      <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        <PageHeader title={t('Tableau de bord')} subtitle={t("Vue d'ensemble de votre portefeuille immobilier")} />
+        <SkeletonStats rows={4} aria-label={t('Chargement du tableau de bord')} />
+        <SkeletonList rows={3} aria-label={t('Chargement du tableau de bord')} />
+      </Space>
     );
   }
 
-  if (error) {
-    return <Alert message={t('Erreur')} description={error} type="error" showIcon />;
-  }
-
-  if (!data) {
-    return <Empty description={t('Aucune donnée disponible')} />;
+  if (error || !data) {
+    return (
+      <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        <PageHeader title={t('Tableau de bord')} subtitle={t("Vue d'ensemble de votre portefeuille immobilier")} />
+        <StateBlock
+          variant={error ? 'error' : 'empty'}
+          title={error ? t('Impossible de charger le tableau de bord') : t('Aucune donnée disponible')}
+          description={error ?? undefined}
+          actions={[{ label: t('Réessayer'), onClick: loadDashboard, primary: true }]}
+        />
+      </Space>
+    );
   }
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      {/* Page Header */}
-      <div className="it-toolbar">
-        <div>
-          <Title level={2}>{t('Tableau de bord')}</Title>
-          <Text type="secondary">{t("Vue d'ensemble de votre portefeuille immobilier")}</Text>
-        </div>
-        <Button
-          icon={<SyncOutlined />}
-          onClick={loadDashboard}
-          loading={loading}
-          aria-label={t('Rafraîchir le tableau de bord')}
-        >
-          {t('Actualiser')}
-        </Button>
-      </div>
+      <PageHeader
+        title={t('Tableau de bord')}
+        subtitle={t("Vue d'ensemble de votre portefeuille immobilier")}
+        extra={
+          <Button
+            icon={<SyncOutlined />}
+            onClick={loadDashboard}
+            loading={loading}
+            aria-label={t('Rafraîchir le tableau de bord')}
+          >
+            {t('Actualiser')}
+          </Button>
+        }
+      />
 
-      {/* Rangee d'indicateurs (T028-T030).
+      {/* Les revenus ouvrent la rangee : c'est ce que le proprietaire vient lire, surtout sur telephone.
+          Rangee d'indicateurs (T028-T030).
           Les trois rangees d'origine — patrimoine, revenus, occupation — n'en
           font plus qu'une, reglee sur quatre cartes par ligne. « Revenus année
           dernière » a ete retire : c'est le seul chiffre de la serie qui ne
@@ -168,6 +177,33 @@ export default function OwnerDashboard() {
           a 1200 px et non a 992 : en dessous, la barre laterale ne laisse que
           160 px par carte, ou « 2 450 000 F CFA » ne tient pas. */}
       <Row gutter={[16, 16]}>
+        <Col xs={24} sm={12} xl={6} {...helpAnchor('proprietaire-revenus-mois')}>
+          <StatCard
+            compact
+            helpId="portails.proprietaire.accueil.revenus"
+            title={t('Revenus ce mois')}
+            value={formatCurrency(data.revenueMetrics.currentMonth)}
+            icon={<DollarOutlined style={{ color: '#52c41a' }} />}
+            valueStyle={{ color: '#52c41a' }}
+          />
+        </Col>
+        <Col xs={24} sm={12} xl={6}>
+          <StatCard
+            compact
+            title={t('Revenus cette année')}
+            value={formatCurrency(data.revenueMetrics.currentYear)}
+            icon={<DollarOutlined style={{ color: '#1890ff' }} />}
+            valueStyle={{ color: '#1890ff' }}
+          />
+        </Col>
+        <Col xs={24} sm={12} xl={6}>
+          <StatCard
+            compact
+            title={t('Revenus mois dernier')}
+            value={formatCurrency(data.revenueMetrics.lastMonth)}
+            icon={<DollarOutlined style={{ color: '#722ed1' }} />}
+          />
+        </Col>
         <Col xs={24} sm={12} xl={6} {...helpAnchor('proprietaire-portefeuille')}>
           <StatCard
             compact
@@ -213,33 +249,6 @@ export default function OwnerDashboard() {
             suffix="%"
             icon={<PercentageOutlined style={{ color: '#1890ff' }} />}
             valueStyle={{ fontSize: 24, color: '#1890ff' }}
-          />
-        </Col>
-        <Col xs={24} sm={12} xl={6} {...helpAnchor('proprietaire-revenus-mois')}>
-          <StatCard
-            compact
-            helpId="portails.proprietaire.accueil.revenus"
-            title={t('Revenus ce mois')}
-            value={formatCurrency(data.revenueMetrics.currentMonth)}
-            icon={<DollarOutlined style={{ color: '#52c41a' }} />}
-            valueStyle={{ color: '#52c41a' }}
-          />
-        </Col>
-        <Col xs={24} sm={12} xl={6}>
-          <StatCard
-            compact
-            title={t('Revenus cette année')}
-            value={formatCurrency(data.revenueMetrics.currentYear)}
-            icon={<DollarOutlined style={{ color: '#1890ff' }} />}
-            valueStyle={{ color: '#1890ff' }}
-          />
-        </Col>
-        <Col xs={24} sm={12} xl={6}>
-          <StatCard
-            compact
-            title={t('Revenus mois dernier')}
-            value={formatCurrency(data.revenueMetrics.lastMonth)}
-            icon={<DollarOutlined style={{ color: '#722ed1' }} />}
           />
         </Col>
       </Row>
@@ -313,7 +322,7 @@ export default function OwnerDashboard() {
             }
             extra={
               <Text type="secondary" style={{ fontSize: 12 }}>
-                5 derniers
+                {t('5 derniers')}
               </Text>
             }
           >
@@ -363,7 +372,7 @@ export default function OwnerDashboard() {
             }
             extra={
               <Text type="secondary" style={{ fontSize: 12 }}>
-                5 derniers
+                {t('5 derniers')}
               </Text>
             }
           >

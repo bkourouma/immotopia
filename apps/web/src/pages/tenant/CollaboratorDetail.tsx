@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { App, Card, Spin, Alert, Button, Descriptions, Checkbox, Space, Typography } from 'antd';
+import { App, Card, Button, Descriptions, Checkbox, Space, Typography } from 'antd';
 import { ArrowLeftOutlined, EditOutlined, KeyOutlined, LogoutOutlined } from '@ant-design/icons';
 import {
   getMember,
@@ -11,7 +11,7 @@ import {
 } from '../../services/membership-service';
 import apiClient from '../../utils/api-client';
 import { getRoleLabelFr } from '../../constants/permissions-labels';
-import { useConfirmAction } from '../../components/primitives';
+import { SkeletonDetail, StateBlock, useConfirmAction } from '../../components/primitives';
 import { t } from '../../i18n/t';
 import { HelpSectionTitle } from '../../help';
 import { localizedRecord } from '../../i18n/localized';
@@ -97,8 +97,10 @@ export const CollaboratorDetail: React.FC = () => {
   const handleResetPassword = () => {
     if (!tenantId || !userId) return;
     confirmAction({
-      title: t('Réinitialiser le mot de passe'),
-      description: t("Êtes-vous sûr de vouloir réinitialiser le mot de passe ? Un email sera envoyé à l'utilisateur."),
+      title: t('Réinitialiser le mot de passe de {{name}} ?', {
+        name: member?.user.fullName || member?.user.email || ''
+      }),
+      description: t("Un email sera envoyé à l'utilisateur pour qu'il choisisse un nouveau mot de passe."),
       okText: t('Réinitialiser'),
       cancelText: t('Annuler'),
       onConfirm: async () => {
@@ -115,8 +117,8 @@ export const CollaboratorDetail: React.FC = () => {
   const handleRevokeSessions = () => {
     if (!tenantId || !userId) return;
     confirmAction({
-      title: t('Révoquer les sessions'),
-      description: t('Êtes-vous sûr de vouloir révoquer toutes les sessions de cet utilisateur ?'),
+      title: t('Révoquer les sessions de {{name}} ?', { name: member?.user.fullName || member?.user.email || '' }),
+      description: t('Toutes ses connexions en cours seront fermées : la personne devra se reconnecter.'),
       okText: t('Révoquer'),
       cancelText: t('Annuler'),
       danger: true,
@@ -134,8 +136,8 @@ export const CollaboratorDetail: React.FC = () => {
   if (loading) {
     return (
       <>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 320 }}>
-          <Spin size="large" />
+        <div style={{ padding: 16 }}>
+          <SkeletonDetail aria-label={t('Chargement du collaborateur')} />
         </div>
       </>
     );
@@ -144,7 +146,17 @@ export const CollaboratorDetail: React.FC = () => {
   if (error || !member) {
     return (
       <>
-        <Alert type="error" showIcon message={error || t('Collaborateur introuvable')} style={{ margin: 16 }} />
+        <div style={{ padding: 16 }}>
+          <StateBlock
+            variant={error ? 'error' : 'empty'}
+            title={error ? undefined : t('Collaborateur introuvable')}
+            description={error ?? undefined}
+            actions={[
+              ...(error ? [{ label: t('Réessayer'), onClick: loadMember, primary: true }] : []),
+              { label: t('Retour aux collaborateurs'), onClick: () => navigate(`/tenant/${tenantId}/collaborators`) }
+            ]}
+          />
+        </div>
       </>
     );
   }
@@ -159,9 +171,10 @@ export const CollaboratorDetail: React.FC = () => {
             icon={<ArrowLeftOutlined />}
             onClick={() => navigate(`/tenant/${tenantId}/collaborators`)}
             aria-label={t('Retour')}
+            style={{ minWidth: 44, minHeight: 44 }}
           />
           <div>
-            <Typography.Title level={3} style={{ margin: 0 }}>
+            <Typography.Title level={1} style={{ margin: 0, fontSize: 24 }}>
               {member.user.fullName || member.user.email}
             </Typography.Title>
             <Typography.Text type="secondary">{member.user.email}</Typography.Text>
@@ -194,6 +207,9 @@ export const CollaboratorDetail: React.FC = () => {
               <Typography.Text type="secondary">{t('Chargement des rôles...')}</Typography.Text>
             ) : (
               <>
+                <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
+                  {t("Les changements ne sont appliqués qu'après « Enregistrer les rôles ».")}
+                </Typography.Text>
                 <Checkbox.Group
                   value={selectedRoleIds}
                   onChange={ids => setSelectedRoleIds(ids as string[])}

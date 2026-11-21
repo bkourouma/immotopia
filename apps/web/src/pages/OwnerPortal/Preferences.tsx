@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { App, Card, Switch, Typography, Spin } from 'antd';
+import { App, Card, Space, Switch, Typography } from 'antd';
 import { MailOutlined } from '@ant-design/icons';
 import { ownerPortalService } from '../../services/ownerPortalService';
+import { PageHeader, SkeletonList, StateBlock } from '../../components/primitives';
 import { t } from '../../i18n/t';
 import { HelpSectionTitle } from '../../help';
 
-const { Title, Paragraph } = Typography;
+const { Paragraph } = Typography;
 
 export default function OwnerPreferences() {
   const { message } = App.useApp();
@@ -13,6 +14,8 @@ export default function OwnerPreferences() {
   const [loading, setLoading] = useState(true);
   const [newsletterConsent, setNewsletterConsent] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Un échec de lecture ne doit pas afficher l'interrupteur sur « Non » : ce serait un faux réglage.
+  const [loadFailed, setLoadFailed] = useState(false);
 
   // Memoise sur `message`, seule dependance externe, elle-meme stable :
   // le contexte d'<App> est memoise (antd/es/app/App.js). Sans useCallback, la
@@ -20,12 +23,14 @@ export default function OwnerPreferences() {
   const loadPreferences = useCallback(async () => {
     try {
       setLoading(true);
+      setLoadFailed(false);
       const res = await ownerPortalService.getPreferences();
       if (res.data?.success && res.data?.data) {
         setNewsletterConsent(res.data.data.newsletterConsent ?? false);
       }
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } };
+      setLoadFailed(true);
       message.error(e.response?.data?.message || t('Erreur lors du chargement'));
     } finally {
       setLoading(false);
@@ -50,17 +55,33 @@ export default function OwnerPreferences() {
     }
   };
 
+  const header = <PageHeader title={t('Préférences')} />;
+
   if (loading) {
     return (
-      <div style={{ padding: 24, textAlign: 'center' }}>
-        <Spin size="large" />
-      </div>
+      <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        {header}
+        <SkeletonList rows={1} aria-label={t('Chargement des préférences')} />
+      </Space>
+    );
+  }
+
+  if (loadFailed) {
+    return (
+      <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        {header}
+        <StateBlock
+          variant="error"
+          title={t('Impossible de charger vos préférences')}
+          actions={[{ label: t('Réessayer'), onClick: () => void loadPreferences(), primary: true }]}
+        />
+      </Space>
     );
   }
 
   return (
-    <div style={{ padding: 24, maxWidth: 600 }}>
-      <Title level={4}>{t('Préférences')}</Title>
+    <div style={{ maxWidth: 600 }}>
+      {header}
       <Card>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
           <MailOutlined style={{ fontSize: 24, color: '#1890ff', marginTop: 4 }} />
@@ -80,6 +101,7 @@ export default function OwnerPreferences() {
               checked={newsletterConsent}
               onChange={handleNewsletterChange}
               loading={saving}
+              aria-label={t('Recevoir la newsletter')}
               checkedChildren={t('Oui')}
               unCheckedChildren={t('Non')}
             />

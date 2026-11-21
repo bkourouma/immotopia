@@ -15,6 +15,10 @@ export interface StockQuantityInputProps {
   min?: number;
   disabled?: boolean;
   id?: string;
+  /** Ouvre le clavier dès l'affichage de l'étape de saisie (écran dédié à la quantité). */
+  autoFocus?: boolean;
+  /** Entrée valide la saisie (le clavier du téléphone affiche alors « OK »). */
+  onPressEnter?: () => void;
   'aria-label'?: string;
 }
 
@@ -40,14 +44,19 @@ export const StockQuantityInput: React.FC<StockQuantityInputProps> = ({
   min = 0,
   disabled,
   id,
+  autoFocus,
+  onPressEnter,
   'aria-label': ariaLabel
 }) => {
   const { isMobile } = useBreakpoint();
   return (
     <InputNumber
       id={id}
+      autoFocus={autoFocus}
+      onPressEnter={onPressEnter}
       aria-label={ariaLabel ?? t('Quantité')}
       inputMode="decimal"
+      enterKeyHint={onPressEnter ? 'done' : undefined}
       min={min}
       step={1}
       value={value ?? null}

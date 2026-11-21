@@ -606,7 +606,7 @@ export const CompteProprietaire: React.FC = () => {
         open={modalOuverte}
         onCancel={() => setModalOuverte(false)}
         onOk={enregistrerReversement}
-        okText={t('Enregistrer')}
+        okText={t('Enregistrer le reversement')}
         okButtonProps={{ loading: enregistrementEnCours, disabled: !montant || montant <= 0 }}
         cancelText={t('Renoncer')}
         destroyOnHidden
@@ -619,6 +619,7 @@ export const CompteProprietaire: React.FC = () => {
           <label htmlFor="reversement-montant">{t('Montant')}</label>
           <InputNumber
             id="reversement-montant"
+            autoFocus
             style={{ width: '100%' }}
             // Pas de min=1 : le champ ramenait 0 et -5 à 1 sans rien dire.
             // Le plancher est 0 (jamais de négatif) et un montant nul affiche l'erreur ci-dessous.
@@ -713,6 +714,7 @@ export const CompteProprietaire: React.FC = () => {
           <label htmlFor="motif-annulation-reversement">{t("Motif de l'annulation")}</label>
           <TextArea
             id="motif-annulation-reversement"
+            autoFocus
             rows={3}
             value={motifAnnulation}
             onChange={event => setMotifAnnulation(event.target.value)}

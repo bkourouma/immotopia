@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, App, Button, Card, Empty, Space, Tag, Tooltip, Typography } from 'antd';
+import { Alert, App, Button, Card, Empty, Space, Tag, Tooltip } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { DownloadOutlined, EyeOutlined } from '@ant-design/icons';
 import {
@@ -24,12 +24,10 @@ import { useAuth } from '../../hooks/useAuth';
 import { AuditResourceCell } from '../../components/audit/AuditResourceCell';
 import { PlatformAuditDetailModal } from '../../components/admin/PlatformAuditDetailModal';
 import { AuditIntegrityCard } from '../../components/admin/AuditIntegrityCard';
-import { Table } from '../../components/primitives';
+import { PageHeader, Table } from '../../components/primitives';
 import { EXPORT_MAX_ROWS } from '../../utils/table-export/collect';
 import { activeLocale } from '../../i18n/format';
 import { t } from '../../i18n/t';
-
-const { Title, Text } = Typography;
 
 type ApiError = { response?: { status?: number; data?: { message?: string } } };
 
@@ -82,7 +80,7 @@ function buildColumns(onOpen: (log: PlatformAuditLog) => void): ColumnsType<Plat
       key: 'open',
       width: 90,
       render: (_, log) => (
-        <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => onOpen(log)}>
+        <Button type="link" icon={<EyeOutlined />} onClick={() => onOpen(log)} style={{ minHeight: 44 }}>
           {t('Voir')}
         </Button>
       )
@@ -271,19 +269,20 @@ export const AuditLogs: React.FC = () => {
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      <Space align="start" style={{ width: '100%', justifyContent: 'space-between' }} wrap>
-        <div>
-          <Title level={2} style={{ margin: 0 }}>
-            {t("Journal d'audit")}
-          </Title>
-          <Text type="secondary">{t('Toutes les actions de toutes les agences et de la plateforme.')}</Text>
-        </div>
-        {canExport && (
-          <Button icon={<DownloadOutlined />} onClick={() => void auditExport.run()} loading={auditExport.exporting}>
-            {t('Exporter en CSV')}
-          </Button>
-        )}
-      </Space>
+      <PageHeader
+        title={t("Journal d'audit")}
+        subtitle={t('Toutes les actions de toutes les agences et de la plateforme.')}
+        primaryAction={
+          canExport
+            ? {
+                label: t('Exporter en CSV'),
+                icon: <DownloadOutlined />,
+                onClick: () => void auditExport.run(),
+                loading: auditExport.exporting
+              }
+            : undefined
+        }
+      />
 
       {auditExport.truncated && (
         <Alert

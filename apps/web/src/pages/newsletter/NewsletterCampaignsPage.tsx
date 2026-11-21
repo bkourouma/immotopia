@@ -182,7 +182,7 @@ export function NewsletterCampaignsPage() {
       description: t('Êtes-vous sûr de vouloir envoyer « {{subject}} » à tous les abonnés actifs ?', {
         subject: campaign.subject
       }),
-      okText: t('Envoyer'),
+      okText: t('Envoyer la newsletter'),
       onConfirm: async () => {
         try {
           await newsletterService.sendCampaign(tenantId, campaign.id);
@@ -490,7 +490,7 @@ export function NewsletterCampaignsPage() {
           setScheduleDate(null);
         }}
         confirmLoading={saving}
-        okText={t('Planifier')}
+        okText={t("Planifier l'envoi")}
         okButtonProps={{ disabled: !scheduleDate || (scheduleDate && scheduleDate.isBefore(dayjs())) }}
       >
         <p>{t("Sélectionnez la date et l'heure d'envoi :")}</p>

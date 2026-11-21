@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { App, Card, Switch, Button, Form, Input, Spin, Tag, Space, Typography, Tooltip, Collapse, Alert } from 'antd';
 import { EditOutlined, MessageOutlined } from '@ant-design/icons';
-import { Table } from '../../components/primitives';
+import { ConfirmAction, StateBlock, Table } from '../../components/primitives';
+import { VariableChip } from '../../components/communication/VariableChip';
 import {
   whatsappNotificationConfigService,
   type WhatsappNotificationConfigItem,
@@ -34,6 +35,8 @@ export function WhatsAppNotificationsPage() {
   const { tenantId } = useParams<{ tenantId: string }>();
   const [items, setItems] = useState<WhatsappNotificationConfigItem[]>([]);
   const [loading, setLoading] = useState(true);
+  // Échec du chargement : le bloc d'erreur reste à l'écran et propose « Réessayer ».
+  const [loadFailed, setLoadFailed] = useState(false);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm();
@@ -66,10 +69,12 @@ export function WhatsAppNotificationsPage() {
     setLoading(true);
     try {
       const list = await whatsappNotificationConfigService.list(tenantId);
+      setLoadFailed(false);
       setItems(list);
       if (!selectedKey) form.resetFields();
     } catch (e: unknown) {
       const err = e as { response?: { data?: { message?: string } } };
+      setLoadFailed(true);
       message.error(err.response?.data?.message || t('Erreur lors du chargement'));
     } finally {
       setLoading(false);
@@ -100,7 +105,7 @@ export function WhatsAppNotificationsPage() {
       message.success(enabled ? t('Notification activée') : t('Notification désactivée'));
     } catch (e: unknown) {
       const err = e as { response?: { data?: { message?: string } } };
-      message.error(err.response?.data?.message || 'Erreur');
+      message.error(err.response?.data?.message || t('Erreur'));
     }
   };
 
@@ -120,7 +125,7 @@ export function WhatsAppNotificationsPage() {
     } catch (e: unknown) {
       if ((e as { errorFields?: unknown[] })?.errorFields) return;
       const err = e as { response?: { data?: { message?: string } } };
-      message.error(err.response?.data?.message || 'Erreur');
+      message.error(err.response?.data?.message || t('Erreur'));
     } finally {
       setSaving(false);
     }
@@ -135,7 +140,7 @@ export function WhatsAppNotificationsPage() {
       load();
     } catch (e: unknown) {
       const err = e as { response?: { data?: { message?: string } } };
-      message.error(err.response?.data?.message || 'Erreur');
+      message.error(err.response?.data?.message || t('Erreur'));
     }
   };
 
@@ -143,6 +148,8 @@ export function WhatsAppNotificationsPage() {
     const placeholder = getVariablePlaceholder(variableName);
     const body = form.getFieldValue('bodyOverride') ?? '';
     form.setFieldsValue({ bodyOverride: body + placeholder });
+    // Le champ ne montre pas où le texte arrive : on le dit.
+    message.info(t('Variable {{name}} ajoutée à la fin du message.', { name: variableName }));
   };
 
   const columns = [
@@ -174,7 +181,14 @@ export function WhatsAppNotificationsPage() {
       width: 90,
       exportValue: (record: WhatsappNotificationConfigItem) => record.enabled,
       render: (enabled: boolean, record: WhatsappNotificationConfigItem) => (
-        <Switch checked={enabled} onChange={checked => handleToggleEnabled(record.key, checked)} />
+        <Switch
+          checked={enabled}
+          aria-label={t('Activer « {{label}} » pour {{recipient}}', {
+            label: record.label,
+            recipient: record.recipientLabel
+          })}
+          onChange={checked => handleToggleEnabled(record.key, checked)}
+        />
       )
     },
     {
@@ -288,13 +302,7 @@ export function WhatsAppNotificationsPage() {
                   </Text>
                   <Space size={[4, 4]} wrap>
                     {variablesForEvent.map(name => (
-                      <Tag
-                        key={name}
-                        style={{ cursor: 'pointer', marginBottom: 4 }}
-                        onClick={() => insertVariable(name)}
-                      >
-                        {`{{${name}}}`}
-                      </Tag>
+                      <VariableChip key={name} name={name} onActivate={() => insertVariable(name)} />
                     ))}
                   </Space>
                 </div>
@@ -332,11 +340,23 @@ export function WhatsAppNotificationsPage() {
                   ]}
                 />
 
-                <Space>
+                <Space wrap>
                   <Button type="primary" onClick={handleSaveTemplate} loading={saving}>
                     {t('Enregistrer')}
                   </Button>
-                  <Button onClick={handleReset}>{t('Réinitialiser au message par défaut')}</Button>
+                  {/* Efface la personnalisation : on nomme le message touché et la conséquence. */}
+                  <ConfirmAction
+                    danger
+                    title={t('Réinitialiser le message « {{label}} » pour {{recipient}} ?', {
+                      label: selectedItem.label,
+                      recipient: selectedItem.recipientLabel
+                    })}
+                    description={t('Votre message personnalisé sera remplacé par le message par défaut.')}
+                    okText={t('Réinitialiser')}
+                    onConfirm={handleReset}
+                  >
+                    <Button>{t('Réinitialiser au message par défaut')}</Button>
+                  </ConfirmAction>
                 </Space>
               </Form>
             </>
@@ -345,18 +365,27 @@ export function WhatsAppNotificationsPage() {
       </Card>
 
       <Card title={t('Liste des notifications WhatsApp')}>
-        <Spin spinning={loading}>
-          <Table
-            helpId="communication.canaux.whatsapp.tableau"
-            exportFilename={t('Liste des notifications WhatsApp')}
-            {...local.tableProps}
-            exportFetchAll={local.exportAll}
-            scroll={{ x: 'max-content' }}
-            rowKey="key"
-            columns={columns}
-            size="middle"
+        {loadFailed && !loading && items.length === 0 ? (
+          <StateBlock
+            variant="error"
+            title={t('Impossible de charger les notifications')}
+            description={t('La liste n’a pas pu être récupérée. Vérifiez votre connexion puis réessayez.')}
+            onRetry={() => void load()}
           />
-        </Spin>
+        ) : (
+          <Spin spinning={loading}>
+            <Table
+              helpId="communication.canaux.whatsapp.tableau"
+              exportFilename={t('Liste des notifications WhatsApp')}
+              {...local.tableProps}
+              exportFetchAll={local.exportAll}
+              scroll={{ x: 'max-content' }}
+              rowKey="key"
+              columns={columns}
+              size="middle"
+            />
+          </Spin>
+        )}
       </Card>
     </>
   );

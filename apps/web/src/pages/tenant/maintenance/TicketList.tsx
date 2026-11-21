@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { App, Card, Button, Empty, Spin, Pagination, Typography } from 'antd';
+import { App, Card, Button, Empty, Pagination } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { TicketCard } from '../../../components/maintenance/TicketCard';
 import { tenantMaintenanceService } from '../../../services/maintenance-service';
@@ -8,11 +8,9 @@ import { getProperty, listProperties } from '../../../services/property-service'
 import { Ticket } from '../../../types/maintenance-types';
 import { useAuth } from '../../../hooks/useAuth';
 import { useListSearch } from '../../../hooks/useListSearch';
-import { ListSearch, useConfirmAction } from '../../../components/primitives';
+import { ListSearch, PageHeader, SkeletonList, StateBlock, useConfirmAction } from '../../../components/primitives';
 import { t } from '../../../i18n/t';
-import { HelpButton, HelpSectionTitle } from '../../../help';
-
-const { Title } = Typography;
+import { HelpButton } from '../../../help';
 
 const propertyOptionLabel = (property: { internalReference?: string; title?: string }) =>
   [property.internalReference, property.title].filter(Boolean).join(' · ');
@@ -30,6 +28,7 @@ export const TicketList: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
   const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
   // `loadOptions` / `resolveLabel` sont figés au premier rendu : l'agence passe par une référence.
   const tenantRef = useRef(effectiveTenantId);
@@ -113,6 +112,7 @@ export const TicketList: React.FC = () => {
     if (!effectiveTenantId) return;
 
     setLoading(true);
+    setLoadError(false);
     try {
       const response = await tenantMaintenanceService.listTickets(effectiveTenantId, paramsRef.current as never);
 
@@ -122,6 +122,7 @@ export const TicketList: React.FC = () => {
       }
     } catch (error) {
       console.error('Error loading tickets:', error);
+      setLoadError(true);
     } finally {
       setLoading(false);
       setLoaded(true);
@@ -161,27 +162,24 @@ export const TicketList: React.FC = () => {
 
   if (!loaded) {
     return (
-      <>
-        <Spin size="large" style={{ display: 'block', textAlign: 'center', padding: '50px' }} />
-      </>
+      <div style={{ padding: '24px' }}>
+        <SkeletonList aria-label={t('Chargement des tickets')} />
+      </div>
     );
   }
 
   return (
     <>
       <div style={{ padding: '24px' }}>
-        <div className="it-toolbar" style={{ marginBottom: 24 }}>
-          <Title level={2}>
-            <HelpSectionTitle title={t('Mes tickets de maintenance')} helpId="commercial.maintenance.liste.tickets" />
-          </Title>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => navigate(`/tenant/${effectiveTenantId}/maintenance/new`)}
-          >
-            {t('Nouveau ticket')}
-          </Button>
-        </div>
+        <PageHeader
+          title={t('Mes tickets de maintenance')}
+          helpId="commercial.maintenance.liste.tickets"
+          primaryAction={{
+            label: t('Nouveau ticket'),
+            icon: <PlusOutlined />,
+            onClick: () => navigate(`/tenant/${effectiveTenantId}/maintenance/new`)
+          }}
+        />
 
         <Card style={{ marginBottom: 24 }}>
           <ListSearch
@@ -192,7 +190,9 @@ export const TicketList: React.FC = () => {
           />
         </Card>
 
-        {tickets.length === 0 && search.isFiltered ? (
+        {loadError ? (
+          <StateBlock variant="error" actions={[{ label: t('Réessayer'), onClick: loadTickets, primary: true }]} />
+        ) : tickets.length === 0 && search.isFiltered ? (
           <Empty description={t('Aucun ticket ne correspond aux critères')} image={Empty.PRESENTED_IMAGE_SIMPLE}>
             <Button onClick={search.clear}>{t('Effacer les critères')}</Button>
           </Empty>

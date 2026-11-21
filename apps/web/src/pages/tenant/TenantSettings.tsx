@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { App, Form, Input, Card, Button, Space, Alert, Spin, Typography, Row, Col, Upload } from 'antd';
+import { App, Form, Input, Card, Button, Space, Alert, Typography, Row, Col, Upload } from 'antd';
 import {
   SaveOutlined,
   SettingOutlined,
@@ -21,11 +21,12 @@ import {
   uploadAgencyImage
 } from '../../services/document-branding-service';
 import { OwnerPortalSettingsCard } from '../../components/settings/OwnerPortalSettingsCard';
+import { PageHeader, SkeletonDetail, StateBlock } from '../../components/primitives';
 import { t } from '../../i18n/t';
 import { HelpSectionTitle } from '../../help';
 import { writeErrorMessage } from '../../utils/error-handler';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 const HEX_COLOR_PATTERN = /^#[0-9A-Fa-f]{6}$/;
 
@@ -201,8 +202,8 @@ export const TenantSettings: React.FC = () => {
   if (loading) {
     return (
       <>
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-          <Spin size="large" />
+        <div style={{ padding: 16 }}>
+          <SkeletonDetail aria-label={t("Chargement des paramètres de l'agence")} />
         </div>
       </>
     );
@@ -211,18 +212,11 @@ export const TenantSettings: React.FC = () => {
   if (error && !tenant) {
     return (
       <>
-        <div style={{ textAlign: 'center', padding: '48px 0' }}>
-          <Alert
-            message={t('Erreur')}
+        <div style={{ padding: '48px 0' }}>
+          <StateBlock
+            variant="error"
             description={error}
-            type="error"
-            showIcon
-            icon={<ExclamationCircleOutlined />}
-            action={
-              <Button size="small" onClick={loadTenant}>
-                {t('Réessayer')}
-              </Button>
-            }
+            actions={[{ label: t('Réessayer'), onClick: loadTenant, primary: true }]}
           />
         </div>
       </>
@@ -233,14 +227,12 @@ export const TenantSettings: React.FC = () => {
     <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         {/* Header */}
-        <div>
-          <Title level={2} style={{ margin: 0 }}>
-            {t("Paramètres de l'Agence")}
-          </Title>
-          <Text type="secondary">
-            {t('Gérez les informations de votre agence. Ces informations seront utilisées dans les documents générés.')}
-          </Text>
-        </div>
+        <PageHeader
+          title={t("Paramètres de l'Agence")}
+          subtitle={t(
+            'Gérez les informations de votre agence. Ces informations seront utilisées dans les documents générés.'
+          )}
+        />
 
         {/* Portail propriétaire (lot P5) : masquage de la vue patrimoine. */}
         {tenantId && <OwnerPortalSettingsCard tenantId={tenantId} />}
@@ -534,13 +526,20 @@ export const TenantSettings: React.FC = () => {
           </Card>
 
           {/* Actions */}
-          <Card>
-            <Form.Item>
-              <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={saving} size="large">
-                {saving ? 'Enregistrement...' : t('Enregistrer')}
-              </Button>
-            </Form.Item>
-          </Card>
+          <div
+            style={{
+              position: 'sticky',
+              bottom: 0,
+              zIndex: 10,
+              padding: '12px 16px',
+              background: 'var(--color-bg-container, #fff)',
+              borderTop: '1px solid var(--color-border-secondary, #f0f0f0)'
+            }}
+          >
+            <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={saving} size="large">
+              {saving ? t('Enregistrement...') : t('Enregistrer')}
+            </Button>
+          </div>
         </Form>
 
         {/* Info Box */}

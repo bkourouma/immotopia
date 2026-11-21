@@ -336,7 +336,7 @@ export function DocumentTemplates() {
   const actionsSecondaires = (template: DocumentTemplate): MenuProps['items'] => [
     {
       key: 'statut',
-      label: template.status === 'ACTIVE' ? translate('Désactiver') : 'Activer',
+      label: template.status === 'ACTIVE' ? translate('Désactiver') : translate('Activer'),
       icon: template.status === 'ACTIVE' ? <CloseCircleOutlined /> : <CheckCircleOutlined />,
       onClick: () => handleToggleStatus(template.id, template.status)
     },
@@ -526,8 +526,10 @@ export function DocumentTemplates() {
                   // les étiquettes — il a la largeur pour.
                   label: translate('Variables'),
                   value: (template.placeholders || []).length
-                    ? `${template.placeholders.length} variable${template.placeholders.length > 1 ? 's' : ''}`
-                    : 'Aucune'
+                    ? template.placeholders.length > 1
+                      ? translate('{{count}} variables', { count: template.placeholders.length })
+                      : translate('1 variable')
+                    : translate('Aucune')
                 }
               ]}
               primaryAction={
@@ -561,6 +563,8 @@ export function DocumentTemplates() {
             form={form}
             layout="vertical"
             onFinish={handleUpload}
+            // Le focus va sur le premier champ en erreur (un fichier manquant n'est plus à chercher à l'œil).
+            scrollToFirstError={{ focus: true }}
             initialValues={{
               docType: 'LEASE_HABITATION'
             }}
@@ -613,6 +617,7 @@ export function DocumentTemplates() {
                   }
                 }
               ]}
+              extra={translate('Un document Word (.docx) dont les variables sont écrites entre doubles accolades.')}
               valuePropName="fileList"
               getValueFromEvent={e => {
                 if (Array.isArray(e)) {
@@ -637,7 +642,7 @@ export function DocumentTemplates() {
                   {translate('Annuler')}
                 </Button>
                 <Button type="primary" htmlType="submit" loading={uploading}>
-                  {uploading ? translate('Téléchargement...') : translate('Télécharger')}
+                  {uploading ? translate('Envoi en cours...') : translate('Ajouter le modèle')}
                 </Button>
               </Space>
             </Form.Item>

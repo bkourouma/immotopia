@@ -27,6 +27,7 @@ import { t } from '../../i18n/t';
 import { useFormFieldModes } from '../../hooks/useFormFieldModes';
 import { HelpSectionTitle } from '../../help';
 import { displayCurrency } from '../../utils/syndic-currency';
+import { montantSaisiProps } from '../../utils/montant-saisi';
 
 const { Paragraph, Text } = Typography;
 
@@ -450,36 +451,39 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
         ) : null}
 
         <Space wrap size={16} style={{ width: '100%' }}>
-          <div>
+          <div style={{ flex: '1 1 200px', minWidth: 0 }}>
             <Text strong>{t('Montant')}</Text>
             <InputNumber
               id="lot-payment-amount"
               aria-label={t('Montant')}
+              {...montantSaisiProps}
               min={1}
-              style={{ width: 200, display: 'block', marginTop: 4 }}
+              autoFocus={Boolean(initialLotId)}
+              addonAfter={displayCurrency(openCalls[0]?.currency ?? preview?.currency) ?? 'FCFA'}
+              style={{ width: '100%', display: 'block', marginTop: 4 }}
               value={amount ?? undefined}
               onChange={value => setAmount(typeof value === 'number' ? value : null)}
             />
           </div>
-          <div>
+          <div style={{ flex: '1 1 200px', minWidth: 0 }}>
             <Text strong>{t('Date de paiement')}</Text>
             <DatePicker
               id="lot-payment-date"
               aria-label={t('Date de paiement')}
-              style={{ width: 200, display: 'block', marginTop: 4 }}
+              style={{ width: '100%', display: 'block', marginTop: 4 }}
               format="DD/MM/YYYY"
               value={paidAt}
               onChange={value => setPaidAt(value)}
             />
           </div>
-          <div>
+          <div style={{ flex: '1 1 200px', minWidth: 0 }}>
             <Text strong>{t('Mode de paiement')}</Text>
             <Select
               id="lot-payment-method"
               aria-label={t('Mode de paiement')}
               showSearch
               optionFilterProp="label"
-              style={{ width: 200, marginTop: 4 }}
+              style={{ width: '100%', marginTop: 4 }}
               value={method}
               options={paymentMethodOptions}
               onChange={value => setMethod(value)}

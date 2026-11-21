@@ -65,12 +65,7 @@ export const AssetDetailPage: React.FC = () => {
     return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
   }
   if (assetQuery.error) {
-    return (
-      <StateBlock
-        variant="error"
-        actions={[{ label: t('Réessayer'), onClick: () => assetQuery.refetch(), primary: true }]}
-      />
-    );
+    return <StateBlock variant="error" onRetry={() => assetQuery.refetch()} />;
   }
   if (assetQuery.isPending || !assetQuery.data) {
     return <SkeletonDetail aria-label={t('Actif en cours de chargement')} />;

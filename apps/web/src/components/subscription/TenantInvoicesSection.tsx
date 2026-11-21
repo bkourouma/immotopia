@@ -60,6 +60,8 @@ export const TenantInvoicesSection: React.FC<Props> = ({ tenantId, onPaid }) => 
   const [searchParams, setSearchParams] = useSearchParams();
   const [invoices, setInvoices] = useState<PlatformInvoice[]>([]);
   const [loading, setLoading] = useState(true);
+  // Échec du chargement : le toast disparaît ; ce bandeau reste et propose « Réessayer ».
+  const [loadFailed, setLoadFailed] = useState(false);
   // Pagination et recherche serveur : les factures s'accumulent (une par période) au fil des années.
   // État dans l'URL (préfixe `fac`, qui n'écrase pas `?paiement=`) ; jamais de brouillon côté agence.
   const search = useListSearch({ paramPrefix: 'fac', criteria: platformInvoiceCriteria(false) });
@@ -85,10 +87,12 @@ export const TenantInvoicesSection: React.FC<Props> = ({ tenantId, onPaid }) => 
         listOwnPlatformInvoices(tenantId, JSON.parse(paramsRef.current)),
         getPaymentAvailability(tenantId).catch(() => null)
       ]);
+      setLoadFailed(false);
       setInvoices(result.invoices);
       setTotal(result.pagination?.total ?? result.invoices.length);
       setAvailability(avail);
     } catch (err: any) {
+      setLoadFailed(true);
       message.error(err.response?.data?.message || t('Erreur lors du chargement des factures'));
     } finally {
       setLoading(false);
@@ -226,7 +230,12 @@ export const TenantInvoicesSection: React.FC<Props> = ({ tenantId, onPaid }) => 
       align: 'end',
       render: (_, r) => (
         <Space wrap>
-          <Button size="small" icon={<FilePdfOutlined />} onClick={() => handlePdf(r)}>
+          <Button
+            size="small"
+            icon={<FilePdfOutlined />}
+            aria-label={r.invoiceNumber ? t('PDF de la facture {{number}}', { number: r.invoiceNumber }) : undefined}
+            onClick={() => handlePdf(r)}
+          >
             {t('PDF')}
           </Button>
           <Button size="small" onClick={() => handlePdf(r, 'ar')}>
@@ -307,6 +316,19 @@ export const TenantInvoicesSection: React.FC<Props> = ({ tenantId, onPaid }) => 
         )}
         {availability?.mode === 'SIMULATOR' && availability.available && (
           <Text type="secondary">{t('Mode démonstration : aucun paiement réel.')}</Text>
+        )}
+        {loadFailed && !loading && (
+          <Alert
+            type="error"
+            showIcon
+            message={t('Impossible de charger les factures')}
+            description={t('La liste affichée peut être incomplète.')}
+            action={
+              <Button size="small" onClick={() => void load()}>
+                {t('Réessayer')}
+              </Button>
+            }
+          />
         )}
         <Table<PlatformInvoice>
           helpId="administration.agence.facturation.factures"

@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Loader2, Clock, User } from 'lucide-react';
+import { Clock, User } from 'lucide-react';
+import { SkeletonList, StateBlock } from '../primitives';
+import { apiErrorText } from './property-api-errors';
 import { PropertyStatus } from '../../types/property-types';
 import apiClient from '../../utils/api-client';
 import { t } from '../../i18n/t';
@@ -27,19 +29,20 @@ interface PropertyStatusHistoryProps {
 }
 
 const statusLabels: Record<PropertyStatus, string> = localizedRecord(() => ({
-  [PropertyStatus.DRAFT]: 'Brouillon',
+  [PropertyStatus.DRAFT]: t('Brouillon'),
   [PropertyStatus.UNDER_REVIEW]: t('En révision'),
-  [PropertyStatus.AVAILABLE]: 'Disponible',
+  [PropertyStatus.AVAILABLE]: t('Disponible'),
   [PropertyStatus.RESERVED]: t('Réservé'),
   [PropertyStatus.UNDER_OFFER]: t('Sous offre'),
   [PropertyStatus.RENTED]: t('Loué'),
-  [PropertyStatus.SOLD]: 'Vendu',
+  [PropertyStatus.SOLD]: t('Vendu'),
   [PropertyStatus.ARCHIVED]: t('Archivé')
 }));
 
 export const PropertyStatusHistory: React.FC<PropertyStatusHistoryProps> = ({ propertyId, tenantId }) => {
   const [history, setHistory] = useState<StatusHistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     loadHistory();
@@ -48,12 +51,14 @@ export const PropertyStatusHistory: React.FC<PropertyStatusHistoryProps> = ({ pr
   const loadHistory = async () => {
     try {
       setLoading(true);
+      setLoadError(null);
       const response = await apiClient.get<{ success: boolean; data: StatusHistoryEntry[] }>(
         `/tenants/${tenantId}/properties/${propertyId}/status/history`
       );
       setHistory(response.data.data);
     } catch (error) {
       console.error('Error loading status history:', error);
+      setLoadError(apiErrorText(error, t("Impossible de charger l'historique des statuts.")));
     } finally {
       setLoading(false);
     }
@@ -68,19 +73,27 @@ export const PropertyStatusHistory: React.FC<PropertyStatusHistoryProps> = ({ pr
   };
 
   if (loading) {
+    return <SkeletonList rows={2} aria-label={t("Chargement de l'historique des statuts")} />;
+  }
+
+  if (loadError) {
     return (
-      <div className="flex items-center justify-center py-8">
-        <Loader2 className="h-6 w-6 animate-spin text-primary" />
-      </div>
+      <StateBlock
+        variant="error"
+        title={t("Impossible de charger l'historique")}
+        description={loadError}
+        onRetry={() => void loadHistory()}
+      />
     );
   }
 
   if (history.length === 0) {
     return (
-      <div className="text-center py-8 text-gray-500">
-        <Clock className="h-8 w-8 mx-auto mb-2 text-gray-400" />
-        <p>{t('Aucun historique de statut')}</p>
-      </div>
+      <StateBlock
+        variant="empty"
+        title={t('Aucun historique de statut')}
+        description={t('Chaque changement de statut du bien sera consigné ici.')}
+      />
     );
   }
 
@@ -94,7 +107,7 @@ export const PropertyStatusHistory: React.FC<PropertyStatusHistoryProps> = ({ pr
             </div>
           </div>
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
+            <div className="flex flex-wrap items-center gap-2 mb-1">
               {entry.previousStatus && (
                 <>
                   <span className="text-sm text-gray-600">{statusLabels[entry.previousStatus]}</span>

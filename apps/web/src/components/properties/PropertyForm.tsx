@@ -15,8 +15,7 @@ import {
   Radio,
   DatePicker,
   InputNumber,
-  Divider,
-  Spin
+  Divider
 } from 'antd';
 import { SaveOutlined, HomeOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
@@ -40,6 +39,9 @@ import { getTemplate } from '../../services/property-service';
 import { useAuth } from '../../hooks/useAuth';
 import { getOwnerClients, TenantClient } from '../../services/tenant-service';
 import { onAntFormValidationFailed } from '../../lib/antFormFailure';
+import { useConfirmAction } from '../primitives/ConfirmAction';
+import { SkeletonDetail } from '../primitives/Skeleton';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { useOwnAssetsOnly } from '../../hooks/useMenuAccess';
 import { apiErrorText, apiFieldErrors, fieldLabel } from './property-api-errors';
 import { HelpSectionTitle } from '../../help';
@@ -55,6 +57,8 @@ interface PropertyFormProps {
   onSubmit: (data: CreatePropertyRequest | UpdatePropertyRequest) => Promise<void>;
   onCancel?: () => void;
   loading?: boolean;
+  /** Signale à la page si des saisies non enregistrées existent (garde de sortie). */
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 export const PropertyForm: React.FC<PropertyFormProps> = ({
@@ -62,7 +66,8 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
   tenantId,
   onSubmit,
   onCancel,
-  loading = false
+  loading = false,
+  onDirtyChange
 }) => {
   const { message } = App.useApp();
 
@@ -79,6 +84,43 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [location, setLocation] = useState<GeographicLocation | null>(null);
+  const confirmer = useConfirmAction();
+  const { isDesktop } = useBreakpoint();
+  const [modifie, setModifie] = useState(false);
+
+  useEffect(() => {
+    onDirtyChange?.(modifie);
+  }, [modifie, onDirtyChange]);
+
+  // Fermeture de l'onglet ou rechargement avec une saisie en cours.
+  useEffect(() => {
+    if (!modifie) return undefined;
+    const avertir = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', avertir);
+    return () => window.removeEventListener('beforeunload', avertir);
+  }, [modifie]);
+
+  const handleCancel = () => {
+    if (!onCancel) return;
+    if (!modifie) {
+      onCancel();
+      return;
+    }
+    confirmer({
+      title: t('Abandonner les modifications ?'),
+      description: t('Les changements non enregistrés seront perdus.'),
+      okText: t('Abandonner les modifications'),
+      cancelText: t('Continuer la saisie'),
+      danger: true,
+      onConfirm: () => {
+        setModifie(false);
+        onCancel();
+      }
+    });
+  };
 
   useEffect(() => {
     loadOwners();
@@ -194,6 +236,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
   const handleTypeSelect = (type: PropertyType) => {
     setSelectedType(type);
     form.setFieldsValue({ propertyType: type });
+    setModifie(true);
     loadTemplate(type);
   };
 
@@ -267,6 +310,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
       };
 
       await onSubmit(submitData);
+      setModifie(false);
     } catch (error: any) {
       // Le refus de l'API désigne ses champs : on les marque sur le formulaire
       // et on les nomme dans le bandeau (le message seul ne dit rien).
@@ -391,6 +435,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
       layout="vertical"
       onFinish={handleFinish}
       onFinishFailed={onAntFormValidationFailed(form)}
+      onValuesChange={() => setModifie(true)}
       initialValues={{
         ownershipType: property?.ownershipType || PropertyOwnershipType.TENANT,
         status: property?.status || PropertyStatus.DRAFT,
@@ -481,7 +526,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
                   <Select
                     showSearch
                     optionFilterProp="children"
-                    placeholder={loadingOwners ? 'Chargement...' : t('Sélectionner un propriétaire')}
+                    placeholder={loadingOwners ? t('Chargement...') : t('Sélectionner un propriétaire')}
                     allowClear
                     loading={loadingOwners}
                   >
@@ -510,7 +555,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
             name="title"
             rules={[{ required: true, message: t('Le titre est requis') }]}
           >
-            <Input placeholder={t('Ex: Appartement 3 pièces à Cocody')} />
+            <Input autoComplete="off" placeholder={t('Ex: Appartement 3 pièces à Cocody')} />
           </Form.Item>
 
           {/* Facultative, comme sur l'écran de création. La colonne est
@@ -576,7 +621,10 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
           >
             <LocationSelector
               value={location?.communeId}
-              onChange={loc => setLocation(loc)}
+              onChange={loc => {
+                setLocation(loc);
+                setModifie(true);
+              }}
               placeholder={t("Rechercher une localisation (ex: Cocody, Abidjan, Côte d'Ivoire)...")}
               required
             />
@@ -609,7 +657,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
             </Col>
             <Col xs={24} sm={12}>
               <Form.Item label={t('Adresse')} name="address">
-                <Input placeholder={t('Adresse complète (optionnel)')} />
+                <Input autoComplete="street-address" placeholder={t('Adresse complète (optionnel)')} />
               </Form.Item>
             </Col>
             <Col xs={24} sm={12}>
@@ -643,14 +691,14 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
             {selectedType !== PropertyType.TERRAIN && (
               <Col xs={24} sm={12}>
                 <Form.Item label={t('Surface principale (m²)')} name="surfaceArea">
-                  <InputNumber style={{ width: '100%' }} placeholder={t('Ex: 75')} />
+                  <InputNumber inputMode="decimal" style={{ width: '100%' }} placeholder={t('Ex: 75')} />
                 </Form.Item>
               </Col>
             )}
             {shouldShowUsefulSurface(selectedType || property?.propertyType || PropertyType.APPARTEMENT) && (
               <Col xs={24} sm={12}>
                 <Form.Item label={t('Surface utile (m²)')} name="surfaceUseful">
-                  <InputNumber style={{ width: '100%' }} placeholder={t('Ex: 65')} />
+                  <InputNumber inputMode="decimal" style={{ width: '100%' }} placeholder={t('Ex: 65')} />
                 </Form.Item>
               </Col>
             )}
@@ -742,6 +790,8 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
                       <Col xs={24} sm={8}>
                         <Form.Item label={isSale ? t('Prix de vente') : t('Loyer mensuel')} name="price">
                           <Input
+                            inputMode="numeric"
+                            autoComplete="off"
                             placeholder={t('Ex: 50 000 000')}
                             onChange={e => {
                               const cleaned = parseNumber(e.target.value);
@@ -757,6 +807,8 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
                           name="fees"
                         >
                           <Input
+                            inputMode="numeric"
+                            autoComplete="off"
                             placeholder={t('Ex: 50 000')}
                             onChange={e => {
                               const cleaned = parseNumber(e.target.value);
@@ -775,6 +827,8 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
                     <Col xs={24} sm={8}>
                       <Form.Item label={t('Dépôt de garantie')} name="deposit">
                         <Input
+                          inputMode="numeric"
+                          autoComplete="off"
                           placeholder={t('Ex: 500 000')}
                           onChange={e => {
                             const cleaned = parseNumber(e.target.value);
@@ -801,23 +855,23 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
             <Row gutter={16}>
               <Col xs={24} sm={12}>
                 <Form.Item label={t('Nombre de pièces')} name="rooms">
-                  <InputNumber style={{ width: '100%' }} placeholder={t('Ex: 3')} />
+                  <InputNumber inputMode="numeric" style={{ width: '100%' }} placeholder={t('Ex: 3')} />
                 </Form.Item>
               </Col>
               <Col xs={24} sm={12}>
                 <Form.Item label={t('Chambres')} name="bedrooms">
-                  <InputNumber style={{ width: '100%' }} placeholder={t('Ex: 2')} />
+                  <InputNumber inputMode="numeric" style={{ width: '100%' }} placeholder={t('Ex: 2')} />
                 </Form.Item>
               </Col>
               <Col xs={24} sm={12}>
                 <Form.Item label={t('Salles de bain / WC')} name="bathrooms">
-                  <InputNumber style={{ width: '100%' }} placeholder={t('Ex: 1')} />
+                  <InputNumber inputMode="numeric" style={{ width: '100%' }} placeholder={t('Ex: 1')} />
                 </Form.Item>
               </Col>
               {selectedType === PropertyType.MAISON_VILLA && (
                 <Col xs={24} sm={12}>
                   <Form.Item label={t('Surface terrain (m²)')} name="surfaceTerrain">
-                    <InputNumber style={{ width: '100%' }} placeholder={t('Ex: 500')} />
+                    <InputNumber inputMode="decimal" style={{ width: '100%' }} placeholder={t('Ex: 500')} />
                   </Form.Item>
                 </Col>
               )}
@@ -844,9 +898,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
         {template && template.sections && Array.isArray(template.sections) && template.sections.length > 0 && (
           <Card title={t('6. Caractéristiques spécifiques')}>
             {loadingTemplate ? (
-              <div style={{ textAlign: 'center', padding: '24px' }}>
-                <Spin />
-              </div>
+              <SkeletonDetail rows={3} aria-label={t('Chargement des caractéristiques...')} />
             ) : (
               template.sections
                 .sort((a, b) => a.order - b.order)
@@ -877,23 +929,46 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
           </Card>
         )}
 
-        {/* Actions */}
+        {/* Actions : collées en bas de l'écran sous 992 px, pour rester à
+            portée de pouce sur un formulaire long. */}
         <div
           style={{
             display: 'flex',
             justifyContent: 'flex-end',
             gap: 16,
             paddingTop: 16,
-            borderTop: '1px solid #f0f0f0'
+            borderTop: '1px solid var(--border-subtle)',
+            ...(isDesktop
+              ? {}
+              : {
+                  position: 'sticky',
+                  bottom: 0,
+                  zIndex: 10,
+                  background: 'var(--surface-card)',
+                  paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 0px))'
+                })
           }}
         >
           {onCancel && (
-            <Button onClick={onCancel} disabled={isSubmitting}>
+            <Button
+              onClick={handleCancel}
+              disabled={isSubmitting}
+              block={!isDesktop}
+              style={isDesktop ? undefined : { minHeight: 44 }}
+            >
               {t('Annuler')}
             </Button>
           )}
-          <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={isSubmitting || loading}>
-            {isSubmitting ? 'Enregistrement...' : property ? t('Mettre à jour') : t('Créer')}
+          <Button
+            type="primary"
+            htmlType="submit"
+            icon={<SaveOutlined />}
+            loading={isSubmitting || loading}
+            disabled={isSubmitting}
+            block={!isDesktop}
+            style={isDesktop ? undefined : { minHeight: 44 }}
+          >
+            {isSubmitting ? t('Enregistrement...') : property ? t('Mettre à jour') : t('Créer')}
           </Button>
         </div>
       </Space>

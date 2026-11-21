@@ -1152,6 +1152,7 @@ export const StockReferentiel: React.FC = () => {
             <label htmlFor="article-reference">{t('Référence')}</label>
             <Input
               id="article-reference"
+              autoFocus
               value={saisieCreation.reference}
               onChange={event => setSaisieCreation({ ...saisieCreation, reference: event.target.value })}
               placeholder={t('Ex. CIM-42')}
@@ -1258,6 +1259,10 @@ export const StockReferentiel: React.FC = () => {
             <label htmlFor="correction-designation">{t('Désignation')}</label>
             <Input
               id="correction-designation"
+              autoFocus
+              onPressEnter={() => {
+                if (peutCorrigerArticle && !correctionArticleEnCours) void corrigerArticle();
+              }}
               value={saisieCorrection.label}
               onChange={event => setSaisieCorrection({ ...saisieCorrection, label: event.target.value })}
             />
@@ -1381,6 +1386,10 @@ export const StockReferentiel: React.FC = () => {
             <label htmlFor="lieu-libelle">{t('Libellé')}</label>
             <Input
               id="lieu-libelle"
+              autoFocus
+              onPressEnter={() => {
+                if (peutCreerLieu && !creationLieuEnCours) void creerLieu();
+              }}
               value={libelleLieu}
               onChange={event => setLibelleLieu(event.target.value)}
               placeholder={t("Ex. Magasin central d'Angré")}
@@ -1449,6 +1458,10 @@ export const StockReferentiel: React.FC = () => {
             <label htmlFor="correction-libelle">{t('Libellé')}</label>
             <Input
               id="correction-libelle"
+              autoFocus
+              onPressEnter={() => {
+                if (peutCorrigerLieu && !correctionLieuEnCours) void corrigerLieu();
+              }}
               value={libelleCorrige}
               onChange={event => setLibelleCorrige(event.target.value)}
             />

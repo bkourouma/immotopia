@@ -80,6 +80,9 @@ function CelluleEtat(props: { ligne: LigneEvaluee; horsQuota: boolean; doublonIg
             {motif}
           </Text>
         ))}
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          {t('Corrigez la ligne, ou décochez-la pour l’ignorer.')}
+        </Text>
       </Space>
     );
   }
@@ -175,6 +178,8 @@ function construireColonnes(props: EtapeApercuProps, suivi: SuiviEdition): Colum
               onFocus={() => suivi.onFocus(ligne.numero)}
               onBlur={() => suivi.onBlur(ligne.numero)}
               aria-label={t('{{champ}}, ligne {{numero}}', { champ: t(champ.libelle), numero: ligne.numero })}
+              aria-invalid={cellule?.erreur ? true : undefined}
+              title={cellule?.erreur}
             />
             {cellule?.libelleResolu && cellule.libelleResolu !== cellule.texte ? (
               <Text type="secondary" style={{ fontSize: 12 }}>
@@ -292,16 +297,30 @@ export const EtapeApercu: React.FC<EtapeApercuProps> = props => {
         scroll={{ x: 'max-content' }}
       />
 
-      <Space>
-        <Button onClick={props.onRevenir}>{t('Revenir aux colonnes')}</Button>
+      <div
+        style={{
+          position: 'sticky',
+          bottom: 0,
+          zIndex: 2,
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 'var(--space-3)',
+          padding: 'var(--space-3) 0',
+          background: 'var(--surface-card)'
+        }}
+      >
+        <Button style={{ minHeight: 40 }} onClick={props.onRevenir}>
+          {t('Revenir aux colonnes')}
+        </Button>
         <Button
+          style={{ minHeight: 40 }}
           type="primary"
           disabled={compteurs.pretes === 0 || lectureSeule || props.etatQuota === 'chargement'}
           onClick={props.onImporter}
         >
           {t('Importer {{nombre}} ligne(s)', { nombre: compteurs.pretes })}
         </Button>
-      </Space>
+      </div>
     </Space>
   );
 };

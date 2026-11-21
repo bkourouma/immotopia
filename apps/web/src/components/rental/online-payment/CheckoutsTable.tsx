@@ -4,7 +4,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { SafetyCertificateOutlined, SyncOutlined } from '@ant-design/icons';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import type { Dayjs } from 'dayjs';
-import { formatMoney } from '../../primitives';
+import { formatMoney, namedPageItemRender } from '../../primitives';
 import type { RentalOnlineCheckoutStatus, RentalOnlinePaymentRowDto } from '../../../types/rental-online-payment';
 import { listRentalOnlinePayments, verifyRentalOnlinePayment } from '../../../services/rental-online-payment-service';
 import { t } from '../../../i18n/t';
@@ -311,6 +311,7 @@ export const RentalOnlineCheckoutsTable: React.FC<RentalOnlineCheckoutsTableProp
           pageSize,
           total: data?.total ?? 0,
           showSizeChanger: true,
+          itemRender: namedPageItemRender(page),
           onChange: (nextPage, nextSize) => {
             setPage(nextPage);
             setPageSize(nextSize);

@@ -1,15 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { App, Card, Button, Space, Typography, Tag, Spin, Popconfirm, Modal, Form, Input, Select } from 'antd';
+import { useParams } from 'react-router-dom';
+import { App, Card, Button, Space, Modal, Form, Input, Select } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
-import { Table } from '../../../components/primitives';
+import type { ColumnsType } from 'antd/es/table';
+import { DataCard, DataView, PageHeader, StatusTag, useConfirmAction } from '../../../components/primitives';
 import { collectAllPages } from '../../../utils/table-export/collect';
 import { vendorMaintenanceService } from '../../../services/maintenance-service';
 import { useAuth } from '../../../hooks/useAuth';
 import { useListSearch } from '../../../hooks/useListSearch';
 import { t } from '../../../i18n/t';
-
-const { Title } = Typography;
 
 interface Vendor {
   id: string;
@@ -55,20 +54,21 @@ function toVendorPayload(values: VendorFormValues, withStatus: boolean) {
 
 export const Vendors: React.FC = () => {
   const { message } = App.useApp();
+  const confirmAction = useConfirmAction();
 
   const { tenantId } = useParams<{ tenantId: string }>();
-  const navigate = useNavigate();
   const { tenantMembership } = useAuth();
   const effectiveTenantId = tenantId || tenantMembership?.tenantId;
 
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
   const [total, setTotal] = useState(0);
-  // Premier chargement terminé : le spinner plein écran ne remplace plus la page ensuite
+  // Premier chargement terminé : les squelettes ne remplacent plus la page ensuite
   // (la barre de recherche garde son focus, même quand une recherche ne donne rien).
   const [loaded, setLoaded] = useState(false);
 
@@ -97,16 +97,11 @@ export const Vendors: React.FC = () => {
   paramsRef.current = search.apiParams;
   const paramsKey = JSON.stringify(search.apiParams);
 
-  useEffect(() => {
-    if (effectiveTenantId) {
-      loadVendors();
-    }
-  }, [effectiveTenantId, paramsKey]);
-
   const loadVendors = async () => {
     if (!effectiveTenantId) return;
 
     setLoading(true);
+    setError(null);
     try {
       const { isActive, ...rest } = paramsRef.current as Record<string, string | number>;
       const response = await vendorMaintenanceService.listVendors(effectiveTenantId, {
@@ -120,14 +115,20 @@ export const Vendors: React.FC = () => {
         setVendors(response.data);
         setTotal(response.pagination?.total ?? response.data.length);
       }
-    } catch (error) {
-      console.error('Error loading vendors:', error);
-      message.error(t('Erreur lors du chargement des prestataires'));
+    } catch (err) {
+      console.error('Error loading vendors:', err);
+      setError(t('Erreur lors du chargement des prestataires'));
     } finally {
       setLoading(false);
       setLoaded(true);
     }
   };
+
+  useEffect(() => {
+    if (effectiveTenantId) {
+      loadVendors();
+    }
+  }, [effectiveTenantId, paramsKey]);
 
   const handleCreate = () => {
     setEditingVendor(null);
@@ -168,26 +169,48 @@ export const Vendors: React.FC = () => {
       }
       closeForm();
       await loadVendors();
-    } catch (error: any) {
-      message.error(error.response?.data?.message || t("Erreur lors de l'enregistrement"));
+    } catch (err) {
+      const apiMessage = (err as { response?: { data?: { message?: string } } }).response?.data?.message;
+      message.error(apiMessage || t("Erreur lors de l'enregistrement"));
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleDelete = async (vendorId: string) => {
+  const deleteVendor = async (vendorId: string) => {
     if (!effectiveTenantId) return;
 
     try {
       await vendorMaintenanceService.deleteVendor(effectiveTenantId, vendorId);
       message.success(t('Prestataire supprimé définitivement'));
       await loadVendors();
-    } catch (error: any) {
-      message.error(error.response?.data?.message || t('Erreur lors de la suppression'));
+    } catch (err) {
+      const apiMessage = (err as { response?: { data?: { message?: string } } }).response?.data?.message;
+      message.error(apiMessage || t('Erreur lors de la suppression'));
     }
   };
 
-  const columns = [
+  // Suppression définitive : la confirmation nomme le prestataire.
+  const confirmDelete = (vendor: Vendor) => {
+    confirmAction({
+      title: t('Supprimer définitivement « {{name}} » ?', { name: vendor.name }),
+      description: t('Cette action est irréversible. Le prestataire sera supprimé de manière permanente.'),
+      okText: t('Oui, supprimer'),
+      cancelText: t('Annuler'),
+      danger: true,
+      onConfirm: () => deleteVendor(vendor.id)
+    });
+  };
+
+  const statusTag = (isActive: boolean) => (
+    <StatusTag
+      status={isActive ? 'ACTIVE' : 'INACTIVE'}
+      tone={isActive ? 'success' : 'neutral'}
+      label={isActive ? t('Actif') : t('Inactif')}
+    />
+  );
+
+  const columns: ColumnsType<Vendor> = [
     {
       title: t('Nom'),
       dataIndex: 'name',
@@ -209,72 +232,68 @@ export const Vendors: React.FC = () => {
       title: t('Spécialités'),
       dataIndex: 'specialties',
       key: 'specialties',
-      exportValue: (record: Vendor) => (record.specialties ?? []).join(', '),
-      render: (specialties: string[]) =>
-        specialties && specialties.length > 0 ? (
-          <Space wrap>
-            {specialties.map((spec, index) => (
-              <Tag key={index}>{spec}</Tag>
-            ))}
-          </Space>
-        ) : (
-          '-'
-        )
+      render: (specialties: string[]) => (specialties && specialties.length > 0 ? specialties.join(', ') : '-')
     },
     {
       title: t('Statut'),
       dataIndex: 'isActive',
       key: 'isActive',
-      render: (isActive: boolean) => (
-        <Tag color={isActive ? 'success' : 'default'}>{isActive ? t('Actif') : t('Inactif')}</Tag>
-      )
+      render: (isActive: boolean) => statusTag(isActive)
     },
     {
       title: t('Actions'),
       key: 'actions',
-      render: (_: any, record: Vendor) => (
+      render: (_: unknown, record: Vendor) => (
         <Space>
-          <Button type="link" icon={<EditOutlined />} onClick={() => handleEdit(record)} title={t('Modifier')} />
-          <Popconfirm
-            title={t('Êtes-vous sûr de vouloir supprimer définitivement ce prestataire ?')}
-            description={t('Cette action est irréversible. Le prestataire sera supprimé de manière permanente.')}
-            onConfirm={() => handleDelete(record.id)}
-            okText={t('Oui, supprimer')}
-            cancelText={t('Annuler')}
-            okButtonProps={{ danger: true }}
-          >
-            <Button type="link" danger icon={<DeleteOutlined />} title={t('Supprimer définitivement')} />
-          </Popconfirm>
+          <Button
+            type="link"
+            icon={<EditOutlined />}
+            onClick={() => handleEdit(record)}
+            title={t('Modifier')}
+            aria-label={t('Modifier')}
+            style={{ minWidth: 44, minHeight: 44 }}
+          />
+          <Button
+            type="link"
+            danger
+            icon={<DeleteOutlined />}
+            onClick={() => confirmDelete(record)}
+            title={t('Supprimer définitivement')}
+            aria-label={t('Supprimer définitivement')}
+            style={{ minWidth: 44, minHeight: 44 }}
+          />
         </Space>
       )
     }
   ];
 
-  if (!loaded) {
-    return (
-      <>
-        <Spin size="large" style={{ display: 'block', textAlign: 'center', padding: '50px' }} />
-      </>
-    );
-  }
-
   return (
-    <>
-      <div style={{ padding: '24px' }}>
-        <div className="it-toolbar" style={{ marginBottom: 24 }}>
-          <Title level={2}>{t('Gestion des prestataires')}</Title>
-          <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>
-            {t('Nouveau prestataire')}
-          </Button>
-        </div>
+    <div style={{ padding: '24px' }}>
+      <PageHeader
+        title={t('Gestion des prestataires')}
+        primaryAction={{ label: t('Nouveau prestataire'), icon: <PlusOutlined />, onClick: handleCreate }}
+      />
 
-        <Card>
-          <Table
-            helpId="administration.maintenance-gestion.prestataires.tableau"
-            aria-label={t('Gestion des prestataires')}
-            search={search.searchProps}
-            exportFilename={t('Gestion des prestataires')}
-            exportFetchAll={() =>
+      <Card>
+        <DataView<Vendor>
+          helpId="administration.maintenance-gestion.prestataires.tableau"
+          aria-label={t('Gestion des prestataires')}
+          search={search.searchProps}
+          {...search.dataViewProps}
+          items={vendors}
+          total={total}
+          loading={!loaded}
+          isReloading={loaded && loading}
+          error={error}
+          onRetry={() => void loadVendors()}
+          rowKey={vendor => vendor.id}
+          columns={columns}
+          scrollX={800}
+          emptyDescription={t('Aucun prestataire')}
+          emptyAction={{ label: t('Nouveau prestataire'), onClick: handleCreate }}
+          export={{
+            filename: t('Gestion des prestataires'),
+            fetchAll: () =>
               collectAllPages<Vendor>(async (page, limit) => {
                 const { search: term, isActive } = search.filterParams as Record<string, string | undefined>;
                 const reponse = await vendorMaintenanceService.listVendors(effectiveTenantId as string, {
@@ -285,111 +304,133 @@ export const Vendors: React.FC = () => {
                 });
                 return { items: reponse.data ?? [], total: reponse.pagination?.total ?? 0 };
               })
-            }
-            scroll={{ x: 'max-content' }}
-            columns={columns}
-            dataSource={vendors}
-            rowKey="id"
-            pagination={search.tablePagination(total)}
-            loading={loading}
-            locale={search.isFiltered ? undefined : { emptyText: t('Aucun prestataire') }}
-          />
-        </Card>
-
-        <Modal
-          title={editingVendor ? t('Modifier le prestataire') : t('Nouveau prestataire')}
-          open={showForm}
-          onCancel={closeForm}
-          footer={null}
-          width={600}
-          forceRender
-        >
-          <Form form={form} layout="vertical" onFinish={handleSubmit}>
-            <Form.Item
-              name="name"
-              label={t('Nom')}
-              rules={[
-                { required: true, whitespace: true, message: t('Le nom est requis') },
-                {
-                  validator: (_rule, value?: string) =>
-                    !value || value.trim().length >= NAME_MIN
-                      ? Promise.resolve()
-                      : Promise.reject(new Error(t('Le nom doit contenir au moins 2 caractères')))
-                },
-                { max: NAME_MAX, message: t('Le nom ne peut pas dépasser 200 caractères') }
+          }}
+          renderCard={vendor => (
+            <DataCard
+              title={vendor.name}
+              subtitle={vendor.phone || vendor.email || undefined}
+              status={statusTag(vendor.isActive)}
+              fields={[
+                { label: t('Email'), value: vendor.email || '-' },
+                { label: t('Spécialités'), value: (vendor.specialties ?? []).join(', ') || '-' }
               ]}
-            >
-              <Input placeholder={t('Nom du prestataire')} maxLength={NAME_MAX} />
-            </Form.Item>
-
-            <Form.Item
-              name="phone"
-              label={t('Téléphone')}
-              rules={[{ max: PHONE_MAX, message: t('Le numéro de téléphone ne peut pas dépasser 50 caractères') }]}
-            >
-              <Input placeholder={t('Numéro de téléphone')} maxLength={PHONE_MAX} />
-            </Form.Item>
-
-            <Form.Item
-              name="email"
-              label={t('Email')}
-              rules={[
-                { type: 'email', message: t('Email invalide') },
-                { max: EMAIL_MAX, message: t("L'email ne peut pas dépasser 255 caractères") }
-              ]}
-            >
-              <Input placeholder={t('Adresse email')} maxLength={EMAIL_MAX} />
-            </Form.Item>
-
-            <Form.Item
-              name="address"
-              label={t('Adresse')}
-              rules={[{ max: ADDRESS_MAX, message: t("L'adresse ne peut pas dépasser 1000 caractères") }]}
-            >
-              <Input.TextArea rows={3} placeholder={t('Adresse complète')} maxLength={ADDRESS_MAX} />
-            </Form.Item>
-
-            <Form.Item
-              name="specialties"
-              label={t('Spécialités')}
-              rules={[
+              primaryAction={{ label: t('Modifier'), icon: <EditOutlined />, onClick: () => handleEdit(vendor) }}
+              secondaryActions={[
                 {
-                  validator: (_rule, value?: string[]) =>
-                    (value ?? []).every(spec => spec.trim().length <= SPECIALTY_MAX)
-                      ? Promise.resolve()
-                      : Promise.reject(new Error(t('Chaque spécialité ne peut pas dépasser 50 caractères')))
+                  key: 'delete',
+                  danger: true,
+                  icon: <DeleteOutlined />,
+                  label: t('Supprimer définitivement'),
+                  onClick: () => confirmDelete(vendor)
                 }
               ]}
-            >
+              aria-label={vendor.name}
+            />
+          )}
+        />
+      </Card>
+
+      <Modal
+        title={editingVendor ? t('Modifier le prestataire') : t('Nouveau prestataire')}
+        open={showForm}
+        onCancel={closeForm}
+        footer={null}
+        width={600}
+        forceRender
+      >
+        <Form form={form} layout="vertical" onFinish={handleSubmit}>
+          <Form.Item
+            name="name"
+            label={t('Nom')}
+            rules={[
+              { required: true, whitespace: true, message: t('Le nom est requis') },
+              {
+                validator: (_rule, value?: string) =>
+                  !value || value.trim().length >= NAME_MIN
+                    ? Promise.resolve()
+                    : Promise.reject(new Error(t('Le nom doit contenir au moins 2 caractères')))
+              },
+              { max: NAME_MAX, message: t('Le nom ne peut pas dépasser 200 caractères') }
+            ]}
+          >
+            <Input placeholder={t('Nom du prestataire')} maxLength={NAME_MAX} autoComplete="off" />
+          </Form.Item>
+
+          <Form.Item
+            name="phone"
+            label={t('Téléphone')}
+            rules={[{ max: PHONE_MAX, message: t('Le numéro de téléphone ne peut pas dépasser 50 caractères') }]}
+          >
+            <Input
+              placeholder={t('Numéro de téléphone')}
+              maxLength={PHONE_MAX}
+              type="tel"
+              inputMode="tel"
+              autoComplete="off"
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="email"
+            label={t('Email')}
+            rules={[
+              { type: 'email', message: t('Email invalide') },
+              { max: EMAIL_MAX, message: t("L'email ne peut pas dépasser 255 caractères") }
+            ]}
+          >
+            <Input placeholder={t('Adresse email')} maxLength={EMAIL_MAX} inputMode="email" autoComplete="off" />
+          </Form.Item>
+
+          <Form.Item
+            name="address"
+            label={t('Adresse')}
+            rules={[{ max: ADDRESS_MAX, message: t("L'adresse ne peut pas dépasser 1000 caractères") }]}
+          >
+            <Input.TextArea rows={3} placeholder={t('Adresse complète')} maxLength={ADDRESS_MAX} />
+          </Form.Item>
+
+          <Form.Item
+            name="specialties"
+            label={t('Spécialités')}
+            rules={[
+              {
+                validator: (_rule, value?: string[]) =>
+                  (value ?? []).every(spec => spec.trim().length <= SPECIALTY_MAX)
+                    ? Promise.resolve()
+                    : Promise.reject(new Error(t('Chaque spécialité ne peut pas dépasser 50 caractères')))
+              }
+            ]}
+          >
+            <Select
+              mode="tags"
+              placeholder={t('Ajouter des spécialités (ex: Plomberie, Électricité)')}
+              tokenSeparators={[',']}
+            />
+          </Form.Item>
+
+          {editingVendor && (
+            <Form.Item name="isActive" label={t('Statut')}>
               <Select
-                mode="tags"
-                placeholder={t('Ajouter des spécialités (ex: Plomberie, Électricité)')}
-                tokenSeparators={[',']}
+                options={[
+                  { value: true, label: t('Actif') },
+                  { value: false, label: t('Inactif') }
+                ]}
               />
             </Form.Item>
+          )}
 
-            {editingVendor && (
-              <Form.Item name="isActive" label={t('Statut')}>
-                <Select
-                  options={[
-                    { value: true, label: t('Actif') },
-                    { value: false, label: t('Inactif') }
-                  ]}
-                />
-              </Form.Item>
-            )}
-
-            <Form.Item>
-              <Space>
-                <Button type="primary" htmlType="submit" loading={submitting}>
-                  {editingVendor ? t('Enregistrer') : t('Créer')}
-                </Button>
-                <Button onClick={closeForm}>{t('Annuler')}</Button>
-              </Space>
-            </Form.Item>
-          </Form>
-        </Modal>
-      </div>
-    </>
+          <Form.Item>
+            <Space wrap>
+              <Button type="primary" htmlType="submit" loading={submitting} style={{ minHeight: 44 }}>
+                {editingVendor ? t('Enregistrer') : t('Créer')}
+              </Button>
+              <Button onClick={closeForm} disabled={submitting} style={{ minHeight: 44 }}>
+                {t('Annuler')}
+              </Button>
+            </Space>
+          </Form.Item>
+        </Form>
+      </Modal>
+    </div>
   );
 };

@@ -9,7 +9,7 @@ import { WorkProgramTimeline } from '../../components/patrimoine/WorkProgramTime
 import { getPatrimoineOverview, listTenantWorkPrograms } from '../../services/patrimoine-service';
 import { useAuth } from '../../hooks/useAuth';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
-import { PageHeader, StateBlock, SkeletonStats } from '../../components/primitives';
+import { PageHeader, StateBlock, SkeletonStats, namedPageItemRender } from '../../components/primitives';
 import PatrimoineAssetsRoutes from './PatrimoineAssetsRoutes';
 import { t } from '../../i18n/t';
 import { HelpSectionTitle, helpAnchor } from '../../help';
@@ -90,14 +90,20 @@ export const PatrimoineOverviewPage: React.FC = () => {
         <StateBlock
           variant="error"
           description={t('Impossible de charger la vue consolidée.')}
-          actions={[{ label: t('Réessayer'), onClick: () => apercu.refetch(), primary: true }]}
+          onRetry={() => apercu.refetch()}
         />
       ) : enChargement ? (
         <SkeletonStats rows={4} aria-label={t('Patrimoine en cours de chargement')} />
       ) : apercu.data ? (
         <PatrimoineOverview data={apercu.data} />
       ) : (
-        <StateBlock variant="empty" title={t('Aucune donnée de patrimoine')} />
+        <StateBlock
+          variant="empty"
+          title={t('Aucune donnée de patrimoine')}
+          actions={[
+            { label: t('Voir les biens'), onClick: () => navigate(`/tenant/${agence}/properties`), primary: true }
+          ]}
+        />
       )}
 
       {!enChargement && !apercu.error && (
@@ -112,7 +118,7 @@ export const PatrimoineOverviewPage: React.FC = () => {
             <StateBlock
               variant="error"
               description={t('Impossible de charger les programmes de travaux.')}
-              actions={[{ label: t('Réessayer'), onClick: () => travaux.refetch(), primary: true }]}
+              onRetry={() => travaux.refetch()}
             />
           ) : (
             <Spin spinning={travaux.isFetching}>
@@ -131,6 +137,7 @@ export const PatrimoineOverviewPage: React.FC = () => {
                 total={travaux.data?.total ?? 0}
                 onChange={page => upcoming.setPage(page)}
                 showSizeChanger={false}
+                itemRender={namedPageItemRender(upcoming.page)}
                 hideOnSinglePage
                 aria-label={t('Programmes de travaux')}
               />

@@ -1,6 +1,7 @@
 import React from 'react';
-import { Alert, Button, Card, Popconfirm, Space, Tag } from 'antd';
-import { MoneyValue, Table } from '../../primitives';
+import { Button, Card, Space, Tag } from 'antd';
+import { ConfirmAction, MoneyValue, Table } from '../../primitives';
+import { SectionEmpty, SectionError, SUPPRESSION_DEFINITIVE } from './section-parts';
 import type { WorkProgram, WorkProgramStatus } from '../../../types/patrimoine-types';
 import { t } from '../../../i18n/t';
 import { activeLocale } from '../../../i18n/format';
@@ -38,6 +39,8 @@ const ACCESSEURS = {
 interface Props {
   workPrograms: WorkProgram[];
   error?: string;
+  /** Relance le chargement de la rubrique (bouton « Réessayer » de l'état d'erreur). */
+  onRetry?: () => void;
   busyActionId: string | null;
   onAdd: () => void;
   onEdit: (item: WorkProgram) => void;
@@ -45,7 +48,15 @@ interface Props {
 }
 
 /** Tableau de gestion des travaux (la frise est posée au-dessus par l'onglet) : recherche locale `trv.*`. */
-export const WorksSection: React.FC<Props> = ({ workPrograms, error, busyActionId, onAdd, onEdit, onDelete }) => {
+export const WorksSection: React.FC<Props> = ({
+  workPrograms,
+  error,
+  onRetry,
+  busyActionId,
+  onAdd,
+  onEdit,
+  onDelete
+}) => {
   const criteres: SearchCriterion[] = [
     { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Titre, description, chantier…') },
     { key: 'statut', type: 'multiSelect', label: t('Statut'), primary: true, options: OPTIONS_STATUT },
@@ -71,7 +82,7 @@ export const WorksSection: React.FC<Props> = ({ workPrograms, error, busyActionI
       }
     >
       {error ? (
-        <Alert type="error" showIcon message={error} />
+        <SectionError title={t('Impossible de charger les programmes de travaux')} detail={error} onRetry={onRetry} />
       ) : (
         <Table<WorkProgram>
           helpId="patrimoine.bien.travaux"
@@ -80,7 +91,15 @@ export const WorksSection: React.FC<Props> = ({ workPrograms, error, busyActionI
           exportFetchAll={local.exportAll}
           scroll={{ x: 'max-content' }}
           rowKey="id"
-          locale={local.isFiltered ? undefined : { emptyText: t('Aucun programme de travaux pour ce bien.') }}
+          locale={{
+            emptyText: local.isFiltered ? undefined : (
+              <SectionEmpty
+                title={t('Aucun programme de travaux pour ce bien.')}
+                addLabel={t('Ajouter un programme de travaux')}
+                onAdd={onAdd}
+              />
+            )
+          }}
           columns={[
             { title: t('Titre'), dataIndex: 'title' },
             {
@@ -116,15 +135,21 @@ export const WorksSection: React.FC<Props> = ({ workPrograms, error, busyActionI
               title: t('Actions'),
               key: 'actions',
               render: (_: unknown, record: WorkProgram) => (
-                <Space>
+                <Space wrap>
                   <Button size="small" onClick={() => onEdit(record)}>
                     {t('Modifier')}
                   </Button>
-                  <Popconfirm title={t('Supprimer ce programme ?')} onConfirm={() => onDelete(record.id)}>
+                  <ConfirmAction
+                    danger
+                    okText={t('Supprimer')}
+                    title={t('Supprimer le programme « {{titre}} » ?', { titre: record.title })}
+                    description={SUPPRESSION_DEFINITIVE()}
+                    onConfirm={() => onDelete(record.id)}
+                  >
                     <Button size="small" danger loading={busyActionId === `work-${record.id}`}>
                       {t('Supprimer')}
                     </Button>
-                  </Popconfirm>
+                  </ConfirmAction>
                 </Space>
               )
             }

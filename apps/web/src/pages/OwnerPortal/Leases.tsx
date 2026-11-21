@@ -1,18 +1,17 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Card, Space, Typography, Spin, Alert, Empty, Row, Col, List, Tag, Button } from 'antd';
+import { Space, Typography, Row, Col, Tag, Button } from 'antd';
 import { FileTextOutlined, EyeOutlined, SyncOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { ownerPortalService } from '../../services/ownerPortalService';
 import { StatCard } from '../../components/OwnerPortal/StatCard';
-import { ListSearch, StateBlock } from '../../components/primitives';
+import { DataCard, DataView, PageHeader, SkeletonList, SkeletonStats, StateBlock } from '../../components/primitives';
 import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion } from '../../utils/list-search';
 import { useOwnerPropertyOptions } from './useOwnerPropertyOptions';
 import { t } from '../../i18n/t';
-import { HelpSectionTitle } from '../../help';
 
 import { activeLocale, formatFcfa } from '../../i18n/format';
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 interface LeaseItem {
   id: string;
@@ -128,38 +127,46 @@ export default function Leases() {
     predicates
   });
 
-  if (loading) {
+  const refreshButton = (
+    <Button icon={<SyncOutlined />} onClick={loadLeases} loading={loading} aria-label={t('Rafraîchir les baux')}>
+      {t('Actualiser')}
+    </Button>
+  );
+  const header = (
+    <PageHeader title={t('Mes baux')} subtitle={t('Gérez vos contrats de location')} extra={refreshButton} />
+  );
+
+  if (loading && !data) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <Spin size="large" tip={t('Chargement des baux...')} />
-      </div>
+      <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        {header}
+        <SkeletonStats rows={3} aria-label={t('Chargement des baux')} />
+        <SkeletonList rows={4} aria-label={t('Chargement des baux')} />
+      </Space>
     );
   }
 
-  if (error) {
-    return <Alert message={t('Erreur')} description={error} type="error" showIcon />;
-  }
-
-  if (!data) {
-    return <Empty description={t('Aucun bail disponible')} />;
+  if (error || !data) {
+    return (
+      <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        {header}
+        <StateBlock
+          variant="error"
+          title={t('Impossible de charger vos baux')}
+          description={error ?? undefined}
+          actions={[{ label: t('Réessayer'), onClick: loadLeases, primary: true }]}
+        />
+      </Space>
+    );
   }
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      {/* Page Header */}
-      <div className="it-toolbar">
-        <div>
-          <Title level={2}>{t('Mes baux')}</Title>
-          <Text type="secondary">{t('Gérez vos contrats de location')}</Text>
-        </div>
-        <Button icon={<SyncOutlined />} onClick={loadLeases} loading={loading} aria-label={t('Rafraîchir les baux')}>
-          {t('Actualiser')}
-        </Button>
-      </div>
+      {header}
 
-      {/* Lease Summary Cards (T055) */}
+      {/* Lease Summary Cards (T055) : trois compteurs courts, cote a cote meme sur telephone */}
       <Row gutter={[16, 16]}>
-        <Col xs={24} sm={12} lg={8}>
+        <Col xs={24} sm={8}>
           <StatCard
             helpId="portails.proprietaire.baux.indicateurs"
             title={t('Baux actifs')}
@@ -168,7 +175,7 @@ export default function Leases() {
             valueStyle={{ fontSize: 24, color: '#52c41a' }}
           />
         </Col>
-        <Col xs={24} sm={12} lg={8}>
+        <Col xs={12} sm={8}>
           <StatCard
             title={t('Baux terminés')}
             value={data.summary.ended}
@@ -176,7 +183,7 @@ export default function Leases() {
             valueStyle={{ fontSize: 24, color: '#1890ff' }}
           />
         </Col>
-        <Col xs={24} sm={12} lg={8}>
+        <Col xs={12} sm={8}>
           <StatCard
             title={t('Baux suspendus')}
             value={data.summary.suspended}
@@ -186,60 +193,35 @@ export default function Leases() {
         </Col>
       </Row>
 
-      {/* Lease List */}
-      <Card title={<HelpSectionTitle title={t('Liste des baux')} helpId="portails.proprietaire.baux.liste" />}>
-        {/* Recherche locale : la liste arrive en entier (résumé ci-dessus : tous les baux, hors recherche) */}
-        <ListSearch {...local.searchProps} />
-        {local.total > 0 ? (
-          <List
-            dataSource={local.pageItems}
-            pagination={{
-              current: local.page,
-              pageSize: local.pageSize,
-              total: local.total,
-              onChange: local.dataViewProps.onPageChange,
-              showSizeChanger: true
+      {/* Recherche locale : la liste arrive en entier (résumé ci-dessus : tous les baux, hors recherche).
+          Cartes a toutes les largeurs : la carte entiere ouvre le bail. */}
+      <DataView<LeaseItem>
+        layout="grid"
+        helpId="portails.proprietaire.baux.liste"
+        aria-label={t('Liste des baux')}
+        {...local.dataViewProps}
+        export={false}
+        emptyDescription={t('Aucun bail disponible')}
+        rowKey={lease => lease.id}
+        renderCard={lease => (
+          <DataCard
+            title={lease.propertyAddress}
+            subtitle={t('Locataire : {{nom}}', { nom: lease.tenantName })}
+            status={getStatusTag(lease.status)}
+            highlight={t('{{montant}} / mois', { montant: formatCurrency(lease.monthlyRent) })}
+            fields={[
+              { label: t('Début'), value: formatDate(lease.startDate) },
+              { label: t('Fin'), value: lease.endDate ? formatDate(lease.endDate) : t('Non définie') }
+            ]}
+            onOpen={() => navigate(`/owner/leases/${lease.id}`)}
+            primaryAction={{
+              label: t('Voir les détails'),
+              icon: <EyeOutlined />,
+              onClick: () => navigate(`/owner/leases/${lease.id}`)
             }}
-            renderItem={lease => (
-              <List.Item
-                actions={[
-                  <Button type="link" icon={<EyeOutlined />} onClick={() => navigate(`/owner/leases/${lease.id}`)}>
-                    {t('Voir les détails')}
-                  </Button>
-                ]}
-              >
-                <List.Item.Meta
-                  title={
-                    <Space>
-                      <Text strong>{lease.propertyAddress}</Text>
-                      {getStatusTag(lease.status)}
-                    </Space>
-                  }
-                  description={
-                    <Space direction="vertical" size={0}>
-                      <Text type="secondary">{t('Locataire : {{nom}}', { nom: lease.tenantName })}</Text>
-                      <Text type="secondary">
-                        {t('Du')} {formatDate(lease.startDate)} {t('au')}{' '}
-                        {lease.endDate ? formatDate(lease.endDate) : t('Non définie')}
-                      </Text>
-                      <Text type="secondary">
-                        {t('Loyer : {{montant}} / mois', { montant: formatCurrency(lease.monthlyRent) })}
-                      </Text>
-                    </Space>
-                  }
-                />
-              </List.Item>
-            )}
           />
-        ) : local.isFiltered ? (
-          <StateBlock
-            variant="no-results"
-            actions={[{ label: t('Effacer les critères'), onClick: local.clear, primary: true }]}
-          />
-        ) : (
-          <Empty description={t('Aucun bail disponible')} />
         )}
-      </Card>
+      />
     </Space>
   );
 }

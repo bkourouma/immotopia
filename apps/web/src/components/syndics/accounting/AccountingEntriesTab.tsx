@@ -112,7 +112,7 @@ export const AccountingEntriesTab: React.FC<AccountingEntriesTabProps> = ({
     ]
   });
 
-  const { data, isLoading, isFetching, error } = useQuery({
+  const { data, isLoading, isFetching, error, refetch } = useQuery({
     queryKey: accountingKey(tenantId, syndicId, 'ecritures', search.apiParams),
     queryFn: () => listAccountingEntries(tenantId, syndicId, search.apiParams as AccountingEntriesPageQuery),
     placeholderData: keepPreviousData
@@ -161,7 +161,18 @@ export const AccountingEntriesTab: React.FC<AccountingEntriesTabProps> = ({
 
   return (
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-      {error ? <Alert type="error" showIcon message={t('Impossible de charger la comptabilité')} /> : null}
+      {error ? (
+        <Alert
+          type="error"
+          showIcon
+          message={t('Impossible de charger la comptabilité')}
+          action={
+            <Button size="small" onClick={() => void refetch()}>
+              {t('Réessayer')}
+            </Button>
+          }
+        />
+      ) : null}
 
       <Table<JournalEntry>
         helpId="syndic.comptabilite.ecritures"

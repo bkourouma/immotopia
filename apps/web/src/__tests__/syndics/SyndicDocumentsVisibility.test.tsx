@@ -116,7 +116,7 @@ describe('SyndicDocuments : visibilité par document', () => {
     const file = new File(['pdf'], 'reglement.pdf', { type: 'application/pdf' });
     fireEvent.change(dialog.querySelector('input[type="file"]') as HTMLInputElement, { target: { files: [file] } });
     fireEvent.click(checkbox(dialog)); // décoche : choix explicite du gestionnaire
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Ajouter' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Ajouter le document' }));
 
     await waitFor(() => expect(service.createSyndicDocument).toHaveBeenCalled());
     expect(service.createSyndicDocument).toHaveBeenCalledWith(

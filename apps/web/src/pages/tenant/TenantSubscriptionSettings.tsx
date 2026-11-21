@@ -12,7 +12,6 @@ import {
   Progress,
   Select,
   Space,
-  Spin,
   Typography
 } from 'antd';
 import { SendOutlined } from '@ant-design/icons';
@@ -40,8 +39,9 @@ import { formatFcfa } from '../../utils/crm-utils';
 import { activeLocale } from '../../i18n/format';
 import { t } from '../../i18n/t';
 import { HelpSectionTitle } from '../../help';
+import { PageHeader, SkeletonDetail, StateBlock } from '../../components/primitives';
 
-const { Title, Text, Paragraph } = Typography;
+const { Text, Paragraph } = Typography;
 
 // Fonctions et non constantes (comme `phaseLabels`) : un `t()` évalué à l'import resterait
 // figé dans la langue active au chargement de la page (recette du 19/10 : anglais en arabe).
@@ -231,9 +231,7 @@ export const TenantSubscriptionSettings: React.FC = () => {
   if (access.ready && !access.allowed) {
     return (
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        <Title level={2} style={{ margin: 0 }}>
-          {t('Abonnement')}
-        </Title>
+        <PageHeader title={t('Abonnement')} />
         <AccountAccessReserved />
       </Space>
     );
@@ -241,8 +239,8 @@ export const TenantSubscriptionSettings: React.FC = () => {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-8) 0' }}>
-        <Spin size="large" />
+      <div style={{ padding: 'var(--space-4)' }}>
+        <SkeletonDetail aria-label={t("Chargement de l'abonnement")} />
       </div>
     );
   }
@@ -256,15 +254,19 @@ export const TenantSubscriptionSettings: React.FC = () => {
   }
 
   if (error) {
-    return <Alert type="error" showIcon message={error} />;
+    return (
+      <StateBlock
+        variant="error"
+        description={error}
+        actions={[{ label: t('Réessayer'), onClick: () => void loadEntitlements(), primary: true }]}
+      />
+    );
   }
 
   if (!entitlements || entitlements.phase === 'NONE') {
     return (
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        <Title level={2} style={{ margin: 0 }}>
-          {t('Abonnement')}
-        </Title>
+        <PageHeader title={t('Abonnement')} />
         <Alert type="info" showIcon message={t("Cette agence n'a pas encore d'abonnement.")} />
       </Space>
     );
@@ -278,12 +280,10 @@ export const TenantSubscriptionSettings: React.FC = () => {
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      <div>
-        <Title level={2} style={{ margin: 0 }}>
-          {t('Abonnement')}
-        </Title>
-        <Text type="secondary">{t('Les modifications de la formule passent par l’équipe ImmoTopia.')}</Text>
-      </div>
+      <PageHeader
+        title={t('Abonnement')}
+        subtitle={t('Les modifications de la formule passent par l’équipe ImmoTopia.')}
+      />
 
       {entitlements.manualReadOnlyReason ? (
         <Alert

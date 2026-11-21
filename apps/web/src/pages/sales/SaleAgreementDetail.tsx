@@ -391,7 +391,12 @@ export const SaleAgreementDetail: React.FC = () => {
     <>
       <PageHeader
         title={agreement.number}
-        subtitle={`${agreement.propertyLabel} · ${agreement.buyerName}`}
+        subtitle={
+          <Space size="small" wrap>
+            <SaleStatusTag kind="agreement" status={agreement.status} />
+            <span>{`${agreement.propertyLabel} · ${agreement.buyerName}`}</span>
+          </Space>
+        }
         breadcrumbs={[...filAriane, { label: agreement.number }]}
         secondaryActions={
           peutAnnuler
@@ -695,6 +700,14 @@ export const SaleAgreementDetail: React.FC = () => {
         okText={t('Confirmer')}
         cancelText={t('Annuler')}
       >
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 'var(--space-3)' }}
+          message={t('Cette étape conclut la vente du compromis {{number}} et ne peut pas être annulée.', {
+            number: agreement.number
+          })}
+        />
         <Text>{t('Date de l’acte authentique')}</Text>
         <DatePicker
           style={{ width: '100%', marginTop: 'var(--space-2)' }}
@@ -706,18 +719,30 @@ export const SaleAgreementDetail: React.FC = () => {
 
       {/* Annulation */}
       <Modal
-        title={<HelpSectionTitle title={t('Annuler le compromis')} helpId="commercial.ventes.compromis.etapes" />}
+        title={
+          <HelpSectionTitle
+            title={t('Annuler le compromis {{number}}', { number: agreement.number })}
+            helpId="commercial.ventes.compromis.etapes"
+          />
+        }
         open={cancelOpen}
         onCancel={() => setCancelOpen(false)}
         onOk={annuler}
         confirmLoading={cancelling}
         okText={t('Annuler le compromis')}
-        okButtonProps={{ danger: true }}
+        okButtonProps={{ danger: true, disabled: cancelReason.trim().length < 3 }}
         cancelText={t('Fermer')}
       >
-        <Text>{t('Motif d’annulation')}</Text>
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 'var(--space-3)' }}
+          message={t('L’annulation est définitive : un compromis annulé ne peut plus être rouvert.')}
+        />
+        <Text>{t('Motif d’annulation (3 caractères minimum)')}</Text>
         <TextArea
           rows={3}
+          autoFocus
           style={{ marginTop: 'var(--space-2)' }}
           value={cancelReason}
           onChange={e => setCancelReason(e.target.value)}

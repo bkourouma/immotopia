@@ -1,21 +1,6 @@
 import React, { Suspense, lazy, useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
-import {
-  Card,
-  Button,
-  Space,
-  Row,
-  Col,
-  Typography,
-  Alert,
-  Spin,
-  Image,
-  Carousel,
-  Descriptions,
-  Empty,
-  Tabs,
-  Badge
-} from 'antd';
+import { Card, Space, Row, Col, Typography, Spin, Image, Carousel, Descriptions, Empty, Tabs, Badge } from 'antd';
 import type { DescriptionsProps, MenuProps, TabsProps } from 'antd';
 import {
   EditOutlined,
@@ -55,7 +40,8 @@ import { PropertyMandatesTab } from '../../components/properties/PropertyMandate
 import { API_URL } from '../../config/api';
 import { switchPropertyTab, withTabLifecycle } from './property-detail-tabs';
 
-import { PageHeader, StatusTag } from '../../components/primitives';
+import { PageHeader, StateBlock, StatusTag, SkeletonDetail } from '../../components/primitives';
+import { apiErrorText } from '../../components/properties/property-api-errors';
 import { HelpButton, HelpSectionTitle, helpAnchor } from '../../help';
 import { t } from '../../i18n/t';
 import { localizedRecord } from '../../i18n/localized';
@@ -258,7 +244,7 @@ export const PropertyDetail: React.FC = () => {
       setProperty(data);
       await loadMedia();
     } catch (err: any) {
-      setError(err.response?.data?.error || t('Erreur lors du chargement de la propriété'));
+      setError(apiErrorText(err, t('Erreur lors du chargement de la propriété')));
     } finally {
       setLoading(false);
     }
@@ -302,35 +288,29 @@ export const PropertyDetail: React.FC = () => {
 
   if (!effectiveTenantId) {
     return (
-      <div style={{ textAlign: 'center', padding: '48px 0' }}>
-        <Text type="secondary">{t('Aucune agence sélectionnée')}</Text>
-      </div>
+      <StateBlock
+        variant="empty"
+        title={t('Aucune agence sélectionnée')}
+        description={t('Votre compte doit être rattaché à une agence pour consulter son portefeuille.')}
+      />
     );
   }
 
   if (loading) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <Spin size="large" />
-      </div>
-    );
+    return <SkeletonDetail aria-label={t('Chargement de la fiche du bien')} />;
   }
 
   if (error || !property) {
     return (
-      <div style={{ textAlign: 'center', padding: '48px 0' }}>
-        <Alert
-          message={t('Erreur')}
-          description={error || t('Propriété non trouvée')}
-          type="error"
-          showIcon
-          action={
-            <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/properties`)}>
-              {t('Retour à la liste')}
-            </Button>
-          }
-        />
-      </div>
+      <StateBlock
+        variant="error"
+        title={error ? t('Impossible de charger ce bien') : t('Bien introuvable')}
+        description={error || t("Ce bien n'existe plus ou a été déplacé.")}
+        actions={[
+          { label: t('Réessayer'), onClick: () => void loadProperty(), primary: true },
+          { label: t('Retour à la liste'), onClick: () => navigate(`/tenant/${effectiveTenantId}/properties`) }
+        ]}
+      />
     );
   }
 
@@ -486,14 +466,14 @@ export const PropertyDetail: React.FC = () => {
             description={t('Aucune photo pour ce bien')}
           />
         ) : (
-          <Carousel autoplay>
+          <Carousel arrows>
             {photos.map(photo => (
               <div key={photo.id}>
                 <Image
                   src={getMediaUrl(photo)}
                   alt={photo.fileName}
                   style={{ width: '100%', height: 400, objectFit: 'cover' }}
-                  preview={{ mask: 'Voir' }}
+                  preview={{ mask: t('Voir') }}
                 />
               </div>
             ))}
@@ -773,12 +753,12 @@ export const PropertyDetail: React.FC = () => {
             </Col>
             <Col xs={24} md={estImmeuble && !prix ? 24 : 14}>
               <Space size="large" wrap>
-                {property.surfaceArea && <ChiffreCle valeur={`${property.surfaceArea} m²`} libelle="Surface" />}
+                {property.surfaceArea && <ChiffreCle valeur={`${property.surfaceArea} m²`} libelle={t('Surface')} />}
                 {property.rooms && <ChiffreCle valeur={property.rooms} libelle={t('Pièces')} />}
-                {property.bedrooms && <ChiffreCle valeur={property.bedrooms} libelle="Chambres" />}
+                {property.bedrooms && <ChiffreCle valeur={property.bedrooms} libelle={t('Chambres')} />}
                 {property.bathrooms && <ChiffreCle valeur={property.bathrooms} libelle={t('Salles de bain')} />}
                 {estImmeuble && property._count?.containerChildren ? (
-                  <ChiffreCle valeur={property._count.containerChildren} libelle="Lots" />
+                  <ChiffreCle valeur={property._count.containerChildren} libelle={t('Lots')} />
                 ) : null}
               </Space>
             </Col>

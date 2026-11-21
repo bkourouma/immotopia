@@ -1,11 +1,14 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, App, Button, Card, Modal, Popconfirm, Space, Spin, Typography } from 'antd';
+import { App, Button, Card, Modal, Space, Typography } from 'antd';
 import { createMandate, getProperty, getPropertyMandates, revokeMandate } from '../../services/property-service';
 import dayjs from 'dayjs';
 import { PropertyOwnershipType } from '../../types/property-types';
 import { PropertyMandateForm } from './PropertyMandateForm';
 import { t } from '../../i18n/t';
 import { HelpSectionTitle } from '../../help';
+import { ConfirmAction, StateBlock } from '../primitives';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { apiErrorText } from './property-api-errors';
 import { dateFormat } from '../../i18n/format';
 
 const { Text } = Typography;
@@ -34,6 +37,7 @@ interface Mandat {
  */
 export const PropertyMandateCard: React.FC<PropertyMandateCardProps> = ({ tenantId, propertyId }) => {
   const { message } = App.useApp();
+  const { isMobile } = useBreakpoint();
 
   const [applicable, setApplicable] = useState(false);
   const [chargement, setChargement] = useState(true);
@@ -55,7 +59,7 @@ export const PropertyMandateCard: React.FC<PropertyMandateCardProps> = ({ tenant
       setMandats(await getPropertyMandates(tenantId, propertyId));
     } catch (e: any) {
       setApplicable(false);
-      setErreur(e?.response?.data?.error || e?.response?.data?.message || null);
+      setErreur(apiErrorText(e, t('Impossible de charger le mandat de gestion.')));
     } finally {
       setChargement(false);
     }
@@ -69,7 +73,14 @@ export const PropertyMandateCard: React.FC<PropertyMandateCardProps> = ({ tenant
     return null;
   }
   if (!applicable) {
-    return erreur ? <Alert type="error" message={erreur} showIcon /> : null;
+    return erreur ? (
+      <StateBlock
+        variant="error"
+        title={t('Mandat de gestion indisponible')}
+        description={erreur}
+        onRetry={() => void charger()}
+      />
+    ) : null;
   }
 
   const mandatActif = mandats[0];
@@ -93,7 +104,7 @@ export const PropertyMandateCard: React.FC<PropertyMandateCardProps> = ({ tenant
       message.success(t('Mandat de gestion révoqué.'));
       await charger();
     } catch (e: any) {
-      message.error(e?.response?.data?.error || t('Une erreur est survenue lors de la révocation du mandat'));
+      message.error(apiErrorText(e, t('Une erreur est survenue lors de la révocation du mandat')));
     } finally {
       setRevocation(false);
     }
@@ -101,9 +112,7 @@ export const PropertyMandateCard: React.FC<PropertyMandateCardProps> = ({ tenant
 
   return (
     <Card title={<HelpSectionTitle title={t('Mandat de gestion')} helpId="commercial.biens.detail.mandats" />}>
-      {chargement ? (
-        <Spin />
-      ) : (
+      {
         <Space direction="vertical" style={{ width: '100%' }} size="middle">
           {mandatActif ? (
             <Space direction="vertical" size={2}>
@@ -131,24 +140,26 @@ export const PropertyMandateCard: React.FC<PropertyMandateCardProps> = ({ tenant
           )}
 
           {mandatActif ? (
-            <Popconfirm
-              title={t('Révoquer le mandat de gestion ?')}
+            <ConfirmAction
+              title={t('Révoquer le mandat de {{nom}} ?', {
+                nom: mandatActif.owner?.fullName || mandatActif.owner?.email || t('ce propriétaire')
+              })}
+              description={t("L'agence ne gérera plus ce bien. Vous pourrez créer un nouveau mandat ensuite.")}
               okText={t('Révoquer')}
-              cancelText={t('Annuler')}
-              okButtonProps={{ danger: true }}
+              danger
               onConfirm={revoquer}
             >
-              <Button danger loading={revocation}>
+              <Button danger loading={revocation} disabled={revocation}>
                 {t('Révoquer le mandat')}
               </Button>
-            </Popconfirm>
+            </ConfirmAction>
           ) : (
             <Button type="primary" onClick={() => setModaleOuverte(true)}>
               {t('Créer un mandat de gestion')}
             </Button>
           )}
         </Space>
-      )}
+      }
 
       <Modal
         title={t('Créer un mandat de gestion')}
@@ -156,6 +167,8 @@ export const PropertyMandateCard: React.FC<PropertyMandateCardProps> = ({ tenant
         onCancel={() => setModaleOuverte(false)}
         footer={null}
         destroyOnHidden
+        width={isMobile ? '100%' : 520}
+        style={isMobile ? { top: 0, maxWidth: '100vw', margin: 0 } : undefined}
       >
         <PropertyMandateForm propertyId={propertyId} onSubmit={creer} onCancel={() => setModaleOuverte(false)} />
       </Modal>

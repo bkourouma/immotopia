@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Alert, App, Button, Descriptions, Popconfirm, Skeleton, Space, Tag, Tooltip, Typography } from 'antd';
+import { Alert, App, Button, Descriptions, Space, Tag, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type {
@@ -15,7 +15,7 @@ import type {
   SettleLineInput,
   SkippedMandateDto
 } from '../../../services/direct-debit-service';
-import { formatMoney, Table } from '../../primitives';
+import { formatMoney, SkeletonDetail, StateBlock, StepRail, Table, useConfirmAction } from '../../primitives';
 import { useLocalListSearch } from '../../../utils/list-search';
 import type { SearchCriterion } from '../../../utils/list-search';
 import { ReasonModal } from './ReasonModal';
@@ -67,27 +67,52 @@ const POLL_MAX_MS = 2 * 60 * 1000;
 type Action =
   'refresh' | 'validate' | 'resend' | 'export' | 'submit' | 'cancel' | 'line' | 'settle' | 'reject' | 'settleAll';
 
-/** Bouton dont le geste est confirmé par une infobulle de confirmation. */
+/**
+ * Bouton dont le geste est confirmé par une fenêtre (boutons pleine largeur sous
+ * 992 px). Le titre nomme la remise, le texte donne la conséquence.
+ */
 const ConfirmButton: React.FC<{
   label: string;
+  /** Question qui nomme l'objet (la remise). */
+  title: string;
   confirm: React.ReactNode;
-  onConfirm: () => void;
+  onConfirm: () => void | Promise<unknown>;
   loading?: boolean;
   disabled?: boolean;
   type?: 'primary' | 'default';
-}> = ({ label, confirm, onConfirm, loading, disabled, type = 'default' }) => (
-  <Popconfirm
-    title={<div style={{ maxWidth: 380 }}>{confirm}</div>}
-    okText={t('Confirmer')}
-    cancelText={t('Fermer')}
-    onConfirm={onConfirm}
-    disabled={disabled || loading}
-  >
-    <Button type={type} loading={loading} disabled={disabled}>
+}> = ({ label, title, confirm, onConfirm, loading, disabled, type = 'default' }) => {
+  const confirmAction = useConfirmAction();
+  return (
+    <Button
+      type={type}
+      loading={loading}
+      disabled={disabled}
+      style={{ minHeight: 44 }}
+      onClick={() => confirmAction({ title, description: confirm, okText: t('Confirmer'), onConfirm })}
+    >
       {label}
     </Button>
-  </Popconfirm>
-);
+  );
+};
+
+/** Étapes du cycle de vie d'une remise (hors annulation). */
+const LIFECYCLE: RemittanceStatus[] = ['DRAFT', 'VALIDATED', 'EXPORTED', 'SUBMITTED'];
+
+/** Ce qu'il reste à faire, en une phrase, selon l'avancement. */
+function nextStepHint(status: RemittanceStatus): string | null {
+  switch (status) {
+    case 'DRAFT':
+      return t('Prochaine étape : vérifier les lignes, puis valider la remise.');
+    case 'VALIDATED':
+      return t('Prochaine étape : produire le fichier de remise.');
+    case 'EXPORTED':
+      return t('Prochaine étape : charger le fichier sur votre banque, puis marquer la remise comme déposée.');
+    case 'SUBMITTED':
+      return t('Prochaine étape : constater les règlements et les rejets à réception du retour de la banque.');
+    default:
+      return null;
+  }
+}
 
 type DetailScope = 'RENTAL_LEASE' | 'SYNDIC_LOT';
 
@@ -210,7 +235,8 @@ export const RemittanceDetailView: React.FC<RemittanceDetailViewProps> = ({
   const {
     data: remittance,
     isPending,
-    error
+    error,
+    refetch
   } = useQuery({
     queryKey: key,
     queryFn: () => api.get(),
@@ -288,7 +314,7 @@ export const RemittanceDetailView: React.FC<RemittanceDetailViewProps> = ({
     return (
       <>
         {renderHeader(null)}
-        <Skeleton active />
+        <SkeletonDetail />
       </>
     );
   }
@@ -297,7 +323,12 @@ export const RemittanceDetailView: React.FC<RemittanceDetailViewProps> = ({
     return (
       <>
         {renderHeader(null)}
-        <Alert type="error" showIcon message={apiErrorMessage(error, t('Erreur lors du chargement de la remise'))} />
+        <StateBlock
+          variant="error"
+          title={t('Impossible de charger la remise')}
+          description={apiErrorMessage(error, t('Erreur lors du chargement de la remise'))}
+          actions={[{ label: t('Réessayer'), onClick: () => void refetch(), primary: true }]}
+        />
       </>
     );
   }
@@ -763,22 +794,43 @@ export const RemittanceDetailView: React.FC<RemittanceDetailViewProps> = ({
           />
         )}
 
+        {status !== 'CANCELED' && (
+          <div aria-label={t('Avancement de la remise')} role="group">
+            <StepRail
+              items={[
+                { title: t('Brouillon') },
+                { title: t('Validée') },
+                { title: t('Fichier produit') },
+                { title: t('Déposée à la banque') }
+              ]}
+              current={LIFECYCLE.indexOf(status)}
+            />
+            {canManage && nextStepHint(status) && (
+              <Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
+                {nextStepHint(status)}
+              </Text>
+            )}
+          </div>
+        )}
+
         {canManage && (
           <Space wrap {...helpAnchor('remise-actions')}>
             {status === 'DRAFT' && (
               <>
                 <ConfirmButton
                   label={t('Actualiser')}
+                  title={t('Actualiser la remise {{reference}} ?', { reference: remittance.reference })}
                   confirm={t("Recalculer les lignes à partir des échéances et des mandats d'aujourd'hui ?")}
-                  onConfirm={() => void handleRefresh()}
+                  onConfirm={() => handleRefresh()}
                   loading={busy === 'refresh'}
                   disabled={anyBusy}
                 />
                 <ConfirmButton
                   type="primary"
                   label={t('Valider la remise')}
+                  title={t('Valider la remise {{reference}} ?', { reference: remittance.reference })}
                   confirm={t('Valider cette remise ? Les débiteurs recevront un avis de prélèvement par e-mail.')}
-                  onConfirm={() => void handleValidate()}
+                  onConfirm={() => handleValidate()}
                   loading={busy === 'validate'}
                   disabled={anyBusy || pendingLines.length === 0}
                 />
@@ -788,6 +840,7 @@ export const RemittanceDetailView: React.FC<RemittanceDetailViewProps> = ({
               <ConfirmButton
                 type="primary"
                 label={t('Produire le fichier')}
+                title={t('Produire le fichier de la remise {{reference}} ?', { reference: remittance.reference })}
                 confirm={
                   <>
                     <div>
@@ -813,7 +866,7 @@ export const RemittanceDetailView: React.FC<RemittanceDetailViewProps> = ({
                     )}
                   </>
                 }
-                onConfirm={() => void handleExport(true)}
+                onConfirm={() => handleExport(true)}
                 loading={busy === 'export'}
                 disabled={anyBusy}
               />
@@ -821,6 +874,9 @@ export const RemittanceDetailView: React.FC<RemittanceDetailViewProps> = ({
             {(status === 'EXPORTED' || status === 'SUBMITTED') && (
               <ConfirmButton
                 label={t('Télécharger à nouveau le fichier')}
+                title={t('Télécharger à nouveau le fichier de la remise {{reference}} ?', {
+                  reference: remittance.reference
+                })}
                 confirm={
                   <>
                     <div>{t('Télécharger à nouveau le fichier de remise ? Il contient les IBAN complets.')}</div>
@@ -840,7 +896,7 @@ export const RemittanceDetailView: React.FC<RemittanceDetailViewProps> = ({
                     )}
                   </>
                 }
-                onConfirm={() => void handleExport(false)}
+                onConfirm={() => handleExport(false)}
                 loading={busy === 'export'}
                 disabled={anyBusy}
               />
@@ -849,8 +905,11 @@ export const RemittanceDetailView: React.FC<RemittanceDetailViewProps> = ({
               <ConfirmButton
                 type="primary"
                 label={t('Marquer comme déposée à la banque')}
-                confirm={t('Confirmer que le fichier a été chargé sur votre banque en ligne ?')}
-                onConfirm={() => void handleSubmit()}
+                title={t('Marquer la remise {{reference}} comme déposée ?', { reference: remittance.reference })}
+                confirm={t(
+                  'Confirmer que le fichier a été chargé sur votre banque en ligne ? Les constats de règlement et de rejet deviennent alors possibles.'
+                )}
+                onConfirm={() => handleSubmit()}
                 loading={busy === 'submit'}
                 disabled={anyBusy}
               />
@@ -858,14 +917,16 @@ export const RemittanceDetailView: React.FC<RemittanceDetailViewProps> = ({
             {(status === 'VALIDATED' || status === 'EXPORTED') && (
               <ConfirmButton
                 label={t('Renvoyer les avis de prélèvement')}
+                title={t('Renvoyer les avis de la remise {{reference}} ?', { reference: remittance.reference })}
                 confirm={t('Renvoyer les avis de prélèvement aux débiteurs qui ne les ont pas reçus ?')}
-                onConfirm={() => void handleResend()}
+                onConfirm={() => handleResend()}
                 loading={busy === 'resend'}
                 disabled={anyBusy}
               />
             )}
             {canRecordReturn && (
               <Button
+                style={{ minHeight: 44 }}
                 disabled={anyBusy || pendingLines.length === 0}
                 onClick={() => {
                   setDialogError(null);
@@ -879,6 +940,7 @@ export const RemittanceDetailView: React.FC<RemittanceDetailViewProps> = ({
             {canCancel && (
               <Button
                 danger
+                style={{ minHeight: 44 }}
                 disabled={anyBusy}
                 onClick={() => {
                   setDialogError(null);

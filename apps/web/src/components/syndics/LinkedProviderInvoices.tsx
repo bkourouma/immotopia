@@ -98,7 +98,11 @@ export const LinkedProviderInvoices: React.FC<LinkedProviderInvoicesProps> = ({
       key: 'actions',
       align: 'end',
       render: (_: unknown, row) => (
-        <Button size="small" onClick={() => setOpenInvoiceId(row.id)}>
+        <Button
+          size="small"
+          aria-label={t('Ouvrir la facture {{number}}', { number: row.number })}
+          onClick={() => setOpenInvoiceId(row.id)}
+        >
           {t('Ouvrir')}
         </Button>
       )
@@ -112,7 +116,20 @@ export const LinkedProviderInvoices: React.FC<LinkedProviderInvoicesProps> = ({
       </div>
     );
   }
-  if (error) return <Alert type="error" message={error} showIcon />;
+  if (error) {
+    return (
+      <Alert
+        type="error"
+        message={error}
+        showIcon
+        action={
+          <Button size="small" onClick={() => void load()}>
+            {t('Réessayer')}
+          </Button>
+        }
+      />
+    );
+  }
 
   return (
     <>
@@ -124,6 +141,7 @@ export const LinkedProviderInvoices: React.FC<LinkedProviderInvoicesProps> = ({
         size="small"
         dataSource={items}
         columns={columns}
+        scroll={{ x: 'max-content' }}
         pagination={{ pageSize: 5, hideOnSinglePage: true }}
         locale={{ emptyText: t('Aucune facture liée') }}
       />

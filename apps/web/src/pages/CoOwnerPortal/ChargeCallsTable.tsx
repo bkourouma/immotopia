@@ -14,6 +14,7 @@ import {
   type CoOwnerChargeCall
 } from '../../services/coowner-portal-service';
 import { formatChargePeriod } from '../../utils/charge-period';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { describeDownloadError } from '../../utils/download-error';
 import { useLocalListSearch } from '../../utils/list-search';
 import { useListSearch } from '../../hooks/useListSearch';
@@ -31,6 +32,7 @@ import { collectAllPages } from '../../utils/table-export/collect';
  */
 const NoticeButton: React.FC<{ call: CoOwnerChargeCall }> = ({ call }) => {
   const [state, setState] = useState<'idle' | 'loading' | 'unavailable'>('idle');
+  const { isMobile } = useBreakpoint();
 
   if (state === 'unavailable') {
     return <span style={{ color: 'var(--text-secondary)' }}>{t('Avis indisponible')}</span>;
@@ -45,6 +47,7 @@ const NoticeButton: React.FC<{ call: CoOwnerChargeCall }> = ({ call }) => {
       );
       saveBlob(blob, filename);
       setState('idle');
+      feedback.success(t("Avis d'appel téléchargé."));
     } catch (error) {
       if (isNotFound(error)) {
         setState('unavailable');
@@ -56,7 +59,12 @@ const NoticeButton: React.FC<{ call: CoOwnerChargeCall }> = ({ call }) => {
   };
 
   return (
-    <Button icon={<FileTextOutlined />} loading={state === 'loading'} onClick={() => void download()}>
+    <Button
+      icon={<FileTextOutlined />}
+      loading={state === 'loading'}
+      onClick={() => void download()}
+      style={isMobile ? { minHeight: 44 } : undefined}
+    >
       {t("Avis d'appel (PDF)")}
     </Button>
   );
@@ -86,12 +94,18 @@ const OnlineCheckoutTag: React.FC<{ call: CoOwnerChargeCall; onResume?: (call: C
   call,
   onResume
 }) => {
+  const { isMobile } = useBreakpoint();
   if (call.onlineCheckout === 'IN_PROGRESS') {
     return (
       <>
         <Tag color="processing">{t('Paiement en cours')}</Tag>
         {onResume && call.onlineCheckoutCode ? (
-          <Button size="small" type="link" onClick={() => onResume(call)}>
+          <Button
+            size={isMobile ? 'middle' : 'small'}
+            type="link"
+            style={isMobile ? { minHeight: 44 } : undefined}
+            onClick={() => onResume(call)}
+          >
             {t('Reprendre le paiement')}
           </Button>
         ) : null}

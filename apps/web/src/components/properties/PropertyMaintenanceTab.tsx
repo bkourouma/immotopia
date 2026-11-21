@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Space, Typography, Empty, Tag, Button } from 'antd';
-import { Table } from '../primitives';
+import { Space, Typography, Tag, Button } from 'antd';
+import { StateBlock, Table } from '../primitives';
+import { apiErrorText } from './property-api-errors';
 import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion } from '../../utils/list-search';
 import { TicketStatusBadge } from '../maintenance/TicketStatusBadge';
@@ -58,6 +59,7 @@ export const PropertyMaintenanceTab: React.FC<PropertyMaintenanceTabProps> = ({ 
   const navigate = useNavigate();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     if (tenantId && propertyId) {
@@ -124,6 +126,7 @@ export const PropertyMaintenanceTab: React.FC<PropertyMaintenanceTabProps> = ({ 
     if (!tenantId || !propertyId) return;
 
     setLoading(true);
+    setLoadError(null);
     try {
       const response = await propertyMaintenanceService.getHistory(tenantId, propertyId);
       if (response.success) {
@@ -131,6 +134,8 @@ export const PropertyMaintenanceTab: React.FC<PropertyMaintenanceTabProps> = ({ 
       }
     } catch (error) {
       console.error('Error loading maintenance history:', error);
+      // Sans cela, l'onglet affichait « aucun ticket » : l'agent croyait le bien sans historique.
+      setLoadError(apiErrorText(error, t("Impossible de charger l'historique de maintenance.")));
     } finally {
       setLoading(false);
     }
@@ -142,7 +147,16 @@ export const PropertyMaintenanceTab: React.FC<PropertyMaintenanceTabProps> = ({ 
       dataIndex: 'title',
       key: 'title',
       render: (text: string, record: Ticket) => (
-        <Button type="link" onClick={() => navigate(`/tenant/${tenantId}/admin/maintenance/tickets/${record.id}`)}>
+        <Button
+          type="link"
+          style={{
+            minHeight: 'var(--touch-target-min, 44px)',
+            paddingInline: 0,
+            whiteSpace: 'normal',
+            textAlign: 'start'
+          }}
+          onClick={() => navigate(`/tenant/${tenantId}/admin/maintenance/tickets/${record.id}`)}
+        >
           {text}
         </Button>
       )
@@ -188,10 +202,24 @@ export const PropertyMaintenanceTab: React.FC<PropertyMaintenanceTabProps> = ({ 
           </Title>
         </div>
 
-        {tickets.length === 0 && !loading ? (
-          <Empty
-            description={t('Aucun ticket de maintenance pour cette propriété')}
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
+        {loadError ? (
+          <StateBlock
+            variant="error"
+            title={t("Impossible de charger l'historique de maintenance")}
+            description={loadError}
+            onRetry={() => void loadHistory()}
+          />
+        ) : tickets.length === 0 && !loading ? (
+          <StateBlock
+            variant="empty"
+            title={t('Aucun ticket de maintenance pour cette propriété')}
+            description={t('Les pannes et travaux signalés pour ce bien apparaîtront ici.')}
+            actions={[
+              {
+                label: t('Voir tous les tickets'),
+                onClick: () => navigate(`/tenant/${tenantId}/admin/maintenance/tickets`)
+              }
+            ]}
           />
         ) : (
           <Table

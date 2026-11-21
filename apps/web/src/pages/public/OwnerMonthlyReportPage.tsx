@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import { Button, Card, Descriptions, Pagination, Result, Space, Spin, Tag, Typography } from 'antd';
+import { Button, Card, Descriptions, Pagination, Space, Tag, Typography } from 'antd';
 import { fetchPublicOwnerMonthlyReport } from '../../services/patrimoine-service';
 import type { OwnerMonthlyReportDto } from '../../types/patrimoine-types';
-import { ListSearch, MoneyValue, StateBlock, Table } from '../../components/primitives';
+import { ListSearch, MoneyValue, namedPageItemRender, StateBlock, Table } from '../../components/primitives';
 import { useLocalListSearch } from '../../utils/list-search';
 import { activeLocale } from '../../i18n/format';
 import { t } from '../../i18n/t';
+import { PublicLinkProblem, PublicLoading } from './PublicLinkState';
 
 const { Title, Text } = Typography;
 
@@ -176,6 +177,7 @@ const SearchableProperties: React.FC<PropertiesProps> = ({ properties, currency,
           total={local.total}
           showSizeChanger={false}
           hideOnSinglePage
+          itemRender={namedPageItemRender(local.page)}
           onChange={page => local.setPage(page)}
         />
       </div>
@@ -377,23 +379,15 @@ export const OwnerMonthlyReportPage: React.FC = () => {
     >
       <style>{PRINT_CSS}</style>
       <div style={{ maxWidth: 960, marginInline: 'auto' }}>
-        {view.kind === 'loading' ? (
-          <div style={{ textAlign: 'center', padding: 64 }}>
-            <Spin size="large" aria-label={t('Chargement du rapport')} />
-          </div>
-        ) : null}
+        {view.kind === 'loading' ? <PublicLoading label={t('Chargement du rapport')} /> : null}
         {view.kind === 'invalid' ? (
-          <Result
-            status="warning"
+          <PublicLinkProblem
+            kind="invalid"
             title={t('Ce lien est invalide ou a expiré. Demandez un nouveau lien à votre agence.')}
           />
         ) : null}
-        {view.kind === 'rate_limited' ? (
-          <Result status="warning" title={t('Trop de tentatives, réessayez dans quelques minutes.')} />
-        ) : null}
-        {view.kind === 'unavailable' ? (
-          <Result status="warning" title={t('Service momentanément indisponible, réessayez dans quelques minutes.')} />
-        ) : null}
+        {view.kind === 'rate_limited' ? <PublicLinkProblem kind="rate_limited" /> : null}
+        {view.kind === 'unavailable' ? <PublicLinkProblem kind="unavailable" /> : null}
         {view.kind === 'ok' ? (
           <>
             <div className="owner-report-no-print" style={{ textAlign: 'end', marginBlockEnd: 16 }}>

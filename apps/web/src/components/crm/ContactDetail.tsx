@@ -1,26 +1,10 @@
 import { dealTypeLabel, dealStageLabel } from '../../utils/crm-labels';
-import { formatMoney } from '../primitives';
+import { formatMoney, PageHeader, StateBlock, SkeletonDetail, ConfirmAction } from '../primitives';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { contactDisplayName } from '../../utils/contact-display';
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import {
-  App,
-  Card,
-  Button,
-  Space,
-  Typography,
-  Tag,
-  Avatar,
-  Alert,
-  Spin,
-  Empty,
-  Row,
-  Col,
-  Descriptions,
-  Popconfirm,
-  Modal,
-  Divider
-} from 'antd';
+import { App, Card, Button, Space, Typography, Tag, Empty, Row, Col, Descriptions, Modal } from 'antd';
 import {
   UserOutlined,
   MailOutlined,
@@ -33,9 +17,8 @@ import {
   PlusOutlined,
   DeleteOutlined,
   CheckCircleOutlined,
-  CloseOutlined,
   MessageOutlined,
-  ArrowLeftOutlined
+  WhatsAppOutlined
 } from '@ant-design/icons';
 import {
   getContact,
@@ -62,7 +45,7 @@ import { getContactRoleLabel } from '../../utils/crm-utils';
 import { HelpSectionTitle } from '../../help';
 
 import { activeLocale } from '../../i18n/format';
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 interface ContactDetailProps {
   tenantId: string;
@@ -73,6 +56,7 @@ export const ContactDetail: React.FC<ContactDetailProps> = ({ tenantId, contactI
   const { message } = App.useApp();
 
   const navigate = useNavigate();
+  const { isDesktop } = useBreakpoint();
   // Affaires et activités relèvent de la fonctionnalité CRM, pas du socle.
   const { has: possede } = useAgencyFeatures(tenantId);
   const [contact, setContact] = useState<CrmContactDetail | null>(null);
@@ -166,7 +150,7 @@ export const ContactDetail: React.FC<ContactDetailProps> = ({ tenantId, contactI
       }
     } catch (err: any) {
       console.error('Error loading contact:', err);
-      setError(err.response?.data?.message || t('Erreur lors du chargement du contact'));
+      setError(t('Impossible de charger ce contact. Vérifiez votre connexion puis réessayez.'));
     } finally {
       setLoading(false);
     }
@@ -187,92 +171,89 @@ export const ContactDetail: React.FC<ContactDetailProps> = ({ tenantId, contactI
     return dealStageLabel(stage);
   };
 
-  if (loading) {
-    return (
-      <div style={{ textAlign: 'center', padding: '48px 0' }}>
-        <Spin size="large" />
-        <div style={{ marginTop: 16 }}>
-          <Text type="secondary">{t('Chargement du contact...')}</Text>
-        </div>
-      </div>
-    );
+  if (loading && !contact) {
+    return <SkeletonDetail aria-label={t('Chargement du contact')} />;
   }
 
   if (error) {
-    return (
-      <Alert
-        message={t('Erreur')}
-        description={error}
-        type="error"
-        showIcon
-        action={
-          <Button size="small" onClick={loadContact}>
-            {t('Réessayer')}
-          </Button>
-        }
-      />
-    );
+    return <StateBlock variant="error" description={error} onRetry={loadContact} />;
   }
 
   if (!contact) {
     return (
-      <Empty
-        description={t('Contact non trouvé')}
-        image={<UserOutlined style={{ fontSize: 64, color: '#d9d9d9' }} />}
+      <StateBlock
+        variant="empty"
+        title={t('Contact non trouvé')}
+        description={t("Ce contact n'existe plus ou n'appartient pas à votre agence.")}
+        actions={[
+          {
+            label: t('Retour aux contacts'),
+            onClick: () => navigate(`/tenant/${tenantId}/crm/contacts`),
+            primary: true
+          }
+        ]}
       />
     );
   }
 
   const displayName = contactDisplayName(contact);
 
+  const phoneToCall = contact.phonePrimary || contact.phone || '';
+  const whatsappDigits = (contact.whatsappNumber || '').replace(/\D/g, '');
   const hasActiveRoles = contact.roles && contact.roles.some((r: any) => r.active);
   const canConvert = contact.status === 'LEAD' || (contact.status === 'ACTIVE_CLIENT' && !hasActiveRoles);
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      {/* Header */}
+      {/* En-tête : nom, statut, action principale, puis gestes rapides (appeler, WhatsApp, e-mail) */}
+      <PageHeader
+        title={displayName}
+        subtitle={getStatusTag(contact.status)}
+        breadcrumbs={[{ label: t('Contacts'), to: `/tenant/${tenantId}/crm/contacts` }, { label: displayName }]}
+        primaryAction={{
+          label: t('Modifier'),
+          icon: <EditOutlined />,
+          onClick: () => navigate(`/tenant/${tenantId}/crm/contacts/${contactId}/edit`)
+        }}
+        secondaryActions={
+          canConvert
+            ? [{ key: 'convert', label: t('Convertir'), onClick: () => setShowConvertDialog(true) }]
+            : undefined
+        }
+      />
       <Card>
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'flex-start',
-              flexWrap: 'wrap',
-              gap: 16
-            }}
-          >
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <Space>
-                <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/tenant/${tenantId}/crm/contacts`)}>
-                  {t('Retour')}
+          {(phoneToCall || whatsappDigits || contact.email) && (
+            <Space
+              wrap
+              size="small"
+              style={{ width: '100%' }}
+              role="group"
+              aria-label={t('Contacter {{nom}}', { nom: displayName })}
+            >
+              {phoneToCall && (
+                <Button href={`tel:${phoneToCall}`} icon={<PhoneOutlined />} size={isDesktop ? 'middle' : 'large'}>
+                  {t('Appeler')}
                 </Button>
-                <div>
-                  <Space align="center">
-                    <Avatar size={64} icon={<UserOutlined />} />
-                    <div>
-                      <Title level={2} style={{ margin: 0 }}>
-                        {displayName}
-                      </Title>
-                      {getStatusTag(contact.status)}
-                    </div>
-                  </Space>
-                </div>
-              </Space>
-            </div>
-            <Space>
-              {canConvert && <Button onClick={() => setShowConvertDialog(true)}>{t('Convertir')}</Button>}
-              <Button
-                type="primary"
-                icon={<EditOutlined />}
-                onClick={() => navigate(`/tenant/${tenantId}/crm/contacts/${contactId}/edit`)}
-              >
-                {t('Modifier')}
-              </Button>
+              )}
+              {whatsappDigits && (
+                <Button
+                  href={`https://wa.me/${whatsappDigits}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  icon={<WhatsAppOutlined />}
+                  size={isDesktop ? 'middle' : 'large'}
+                >
+                  {'WhatsApp'}
+                </Button>
+              )}
+              {contact.email && (
+                <Button href={`mailto:${contact.email}`} icon={<MailOutlined />} size={isDesktop ? 'middle' : 'large'}>
+                  {t('Envoyer un e-mail')}
+                </Button>
+              )}
             </Space>
-          </div>
-
-          <Divider style={{ margin: '16px 0' }} />
+          )}
 
           <Descriptions column={{ xs: 1, sm: 2 }} size="small">
             <Descriptions.Item
@@ -383,9 +364,9 @@ export const ContactDetail: React.FC<ContactDetailProps> = ({ tenantId, contactI
                   {contact.roles
                     .filter((role: any) => role.active)
                     .map((role: any) => (
-                      <Card key={role.id} size="small" style={{ border: '1px solid #f0f0f0' }}>
+                      <Card key={role.id} size="small" style={{ border: '1px solid var(--border-subtle)' }}>
                         <div className="it-toolbar">
-                          <Space>
+                          <Space wrap>
                             <Text strong>{getContactRoleLabel(role.role)}</Text>
                             <Tag color="success" icon={<CheckCircleOutlined />}>
                               {t('Actif')}
@@ -394,21 +375,25 @@ export const ContactDetail: React.FC<ContactDetailProps> = ({ tenantId, contactI
                               {new Date(role.startedAt).toLocaleDateString(activeLocale())}
                             </Text>
                           </Space>
-                          <Popconfirm
-                            title={t('Supprimer ce rôle')}
-                            description={t('Êtes-vous sûr de vouloir supprimer ce rôle ?')}
+                          <ConfirmAction
+                            title={t('Retirer le rôle {{role}} de {{nom}} ?', {
+                              role: getContactRoleLabel(role.role),
+                              nom: displayName
+                            })}
+                            description={t('Le contact ne sera plus associé à ce rôle.')}
+                            okText={t('Retirer')}
+                            danger
                             onConfirm={() => handleRemoveRole(role.id)}
-                            okText={t('Oui')}
-                            cancelText={t('Non')}
                           >
                             <Button
                               type="text"
                               danger
                               icon={<DeleteOutlined />}
                               loading={removingRoleId === role.id}
-                              size="small"
+                              aria-label={t('Retirer le rôle {{role}}', { role: getContactRoleLabel(role.role) })}
+                              style={{ minWidth: 44, minHeight: isDesktop ? undefined : 44 }}
                             />
-                          </Popconfirm>
+                          </ConfirmAction>
                         </div>
                       </Card>
                     ))}
@@ -484,7 +469,7 @@ export const ContactDetail: React.FC<ContactDetailProps> = ({ tenantId, contactI
                       size="small"
                       hoverable
                       onClick={() => navigate(`/tenant/${tenantId}/crm/deals/${deal.id}`)}
-                      style={{ border: '1px solid #f0f0f0', cursor: 'pointer' }}
+                      style={{ border: '1px solid var(--border-subtle)', cursor: 'pointer' }}
                     >
                       <div className="it-toolbar">
                         <Space>

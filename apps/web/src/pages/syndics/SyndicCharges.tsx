@@ -17,7 +17,7 @@ import {
   Spin,
   Typography
 } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
+import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { Link } from 'react-router-dom';
 import { ChargeCallTable } from '../../components/syndics/ChargeCallTable';
@@ -27,6 +27,7 @@ import {
   ratesUnavailableMessage,
   useLotTypeRatesForAllocation
 } from '../../components/syndics/charge-allocation/ChargeAllocationControls';
+import { FormSection, useModalLayout } from '../../components/syndics/charge-allocation/ChargeFormLayout';
 import { LotPaymentModal } from '../../components/syndics/LotPaymentModal';
 import { ChargeCallPaymentLinkModal } from '../../components/syndics/online-payment/ChargeCallPaymentLinkModal';
 import { useSyndicOnlinePaymentUsable } from '../../components/syndics/online-payment/useOnlinePaymentUsable';
@@ -65,6 +66,7 @@ import { useListSearch } from '../../hooks/useListSearch';
 import { collectAllPages } from '../../utils/table-export/collect';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { t } from '../../i18n/t';
+import { montantSaisiProps, saisieNombreProps } from '../../utils/montant-saisi';
 import { useFormFieldModes } from '../../hooks/useFormFieldModes';
 import { displayCurrency } from '../../utils/syndic-currency';
 import { lotsWithShares, previewAllocation } from '../../utils/charge-allocation-preview';
@@ -124,6 +126,9 @@ export const SyndicCharges: React.FC = () => {
   const amountValue = Form.useWatch('amount', form) as number | null | undefined;
   const currencyValue = Form.useWatch('currency', form) as string | undefined;
   const lotIdsValue = Form.useWatch('lotIds', form) as string[] | undefined;
+  const isRecurringValue = Form.useWatch('isRecurring', form) as boolean | undefined;
+  const recurrenceCountValue = Form.useWatch('recurrenceCount', form) as number | null | undefined;
+  const modalLayout = useModalLayout(680);
 
   // Lot S2 : la modale de paiement travaille PAR LOT. `paymentContext` porte
   // le lot et, si elle a été ouverte depuis un dossier précis, l'appel à
@@ -320,6 +325,42 @@ export const SyndicCharges: React.FC = () => {
       ? allocationPreview
       : null;
 
+  // Récapitulatif avant création : uniquement ce qu'on sait déjà côté client (saisie + aperçu de répartition).
+  const recapCurrency = displayCurrency(currencyValue || 'XOF') ?? undefined;
+  const recapTotal = allocationMethod
+    ? shownPreview && !shownPreview.error
+      ? shownPreview.totalAmount
+      : null
+    : Number(amountValue) > 0
+      ? Number(amountValue)
+      : null;
+  const recapLotCount = allocationMethod ? (shownPreview && !shownPreview.error ? shownPreview.lines.length : null) : 1;
+  const recapOccurrences =
+    recurringVisible && isRecurringValue ? Math.max(1, Math.floor(Number(recurrenceCountValue) || 1)) : 1;
+  const recap: Array<{ label: string; value: React.ReactNode; strong?: boolean }> | null =
+    recapTotal !== null && recapLotCount !== null && recapLotCount > 0
+      ? [
+          {
+            label: t('Montant total'),
+            value: <MoneyValue value={recapTotal} currency={recapCurrency} />,
+            strong: true
+          },
+          { label: t('Lots concernés'), value: recapLotCount },
+          ...(recapLotCount > 1
+            ? [
+                {
+                  label: t('Montant moyen par lot'),
+                  value: <MoneyValue value={recapTotal / recapLotCount} currency={recapCurrency} />
+                }
+              ]
+            : []),
+          ...(dueDateValue ? [{ label: t('Échéance'), value: dayjs(dueDateValue).format('DD/MM/YYYY') }] : []),
+          ...(recapOccurrences > 1 || recapLotCount > 1
+            ? [{ label: t('Appels créés'), value: recapLotCount * recapOccurrences }]
+            : [])
+        ]
+      : null;
+
   const handleCreate = async () => {
     if (!effectiveTenantId || !syndicId) {
       return;
@@ -390,7 +431,7 @@ export const SyndicCharges: React.FC = () => {
       form.resetFields();
       await loadCharges();
     } catch (err: any) {
-      message.error(err.response?.data?.error || t('Création impossible'));
+      message.error(err.response?.data?.error || t('Création impossible : vérifiez les champs puis réessayez.'));
     } finally {
       setSubmitting(false);
     }
@@ -463,7 +504,7 @@ export const SyndicCharges: React.FC = () => {
             </Paragraph>
           </Space>
 
-          <Space>
+          <Space wrap>
             <Button {...helpAnchor('charges-paiement')} onClick={handleOpenPaymentGeneric} disabled={lots.length === 0}>
               {t('Enregistrer un paiement')}
             </Button>
@@ -479,7 +520,27 @@ export const SyndicCharges: React.FC = () => {
           </Space>
         </div>
 
-        {error || chargesError ? <Alert type="error" message={error || chargesError} showIcon /> : null}
+        {error || chargesError ? (
+          <Alert
+            type="error"
+            showIcon
+            message={
+              <Space wrap size={8}>
+                <span>{error || chargesError}</span>
+                <Button
+                  size="small"
+                  icon={<ReloadOutlined />}
+                  onClick={() => {
+                    if (error) void loadBaseData();
+                    if (chargesError) void chargesQuery.refetch();
+                  }}
+                >
+                  {t('Réessayer')}
+                </Button>
+              </Space>
+            }
+          />
+        ) : null}
 
         {loading ? (
           <div style={{ minHeight: 320, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -557,9 +618,11 @@ export const SyndicCharges: React.FC = () => {
         open={open}
         onCancel={() => setOpen(false)}
         onOk={() => void handleCreate()}
-        okText={t('Créer')}
+        okText={t("Créer l'appel de charges")}
         cancelText={t('Annuler')}
         confirmLoading={submitting}
+        mask={{ closable: false }}
+        {...modalLayout}
       >
         <Form
           form={form}
@@ -573,212 +636,262 @@ export const SyndicCharges: React.FC = () => {
             recurrenceCount: 1
           }}
         >
-          <Form.Item
-            label={t('Cible')}
-            name="targetMode"
-            rules={[{ required: true, message: t('La cible est obligatoire') }]}
-          >
-            <Select showSearch optionFilterProp="label" options={targetModeOptions} />
-          </Form.Item>
-
-          <Form.Item noStyle dependencies={['targetMode']}>
-            {({ getFieldValue }) =>
-              getFieldValue('targetMode') === 'single' ? (
-                <Form.Item
-                  label={t('Lot')}
-                  name="lotId"
-                  rules={[{ required: true, message: t('Le lot est obligatoire') }]}
-                >
-                  <Select showSearch optionFilterProp="label" options={lotSelectOptions} />
-                </Form.Item>
-              ) : null
-            }
-          </Form.Item>
-
-          <Form.Item noStyle dependencies={['targetMode']}>
-            {({ getFieldValue }) =>
-              getFieldValue('targetMode') === 'multiple' ? (
-                <Form.Item
-                  label={t('Lots')}
-                  name="lotIds"
-                  rules={[{ required: true, message: t('Sélectionnez au moins un lot') }]}
-                >
-                  <Select mode="multiple" showSearch optionFilterProp="label" options={lotSelectOptions} />
-                </Form.Item>
-              ) : null
-            }
-          </Form.Item>
-
-          <Form.Item
-            label={t('Libellé de la période')}
-            name="period"
-            dependencies={['periodStart', 'periodEnd']}
-            tooltip={t(
-              'Facultatif si vous renseignez les deux dates ci-dessous : le libellé est alors composé automatiquement.'
-            )}
-            rules={[
-              {
-                validator: (_rule, value) => {
-                  const hasLabel = Boolean(value && String(value).trim());
-                  const hasBounds = Boolean(form.getFieldValue('periodStart') && form.getFieldValue('periodEnd'));
-                  if (!hasLabel && !hasBounds) {
-                    return Promise.reject(
-                      new Error(t('Saisissez un libellé de période ou les deux dates de début et de fin'))
-                    );
-                  }
-                  return Promise.resolve();
-                }
-              }
-            ]}
-          >
-            <Input placeholder={t('ex : 2026-Q1')} />
-          </Form.Item>
-
-          <Row gutter={12}>
-            <Col xs={24} md={12}>
-              <Form.Item label={t('Début de période (optionnel)')} name="periodStart">
-                <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item
-                label={t('Fin de période (optionnel)')}
-                name="periodEnd"
-                dependencies={['periodStart']}
-                rules={[
-                  {
-                    validator: (_rule, value) => {
-                      const start = form.getFieldValue('periodStart');
-                      if (Boolean(start) !== Boolean(value)) {
-                        return Promise.reject(new Error(t('Les deux dates de période vont ensemble, ou aucune')));
-                      }
-                      return Promise.resolve();
-                    }
-                  }
-                ]}
-              >
-                <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          {allocationMethod ? (
+          <FormSection first title={t('Général')} hint={t('Qui appelle-t-on, et pour quelle période ?')}>
             <Form.Item
-              label={
-                <HelpSectionTitle title={t('Répartition entre les lots')} helpId="syndic.charges.liste.repartition" />
-              }
-              name="allocationMethod"
+              label={t('Cible')}
+              name="targetMode"
+              rules={[{ required: true, message: t('La cible est obligatoire') }]}
             >
-              <AllocationMethodRadio />
+              <Select autoFocus showSearch optionFilterProp="label" options={targetModeOptions} />
             </Form.Item>
-          ) : null}
 
-          <Row gutter={12}>
-            {allocationMethod === 'BY_LOT_TYPE' ? null : (
+            <Form.Item noStyle dependencies={['targetMode']}>
+              {({ getFieldValue }) =>
+                getFieldValue('targetMode') === 'single' ? (
+                  <Form.Item
+                    label={t('Lot')}
+                    name="lotId"
+                    rules={[{ required: true, message: t('Le lot est obligatoire') }]}
+                  >
+                    <Select showSearch optionFilterProp="label" options={lotSelectOptions} />
+                  </Form.Item>
+                ) : null
+              }
+            </Form.Item>
+
+            <Form.Item noStyle dependencies={['targetMode']}>
+              {({ getFieldValue }) =>
+                getFieldValue('targetMode') === 'multiple' ? (
+                  <Form.Item
+                    label={t('Lots')}
+                    name="lotIds"
+                    rules={[{ required: true, message: t('Sélectionnez au moins un lot') }]}
+                  >
+                    <Select mode="multiple" showSearch optionFilterProp="label" options={lotSelectOptions} />
+                  </Form.Item>
+                ) : null
+              }
+            </Form.Item>
+
+            <Form.Item
+              label={t('Libellé de la période')}
+              name="period"
+              dependencies={['periodStart', 'periodEnd']}
+              tooltip={t(
+                'Facultatif si vous renseignez les deux dates ci-dessous : le libellé est alors composé automatiquement.'
+              )}
+              rules={[
+                {
+                  validator: (_rule, value) => {
+                    const hasLabel = Boolean(value && String(value).trim());
+                    const hasBounds = Boolean(form.getFieldValue('periodStart') && form.getFieldValue('periodEnd'));
+                    if (!hasLabel && !hasBounds) {
+                      return Promise.reject(
+                        new Error(t('Saisissez un libellé de période ou les deux dates de début et de fin'))
+                      );
+                    }
+                    return Promise.resolve();
+                  }
+                }
+              ]}
+            >
+              <Input placeholder={t('ex : 2026-Q1')} />
+            </Form.Item>
+
+            <Row gutter={12}>
               <Col xs={24} md={12}>
-                <Form.Item
-                  label={allocationMethod ? t('Montant total à répartir') : t('Montant')}
-                  name="amount"
-                  rules={[{ required: true, message: t('Le montant est obligatoire') }]}
-                >
-                  <InputNumber
-                    min={1}
-                    precision={currencyFractionDigits(currencyValue || 'XOF')}
-                    style={{ width: '100%' }}
-                  />
+                <Form.Item label={t('Début de période (optionnel)')} name="periodStart">
+                  <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
                 </Form.Item>
               </Col>
-            )}
-            <Col xs={24} md={12}>
-              <Form.Item
-                label={t('Devise')}
-                name="currency"
-                rules={[{ required: true, message: t('La devise est obligatoire') }]}
-              >
-                <Input />
-              </Form.Item>
-            </Col>
-          </Row>
+              <Col xs={24} md={12}>
+                <Form.Item
+                  label={t('Fin de période (optionnel)')}
+                  name="periodEnd"
+                  dependencies={['periodStart']}
+                  rules={[
+                    {
+                      validator: (_rule, value) => {
+                        const start = form.getFieldValue('periodStart');
+                        if (Boolean(start) !== Boolean(value)) {
+                          return Promise.reject(new Error(t('Les deux dates de période vont ensemble, ou aucune')));
+                        }
+                        return Promise.resolve();
+                      }
+                    }
+                  ]}
+                >
+                  <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
+                </Form.Item>
+              </Col>
+            </Row>
+          </FormSection>
 
-          {allocationMethod ? (
-            <Form.Item style={{ marginTop: -8 }}>
-              <AllocationPreview
-                method={allocationMethod}
-                result={shownPreview}
-                currency={currencyValue || 'XOF'}
-                ratesStatus={ratesStatus}
-                tenantId={effectiveTenantId}
-                syndicId={syndicId}
-              />
-            </Form.Item>
-          ) : null}
-
-          <Form.Item
-            label={t("Date d'échéance")}
-            name="dueDate"
-            rules={[{ required: true, message: t('La date est obligatoire') }]}
-            // Échéance passée autorisée (saisie d'arriérés) : simple avertissement, non bloquant.
-            extra={
-              isPastDueDate(dueDateValue) ? (
-                <Typography.Text type="warning">
-                  {t("Échéance passée : l'appel sera immédiatement en retard.")}
-                </Typography.Text>
-              ) : undefined
+          <FormSection
+            title={t('Montant et répartition')}
+            hint={
+              allocationMethod
+                ? t('Le montant total est partagé entre les lots selon la méthode choisie.')
+                : t('Le montant est celui que le lot devra payer.')
             }
           >
-            <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
-          </Form.Item>
+            {allocationMethod ? (
+              <Form.Item
+                label={
+                  <HelpSectionTitle title={t('Répartition entre les lots')} helpId="syndic.charges.liste.repartition" />
+                }
+                name="allocationMethod"
+              >
+                <AllocationMethodRadio />
+              </Form.Item>
+            ) : null}
 
-          {fm.isVisible('fundId') && (funds.length > 0 || fm.isRequired('fundId', false)) ? (
+            <Row gutter={12}>
+              {allocationMethod === 'BY_LOT_TYPE' ? null : (
+                <Col xs={24} md={12}>
+                  <Form.Item
+                    label={allocationMethod ? t('Montant total à répartir') : t('Montant')}
+                    name="amount"
+                    rules={[{ required: true, message: t('Le montant est obligatoire') }]}
+                  >
+                    <InputNumber
+                      min={1}
+                      precision={currencyFractionDigits(currencyValue || 'XOF')}
+                      style={{ width: '100%' }}
+                      inputMode="numeric"
+                      suffix={displayCurrency(currencyValue || 'XOF') ?? undefined}
+                      {...montantSaisiProps}
+                    />
+                  </Form.Item>
+                </Col>
+              )}
+              <Col xs={24} md={12}>
+                <Form.Item
+                  label={t('Devise')}
+                  name="currency"
+                  rules={[{ required: true, message: t('La devise est obligatoire') }]}
+                >
+                  <Input />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            {allocationMethod ? (
+              <Form.Item style={{ marginTop: -8 }}>
+                <AllocationPreview
+                  method={allocationMethod}
+                  result={shownPreview}
+                  currency={currencyValue || 'XOF'}
+                  ratesStatus={ratesStatus}
+                  tenantId={effectiveTenantId}
+                  syndicId={syndicId}
+                />
+              </Form.Item>
+            ) : null}
+
+            {fm.isVisible('fundId') && (funds.length > 0 || fm.isRequired('fundId', false)) ? (
+              <Form.Item
+                label={fm.isRequired('fundId', false) ? t('Fonds alimenté') : t('Fonds alimenté (optionnel)')}
+                name="fundId"
+                rules={[{ required: fm.isRequired('fundId', false), message: t('Le fonds alimenté est obligatoire') }]}
+                extra={t('Tout ce qui sera payé sur cet appel sera versé à ce fonds.')}
+              >
+                <Select allowClear showSearch optionFilterProp="label" options={fundSelectOptions} />
+              </Form.Item>
+            ) : null}
+          </FormSection>
+
+          <FormSection
+            title={t('Échéance et récurrence')}
+            hint={t("À quelle date l'appel doit-il être réglé, et faut-il le répéter ?")}
+          >
             <Form.Item
-              label={fm.isRequired('fundId', false) ? t('Fonds alimenté') : t('Fonds alimenté (optionnel)')}
-              name="fundId"
-              rules={[{ required: fm.isRequired('fundId', false), message: t('Le fonds alimenté est obligatoire') }]}
-              extra={t('Tout ce qui sera payé sur cet appel sera versé à ce fonds.')}
+              label={t("Date d'échéance")}
+              name="dueDate"
+              rules={[{ required: true, message: t('La date est obligatoire') }]}
+              // Échéance passée autorisée (saisie d'arriérés) : simple avertissement, non bloquant.
+              extra={
+                isPastDueDate(dueDateValue) ? (
+                  <Typography.Text type="warning">
+                    {t("Échéance passée : l'appel sera immédiatement en retard.")}
+                  </Typography.Text>
+                ) : undefined
+              }
             >
-              <Select allowClear showSearch optionFilterProp="label" options={fundSelectOptions} />
+              <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
             </Form.Item>
-          ) : null}
 
-          {recurringVisible ? (
-            <Form.Item label={t('Charge récurrente')} name="isRecurring">
-              <Select
-                showSearch
-                optionFilterProp="label"
-                options={[
-                  { label: t('Non'), value: false },
-                  { label: t('Oui'), value: true }
-                ]}
-              />
+            {recurringVisible ? (
+              <Form.Item
+                label={t('Charge récurrente')}
+                name="isRecurring"
+                extra={t('Oui : le même appel est recréé à chaque période, selon la fréquence choisie.')}
+              >
+                <Select
+                  showSearch
+                  optionFilterProp="label"
+                  options={[
+                    { label: t('Non'), value: false },
+                    { label: t('Oui'), value: true }
+                  ]}
+                />
+              </Form.Item>
+            ) : null}
+
+            <Form.Item noStyle dependencies={['isRecurring']}>
+              {({ getFieldValue }) =>
+                recurringVisible && getFieldValue('isRecurring') ? (
+                  <Row gutter={12}>
+                    <Col xs={24} md={12}>
+                      <Form.Item
+                        label={t('Fréquence')}
+                        name="recurrenceFrequency"
+                        rules={[{ required: true, message: t('La fréquence est obligatoire') }]}
+                      >
+                        <Select showSearch optionFilterProp="label" options={recurrenceFrequencyOptions} />
+                      </Form.Item>
+                    </Col>
+                    <Col xs={24} md={12}>
+                      <Form.Item
+                        label={t('Occurrences')}
+                        name="recurrenceCount"
+                        rules={[{ required: true, message: t("Indiquez le nombre d'occurrences (1 à 24)") }]}
+                      >
+                        <InputNumber min={1} max={24} style={{ width: '100%' }} {...saisieNombreProps(0)} />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                ) : null
+              }
             </Form.Item>
-          ) : null}
+          </FormSection>
 
-          <Form.Item noStyle dependencies={['isRecurring']}>
-            {({ getFieldValue }) =>
-              recurringVisible && getFieldValue('isRecurring') ? (
-                <Row gutter={12}>
-                  <Col xs={24} md={12}>
-                    <Form.Item
-                      label={t('Fréquence')}
-                      name="recurrenceFrequency"
-                      rules={[{ required: true, message: t('La fréquence est obligatoire') }]}
-                    >
-                      <Select showSearch optionFilterProp="label" options={recurrenceFrequencyOptions} />
-                    </Form.Item>
-                  </Col>
-                  <Col xs={24} md={12}>
-                    <Form.Item
-                      label={t('Occurrences')}
-                      name="recurrenceCount"
-                      rules={[{ required: true, message: t('Le nombre d occurrences est obligatoire') }]}
-                    >
-                      <InputNumber min={1} max={24} style={{ width: '100%' }} />
-                    </Form.Item>
-                  </Col>
-                </Row>
-              ) : null
-            }
-          </Form.Item>
+          {recap ? (
+            <div
+              role="status"
+              aria-live="polite"
+              aria-label={t('Récapitulatif avant création')}
+              style={{
+                marginBlockStart: 'var(--space-4, 16px)',
+                padding: 'var(--space-3, 12px)',
+                borderRadius: 'var(--radius-md, 8px)',
+                background: 'var(--surface-sunken, rgba(0,0,0,0.03))',
+                border: '1px solid var(--border-subtle, rgba(0,0,0,0.08))'
+              }}
+            >
+              <div style={{ fontWeight: 600, marginBlockEnd: 8 }}>{t('Récapitulatif')}</div>
+              <dl style={{ margin: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {recap.map(row => (
+                  <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                    <dt style={{ color: 'var(--text-secondary)' }}>{row.label}</dt>
+                    <dd style={{ margin: 0, textAlign: 'end', fontWeight: row.strong ? 600 : undefined }}>
+                      {row.value}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          ) : null}
         </Form>
       </Modal>
 

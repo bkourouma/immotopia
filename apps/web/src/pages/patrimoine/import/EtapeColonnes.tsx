@@ -4,7 +4,7 @@ import { champsObligatoiresManquants } from '../../../lib/importation/rapprochem
 import type { FichierLu } from '../../../lib/importation/fichier';
 import type { DescripteurNature } from '../../../lib/importation/types';
 import { t } from '../../../i18n/t';
-import { Table } from '../../../components/primitives';
+import { ConfirmAction, Table } from '../../../components/primitives';
 
 const { Text } = Typography;
 
@@ -70,12 +70,19 @@ export const EtapeColonnes: React.FC<EtapeColonnesProps> = props => {
         />
       ) : null}
 
+      <Text type="secondary">
+        {t(
+          'Pour chaque colonne de votre fichier, choisissez le champ correspondant. Les champs marqués d’un * sont obligatoires.'
+        )}
+      </Text>
+
       <Table
         helpId="patrimoine.importation.correspondance"
         // Tableau de correspondance éditable (une liste déroulante par ligne) : rien à exporter.
         exportable={false}
         size="small"
         pagination={false}
+        scroll={{ x: 'max-content' }}
         rowKey={ligne => String(ligne.index)}
         dataSource={feuille.colonnes.map((entete, index) => ({ entete, index }))}
         columns={[
@@ -97,6 +104,7 @@ export const EtapeColonnes: React.FC<EtapeColonnesProps> = props => {
                 <div>
                   <Select
                     style={{ width: '100%', minWidth: 220 }}
+                    size="large"
                     allowClear
                     showSearch
                     optionFilterProp="label"
@@ -121,9 +129,17 @@ export const EtapeColonnes: React.FC<EtapeColonnesProps> = props => {
         ]}
       />
 
-      <Space>
-        <Button onClick={props.onChangerFichier}>{t('Changer de fichier')}</Button>
+      <Space wrap>
+        <ConfirmAction
+          title={t('Changer de fichier ?')}
+          description={t('Les correspondances de colonnes choisies ici seront perdues.')}
+          okText={t('Changer de fichier')}
+          onConfirm={props.onChangerFichier}
+        >
+          <Button style={{ minHeight: 40 }}>{t('Changer de fichier')}</Button>
+        </ConfirmAction>
         <Button
+          style={{ minHeight: 40 }}
           type="primary"
           disabled={manquants.length > 0 || feuille.lignes.length === 0}
           loading={props.preparationEnCours}

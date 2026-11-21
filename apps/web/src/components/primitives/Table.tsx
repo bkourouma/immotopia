@@ -60,6 +60,29 @@ export interface ExportableTableProps<T extends AnyObject = AnyObject> extends T
   helpId?: string;
 }
 
+/**
+ * Les pastilles de page d'AntD sont des <a> sans href : ni rôle, ni nom, ni page courante pour un
+ * lecteur d'écran. Même nommage que la pagination de `DataView` (« Page 2 », rôle bouton) ; le clic
+ * remonte à l'<li> d'AntD. Un `itemRender` fourni par l'écran garde la priorité.
+ */
+export function namedPageItemRender(current?: number) {
+  return (pageNumber: number, type: string, element: React.ReactNode): React.ReactNode =>
+    type === 'page' && React.isValidElement(element)
+      ? React.cloneElement(element as React.ReactElement<Record<string, unknown>>, {
+          role: 'button',
+          'aria-label': t('Page {{page}}', { page: pageNumber }),
+          'aria-current': pageNumber === current ? 'page' : undefined
+        })
+      : element;
+}
+
+function withNamedPages(pagination: TableProps<AnyObject>['pagination']): TableProps<AnyObject>['pagination'] {
+  if (pagination === false) return pagination;
+  const base = typeof pagination === 'object' && pagination !== null ? pagination : {};
+  if (base.itemRender) return pagination;
+  return { ...base, itemRender: namedPageItemRender(base.current) };
+}
+
 function TableImpl<T extends AnyObject = AnyObject>(props: ExportableTableProps<T>): React.ReactElement {
   const {
     exportable = true,
@@ -77,6 +100,9 @@ function TableImpl<T extends AnyObject = AnyObject>(props: ExportableTableProps<
     () => (helpNode ? withColumnHelp(tableProps.columns, helpEntry?.howToRead?.columns) : tableProps.columns),
     [helpNode, helpEntry, tableProps.columns]
   );
+  const namedPagination = withNamedPages(
+    tableProps.pagination as TableProps<AnyObject>['pagination']
+  ) as TableProps<T>['pagination'];
   const rows = (tableProps.dataSource ?? []) as readonly T[];
   const childrenColumnName = tableProps.expandable?.childrenColumnName ?? 'children';
   const hasColumns = React.useMemo(() => resolveExportColumns(tableProps.columns).length > 0, [tableProps.columns]);
@@ -132,7 +158,7 @@ function TableImpl<T extends AnyObject = AnyObject>(props: ExportableTableProps<
             {exportMenu}
           </div>
         )}
-        <AntTable<T> {...tableProps} columns={displayColumns} />
+        <AntTable<T> {...tableProps} columns={displayColumns} pagination={namedPagination} />
       </>
     );
   }
@@ -183,7 +209,7 @@ function TableImpl<T extends AnyObject = AnyObject>(props: ExportableTableProps<
           )
         }
       />
-      <AntTable<T> {...tableProps} columns={displayColumns} locale={locale} />
+      <AntTable<T> {...tableProps} columns={displayColumns} locale={locale} pagination={namedPagination} />
     </>
   );
 }

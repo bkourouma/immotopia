@@ -380,6 +380,11 @@ export const SyndicDetail: React.FC = () => {
         message={t('Erreur de chargement')}
         description={error || t('Copropriété introuvable')}
         showIcon
+        action={
+          <Button size="small" onClick={() => void loadAll()}>
+            {t('Réessayer')}
+          </Button>
+        }
       />
     );
   }
@@ -389,7 +394,7 @@ export const SyndicDetail: React.FC = () => {
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       <Space direction="vertical" size={4}>
-        <Space>
+        <Space wrap>
           <Title level={2} style={{ margin: 0 }}>
             {syndicate.name}
           </Title>
@@ -500,7 +505,7 @@ export const SyndicDetail: React.FC = () => {
       >
         <Form form={editForm} layout="vertical">
           <Form.Item label={t('Nom')} name="name" rules={[{ required: true, message: t('Le nom est obligatoire') }]}>
-            <Input />
+            <Input autoFocus />
           </Form.Item>
           <Form.Item
             label={t('Adresse')}

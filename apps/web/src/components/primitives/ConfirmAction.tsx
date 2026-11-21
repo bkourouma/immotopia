@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { App, Button, Drawer, Popconfirm, Space, Typography } from 'antd';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { t } from '../../i18n/t';
@@ -53,6 +53,9 @@ export const ConfirmAction: React.FC<ConfirmActionProps> = ({
   const { isDesktop } = useBreakpoint();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  // Action destructive : le focus clavier arrive sur « Annuler », pas sur le
+  // bouton qui détruit (une Entrée réflexe ne doit rien supprimer).
+  const cancelRef = useRef<HTMLButtonElement>(null);
 
   const run = async () => {
     setLoading(true);
@@ -102,6 +105,9 @@ export const ConfirmAction: React.FC<ConfirmActionProps> = ({
         placement="bottom"
         open={open}
         onClose={dismiss}
+        afterOpenChange={opened => {
+          if (opened && danger) cancelRef.current?.focus();
+        }}
         closable={false}
         size="auto"
         styles={{
@@ -120,7 +126,7 @@ export const ConfirmAction: React.FC<ConfirmActionProps> = ({
             <Button block danger={danger} loading={loading} onClick={run}>
               {okText}
             </Button>
-            <Button block type="primary" onClick={dismiss}>
+            <Button ref={cancelRef} block type="primary" onClick={dismiss}>
               {cancelText}
             </Button>
           </Space>
@@ -168,6 +174,8 @@ export function useConfirmAction(): (options: ConfirmOptions) => void {
       // Sous 992 px, les boutons occupent toute la largeur (§5.7).
       okButtonProps: { danger, block: !isDesktop },
       cancelButtonProps: { block: !isDesktop },
+      // Destructif : le focus initial est sur « Annuler ».
+      autoFocusButton: danger ? 'cancel' : 'ok',
       onOk: onConfirm
     });
   };

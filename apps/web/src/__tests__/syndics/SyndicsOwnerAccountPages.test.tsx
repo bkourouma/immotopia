@@ -7,6 +7,10 @@ import { AuthContextType } from '../../types/auth-types';
 import { SyndicOwnerAccount } from '../../pages/syndics/SyndicOwnerAccount';
 import apiClient from '../../utils/api-client';
 
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));
+
 vi.mock('../../utils/api-client', () => ({
   __esModule: true,
   default: {
@@ -48,12 +52,16 @@ vi.mock('antd', async () => {
   const antdMock: Record<string, unknown> = {
     Alert: passthrough(),
     Button: passthrough('button'),
+    Breadcrumb: () => <nav />,
+    Empty: Object.assign(passthrough(), { PRESENTED_IMAGE_SIMPLE: null }),
+    Skeleton: Object.assign(passthrough(), { Input: passthrough(), Button: passthrough() }),
     Card: passthrough(),
     Col: passthrough(),
     Form,
     Input: Object.assign(passthrough('input'), { TextArea: passthrough('textarea') }),
     InputNumber: passthrough('input'),
     Modal: passthrough(),
+    Pagination: passthrough(),
     Row: passthrough(),
     Select: passthrough('select'),
     Space: passthrough(),

@@ -101,6 +101,8 @@ function ThresholdDialog({
           min={1}
           max={MAX_THRESHOLD_PERCENT}
           precision={0}
+          addonAfter="%"
+          autoFocus
           disabled={!site || busy || site.status === 'CLOSED'}
         />
       </Form.Item>

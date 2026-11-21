@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, App, Descriptions, Input, Modal, Select, Space, Typography } from 'antd';
 import { formatMoney } from '../../primitives';
+import { useBreakpoint } from '../../../hooks/useBreakpoint';
 import {
   DeclarationRejectReason,
   SyndicDeclarationRow,
@@ -45,6 +46,7 @@ export const RejectModal: React.FC<RejectModalProps> = ({
   onStale
 }) => {
   const { message } = App.useApp();
+  const { isMobile } = useBreakpoint();
   const [reason, setReason] = useState<DeclarationRejectReason | null>(null);
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -94,7 +96,8 @@ export const RejectModal: React.FC<RejectModalProps> = ({
       okButtonProps={{ danger: true, disabled: !canSubmit, loading: submitting }}
       cancelButtonProps={{ disabled: submitting }}
       destroyOnClose
-      width={560}
+      width={isMobile ? '100%' : 560}
+      style={isMobile ? { top: 0, maxWidth: '100vw', paddingBottom: 0 } : undefined}
     >
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         <Descriptions column={1} size="small" bordered>
@@ -121,6 +124,7 @@ export const RejectModal: React.FC<RejectModalProps> = ({
           </label>
           <Select
             id="reject-reason"
+            autoFocus
             style={{ display: 'block', marginBlockStart: 8, width: '100%' }}
             placeholder={t('Choisir un motif')}
             value={reason}

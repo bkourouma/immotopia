@@ -103,6 +103,7 @@ function mount(initial = '/tenant/agence-1/crm/deals') {
 }
 
 beforeEach(() => {
+  window.localStorage.clear();
   vi.clearAllMocks();
   repondreParEtape();
 });
@@ -241,7 +242,8 @@ describe('Affaires — pipeline chargé par colonne', () => {
     listDeals.mockClear();
     listDeals.mockResolvedValue(page('NEW', [deal('export-1', 'NEW')], 1));
 
-    fireEvent.click(screen.getByRole('button', { name: /CSV/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Autres actions' }));
+    fireEvent.click(await screen.findByText('Exporter en CSV'));
 
     await waitFor(() => expect(exportToCSV).toHaveBeenCalled());
     expect(listDeals.mock.calls[0][1]).toMatchObject({ stage: 'NEW,QUALIFIED,VISIT,NEGOTIATION', page: 1 });

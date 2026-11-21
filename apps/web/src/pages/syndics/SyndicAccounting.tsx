@@ -13,12 +13,15 @@ import {
   Select,
   Space,
   Tabs,
+  Tooltip,
   Typography
 } from 'antd';
 import { DownloadOutlined, PlusOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { StatCard } from '../../components/primitives';
+import { formatMoney, StatCard } from '../../components/primitives';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { montantSaisiProps } from '../../utils/montant-saisi';
 import {
   createAccountingEntry,
   createAccountingJournal,
@@ -60,6 +63,7 @@ const sourceTypeOptions = (): Array<{ value: SourceType; label: string }> => [
 
 export const SyndicAccounting: React.FC = () => {
   const { message, modal } = App.useApp();
+  const { isMobile } = useBreakpoint();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -195,7 +199,7 @@ export const SyndicAccounting: React.FC = () => {
         accountType: values.accountType,
         isAuxiliary: values.isAuxiliary || false
       });
-      message.success(t('Compte comptable créé'));
+      message.success(t('Compte {{number}} créé', { number: values.accountNumber }));
       setOpenAccount(false);
       accountForm.resetFields();
       await refresh();
@@ -251,7 +255,7 @@ export const SyndicAccounting: React.FC = () => {
 
     try {
       await createAccountingJournal(effectiveTenantId, syndicId, values);
-      message.success(t('Journal comptable créé'));
+      message.success(t('Journal {{code}} créé', { code: values.code }));
       setOpenJournal(false);
       journalForm.resetFields();
       await refresh();
@@ -287,7 +291,7 @@ export const SyndicAccounting: React.FC = () => {
           label: line.label
         }))
       });
-      message.success(t('Écriture comptable enregistrée'));
+      message.success(t('Écriture {{reference}} enregistrée', { reference: values.reference }));
       setOpenEntry(false);
       entryForm.resetFields();
       await refresh();
@@ -373,9 +377,29 @@ export const SyndicAccounting: React.FC = () => {
               {t('Plan comptable, journaux, écritures, balance et grand livre.')}
             </Paragraph>
           </Space>
-          <Space wrap>
-            <Button icon={<PlusOutlined />} disabled={!canEdit} onClick={() => setOpenAccount(true)}>
+          <Space wrap style={isMobile ? { width: '100%' } : undefined}>
+            <Tooltip
+              title={
+                accounts.length < 2 || journals.length < 1
+                  ? t('Créez au moins deux comptes et un journal avant de saisir une écriture.')
+                  : undefined
+              }
+            >
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => setOpenEntry(true)}
+                disabled={!canEdit || accounts.length < 2 || journals.length < 1}
+                block={isMobile}
+              >
+                {t('Nouvelle écriture')}
+              </Button>
+            </Tooltip>
+            <Button icon={<PlusOutlined />} disabled={!canEdit} onClick={() => setOpenAccount(true)} block={isMobile}>
               {t('Nouveau compte')}
+            </Button>
+            <Button icon={<PlusOutlined />} disabled={!canEdit} onClick={() => setOpenJournal(true)} block={isMobile}>
+              {t('Nouveau journal')}
             </Button>
             {accounts.length > 0 ? (
               <Button
@@ -383,26 +407,33 @@ export const SyndicAccounting: React.FC = () => {
                 onClick={handleLoadChartTemplate}
                 loading={submitting}
                 disabled={!canEdit}
+                block={isMobile}
               >
                 {t('Charger le plan SYSCOHADA')}
               </Button>
             ) : null}
-            <Button icon={<PlusOutlined />} disabled={!canEdit} onClick={() => setOpenJournal(true)}>
-              {t('Nouveau journal')}
-            </Button>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => setOpenEntry(true)}
-              disabled={!canEdit || accounts.length < 2 || journals.length < 1}
-            >
-              {t('Nouvelle écriture')}
-            </Button>
           </Space>
         </div>
 
         {!ready ? <Alert type="error" message={t('Paramètres comptabilité manquants')} showIcon /> : null}
-        {loadError ? <Alert type="error" message={t('Impossible de charger la comptabilité')} showIcon /> : null}
+        {loadError ? (
+          <Alert
+            type="error"
+            message={t('Impossible de charger la comptabilité')}
+            showIcon
+            action={
+              <Button
+                size="small"
+                onClick={() => {
+                  void accountsQuery.refetch();
+                  void journalsQuery.refetch();
+                }}
+              >
+                {t('Réessayer')}
+              </Button>
+            }
+          />
+        ) : null}
 
         {ready ? (
           <>
@@ -427,7 +458,7 @@ export const SyndicAccounting: React.FC = () => {
         open={openAccount}
         onCancel={() => setOpenAccount(false)}
         onOk={() => void handleCreateAccount()}
-        okText={t('Créer compte')}
+        okText={t('Créer le compte')}
         cancelText={t('Annuler')}
         confirmLoading={submitting}
       >
@@ -443,7 +474,7 @@ export const SyndicAccounting: React.FC = () => {
                 name="accountNumber"
                 rules={[{ required: true, message: t('Numéro obligatoire') }]}
               >
-                <Input />
+                <Input autoFocus inputMode="numeric" />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
@@ -478,7 +509,7 @@ export const SyndicAccounting: React.FC = () => {
         open={openJournal}
         onCancel={() => setOpenJournal(false)}
         onOk={() => void handleCreateJournal()}
-        okText={t('Créer journal')}
+        okText={t('Créer le journal')}
         cancelText={t('Annuler')}
         confirmLoading={submitting}
       >
@@ -490,7 +521,7 @@ export const SyndicAccounting: React.FC = () => {
           <Row gutter={12}>
             <Col xs={24} md={12}>
               <Form.Item label={t('Code')} name="code" rules={[{ required: true, message: t('Code obligatoire') }]}>
-                <Input />
+                <Input autoFocus />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
@@ -506,7 +537,11 @@ export const SyndicAccounting: React.FC = () => {
           <Form.Item label={t('Libellé')} name="label" rules={[{ required: true, message: t('Libellé obligatoire') }]}>
             <Input />
           </Form.Item>
-          <Form.Item label={t('Type journal')} name="journalType" rules={[{ required: true }]}>
+          <Form.Item
+            label={t('Type journal')}
+            name="journalType"
+            rules={[{ required: true, message: t('Choisissez le type de journal') }]}
+          >
             <Select
               showSearch
               optionFilterProp="label"
@@ -528,10 +563,11 @@ export const SyndicAccounting: React.FC = () => {
         open={openEntry}
         onCancel={() => setOpenEntry(false)}
         onOk={() => void handleCreateEntry()}
-        okText={t('Créer écriture')}
+        okText={t('Enregistrer l’écriture')}
         cancelText={t('Annuler')}
         confirmLoading={submitting}
         width={860}
+        style={isMobile ? { top: 16 } : undefined}
       >
         <Form
           form={entryForm}
@@ -551,7 +587,7 @@ export const SyndicAccounting: React.FC = () => {
                 name="journalId"
                 rules={[{ required: true, message: t('Journal obligatoire') }]}
               >
-                <Select showSearch optionFilterProp="label" options={journalOptions} />
+                <Select autoFocus showSearch optionFilterProp="label" options={journalOptions} />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
@@ -609,27 +645,32 @@ export const SyndicAccounting: React.FC = () => {
                     </Col>
                     <Col xs={12} md={4}>
                       <Form.Item {...field} label={t('Débit')} name={[field.name, 'debit']}>
-                        <InputNumber min={0} style={{ width: '100%' }} />
+                        <InputNumber min={0} {...montantSaisiProps} style={{ width: '100%' }} />
                       </Form.Item>
                     </Col>
                     <Col xs={12} md={4}>
-                      <Form.Item {...field} label={t('Credit')} name={[field.name, 'credit']}>
-                        <InputNumber min={0} style={{ width: '100%' }} />
+                      <Form.Item {...field} label={t('Crédit')} name={[field.name, 'credit']}>
+                        <InputNumber min={0} {...montantSaisiProps} style={{ width: '100%' }} />
                       </Form.Item>
                     </Col>
                     <Col xs={24} md={6}>
                       <Form.Item
                         {...field}
-                        label={t('Libelle ligne')}
+                        label={t('Libellé de la ligne')}
                         name={[field.name, 'label']}
-                        rules={[{ required: true, message: t('Libelle obligatoire') }]}
+                        rules={[{ required: true, message: t('Libellé obligatoire') }]}
                       >
                         <Input />
                       </Form.Item>
                     </Col>
                     <Col xs={24} md={2} style={{ display: 'flex', alignItems: 'center' }}>
-                      <Button danger onClick={() => remove(field.name)} disabled={fields.length <= 2}>
-                        X
+                      <Button
+                        danger
+                        onClick={() => remove(field.name)}
+                        disabled={fields.length <= 2}
+                        aria-label={t('Supprimer la ligne {{value}}', { value: index + 1 })}
+                      >
+                        {t('Retirer')}
                       </Button>
                     </Col>
                   </Row>
@@ -640,6 +681,33 @@ export const SyndicAccounting: React.FC = () => {
               </Space>
             )}
           </Form.List>
+          <Form.Item noStyle shouldUpdate>
+            {({ getFieldValue }) => {
+              const lines = (getFieldValue('lines') ?? []) as Array<{ debit?: number; credit?: number }>;
+              const totalDebit = lines.reduce((sum, line) => sum + Number(line?.debit ?? 0), 0);
+              const totalCredit = lines.reduce((sum, line) => sum + Number(line?.credit ?? 0), 0);
+              if (!totalDebit && !totalCredit) return null;
+              const gap = totalDebit - totalCredit;
+              return (
+                <Alert
+                  style={{ marginTop: 12 }}
+                  type={gap === 0 ? 'success' : 'warning'}
+                  showIcon
+                  message={t('Total débit {{debit}} · total crédit {{credit}}', {
+                    debit: formatMoney(totalDebit),
+                    credit: formatMoney(totalCredit)
+                  })}
+                  description={
+                    gap === 0
+                      ? t('L’écriture est équilibrée.')
+                      : t('Écart de {{gap}} : le débit et le crédit doivent être égaux.', {
+                          gap: formatMoney(Math.abs(gap))
+                        })
+                  }
+                />
+              );
+            }}
+          </Form.Item>
         </Form>
       </Modal>
     </>

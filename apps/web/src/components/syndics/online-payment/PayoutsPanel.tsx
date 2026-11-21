@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { App, Alert, Button, Card } from 'antd';
+import { App, Button, Card } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined } from '@ant-design/icons';
-import { MoneyValue, Table, formatMoney } from '../../primitives';
+import { DataCard, DataView, MoneyValue, formatMoney } from '../../primitives';
 import { useListSearch } from '../../../hooks/useListSearch';
 import { collectAllPages } from '../../../utils/table-export/collect';
 import {
@@ -129,6 +129,19 @@ export const PayoutsPanel: React.FC<PayoutsPanelProps> = ({
     { title: t('Note'), dataIndex: 'note', key: 'note', render: (value: string | null) => value || '—' }
   ];
 
+  /** Carte mobile : le montant en tête, puis date, compte, référence et note. */
+  const renderCard = (payout: SyndicGatewayPayout) => (
+    <DataCard
+      title={payout.reference}
+      subtitle={formatDay(payout.date)}
+      highlight={<MoneyValue value={payout.amount} />}
+      fields={[
+        { label: t('Compte'), value: payout.treasuryAccountNumber ?? PAYOUT_ACCOUNT_DEFAULT },
+        { label: t('Note'), value: payout.note || '—' }
+      ]}
+    />
+  );
+
   return (
     <Card
       title={t('Reversements vers la banque')}
@@ -145,39 +158,34 @@ export const PayoutsPanel: React.FC<PayoutsPanelProps> = ({
         ) : null
       }
     >
-      {error ? (
-        <Alert
-          type="error"
-          showIcon
-          style={{ marginBottom: 16 }}
-          message={error}
-          action={
-            <Button size="small" onClick={() => void load()}>
-              {t('Réessayer')}
-            </Button>
-          }
-        />
-      ) : null}
-
-      <Table<SyndicGatewayPayout>
-        dataSource={items}
+      <DataView<SyndicGatewayPayout>
+        {...search.dataViewProps}
+        items={items}
+        total={total}
+        loading={loading}
+        error={error}
+        onRetry={() => void load()}
         search={search.searchProps}
-        pagination={search.tablePagination(total)}
         aria-label={t('Reversements vers la banque')}
         helpId="syndic.paiements.reversements"
-        exportFilename={t('Reversements vers la banque')}
-        exportFetchAll={() =>
-          collectAllPages<SyndicGatewayPayout>(async (page, limit) => {
-            const result = await listSyndicGatewayPayouts(tenantId, syndicId, { ...search.filterParams, page, limit });
-            return { items: result.items, total: result.pagination?.total ?? result.items.length };
-          })
-        }
-        rowKey="entryId"
-        size="middle"
-        loading={loading}
+        export={{
+          filename: t('Reversements vers la banque'),
+          fetchAll: () =>
+            collectAllPages<SyndicGatewayPayout>(async (page, limit) => {
+              const result = await listSyndicGatewayPayouts(tenantId, syndicId, {
+                ...search.filterParams,
+                page,
+                limit
+              });
+              return { items: result.items, total: result.pagination?.total ?? result.items.length };
+            })
+        }}
+        rowKey={payout => payout.entryId}
         columns={columns}
-        scroll={{ x: 'max-content' }}
-        locale={search.isFiltered ? undefined : { emptyText: t('Aucun reversement enregistré') }}
+        emptyDescription={t(
+          'Aucun reversement enregistré. Notez ici chaque versement reçu du fournisseur sur le compte bancaire de la copropriété.'
+        )}
+        renderCard={renderCard}
       />
 
       <PayoutModal

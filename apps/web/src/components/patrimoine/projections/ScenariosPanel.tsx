@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Alert, Button, Card, Input, Typography } from 'antd';
+import { Alert, App, Button, Card, Input, Skeleton, Typography } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   createScenario,
@@ -44,11 +44,11 @@ export const ScenariosPanel: React.FC<{
   openedId: string | null;
 }> = ({ tenantId, current, onOpen, openedId }) => {
   const queryClient = useQueryClient();
+  const { message } = App.useApp();
   const [name, setName] = useState('');
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
   const [denied, setDenied] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
 
   const list = useQuery({
     queryKey: queryKey('patrimoine-scenarios', tenantId),
@@ -63,10 +63,9 @@ export const ScenariosPanel: React.FC<{
 
   const run = async (action: () => Promise<unknown>, fallback: string, success: string): Promise<boolean> => {
     setError(null);
-    setNotice(null);
     try {
       await write.mutateAsync(action);
-      setNotice(success);
+      message.success(success);
       return true;
     } catch (failure) {
       if (statusOf(failure) === 403) setDenied(true);
@@ -108,18 +107,24 @@ export const ScenariosPanel: React.FC<{
             </label>
             <Input
               id="scenario-name"
+              placeholder={t('Ex. : Vente de la villa en année 3')}
               maxLength={NAME_MAX}
               value={name}
               onChange={event => setName(event.target.value)}
             />
           </div>
-          <Button type="primary" onClick={save} disabled={!trimmed || !current} loading={write.isPending}>
+          <Button
+            type="primary"
+            style={{ minHeight: 40 }}
+            onClick={save}
+            disabled={!trimmed || !current}
+            loading={write.isPending}
+          >
             {t('Enregistrer ce scénario')}
           </Button>
         </div>
       )}
       {error && <Alert type="error" showIcon style={{ marginTop: 'var(--space-3)' }} title={error} />}
-      {notice && !error && <Alert type="success" showIcon style={{ marginTop: 'var(--space-3)' }} title={notice} />}
 
       <div style={{ marginTop: 'var(--space-4)' }}>
         {list.error ? (
@@ -129,7 +134,7 @@ export const ScenariosPanel: React.FC<{
             actions={[{ label: t('Réessayer'), onClick: () => list.refetch(), primary: true }]}
           />
         ) : list.isPending ? (
-          <Typography.Text type="secondary">{t('Chargement des scénarios…')}</Typography.Text>
+          <Skeleton active paragraph={{ rows: 2 }} title={false} aria-label={t('Chargement des scénarios…')} />
         ) : (list.data ?? []).length === 0 ? (
           <Typography.Text type="secondary">{t("Aucun scénario enregistré pour l'instant.")}</Typography.Text>
         ) : (
@@ -154,10 +159,16 @@ export const ScenariosPanel: React.FC<{
                       value={renaming.name}
                       onChange={event => setRenaming({ id: scenario.id, name: event.target.value })}
                     />
-                    <Button size="small" type="primary" onClick={rename} disabled={!renaming.name.trim()}>
+                    <Button
+                      size="small"
+                      style={{ minHeight: 40 }}
+                      type="primary"
+                      onClick={rename}
+                      disabled={!renaming.name.trim()}
+                    >
                       {t('Valider')}
                     </Button>
-                    <Button size="small" onClick={() => setRenaming(null)}>
+                    <Button size="small" style={{ minHeight: 40 }} onClick={() => setRenaming(null)}>
                       {t('Annuler')}
                     </Button>
                   </>
@@ -171,12 +182,16 @@ export const ScenariosPanel: React.FC<{
                       })}
                       {openedId === scenario.id ? ` — ${t('ouvert')}` : ''}
                     </Typography.Text>
-                    <Button size="small" onClick={() => onOpen(scenario)}>
+                    <Button size="small" style={{ minHeight: 40 }} onClick={() => onOpen(scenario)}>
                       {t('Ouvrir')}
                     </Button>
                     {!denied && (
                       <>
-                        <Button size="small" onClick={() => setRenaming({ id: scenario.id, name: scenario.name })}>
+                        <Button
+                          size="small"
+                          style={{ minHeight: 40 }}
+                          onClick={() => setRenaming({ id: scenario.id, name: scenario.name })}
+                        >
                           {t('Renommer')}
                         </Button>
                         <ConfirmAction
@@ -191,7 +206,7 @@ export const ScenariosPanel: React.FC<{
                             );
                           }}
                         >
-                          <Button size="small" disabled={!current}>
+                          <Button size="small" style={{ minHeight: 40 }} disabled={!current}>
                             {t('Mettre à jour')}
                           </Button>
                         </ConfirmAction>
@@ -207,7 +222,7 @@ export const ScenariosPanel: React.FC<{
                             )
                           }
                         >
-                          <Button size="small" danger>
+                          <Button size="small" style={{ minHeight: 40 }} danger>
                             {t('Supprimer')}
                           </Button>
                         </ConfirmAction>

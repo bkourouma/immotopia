@@ -2,7 +2,8 @@ import React from 'react';
 import { Button, Space, Tag, Typography } from 'antd';
 import { DeleteOutlined, PauseCircleOutlined, PlayCircleOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
-import { ConfirmAction, MoneyValue, Table, formatMoney } from '../../primitives';
+import { ConfirmAction, DataCard, MoneyValue, Table, formatMoney, useConfirmAction } from '../../primitives';
+import type { MenuProps } from 'antd';
 import { ChargeSchedule } from '../../../types/syndic-types';
 import { t } from '../../../i18n/t';
 import { useLocalListSearch } from '../../../utils/list-search';
@@ -17,6 +18,7 @@ import {
 import { ChargeScheduleRunNotices } from '../ChargeScheduleRunNotices';
 import { displayCurrency } from '../../../utils/syndic-currency';
 import { allocationMethodLabel } from '../charge-allocation/ChargeAllocationControls';
+import { ResponsiveList } from '../charge-allocation/ChargeFormLayout';
 
 const { Text } = Typography;
 
@@ -52,6 +54,7 @@ export const ScheduleTable: React.FC<{
   onResume: (schedule: ChargeSchedule) => void;
   onDelete: (schedule: ChargeSchedule) => void;
 }> = ({ tenantId, syndicId, onNoticesResent, schedules, busyId, onOpen, onExecute, onPause, onResume, onDelete }) => {
+  const confirm = useConfirmAction();
   const criteria: SearchCriterion[] = [
     {
       key: 'q',
@@ -253,7 +256,104 @@ export const ScheduleTable: React.FC<{
     }
   ];
 
-  return (
+  /** Carte mobile : « Ouvrir » en action visible, le reste derrière « ⋮ » (suppression avec confirmation). */
+  const renderCard = (schedule: ChargeSchedule) => {
+    const run = schedule.lastRun;
+    const busy = busyId === schedule.id;
+    const menu: NonNullable<MenuProps['items']> = [
+      {
+        key: 'execute',
+        icon: <ThunderboltOutlined />,
+        label: t('Exécuter maintenant'),
+        disabled: !schedule.active || busy,
+        onClick: () => onExecute(schedule)
+      },
+      schedule.active
+        ? {
+            key: 'pause',
+            icon: <PauseCircleOutlined />,
+            label: t('Pause'),
+            disabled: busy,
+            onClick: () => void onPause(schedule)
+          }
+        : {
+            key: 'resume',
+            icon: <PlayCircleOutlined />,
+            label: t('Reprise'),
+            disabled: busy,
+            onClick: () => void onResume(schedule)
+          },
+      {
+        key: 'delete',
+        icon: <DeleteOutlined />,
+        danger: true,
+        label: t('Supprimer'),
+        disabled: busy,
+        onClick: () =>
+          confirm({
+            title: t('Supprimer la programmation « {{label}} » ?', { label: schedule.label }),
+            description: t(
+              "Si des appels ont déjà été émis, la programmation sera désactivée au lieu d'être supprimée."
+            ),
+            okText: t('Supprimer'),
+            danger: true,
+            onConfirm: () => onDelete(schedule)
+          })
+      }
+    ];
+    return (
+      <DataCard
+        title={schedule.label}
+        subtitle={frequencyLabels[schedule.frequency]}
+        status={schedule.active ? <Tag color="green">{t('Active')}</Tag> : <Tag color="default">{t('En pause')}</Tag>}
+        fields={[
+          {
+            label: t('Montant'),
+            value:
+              schedule.amountSource === 'FIXED' ? (
+                schedule.allocationMethod === 'BY_LOT_TYPE' ? (
+                  t('Barème par type de lot')
+                ) : (
+                  <MoneyValue value={schedule.fixedAmount ?? 0} currency={displayCurrency(schedule.currency)} />
+                )
+              ) : schedule.budget ? (
+                `${schedule.budget.label} (${schedule.budget.fiscalYear})`
+              ) : (
+                amountSourceLabels.BUDGET
+              )
+          },
+          { label: t('Répartition'), value: scheduleAllocationLabel(schedule) },
+          {
+            label: t('Prochaine émission'),
+            value: schedule.nextPeriod
+              ? `${schedule.nextPeriod.label} · ${formatDay(schedule.nextPeriod.issueDate)}`
+              : t('Aucune (fin de programmation atteinte)')
+          },
+          {
+            label: t('Dernière exécution'),
+            value: run ? (
+              <Space direction="vertical" size={0} style={{ alignItems: 'flex-end' }}>
+                <Tag color={runStatusConfig[run.status].color} style={{ marginInlineEnd: 0 }}>
+                  {run.periodLabel} · {runStatusConfig[run.status].label}
+                </Tag>
+                {run.error ? (
+                  <Text type="danger" style={{ fontSize: 12 }}>
+                    {describeScheduleError(run.error)}
+                  </Text>
+                ) : null}
+              </Space>
+            ) : (
+              t('Aucune')
+            )
+          }
+        ]}
+        primaryAction={{ label: t('Ouvrir'), onClick: () => onOpen(schedule), loading: busy }}
+        secondaryActions={menu}
+      />
+    );
+  };
+
+  const tableNode = (
     <Table
       helpId="syndic.programmation.liste.tableau"
       {...local.tableProps}
@@ -263,6 +363,24 @@ export const ScheduleTable: React.FC<{
       scroll={{ x: 'max-content' }}
       columns={columns}
       locale={local.isFiltered ? undefined : { emptyText: t('Aucune programmation pour cette copropriété.') }}
+    />
+  );
+
+  return (
+    <ResponsiveList<ChargeSchedule>
+      table={tableNode}
+      columns={columns}
+      cards={{
+        ...local.dataViewProps,
+        'aria-label': t('Programmation des appels de charges'),
+        helpId: 'syndic.programmation.liste.tableau',
+        export: { filename: t('Programmation des appels de charges'), fetchAll: local.exportAll },
+        emptyDescription: t(
+          'Aucune programmation pour cette copropriété : créez-en une avec « Nouvelle programmation ».'
+        ),
+        rowKey: schedule => schedule.id,
+        renderCard
+      }}
     />
   );
 };

@@ -6,6 +6,7 @@ import { PlusOutlined, HomeOutlined } from '@ant-design/icons';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { listProperties, deleteProperty, updateStatus } from '../../services/property-service';
 import { blocageSuppression } from './property-delete-error';
+import { apiErrorText } from '../../components/properties/property-api-errors';
 import type { Property } from '../../types/property-types';
 import { useAuth } from '../../hooks/useAuth';
 import { getAllCommunes, GeographicLocation } from '../../services/geographic-service';
@@ -171,7 +172,9 @@ export const Properties: React.FC = () => {
   const handleDelete = (property: Property) => {
     confirm({
       title: t('Supprimer « {{title}} » ?', { title: property.title }),
-      description: t('Cette action est irréversible.'),
+      description: t(
+        "Suppression définitive. Si le bien est lié à un bail, un mandat ou des tickets, elle sera refusée et vous pourrez l'archiver à la place."
+      ),
       okText: t('Supprimer'),
       danger: true,
       onConfirm: async () => {
@@ -196,17 +199,13 @@ export const Properties: React.FC = () => {
                   message.success(t('Bien archivé.'));
                   await queryClient.invalidateQueries({ queryKey: ['properties', effectiveTenantId] });
                 } catch (archiveError: any) {
-                  message.error(
-                    archiveError?.response?.data?.message ||
-                      archiveError?.response?.data?.error ||
-                      t("L'archivage a échoué.")
-                  );
+                  message.error(apiErrorText(archiveError, t("L'archivage a échoué.")));
                 }
               }
             });
             return;
           }
-          message.error(err?.response?.data?.error || t('La suppression a échoué.'));
+          message.error(apiErrorText(err, t('La suppression a échoué.')));
         }
       }
     });

@@ -1,8 +1,9 @@
 import React from 'react';
-import { Card, Typography, Space, Tag, Button, Popconfirm } from 'antd';
+import { Card, Typography, Space, Tag, Button } from 'antd';
 import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { Ticket, MaintenanceTicketStatus } from '../../types/maintenance-types';
 import { TicketStatusBadge } from './TicketStatusBadge';
+import { ConfirmAction } from '../primitives';
 import { safeFormatDate } from '../../utils/date-utils';
 import { t } from '../../i18n/t';
 import { localizedRecord } from '../../i18n/localized';
@@ -69,33 +70,40 @@ export const TicketCard: React.FC<TicketCardProps> = ({ ticket, onClick, onEdit,
         onEdit || onDelete
           ? [
               canEdit && onEdit ? (
-                <Button key="edit" type="text" icon={<EditOutlined />} onClick={handleEdit} style={{ width: '100%' }}>
+                <Button
+                  key="edit"
+                  type="text"
+                  icon={<EditOutlined />}
+                  onClick={handleEdit}
+                  style={{ width: '100%', minHeight: 44 }}
+                  aria-label={t('Modifier le ticket « {{title}} »', { title: ticket.title })}
+                >
                   {t('Modifier')}
                 </Button>
               ) : null,
               canDelete && onDelete ? (
-                <Popconfirm
-                  key="delete"
-                  title={t('Supprimer définitivement le ticket')}
-                  description={t(
-                    'Êtes-vous sûr de vouloir supprimer définitivement ce ticket ? Cette action est irréversible.'
-                  )}
-                  onConfirm={handleDelete}
-                  onCancel={e => e?.stopPropagation()}
-                  okText={t('Oui, supprimer')}
-                  cancelText={t('Non')}
-                  okButtonProps={{ danger: true }}
-                >
-                  <Button
-                    type="text"
+                // La confirmation sort de la carte (portail) : ses clics ne doivent pas ouvrir le ticket.
+                <div key="delete" onClick={e => e.stopPropagation()}>
+                  <ConfirmAction
+                    title={t('Supprimer définitivement le ticket « {{title}} » ?', { title: ticket.title })}
+                    description={t('Cette action est irréversible.')}
+                    onConfirm={handleDelete}
+                    okText={t('Oui, supprimer')}
+                    cancelText={t('Non')}
                     danger
-                    icon={<DeleteOutlined />}
-                    onClick={e => e.stopPropagation()}
-                    style={{ width: '100%' }}
                   >
-                    {t('Supprimer')}
-                  </Button>
-                </Popconfirm>
+                    <Button
+                      type="text"
+                      danger
+                      icon={<DeleteOutlined />}
+                      onClick={e => e.stopPropagation()}
+                      style={{ width: '100%', minHeight: 44 }}
+                      aria-label={t('Supprimer le ticket « {{title}} »', { title: ticket.title })}
+                    >
+                      {t('Supprimer')}
+                    </Button>
+                  </ConfirmAction>
+                </div>
               ) : null
             ].filter(Boolean)
           : undefined

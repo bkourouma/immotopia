@@ -189,7 +189,7 @@ describe('<SyndicOnlinePayments> — écran « Paiements » (spec 047)', () => {
   it('affiche le titre « Paiements » et, par défaut, le seul onglet des paiements déclarés', () => {
     renderPage();
 
-    expect(screen.getByRole('heading', { level: 2, name: 'Paiements' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Paiements' })).toBeInTheDocument();
     expect(
       screen.getByText(
         'Paiements des appels de charges : transferts mobile money déclarés, paiement en ligne, reversements.'

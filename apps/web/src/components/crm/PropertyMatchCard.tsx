@@ -85,9 +85,10 @@ export const PropertyMatchCard: React.FC<PropertyMatchCardProps> = ({
         )}
         {isInShortlist && onStatusChange && (
           <select
+            aria-label={t('Statut du bien dans la sélection')}
             value={currentStatus || 'SHORTLISTED'}
             onChange={e => onStatusChange(e.target.value as CrmDealPropertyStatus)}
-            className="text-xs border rounded px-2 py-1"
+            className="text-xs border rounded px-2 py-1 min-h-[44px] lg:min-h-0"
           >
             <option value="SHORTLISTED">{dealPropertyStatusLabel('SHORTLISTED')}</option>
             <option value="PROPOSED">{dealPropertyStatusLabel('PROPOSED')}</option>

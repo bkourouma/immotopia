@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Segmented, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { useParams } from 'react-router-dom';
-import { PageHeader, StateBlock, Table } from '../../components/primitives';
+import { useParams, useSearchParams } from 'react-router-dom';
+import { PageHeader, SkeletonTable, StateBlock, Table } from '../../components/primitives';
 import {
   fetchPlatformHelpFeedback,
   fetchTenantHelpFeedback,
@@ -44,7 +44,21 @@ function QuestionsList({ item, showTenant }: { item: HelpFeedbackItem; showTenan
 
 export default function HelpFeedbackPage({ scope = 'platform' }: { scope?: Scope }) {
   const { tenantId } = useParams<{ tenantId: string }>();
-  const [days, setDays] = useState<number>(30);
+  // La période vit dans l'URL : retour arrière, rechargement et lien partagé la conservent.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedDays = Number(searchParams.get('days'));
+  const days = (PERIODS as readonly number[]).includes(requestedDays) ? requestedDays : 30;
+  const setDays = (value: number) => {
+    setSearchParams(
+      previous => {
+        const next = new URLSearchParams(previous);
+        if (value === 30) next.delete('days');
+        else next.set('days', String(value));
+        return next;
+      },
+      { replace: true }
+    );
+  };
   const [items, setItems] = useState<HelpFeedbackItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -130,11 +144,12 @@ export default function HelpFeedbackPage({ scope = 'platform' }: { scope?: Scope
 
   let content: React.ReactNode;
   if (loading) {
-    content = <StateBlock variant="loading" />;
+    content = <SkeletonTable rows={5} columns={5} aria-label={t('Chargement des avis')} />;
   } else if (error) {
     content = (
       <StateBlock
         variant="error"
+        title={t('Avis indisponibles')}
         description={t("Les avis n'ont pas pu être chargés.")}
         actions={[{ label: t('Réessayer'), primary: true, onClick: () => setReloadKey(k => k + 1) }]}
       />

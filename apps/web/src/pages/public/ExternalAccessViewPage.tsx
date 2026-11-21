@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import { Alert, Button, Card, Descriptions, Result, Space, Spin, Typography } from 'antd';
+import { Alert, Button, Card, Descriptions, Space, Typography } from 'antd';
 import {
   downloadPublicExternalAccessDocument,
   fetchPublicExternalAccessView
@@ -8,6 +8,7 @@ import {
 import type { ExternalAccessViewDto } from '../../types/external-access';
 import { accessTypeLabel } from '../patrimoine/external-access/external-access-labels';
 import { t } from '../../i18n/t';
+import { PublicLinkProblem, PublicLoading } from './PublicLinkState';
 import { Money, formatDate } from './external-access-view/blocks';
 import { PropertiesSection } from './external-access-view/PropertiesSection';
 
@@ -269,18 +270,10 @@ export const ExternalAccessViewPage: React.FC = () => {
     >
       <style>{PRINT_CSS}</style>
       <div style={{ maxWidth: 1040, marginInline: 'auto' }}>
-        {state.kind === 'loading' ? (
-          <div style={{ textAlign: 'center', padding: 64 }}>
-            <Spin size="large" aria-label={t('Chargement de l’accès partagé')} />
-          </div>
-        ) : null}
-        {state.kind === 'invalid' ? <Result status="warning" title={t('Lien invalide ou expiré.')} /> : null}
-        {state.kind === 'rate_limited' ? (
-          <Result status="warning" title={t('Trop de tentatives, réessayez dans quelques minutes.')} />
-        ) : null}
-        {state.kind === 'unavailable' ? (
-          <Result status="warning" title={t('Service momentanément indisponible, réessayez dans quelques minutes.')} />
-        ) : null}
+        {state.kind === 'loading' ? <PublicLoading label={t('Chargement de l’accès partagé')} /> : null}
+        {state.kind === 'invalid' ? <PublicLinkProblem kind="invalid" title={t('Lien invalide ou expiré.')} /> : null}
+        {state.kind === 'rate_limited' ? <PublicLinkProblem kind="rate_limited" /> : null}
+        {state.kind === 'unavailable' ? <PublicLinkProblem kind="unavailable" /> : null}
         {state.kind === 'ok' ? (
           <>
             <div className="external-access-no-print" style={{ textAlign: 'end', marginBlockEnd: 16 }}>

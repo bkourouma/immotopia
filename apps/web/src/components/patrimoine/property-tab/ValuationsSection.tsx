@@ -1,6 +1,7 @@
 import React from 'react';
-import { Alert, Button, Card, Popconfirm, Space, Tag } from 'antd';
-import { MoneyValue, Table } from '../../primitives';
+import { Button, Card, Space, Tag } from 'antd';
+import { ConfirmAction, MoneyValue, Table } from '../../primitives';
+import { SectionEmpty, SectionError, SUPPRESSION_DEFINITIVE } from './section-parts';
 import type { AssetValuation } from '../../../types/patrimoine-types';
 import { t } from '../../../i18n/t';
 import { activeLocale } from '../../../i18n/format';
@@ -28,6 +29,8 @@ const ACCESSEURS = {
 interface Props {
   valuations: AssetValuation[];
   error?: string;
+  /** Relance le chargement de la rubrique (bouton « Réessayer » de l'état d'erreur). */
+  onRetry?: () => void;
   busyActionId: string | null;
   onAdd: () => void;
   onEdit: (item: AssetValuation) => void;
@@ -35,7 +38,15 @@ interface Props {
 }
 
 /** Rubrique « Valorisations » : tableau de gestion, recherche locale `val.*`, pages de 10. */
-export const ValuationsSection: React.FC<Props> = ({ valuations, error, busyActionId, onAdd, onEdit, onDelete }) => {
+export const ValuationsSection: React.FC<Props> = ({
+  valuations,
+  error,
+  onRetry,
+  busyActionId,
+  onAdd,
+  onEdit,
+  onDelete
+}) => {
   const criteres: SearchCriterion[] = [
     { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Notes, méthode…') },
     { key: 'methode', type: 'multiSelect', label: t('Méthode'), primary: true, options: OPTIONS_METHODE },
@@ -61,7 +72,7 @@ export const ValuationsSection: React.FC<Props> = ({ valuations, error, busyActi
       }
     >
       {error ? (
-        <Alert type="error" showIcon message={error} />
+        <SectionError title={t('Impossible de charger les valorisations')} detail={error} onRetry={onRetry} />
       ) : (
         <Table<AssetValuation>
           helpId="patrimoine.bien.valorisations"
@@ -70,7 +81,15 @@ export const ValuationsSection: React.FC<Props> = ({ valuations, error, busyActi
           exportFetchAll={local.exportAll}
           scroll={{ x: 'max-content' }}
           rowKey="id"
-          locale={local.isFiltered ? undefined : { emptyText: t('Aucune valorisation pour ce bien.') }}
+          locale={{
+            emptyText: local.isFiltered ? undefined : (
+              <SectionEmpty
+                title={t('Aucune valorisation pour ce bien.')}
+                addLabel={t('Ajouter une valorisation')}
+                onAdd={onAdd}
+              />
+            )
+          }}
           columns={[
             {
               title: t('Date'),
@@ -91,15 +110,23 @@ export const ValuationsSection: React.FC<Props> = ({ valuations, error, busyActi
               title: t('Actions'),
               key: 'actions',
               render: (_: unknown, record: AssetValuation) => (
-                <Space>
+                <Space wrap>
                   <Button size="small" onClick={() => onEdit(record)}>
                     {t('Modifier')}
                   </Button>
-                  <Popconfirm title={t('Supprimer cette valorisation ?')} onConfirm={() => onDelete(record.id)}>
+                  <ConfirmAction
+                    danger
+                    okText={t('Supprimer')}
+                    title={t('Supprimer la valorisation du {{date}} ?', {
+                      date: new Date(record.valuatedAt).toLocaleDateString(activeLocale())
+                    })}
+                    description={SUPPRESSION_DEFINITIVE()}
+                    onConfirm={() => onDelete(record.id)}
+                  >
                     <Button size="small" danger loading={busyActionId === `valuation-${record.id}`}>
                       {t('Supprimer')}
                     </Button>
-                  </Popconfirm>
+                  </ConfirmAction>
                 </Space>
               )
             }

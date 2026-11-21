@@ -1,5 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Spin } from 'antd';
+import { Link, useInRouterContext } from 'react-router-dom';
+import { MoneyValue } from '../../components/primitives';
+import { displayCurrency } from '../../utils/syndic-currency';
 import { t } from '../../i18n/t';
 import { getOnlinePayment, type CoOwnerOnlineCheckout } from '../../services/coowner-portal-service';
 import { isNotFound } from './portal-error';
@@ -44,6 +47,7 @@ export const OnlinePaymentReturn: React.FC<Props> = ({
   maxMs = RETURN_POLL_MAX_MS
 }) => {
   const [state, setState] = useState<ReturnState>({ kind: 'loading' });
+  const inRouter = useInRouterContext();
   const settledRef = useRef(false);
   const onSettledRef = useRef(onSettled);
   onSettledRef.current = onSettled;
@@ -159,6 +163,10 @@ export const OnlinePaymentReturn: React.FC<Props> = ({
         message={t('Paiement confirmé.')}
         description={
           <>
+            <div>
+              {t('Montant réglé :')}{' '}
+              <MoneyValue value={checkout.amount} currency={displayCurrency(checkout.currency)} />
+            </div>
             {periods ? <div>{t('Appels réglés : {{periods}}.', { periods })}</div> : null}
             {checkout.documents.length > 0 ? (
               <div>
@@ -169,6 +177,16 @@ export const OnlinePaymentReturn: React.FC<Props> = ({
             ) : (
               <div>{t('Votre reçu sera disponible dans « Quittances » dans quelques instants.')}</div>
             )}
+            {inRouter ? (
+              <div style={{ marginTop: 8 }}>
+                <Link
+                  to="/copropriete/quittances"
+                  style={{ display: 'inline-block', minHeight: 44, lineHeight: '44px' }}
+                >
+                  {t('Voir mes quittances')}
+                </Link>
+              </div>
+            ) : null}
           </>
         }
         style={style}

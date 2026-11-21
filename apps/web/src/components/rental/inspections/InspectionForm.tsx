@@ -1,5 +1,18 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, App, Button, Card, DatePicker, Divider, Input, InputNumber, Space, Switch, Typography } from 'antd';
+import {
+  Alert,
+  App,
+  Button,
+  Card,
+  DatePicker,
+  Divider,
+  Input,
+  InputNumber,
+  Progress,
+  Space,
+  Switch,
+  Typography
+} from 'antd';
 import { DeleteOutlined, SaveOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import {
@@ -397,10 +410,10 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
           message={t('Une saisie locale non enregistrée a été trouvée pour cet état des lieux.')}
           description={
             <Space>
-              <Button size="small" type="primary" onClick={handleRestoreLocalDraft}>
+              <Button type="primary" style={{ minHeight: 44 }} onClick={handleRestoreLocalDraft}>
                 {t('Restaurer')}
               </Button>
-              <Button size="small" onClick={handleDismissLocalDraft}>
+              <Button style={{ minHeight: 44 }} onClick={handleDismissLocalDraft}>
                 {t('Ignorer')}
               </Button>
             </Space>
@@ -425,6 +438,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
             value={inspectionDate}
             onChange={value => value && setInspectionDate(value)}
             format="DD/MM/YYYY"
+            size="large"
             style={{ maxWidth: 220 }}
           />
         </Space>
@@ -438,6 +452,13 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
           </Text>
         }
       >
+        <div style={{ marginBottom: 12 }}>
+          <Progress
+            percent={totalItems === 0 ? 0 : Math.round((evaluatedItems / totalItems) * 100)}
+            status={totalItems > 0 && evaluatedItems === totalItems ? 'success' : 'active'}
+            aria-label={t('{{evalues}} éléments évalués sur {{total}}', { evalues: evaluatedItems, total: totalItems })}
+          />
+        </div>
         <RoomsAccordion
           tenantId={tenantId}
           leaseId={leaseId}
@@ -460,6 +481,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
           <div>
             <Text>{t('Électricité')}</Text>
             <Input
+              size="large"
               value={meters.electricity}
               onChange={e => setMeters(prev => ({ ...prev, electricity: e.target.value }))}
               placeholder={t('Relevé du compteur électrique')}
@@ -469,6 +491,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
           <div>
             <Text>{t('Eau')}</Text>
             <Input
+              size="large"
               value={meters.water}
               onChange={e => setMeters(prev => ({ ...prev, water: e.target.value }))}
               placeholder={t('Relevé du compteur d’eau')}
@@ -478,6 +501,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
           <div>
             <Text>{t('Gaz')}</Text>
             <Input
+              size="large"
               value={meters.gas}
               onChange={e => setMeters(prev => ({ ...prev, gas: e.target.value }))}
               placeholder={t('Relevé du compteur de gaz')}
@@ -487,6 +511,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
           <div>
             <Text>{t('Nombre de clés')}</Text>
             <InputNumber
+              size="large"
               style={{ width: '100%' }}
               min={0}
               max={999}
@@ -536,18 +561,34 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
 
       <Divider />
 
-      <Space wrap>
-        <Button onClick={onCancel}>{t('Retour')}</Button>
-        <Button icon={<SaveOutlined />} loading={saving} onClick={() => void handleSave()}>
-          {t('Enregistrer')}
-        </Button>
-        <Button type="primary" loading={finalizing} onClick={handleFinalize}>
-          {t('Finaliser')}
-        </Button>
-        <Button danger icon={<DeleteOutlined />} loading={deleting} onClick={handleDelete}>
-          {t('Supprimer le brouillon')}
-        </Button>
-      </Space>
+      <Text type="secondary">
+        {t("Votre saisie est conservée sur cet appareil tant que vous n'avez pas enregistré.")}
+      </Text>
+
+      <div
+        style={{
+          position: 'sticky',
+          insetBlockEnd: 0,
+          zIndex: 5,
+          padding: '8px 0',
+          background: 'var(--bg-surface, var(--color-bg-container, #fff))'
+        }}
+      >
+        <Space wrap>
+          <Button style={{ minHeight: 44 }} onClick={onCancel}>
+            {t('Retour')}
+          </Button>
+          <Button style={{ minHeight: 44 }} icon={<SaveOutlined />} loading={saving} onClick={() => void handleSave()}>
+            {t('Enregistrer')}
+          </Button>
+          <Button type="primary" style={{ minHeight: 44 }} loading={finalizing} onClick={handleFinalize}>
+            {t('Finaliser')}
+          </Button>
+          <Button danger style={{ minHeight: 44 }} icon={<DeleteOutlined />} loading={deleting} onClick={handleDelete}>
+            {t('Supprimer le brouillon')}
+          </Button>
+        </Space>
+      </div>
     </Space>
   );
 };

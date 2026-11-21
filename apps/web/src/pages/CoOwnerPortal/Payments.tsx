@@ -6,6 +6,7 @@ import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { DataCard, DataView, MoneyValue, SkeletonList, Table } from '../../components/primitives';
 import { feedback } from '../../lib/feedback';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { useListSearch } from '../../hooks/useListSearch';
 import type { SearchCriterion } from '../../utils/list-search';
 import { HelpSectionTitle } from '../../help';
@@ -50,6 +51,8 @@ function yearOptions(): number[] {
 
 function DocumentButton({ doc }: { doc: CoOwnerPaymentDocument }) {
   const [loading, setLoading] = useState<'original' | 'ar' | null>(null);
+  const { isMobile } = useBreakpoint();
+  const touchStyle = isMobile ? { minHeight: 44 } : undefined;
   const download = async (translation?: 'ar') => {
     setLoading(translation ?? 'original');
     try {
@@ -60,6 +63,7 @@ function DocumentButton({ doc }: { doc: CoOwnerPaymentDocument }) {
         translation
       );
       saveBlob(blob, filename);
+      feedback.success(t('{{label}} {{number}} téléchargé.', { label, number: doc.number }));
     } catch (error) {
       feedback.error(await blobErrorMessage(error, t('Téléchargement impossible.')));
     } finally {
@@ -68,12 +72,23 @@ function DocumentButton({ doc }: { doc: CoOwnerPaymentDocument }) {
   };
   return (
     <Space wrap>
-      <Button size="small" icon={<DownloadOutlined />} loading={loading === 'original'} onClick={() => void download()}>
+      <Button
+        size={isMobile ? 'middle' : 'small'}
+        style={touchStyle}
+        icon={<DownloadOutlined />}
+        loading={loading === 'original'}
+        onClick={() => void download()}
+      >
         {doc.kind === 'QUITTANCE'
           ? t('Quittance {{number}}', { number: doc.number })
           : t('Reçu {{number}}', { number: doc.number })}
       </Button>
-      <Button size="small" loading={loading === 'ar'} onClick={() => void download('ar')}>
+      <Button
+        size={isMobile ? 'middle' : 'small'}
+        style={touchStyle}
+        loading={loading === 'ar'}
+        onClick={() => void download('ar')}
+      >
         {t('Traduction arabe')}
       </Button>
     </Space>

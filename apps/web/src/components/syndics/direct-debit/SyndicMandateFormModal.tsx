@@ -8,6 +8,7 @@ import { SYNDIC_DD_KEYS } from './keys';
 import { STALE_TIME } from '../../../lib/query-keys';
 import { HelpSectionTitle } from '../../../help';
 import { t } from '../../../i18n/t';
+import { montantSaisiProps } from '../../../utils/montant-saisi';
 import { useFormFieldModes } from '../../../hooks/useFormFieldModes';
 
 const { Text } = Typography;
@@ -287,7 +288,13 @@ export const SyndicMandateFormModal: React.FC<SyndicMandateFormModalProps> = ({
             }
             rules={[{ required: fm.isRequired('maxAmount', false), message: t('Champ obligatoire') }]}
           >
-            <InputNumber min={1} style={{ width: '100%' }} disabled={!stepTwoReady} />
+            <InputNumber
+              {...montantSaisiProps}
+              min={1}
+              inputMode="numeric"
+              style={{ width: '100%' }}
+              disabled={!stepTwoReady}
+            />
           </Form.Item>
         )}
         {fm.isVisible('collectionDay') && (

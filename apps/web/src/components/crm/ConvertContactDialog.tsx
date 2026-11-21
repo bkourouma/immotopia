@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Button } from '../ui/button';
 import { CrmContactRoleType } from '../../types/crm-types';
 import { UserCheck } from 'lucide-react';
@@ -26,6 +26,14 @@ export const ConvertContactDialog: React.FC<ConvertContactDialogProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !isSubmitting && !loading) onCancel();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onCancel, isSubmitting, loading]);
+
   const handleRoleToggle = (role: CrmContactRoleType) => {
     setSelectedRoles(prev => (prev.includes(role) ? prev.filter(r => r !== role) : [...prev, role]));
   };
@@ -50,7 +58,12 @@ export const ConvertContactDialog: React.FC<ConvertContactDialogProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+      role="dialog"
+      aria-modal="true"
+      aria-label={t('Convertir le prospect en client')}
+    >
       <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
         <div className="p-6">
           <div className="flex items-center gap-3 mb-4">
@@ -70,14 +83,18 @@ export const ConvertContactDialog: React.FC<ConvertContactDialogProps> = ({
             {t('de prospect en client actif en lui attribuant un ou plusieurs rôles.')}
           </p>
 
-          {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">{error}</div>}
+          {error && (
+            <div role="alert" className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">
+              {error}
+            </div>
+          )}
 
           <form onSubmit={handleSubmit}>
             <div className="space-y-3 mb-6">
               {roleOptions.map(role => (
                 <label
                   key={role.value}
-                  className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer"
+                  className="flex items-center p-3 min-h-[44px] border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer"
                 >
                   <input
                     type="checkbox"

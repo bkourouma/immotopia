@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { List, Button, Typography, Image, Skeleton } from 'antd';
+import { App, List, Button, Typography, Image, Skeleton } from 'antd';
 import { DownloadOutlined, FileOutlined } from '@ant-design/icons';
 import { Attachment } from '../../types/maintenance-types';
 import {
@@ -96,12 +96,11 @@ const AttachmentThumbnail: React.FC<{ path: string; alt: string }> = ({ path, al
   if (!src) {
     return <Skeleton.Image active style={{ width: 50, height: 50 }} />;
   }
-  return (
-    <Image src={src} alt={alt} width={50} height={50} style={{ objectFit: 'cover', borderRadius: 4 }} preview />
-  );
+  return <Image src={src} alt={alt} width={50} height={50} style={{ objectFit: 'cover', borderRadius: 4 }} preview />;
 };
 
 export const AttachmentList: React.FC<AttachmentListProps> = ({ attachments, source }) => {
+  const { message } = App.useApp();
   if (attachments.length === 0) {
     return <Text type="secondary">{t('Aucune pièce jointe')}</Text>;
   }
@@ -119,6 +118,7 @@ export const AttachmentList: React.FC<AttachmentListProps> = ({ attachments, sou
       window.URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Error downloading attachment:', error);
+      message.error?.(t('Impossible de télécharger « {{name}} ». Réessayez.', { name: attachment.fileName }));
     }
   };
 
@@ -128,7 +128,13 @@ export const AttachmentList: React.FC<AttachmentListProps> = ({ attachments, sou
       renderItem={attachment => (
         <List.Item
           actions={[
-            <Button type="link" icon={<DownloadOutlined />} onClick={() => handleDownload(attachment)}>
+            <Button
+              type="link"
+              icon={<DownloadOutlined />}
+              style={{ minHeight: 44 }}
+              aria-label={t('Télécharger « {{name}} »', { name: attachment.fileName })}
+              onClick={() => handleDownload(attachment)}
+            >
               {t('Télécharger')}
             </Button>
           ]}

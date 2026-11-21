@@ -14,13 +14,15 @@ import {
   Row,
   Col,
   Alert,
-  Spin,
   Empty,
   Divider
 } from 'antd';
 import { ArrowLeftOutlined, ArrowRightOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { StepRail } from '../primitives/StepRail';
+import { SkeletonDetail } from '../primitives/Skeleton';
+import { useConfirmAction } from '../primitives/ConfirmAction';
+import { apiErrorText } from './property-api-errors';
 import { PropertyTypeSelector } from './PropertyTypeSelector';
 import { LocationSelector } from '../ui/location-selector';
 import { PropertyMediaUpload } from './PropertyMediaUpload';
@@ -161,10 +163,19 @@ interface PropertyFormWizardProps {
   tenantId: string;
   onComplete?: (propertyId: string) => void;
   onCancel?: () => void;
+  /** Signale à la page si des saisies non enregistrées existent (garde de sortie). */
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
-export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property, tenantId, onComplete, onCancel }) => {
+export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({
+  property,
+  tenantId,
+  onComplete,
+  onCancel,
+  onDirtyChange
+}) => {
   const { message } = App.useApp();
+  const confirmer = useConfirmAction();
 
   const { tenantMembership } = useAuth();
   const { isDesktop } = useBreakpoint();
@@ -242,6 +253,75 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
     : formData.ownershipType === PropertyOwnershipType.CLIENT
       ? PropertyOwnershipType.TENANT
       : formData.ownershipType;
+
+  // Refus de l'API à l'enregistrement final : reste affiché au-dessus des
+  // boutons, avec les champs nommés, jusqu'à la prochaine tentative.
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const submitErrorRef = useRef<HTMLDivElement>(null);
+  // Un clic sur « Suivant » refusé par la validation ramène le premier champ
+  // fautif dans le champ de vue, avec le focus.
+  const focusErreurRef = useRef(false);
+  const contenuRef = useRef<HTMLDivElement>(null);
+  const termineRef = useRef(false);
+  // Enregistrement préalable de l'étape « Médias » : motif de l'échec et relance.
+  const [autoSaveError, setAutoSaveError] = useState<string | null>(null);
+  const [autoSaveRetry, setAutoSaveRetry] = useState(0);
+
+  // Garde de sortie : on compare la saisie à son état d'ouverture. Le
+  // formulaire n'est « modifié » qu'à partir d'une vraie saisie.
+  const instantane = JSON.stringify({ formData, appartements, detenteur });
+  const instantaneInitial = useRef<string | null>(null);
+  if (instantaneInitial.current === null) instantaneInitial.current = instantane;
+  const modifie = instantane !== instantaneInitial.current && !termineRef.current;
+
+  useEffect(() => {
+    onDirtyChange?.(modifie);
+  }, [modifie, onDirtyChange]);
+
+  // Fermeture de l'onglet ou rechargement avec une saisie en cours.
+  useEffect(() => {
+    if (!modifie) return undefined;
+    const avertir = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', avertir);
+    return () => window.removeEventListener('beforeunload', avertir);
+  }, [modifie]);
+
+  const handleCancel = () => {
+    if (!onCancel) return;
+    if (!modifie) {
+      onCancel();
+      return;
+    }
+    confirmer({
+      title: t('Abandonner la saisie de ce bien ?'),
+      description: t('Les informations saisies et non enregistrées seront perdues.'),
+      okText: t('Abandonner la saisie'),
+      cancelText: t('Continuer la saisie'),
+      danger: true,
+      onConfirm: () => {
+        termineRef.current = true;
+        onCancel();
+      }
+    });
+  };
+
+  useEffect(() => {
+    if (!focusErreurRef.current || Object.keys(errors).length === 0) return;
+    focusErreurRef.current = false;
+    const premiere = contenuRef.current?.querySelector<HTMLElement>('[data-form-error]');
+    if (!premiere) return;
+    premiere.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+    premiere.parentElement
+      ?.querySelector<HTMLElement>('input:not([type="hidden"]), textarea, button, [tabindex="0"]')
+      ?.focus({ preventScroll: true });
+  }, [errors]);
+
+  useEffect(() => {
+    if (submitError) submitErrorRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+  }, [submitError]);
 
   useEffect(() => {
     loadOwners();
@@ -383,6 +463,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
   const handleFinish = async () => {
     if (finishInFlightRef.current) return;
     finishInFlightRef.current = true;
+    setSubmitError(null);
     setIsLoading(true);
     try {
       const submitData: CreatePropertyRequest | UpdatePropertyRequest = construireCorpsBien(!property);
@@ -402,6 +483,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
       }
 
       if (onComplete && finalPropertyId) {
+        termineRef.current = true;
         onComplete(finalPropertyId);
       }
     } catch (error: any) {
@@ -410,7 +492,9 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
       // (intercepteur d'api-client, avec le lien vers l'abonnement) : un
       // second message dirait la meme chose moins bien.
       if (!isQuotaExceededResponse(error)) {
-        message.error(error.response?.data?.error || t("Erreur lors de l'enregistrement"));
+        const texte = apiErrorText(error, t("Erreur lors de l'enregistrement"));
+        setSubmitError(texte);
+        message.error(t("Erreur lors de l'enregistrement"));
       }
     } finally {
       finishInFlightRef.current = false;
@@ -468,6 +552,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
       // Le rail n'ouvre que les etapes deja atteintes ; seul « Suivant » va de
       // l'avant, et uniquement d'un cran, apres validation.
       if (step > maxStepReached && !validateStep(currentStep)) {
+        focusErreurRef.current = true;
         return;
       }
     }
@@ -534,7 +619,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
               placeholder={t('Saisir {{value}}', { value: field.label.toLowerCase() })}
             />
             {error && (
-              <Text type="danger" style={{ fontSize: 12 }}>
+              <Text type="danger" role="alert" data-form-error="true" style={{ fontSize: 12 }}>
                 {error}
               </Text>
             )}
@@ -550,6 +635,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
               {field.unit && <Text type="secondary"> ({field.unit})</Text>}
             </Text>
             <InputNumber
+              inputMode="numeric"
               aria-label={field.label}
               style={{ width: '100%' }}
               value={value ? Number(value) : undefined}
@@ -567,7 +653,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
               placeholder={`Ex: ${field.unit ? `100 ${field.unit}` : '100'}`}
             />
             {error && (
-              <Text type="danger" style={{ fontSize: 12 }}>
+              <Text type="danger" role="alert" data-form-error="true" style={{ fontSize: 12 }}>
                 {error}
               </Text>
             )}
@@ -594,7 +680,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
               {field.required && <Text type="danger"> *</Text>}
             </Checkbox>
             {error && (
-              <Text type="danger" style={{ fontSize: 12 }}>
+              <Text type="danger" role="alert" data-form-error="true" style={{ fontSize: 12 }}>
                 {error}
               </Text>
             )}
@@ -633,7 +719,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
               ))}
             </Select>
             {error && (
-              <Text type="danger" style={{ fontSize: 12 }}>
+              <Text type="danger" role="alert" data-form-error="true" style={{ fontSize: 12 }}>
                 {error}
               </Text>
             )}
@@ -668,7 +754,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
               </Row>
             </Checkbox.Group>
             {error && (
-              <Text type="danger" style={{ fontSize: 12 }}>
+              <Text type="danger" role="alert" data-form-error="true" style={{ fontSize: 12 }}>
                 {error}
               </Text>
             )}
@@ -697,7 +783,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
               }}
             />
             {error && (
-              <Text type="danger" style={{ fontSize: 12 }}>
+              <Text type="danger" role="alert" data-form-error="true" style={{ fontSize: 12 }}>
                 {error}
               </Text>
             )}
@@ -834,7 +920,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
               onSelect={type => handleChange('propertyType', type)}
             />
             {errors.propertyType && (
-              <Text type="danger" style={{ fontSize: 12 }}>
+              <Text type="danger" role="alert" data-form-error="true" style={{ fontSize: 12 }}>
                 {errors.propertyType}
               </Text>
             )}
@@ -845,13 +931,15 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
               {t('Titre')} <Text type="danger">*</Text>
             </Text>
             <Input
+              aria-label={t('Titre')}
+              autoComplete="off"
               value={formData.title}
               onChange={e => handleChange('title', e.target.value)}
               placeholder={t('Ex: Appartement 3 pièces à Cocody')}
               status={errors.title ? 'error' : ''}
             />
             {errors.title && (
-              <Text type="danger" style={{ fontSize: 12 }}>
+              <Text type="danger" role="alert" data-form-error="true" style={{ fontSize: 12 }}>
                 {errors.title}
               </Text>
             )}
@@ -882,7 +970,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                 style={{ width: '100%' }}
                 value={formData.ownerUserId || undefined}
                 onChange={value => handleChange('ownerUserId', value || '')}
-                placeholder={loadingOwners ? 'Chargement...' : t('Sélectionner un propriétaire')}
+                placeholder={loadingOwners ? t('Chargement...') : t('Sélectionner un propriétaire')}
                 allowClear
                 loading={loadingOwners}
                 status={errors.ownerUserId ? 'error' : ''}
@@ -903,7 +991,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
               </Select>
             )}
             {errors.ownerUserId && (
-              <Text type="danger" style={{ fontSize: 12 }}>
+              <Text type="danger" role="alert" data-form-error="true" style={{ fontSize: 12 }}>
                 {errors.ownerUserId}
               </Text>
             )}
@@ -928,6 +1016,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
           <div>
             <Text strong>{t('Description')}</Text>
             <TextArea
+              aria-label={t('Description')}
               value={formData.description}
               onChange={e => handleChange('description', e.target.value)}
               rows={6}
@@ -946,7 +1035,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
           <div>
             <Text strong>
-              Localisation (Pays &gt; Région &gt; Commune) <Text type="danger">*</Text>
+              {t('Localisation (Pays > Région > Commune)')} <Text type="danger">*</Text>
             </Text>
             <LocationSelector
               value={formData.location?.communeId}
@@ -955,7 +1044,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
               error={errors.location}
             />
             {errors.location && (
-              <Text type="danger" style={{ fontSize: 12 }}>
+              <Text type="danger" role="alert" data-form-error="true" style={{ fontSize: 12 }}>
                 {errors.location}
               </Text>
             )}
@@ -965,6 +1054,8 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
             <Col xs={24} sm={12}>
               <Text strong>{t('Quartier/Zone (optionnel)')}</Text>
               <Input
+                aria-label={t('Quartier/Zone (optionnel)')}
+                autoComplete="off"
                 value={formData.locationZone}
                 onChange={e => handleChange('locationZone', e.target.value)}
                 placeholder={t('Ex: Angré, Riviera, etc.')}
@@ -973,6 +1064,8 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
             <Col xs={24} sm={12}>
               <Text strong>{t('Adresse')}</Text>
               <Input
+                aria-label={t('Adresse')}
+                autoComplete="street-address"
                 value={formData.address}
                 onChange={e => handleChange('address', e.target.value)}
                 placeholder={t('Adresse complète (optionnel)')}
@@ -1002,6 +1095,8 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                   <Text strong>{t('Surface principale (m²)')}</Text>
                   <InputNumber
                     style={{ width: '100%' }}
+                    aria-label={t('Surface principale (m²)')}
+                    inputMode="decimal"
                     value={formData.surfaceArea ? Number(formData.surfaceArea) : undefined}
                     onChange={val => handleChange('surfaceArea', val ? String(val) : '')}
                     placeholder={t('Ex: 75')}
@@ -1013,6 +1108,8 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                   <Text strong>{t('Année de construction')}</Text>
                   <InputNumber
                     style={{ width: '100%' }}
+                    inputMode="numeric"
+                    aria-label={t('Année de construction')}
                     value={formData.constructionYear ? Number(formData.constructionYear) : undefined}
                     onChange={val => handleChange('constructionYear', val ? String(val) : '')}
                     min={1800}
@@ -1068,7 +1165,9 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                     <Text strong>{t('Nombre de pièces')}</Text>
                     <InputNumber
                       style={{ width: '100%' }}
+                      inputMode="numeric"
                       min={0}
+                      aria-label={t('Nombre de pièces')}
                       value={formData.rooms ? Number(formData.rooms) : undefined}
                       onChange={val => handleChange('rooms', val !== null && val !== undefined ? String(val) : '')}
                       placeholder={t('Ex: 3')}
@@ -1078,7 +1177,9 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                     <Text strong>{t('Nombre de chambres')}</Text>
                     <InputNumber
                       style={{ width: '100%' }}
+                      inputMode="numeric"
                       min={0}
+                      aria-label={t('Nombre de chambres')}
                       value={formData.bedrooms ? Number(formData.bedrooms) : undefined}
                       onChange={val => handleChange('bedrooms', val !== null && val !== undefined ? String(val) : '')}
                       placeholder={t('Ex: 2')}
@@ -1088,7 +1189,9 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                     <Text strong>{t('Nombre de salles de bain')}</Text>
                     <InputNumber
                       style={{ width: '100%' }}
+                      inputMode="numeric"
                       min={0}
+                      aria-label={t('Nombre de salles de bain')}
                       value={formData.bathrooms ? Number(formData.bathrooms) : undefined}
                       onChange={val => handleChange('bathrooms', val !== null && val !== undefined ? String(val) : '')}
                       placeholder={t('Ex: 2')}
@@ -1101,6 +1204,8 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                   <Text strong>{t('Surface terrain (m²)')}</Text>
                   <InputNumber
                     style={{ width: '100%' }}
+                    aria-label={t('Surface terrain (m²)')}
+                    inputMode="decimal"
                     value={formData.surfaceTerrain ? Number(formData.surfaceTerrain) : undefined}
                     onChange={val =>
                       handleChange('surfaceTerrain', val !== null && val !== undefined ? String(val) : '')
@@ -1163,7 +1268,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
               </Space>
             </Radio.Group>
             {errors.transactionModes && (
-              <Text type="danger" style={{ fontSize: 12 }}>
+              <Text type="danger" role="alert" data-form-error="true" style={{ fontSize: 12 }}>
                 {errors.transactionModes}
               </Text>
             )}
@@ -1204,6 +1309,8 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                 <Col xs={24} sm={8}>
                   <Text strong>{vente ? t('Prix de vente') : t('Loyer mensuel')}</Text>
                   <Input
+                    inputMode="numeric"
+                    autoComplete="off"
                     value={formatNumber(formData.price)}
                     onChange={e => handleNumberChange('price', e.target.value)}
                     placeholder={vente ? t('Ex: 50 000 000') : t('Ex: 150 000')}
@@ -1212,6 +1319,8 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                 <Col xs={24} sm={8}>
                   <Text strong>{vente ? t('Charges de copropriété') : t('Charges (provision mensuelle)')}</Text>
                   <Input
+                    inputMode="numeric"
+                    autoComplete="off"
                     value={formatNumber(formData.fees)}
                     onChange={e => handleNumberChange('fees', e.target.value)}
                     placeholder={t('Ex: 50 000')}
@@ -1223,6 +1332,8 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
               <Col xs={24} sm={8}>
                 <Text strong>{t('Dépôt de garantie')}</Text>
                 <Input
+                  inputMode="numeric"
+                  autoComplete="off"
                   value={formatNumber(formData.deposit)}
                   onChange={e => handleNumberChange('deposit', e.target.value)}
                   placeholder={t('Ex: 300 000')}
@@ -1247,12 +1358,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
       content: (
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
           {loadingTemplate ? (
-            <div style={{ textAlign: 'center', padding: '48px 0' }}>
-              <Spin size="large" />
-              <div style={{ marginTop: 16 }}>
-                <Text type="secondary">{t('Chargement des caractéristiques...')}</Text>
-              </div>
-            </div>
+            <SkeletonDetail rows={4} aria-label={t('Chargement des caractéristiques...')} />
           ) : template && template.sections && template.sections.length > 0 ? (
             template.sections.map((section: any) => (
               <Card key={section.id || section.title} type="inner" title={section.title} style={{ marginBottom: 16 }}>
@@ -1359,6 +1465,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                           aria-label={t("Surface de l'appartement {{value}}", { value: rang + 1 })}
                           style={{ width: '100%' }}
                           min={0}
+                          inputMode="decimal"
                           value={appartement.surface ? Number(appartement.surface) : undefined}
                           onChange={val => modifierAppartement(rang, 'surface', val != null ? String(val) : '')}
                           placeholder="m²"
@@ -1366,6 +1473,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                       </Col>
                       <Col xs={12} sm={3}>
                         <InputNumber
+                          inputMode="numeric"
                           aria-label={t("Pièces de l'appartement {{value}}", { value: rang + 1 })}
                           style={{ width: '100%' }}
                           min={0}
@@ -1375,6 +1483,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                       </Col>
                       <Col xs={12} sm={3}>
                         <InputNumber
+                          inputMode="numeric"
                           aria-label={t("Chambres de l'appartement {{value}}", { value: rang + 1 })}
                           style={{ width: '100%' }}
                           min={0}
@@ -1384,6 +1493,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                       </Col>
                       <Col xs={12} sm={3}>
                         <InputNumber
+                          inputMode="numeric"
                           aria-label={t("Salles de bain de l'appartement {{value}}", { value: rang + 1 })}
                           style={{ width: '100%' }}
                           min={0}
@@ -1397,6 +1507,8 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                             value: vente ? 'Prix' : 'Loyer',
                             value2: rang + 1
                           })}
+                          inputMode="numeric"
+                          autoComplete="off"
                           value={formatNumber(appartement.prix)}
                           onChange={e => modifierAppartement(rang, 'prix', parseNumber(e.target.value))}
                           placeholder={vente ? t('Ex: 25 000 000') : t('Ex: 150 000')}
@@ -1456,13 +1568,30 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                 </div>
               </div>
             </>
+          ) : autoSaveError ? (
+            <Alert
+              type="error"
+              showIcon
+              message={t("Impossible de préparer l'espace médias")}
+              description={
+                <span style={{ whiteSpace: 'pre-line' }}>
+                  {autoSaveError} {t('Vous pouvez réessayer, ou terminer sans photos et les ajouter ensuite.')}
+                </span>
+              }
+              action={
+                <Button
+                  onClick={() => {
+                    autoSaveAttemptedRef.current = false;
+                    setAutoSaveError(null);
+                    setAutoSaveRetry(n => n + 1);
+                  }}
+                >
+                  {t('Réessayer')}
+                </Button>
+              }
+            />
           ) : (
-            <div style={{ textAlign: 'center', padding: '48px 0' }}>
-              <Spin size="large" />
-              <div style={{ marginTop: 16 }}>
-                <Text type="secondary">{t("Préparation de l'espace médias...")}</Text>
-              </div>
-            </div>
+            <SkeletonDetail rows={3} aria-label={t("Préparation de l'espace médias...")} />
           )}
         </Space>
       )
@@ -1515,8 +1644,14 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
 
             const newProperty = await createProperty(tenantId, submitData);
             setSavedPropertyId(newProperty.id);
+            setAutoSaveError(null);
           } catch (error: any) {
             console.error('Error auto-saving for media:', error);
+            setAutoSaveError(
+              isQuotaExceededResponse(error)
+                ? t("Le bien n'a pas été créé : la limite de votre abonnement est atteinte.")
+                : apiErrorText(error, t("Le bien n'a pas pu être enregistré pour accueillir les photos."))
+            );
           } finally {
             setIsLoading(false);
           }
@@ -1525,7 +1660,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
     };
 
     autoSaveForMedia();
-  }, [currentStep, savedPropertyId, tenantId]);
+  }, [currentStep, savedPropertyId, tenantId, autoSaveRetry]);
 
   useEffect(() => {
     const cle = cleEtape(currentStep);
@@ -1612,41 +1747,81 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                   fontVariantNumeric: 'tabular-nums'
                 }}
               >
-                {t('Étape')} {currentStep + 1} sur {steps.length}
+                {t('Étape {{value}} sur {{length}}', { value: currentStep + 1, length: steps.length })}
               </Text>
             )}
           </div>
-          {steps[currentStep].content}
+          <div ref={contenuRef}>{steps[currentStep].content}</div>
         </Space>
       </Card>
 
-      {/* Sous 992 px, la barre s'empile : les deux actions de parcours passent
-          en bas et prennent toute la largeur, donc a portee de pouce (P1).
-          L'ordre visuel suit l'ordre du DOM — donc l'ordre de tabulation. */}
+      {submitError && (
+        <div ref={submitErrorRef} style={{ marginTop: 'var(--space-4)' }}>
+          <Alert
+            type="error"
+            showIcon
+            closable
+            onClose={() => setSubmitError(null)}
+            message={t("L'enregistrement a échoué")}
+            description={
+              <>
+                <span style={{ whiteSpace: 'pre-line', display: 'block' }}>{submitError}</span>
+                <span>{t('Vos saisies sont conservées : corrigez si besoin, puis relancez.')}</span>
+              </>
+            }
+          />
+        </div>
+      )}
+
+      {/* Sous 992 px, « Annuler » passe en lien discret sous le contenu et la
+          barre « Précédent / Suivant » reste collée en bas de l'écran
+          (au-dessus de la zone de sécurité des téléphones) : l'action de
+          parcours est toujours à portée de pouce, quelle que soit la longueur
+          de l'étape. */}
+      {!isDesktop && onCancel && (
+        <div style={{ marginTop: 'var(--space-4)', textAlign: 'center' }}>
+          <Button type="text" onClick={handleCancel} disabled={isLoading} style={{ minHeight: 44 }}>
+            {t('Annuler')}
+          </Button>
+        </div>
+      )}
       <div
         style={{
-          marginTop: 'var(--space-6)',
+          marginTop: isDesktop ? 'var(--space-6)' : 'var(--space-2)',
           display: 'flex',
-          flexDirection: isDesktop ? 'row' : 'column',
           justifyContent: 'space-between',
-          alignItems: isDesktop ? 'center' : 'stretch',
-          gap: 'var(--space-3)'
+          alignItems: 'center',
+          gap: 'var(--space-3)',
+          ...(isDesktop
+            ? {}
+            : {
+                position: 'sticky',
+                bottom: 0,
+                zIndex: 10,
+                background: 'var(--surface-card)',
+                borderTop: '1px solid var(--border-subtle)',
+                padding: 'var(--space-3) var(--space-4)',
+                paddingBottom: 'calc(var(--space-3) + env(safe-area-inset-bottom, 0px))'
+              })
         }}
       >
-        <Space size="small" wrap style={{ justifyContent: isDesktop ? 'flex-start' : 'center' }}>
-          {onCancel && (
-            <Button onClick={onCancel} disabled={isLoading}>
-              {t('Annuler')}
-            </Button>
-          )}
-        </Space>
+        {isDesktop && (
+          <Space size="small" wrap>
+            {onCancel && (
+              <Button onClick={handleCancel} disabled={isLoading}>
+                {t('Annuler')}
+              </Button>
+            )}
+          </Space>
+        )}
 
         <div
           {...helpAnchor('biens-navigation')}
           style={{
             display: 'flex',
             gap: 'var(--space-2)',
-            justifyContent: 'flex-end'
+            justifyContent: 'flex-end',
+            flex: isDesktop ? undefined : 1
           }}
         >
           {currentStep > 0 && (
@@ -1655,6 +1830,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
               onClick={() => handleStepChange(currentStep - 1)}
               disabled={isLoading}
               block={!isDesktop}
+              style={isDesktop ? undefined : { minHeight: 44 }}
             >
               {t('Précédent')}
             </Button>
@@ -1667,6 +1843,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
               loading={isLoading}
               disabled={!isStepValid(currentStep)}
               block={!isDesktop}
+              style={isDesktop ? undefined : { minHeight: 44 }}
             >
               {t('Terminer')}
             </Button>
@@ -1678,6 +1855,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
               onClick={() => handleStepChange(currentStep + 1)}
               disabled={!isStepValid(currentStep) || isLoading}
               block={!isDesktop}
+              style={isDesktop ? undefined : { minHeight: 44 }}
             >
               {t('Suivant')}
             </Button>

@@ -268,6 +268,8 @@ export const Tacherons: React.FC = () => {
             <label htmlFor="tacheron-nom">{translate('Nom du tâcheron')}</label>
             <Input
               id="tacheron-nom"
+              autoFocus
+              onPressEnter={() => !creationEnCours && validerCreation()}
               value={nomComplet}
               onChange={event => setNomComplet(event.target.value)}
               placeholder={translate('Ex. Sékou Kouadio')}

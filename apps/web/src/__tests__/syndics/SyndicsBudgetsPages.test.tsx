@@ -75,6 +75,8 @@ vi.mock('antd', async () => {
     Alert: passthrough(),
     Button: passthrough('button'),
     // `extra` porte le sélecteur de budget de la carte « Répartition des lots ».
+    Col: passthrough(),
+    Row: passthrough(),
     Card: ({ children, extra }: any) => (
       <div>
         {extra}
@@ -514,3 +516,8 @@ describe('Syndics budgets page — onglets paresseux (?tab=)', () => {
     await waitFor(() => expect(calledUrls().some((url: string) => url.endsWith('/lots'))).toBe(true));
   });
 });
+
+// Les écrans « charges » et « budgets » basculent en cartes sous 992 px : ici on teste la disposition tableau.
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));

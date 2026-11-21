@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Button, Checkbox, Collapse, Input, InputNumber, Popconfirm, Space, Tag, Tooltip, Typography } from 'antd';
-import { DeleteOutlined, MinusOutlined, PlusOutlined } from '@ant-design/icons';
+import { Button, Checkbox, Collapse, Input, InputNumber, Space, Tag, Tooltip, Typography } from 'antd';
+import { ArrowDownOutlined, CheckCircleOutlined, DeleteOutlined, MinusOutlined, PlusOutlined } from '@ant-design/icons';
+import { ConfirmAction } from '../../primitives';
 import {
   InspectionCondition,
   InspectionItem,
@@ -210,6 +211,18 @@ export const RoomsAccordion: React.FC<RoomsAccordionProps> = ({
     handleItemChange(roomId, item.id, patch);
   };
 
+  /** Referme la pièce terminée, ouvre la suivante et l'amène à l'écran (tablette, téléphone). */
+  const goToRoom = (fromId: string, toId: string) => {
+    setActiveKeys(prev => [...prev.filter(key => key !== fromId && key !== toId), toId]);
+    window.setTimeout(() => {
+      try {
+        document.getElementById(`edl-room-${toId}`)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+      } catch {
+        /* sans défilement : la pièce reste ouverte */
+      }
+    }, 0);
+  };
+
   const isFromEntry = (itemId: string) => isExit && Boolean(entryItemsById?.has(itemId));
 
   if (rooms.length === 0) {
@@ -348,9 +361,9 @@ export const RoomsAccordion: React.FC<RoomsAccordionProps> = ({
           {!readOnly && !isFromEntry(item.id) && (
             <Button
               type="text"
-              size="small"
               danger
               icon={<DeleteOutlined />}
+              style={{ minWidth: 44, minHeight: 44 }}
               aria-label={t('Supprimer l’élément {{nom}}', { nom: item.label })}
               onClick={() => handleDeleteItem(room.id, item.id)}
             />
@@ -404,27 +417,38 @@ export const RoomsAccordion: React.FC<RoomsAccordionProps> = ({
     return (
       <span onClick={e => e.stopPropagation()} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
         {toEvaluate > 0 && <Tag color="orange">{t('{{nombre}} à évaluer', { nombre: toEvaluate })}</Tag>}
+        {toEvaluate === 0 && room.items.length > 0 && (
+          <Tag color="success" icon={<CheckCircleOutlined />}>
+            {t('Complète')}
+          </Tag>
+        )}
         {holdsEntryItems ? (
           <Tooltip title={t("Indiquez « Manquant » plutôt que de retirer un élément de l'entrée.")}>
             <Button
               danger
               type="text"
-              size="small"
               disabled
+              style={{ minWidth: 44, minHeight: 44 }}
               icon={<DeleteOutlined />}
               aria-label={t('Supprimer la pièce {{nom}}', { nom: room.name })}
             />
           </Tooltip>
         ) : (
-          <Popconfirm title={t('Supprimer cette pièce ?')} onConfirm={() => handleDeleteRoom(room.id)}>
+          <ConfirmAction
+            title={t('Supprimer la pièce {{nom}} ?', { nom: room.name })}
+            description={t('Ses éléments sont supprimés avec elle.')}
+            okText={t('Supprimer')}
+            danger
+            onConfirm={() => handleDeleteRoom(room.id)}
+          >
             <Button
               danger
               type="text"
-              size="small"
+              style={{ minWidth: 44, minHeight: 44 }}
               icon={<DeleteOutlined />}
               aria-label={t('Supprimer la pièce {{nom}}', { nom: room.name })}
             />
-          </Popconfirm>
+          </ConfirmAction>
         )}
       </span>
     );
@@ -436,14 +460,15 @@ export const RoomsAccordion: React.FC<RoomsAccordionProps> = ({
         activeKey={activeKeys}
         onChange={keys => setActiveKeys(Array.isArray(keys) ? keys.map(String) : [String(keys)])}
       >
-        {rooms.map(room => (
+        {rooms.map((room, roomIndex) => (
           <Collapse.Panel
             key={room.id}
             header={
               readOnly ? (
-                room.name
+                <span id={`edl-room-${room.id}`}>{room.name}</span>
               ) : (
                 <Text
+                  id={`edl-room-${room.id}`}
                   editable={{ onChange: value => handleRenameRoom(room.id, value) }}
                   onClick={e => e.stopPropagation()}
                 >
@@ -460,12 +485,13 @@ export const RoomsAccordion: React.FC<RoomsAccordionProps> = ({
                 <Space direction="vertical" size={4} style={{ width: '100%', maxWidth: 360 }}>
                   <Space.Compact style={{ width: '100%' }}>
                     <Input
+                      size="large"
                       placeholder={t('Nouvel élément')}
                       value={newItemLabel[room.id] || ''}
                       onChange={e => setNewItemLabel(prev => ({ ...prev, [room.id]: e.target.value }))}
                       onPressEnter={() => handleAddItem(room.id)}
                     />
-                    <Button icon={<PlusOutlined />} onClick={() => handleAddItem(room.id)}>
+                    <Button size="large" icon={<PlusOutlined />} onClick={() => handleAddItem(room.id)}>
                       {t('Ajouter')}
                     </Button>
                   </Space.Compact>
@@ -477,6 +503,16 @@ export const RoomsAccordion: React.FC<RoomsAccordionProps> = ({
                   </Checkbox>
                 </Space>
               )}
+
+              {!readOnly && roomIndex < rooms.length - 1 && (
+                <Button
+                  icon={<ArrowDownOutlined />}
+                  style={{ minHeight: 44 }}
+                  onClick={() => goToRoom(room.id, rooms[roomIndex + 1].id)}
+                >
+                  {t('Pièce suivante : {{nom}}', { nom: rooms[roomIndex + 1].name })}
+                </Button>
+              )}
             </Space>
           </Collapse.Panel>
         ))}
@@ -485,12 +521,13 @@ export const RoomsAccordion: React.FC<RoomsAccordionProps> = ({
       {!readOnly && (
         <Space.Compact style={{ width: '100%', maxWidth: 360 }}>
           <Input
+            size="large"
             placeholder={t('Nouvelle pièce')}
             value={newRoomName}
             onChange={e => setNewRoomName(e.target.value)}
             onPressEnter={handleAddRoom}
           />
-          <Button type="primary" icon={<PlusOutlined />} onClick={handleAddRoom}>
+          <Button size="large" type="primary" icon={<PlusOutlined />} onClick={handleAddRoom}>
             {t('Ajouter une pièce')}
           </Button>
         </Space.Compact>

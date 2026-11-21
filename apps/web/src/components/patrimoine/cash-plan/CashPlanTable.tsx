@@ -107,7 +107,16 @@ export const CashPlanTable: React.FC<Props> = ({ periods }) => {
       key: 'cumulative',
       align: 'end',
       exportValue: (period: CashPlanMonth) => period.cumulative,
-      render: (_: unknown, period: CashPlanMonth) => <MoneyValue value={period.cumulative} currency={null} signed />
+      render: (_: unknown, period: CashPlanMonth) => (
+        <>
+          <MoneyValue value={period.cumulative} currency={null} signed />
+          {period.cumulative < 0 ? (
+            <Tag color="red" style={{ marginInlineStart: 8 }}>
+              {t('Déficit')}
+            </Tag>
+          ) : null}
+        </>
+      )
     }
   ];
 

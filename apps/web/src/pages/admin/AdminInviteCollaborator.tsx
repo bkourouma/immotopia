@@ -8,8 +8,9 @@ import {
 import { getTenant, Tenant } from '../../services/tenant-service';
 import apiClient from '../../utils/api-client';
 import { getRoleLabelFr } from '../../constants/permissions-labels';
-import { ArrowLeft, Mail, Users } from 'lucide-react';
-import { App } from 'antd';
+import { Mail } from 'lucide-react';
+import { App, Button, Input } from 'antd';
+import { PageHeader } from '../../components/primitives';
 import { t } from '../../i18n/t';
 import { HelpButton } from '../../help';
 
@@ -107,26 +108,35 @@ export const AdminInviteCollaborator: React.FC = () => {
     }));
   };
 
+  const dirty = formData.email.trim() !== '' || formData.roleIds.length > 0;
+  useEffect(() => {
+    if (!dirty || loading) return undefined;
+    const avertir = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', avertir);
+    return () => window.removeEventListener('beforeunload', avertir);
+  }, [dirty, loading]);
+
+  const tenantName = tenant?.name ?? t('Chargement...');
+
   return (
     <>
       <div className="space-y-6">
-        {/* Header */}
-        <div className="flex items-center gap-4">
-          <button onClick={() => navigate(`/admin/tenants/${tenantId}`)} className="text-gray-600 hover:text-gray-900">
-            <ArrowLeft className="h-5 w-5" />
-          </button>
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900">{t('Inviter un collaborateur')}</h1>
-            <p className="mt-2 text-sm text-slate-600">
-              {tenant ? t('Agence : {{value}}', { value: tenant.name }) : t('Chargement...')}
-            </p>
-          </div>
-        </div>
+        <PageHeader
+          title={t('Inviter un collaborateur')}
+          subtitle={tenant ? t('Agence : {{value}}', { value: tenant.name }) : t('Chargement...')}
+          breadcrumbs={[
+            { label: t('Agences'), to: '/admin/tenants' },
+            { label: tenantName, to: `/admin/tenants/${tenantId}` },
+            { label: t('Inviter un collaborateur') }
+          ]}
+        />
 
-        {/* Form */}
         <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow p-6 space-y-6">
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-md p-4">
+            <div className="bg-red-50 border border-red-200 rounded-md p-4" role="alert">
               <p className="text-sm text-red-800">{error}</p>
             </div>
           )}
@@ -142,30 +152,34 @@ export const AdminInviteCollaborator: React.FC = () => {
           </div>
 
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
               {t('Email')} <span className="text-red-500">*</span>
             </label>
-            <input
+            <Input
               type="email"
               id="email"
               name="email"
               required
+              autoComplete="off"
+              inputMode="email"
+              size="large"
               value={formData.email}
               onChange={e => setFormData({ ...formData, email: e.target.value })}
-              className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary"
               placeholder="email@example.com"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">
+            <p className="block text-sm font-medium text-gray-700">
               {t('Rôles')} <span className="text-red-500">*</span>
-            </label>
+            </p>
+            <p className="mb-3 text-sm text-gray-500">
+              {t('Le rôle décide de ce que le collaborateur peut voir et faire. Cochez-en au moins un.')}
+            </p>
             {roles.length === 0 ? (
-              <div className="text-center py-4">
-                <Users className="h-8 w-8 mx-auto text-gray-400" />
-                <p className="mt-2 text-sm text-gray-500">{t('Chargement des rôles...')}</p>
-              </div>
+              <p className="py-4 text-center text-sm text-gray-500" role="status">
+                {t('Chargement des rôles...')}
+              </p>
             ) : (
               <div className="space-y-2">
                 {roles.map(role => {
@@ -173,6 +187,7 @@ export const AdminInviteCollaborator: React.FC = () => {
                   return (
                     <label
                       key={role.id}
+                      style={{ minHeight: 44 }}
                       className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${
                         formData.roleIds.includes(role.id)
                           ? 'border-primary bg-primary-bg'
@@ -196,21 +211,19 @@ export const AdminInviteCollaborator: React.FC = () => {
             )}
           </div>
 
-          <div className="flex justify-end gap-4 pt-4 border-t border-gray-200">
-            <button
-              type="button"
-              onClick={() => navigate(`/admin/tenants/${tenantId}`)}
-              className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-            >
+          <div className="flex flex-wrap justify-end gap-3 pt-4 border-t border-gray-200">
+            <Button onClick={() => navigate(`/admin/tenants/${tenantId}`)} disabled={loading} style={{ minHeight: 44 }}>
               {t('Annuler')}
-            </button>
-            <button
-              type="submit"
+            </Button>
+            <Button
+              type="primary"
+              htmlType="submit"
+              loading={loading}
               disabled={loading || formData.roleIds.length === 0}
-              className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary hover:bg-primary-hover disabled:opacity-50"
+              style={{ minHeight: 44 }}
             >
               {loading ? t('Envoi en cours...') : t("Envoyer l'invitation")}
-            </button>
+            </Button>
           </div>
         </form>
       </div>

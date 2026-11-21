@@ -13,7 +13,7 @@ import {
 import { listRoles, type Role } from '../../../services/role-service';
 import { useListSearch } from '../../../hooks/useListSearch';
 import { collectAllPages } from '../../../utils/table-export/collect';
-import { Table } from '../../primitives';
+import { Table, StateBlock, useConfirmAction } from '../../primitives';
 import { getRoleLabelFr } from '../../../constants/permissions-labels';
 import { activeLocale } from '../../../i18n/format';
 import { t } from '../../../i18n/t';
@@ -44,6 +44,7 @@ function statusBadge(status: string) {
  */
 export const CollaboratorsTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const { message } = App.useApp();
+  const confirmAction = useConfirmAction();
   const navigate = useNavigate();
   const [members, setMembers] = useState<Member[]>([]);
   const [total, setTotal] = useState(0);
@@ -119,17 +120,34 @@ export const CollaboratorsTab: React.FC<{ tenantId: string }> = ({ tenantId }) =
     void loadMembers();
   }, [loadMembers]);
 
-  const handleToggleStatus = async (userId: string, currentStatus: string) => {
+  const toggleStatus = async (userId: string, currentStatus: string) => {
     try {
       if (currentStatus === 'ACTIVE') {
         await disableMember(tenantId, userId);
+        message.success(t('Collaborateur désactivé'));
       } else {
         await enableMember(tenantId, userId);
+        message.success(t('Collaborateur activé'));
       }
       await loadMembers();
     } catch (err: any) {
       message.error(err.response?.data?.message || t('Erreur lors de la modification'));
     }
+  };
+
+  const handleToggleStatus = (member: Member) => {
+    const name = member.user.fullName || member.user.email;
+    if (member.status !== 'ACTIVE') {
+      void toggleStatus(member.userId, member.status);
+      return;
+    }
+    confirmAction({
+      title: t('Désactiver le collaborateur « {{value}} » ?', { value: name }),
+      description: t("Il ne pourra plus se connecter à l'agence tant qu'il n'est pas réactivé."),
+      okText: t('Désactiver'),
+      danger: true,
+      onConfirm: () => toggleStatus(member.userId, member.status)
+    });
   };
 
   const columns: ColumnsType<Member> = [
@@ -181,24 +199,27 @@ export const CollaboratorsTab: React.FC<{ tenantId: string }> = ({ tenantId }) =
         <div className="flex items-center justify-end gap-2">
           <button
             onClick={() => navigate(`/admin/tenants/${tenantId}/collaborators/${member.userId}`)}
-            className="text-primary hover:text-primary-active"
+            className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center text-primary hover:text-primary-active"
             title={t('Voir les détails')}
+            aria-label={t('Voir les détails')}
           >
             <Eye className="h-5 w-5" />
           </button>
           {member.status === 'ACTIVE' ? (
             <button
-              onClick={() => handleToggleStatus(member.userId, member.status)}
-              className="text-red-600 hover:text-red-900"
+              onClick={() => handleToggleStatus(member)}
+              className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center text-red-600 hover:text-red-900"
               title={t('Désactiver')}
+              aria-label={t('Désactiver')}
             >
               <UserX className="h-5 w-5" />
             </button>
           ) : (
             <button
-              onClick={() => handleToggleStatus(member.userId, member.status)}
-              className="text-green-600 hover:text-green-900"
+              onClick={() => handleToggleStatus(member)}
+              className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center text-green-600 hover:text-green-900"
               title={t('Activer')}
+              aria-label={t('Activer')}
             >
               <UserCheck className="h-5 w-5" />
             </button>
@@ -209,11 +230,7 @@ export const CollaboratorsTab: React.FC<{ tenantId: string }> = ({ tenantId }) =
   ];
 
   if (error) {
-    return (
-      <div className="bg-red-50 border border-red-200 rounded-md p-4">
-        <p className="text-sm text-red-800">{error}</p>
-      </div>
-    );
+    return <StateBlock variant="error" description={error} onRetry={() => void loadMembers()} />;
   }
 
   return (

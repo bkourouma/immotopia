@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Button, Card, Popconfirm, Space, Tag } from 'antd';
-import { Table } from '../primitives';
+import { Button, Card, Space, Tag } from 'antd';
+import { ConfirmAction, Table } from '../primitives';
+import { SectionEmpty, SUPPRESSION_DEFINITIVE } from './property-tab/section-parts';
 import type { ExportableTableProps } from '../primitives/Table';
 import type { PropertyDocument } from '../../types/property-types';
 import { downloadPropertyDocumentFile } from '../../services/property-service';
@@ -22,6 +23,8 @@ interface Props {
   deletingId?: string | null;
   /** Action d'en-tête (bouton « Ajouter »), absente en lecture seule. */
   extra?: React.ReactNode;
+  /** Ouvre la saisie d'un document : proposée dans l'état vide, absente en lecture seule. */
+  onAdd?: () => void;
   /**
    * Opt-in : active la barre de recherche multicritères (filtrage local, 10 par
    * page, export de la liste filtrée). La valeur est le préfixe des paramètres
@@ -80,6 +83,11 @@ export const DocumentVault: React.FC<Props> = props =>
     <DocumentVaultCard {...props} tableProps={{ dataSource: props.documents, pagination: { pageSize: 5 } }} />
   );
 
+/** État vide du coffre-fort : l'action « Ajouter » n'est proposée que si la saisie est permise. */
+const vide = (onAdd?: () => void) => (
+  <SectionEmpty title={t('Aucun document pour ce bien.')} addLabel={t('Ajouter un document')} onAdd={onAdd} />
+);
+
 const SearchableDocumentVault: React.FC<Props & { searchPrefix: string }> = props => {
   const criteres: SearchCriterion[] = [
     { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Nom du fichier, type…') },
@@ -112,7 +120,7 @@ const SearchableDocumentVault: React.FC<Props & { searchPrefix: string }> = prop
       tableProps={{
         ...local.tableProps,
         exportFetchAll: local.exportAll,
-        locale: local.isFiltered ? undefined : { emptyText: t('Aucun document pour ce bien.') }
+        locale: local.isFiltered ? undefined : { emptyText: vide(props.onAdd) }
       }}
     />
   );
@@ -124,6 +132,7 @@ const DocumentVaultCard: React.FC<Props & { tableProps: VaultTableProps }> = ({
   onDelete,
   deletingId,
   extra,
+  onAdd,
   tableProps
 }) => {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -152,7 +161,7 @@ const DocumentVaultCard: React.FC<Props & { tableProps: VaultTableProps }> = ({
         exportFilename={t('Coffre-fort documentaire')}
         scroll={{ x: 'max-content' }}
         rowKey="id"
-        locale={{ emptyText: t('Aucun document pour ce bien.') }}
+        locale={{ emptyText: vide(onAdd) }}
         {...tableProps}
         columns={[
           { title: t('Nom du fichier'), dataIndex: 'fileName' },
@@ -185,16 +194,22 @@ const DocumentVaultCard: React.FC<Props & { tableProps: VaultTableProps }> = ({
             title: t('Actions'),
             key: 'actions',
             render: (_: unknown, record: PropertyDocument) => (
-              <Space>
+              <Space wrap>
                 <Button size="small" loading={downloadingId === record.id} onClick={() => download(record)}>
                   {t('Télécharger')}
                 </Button>
                 {onDelete ? (
-                  <Popconfirm title={t('Supprimer ce document ?')} onConfirm={() => onDelete(record.id)}>
+                  <ConfirmAction
+                    danger
+                    okText={t('Supprimer')}
+                    title={t('Supprimer le document « {{nom}} » ?', { nom: record.fileName })}
+                    description={SUPPRESSION_DEFINITIVE()}
+                    onConfirm={() => onDelete(record.id)}
+                  >
                     <Button danger size="small" loading={deletingId === record.id}>
                       {t('Supprimer')}
                     </Button>
-                  </Popconfirm>
+                  </ConfirmAction>
                 ) : null}
               </Space>
             )

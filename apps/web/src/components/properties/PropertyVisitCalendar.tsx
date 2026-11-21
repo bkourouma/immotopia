@@ -1,8 +1,7 @@
 import { contactDisplayName } from '../../utils/contact-display';
 import React, { useState, useEffect } from 'react';
-import { Card, Tag, Space, Typography, Empty, Spin, Divider, Select } from 'antd';
+import { Card, Tag, Space, Typography, Divider, Select } from 'antd';
 import {
-  CalendarOutlined,
   ClockCircleOutlined,
   UserOutlined,
   TeamOutlined,
@@ -18,6 +17,8 @@ import { listMembers, Member } from '../../services/membership-service';
 import { Link } from 'react-router-dom';
 import { getDealTypeLabel } from '../../utils/crm-utils';
 import { HelpButton } from '../../help';
+import { SkeletonList, StateBlock } from '../primitives';
+import { apiErrorText } from './property-api-errors';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
@@ -38,6 +39,7 @@ const PropertyVisitCalendarView: React.FC<PropertyVisitCalendarProps> = ({
 }) => {
   const [visitsByDate, setVisitsByDate] = useState<Record<string, PropertyVisit[]>>({});
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     loadVisits();
@@ -45,6 +47,7 @@ const PropertyVisitCalendarView: React.FC<PropertyVisitCalendarProps> = ({
 
   const loadVisits = async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const start = startDate || new Date();
       const end = endDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
@@ -53,6 +56,8 @@ const PropertyVisitCalendarView: React.FC<PropertyVisitCalendarProps> = ({
       setVisitsByDate(response);
     } catch (error) {
       console.error('Error loading calendar visits:', error);
+      // Un calendrier vide ferait croire à un agenda libre : l'erreur le dit.
+      setLoadError(apiErrorText(error, t('Impossible de charger les visites.')));
     } finally {
       setLoading(false);
     }
@@ -115,13 +120,17 @@ const PropertyVisitCalendarView: React.FC<PropertyVisitCalendarProps> = ({
   };
 
   if (loading) {
+    return <SkeletonList rows={3} aria-label={t('Chargement des visites...')} />;
+  }
+
+  if (loadError) {
     return (
-      <div style={{ textAlign: 'center', padding: '48px 0' }}>
-        <Spin size="large" />
-        <div style={{ marginTop: 16 }}>
-          <Text type="secondary">{t('Chargement des visites...')}</Text>
-        </div>
-      </div>
+      <StateBlock
+        variant="error"
+        title={t('Impossible de charger les visites')}
+        description={loadError}
+        actions={[{ label: t('Réessayer'), onClick: () => void loadVisits(), primary: true }]}
+      />
     );
   }
 
@@ -129,16 +138,10 @@ const PropertyVisitCalendarView: React.FC<PropertyVisitCalendarProps> = ({
 
   if (dates.length === 0) {
     return (
-      <Empty
-        image={<CalendarOutlined style={{ fontSize: 64, color: '#d9d9d9' }} />}
-        description={
-          <Space direction="vertical" size="small">
-            <Title level={4} style={{ margin: 0 }}>
-              {t('Aucune visite planifiée')}
-            </Title>
-            <Text type="secondary">{t("Aucune visite n'est planifiée pour cette période")}</Text>
-          </Space>
-        }
+      <StateBlock
+        variant="empty"
+        title={t('Aucune visite planifiée')}
+        description={t("Aucune visite n'est planifiée pour cette période")}
       />
     );
   }

@@ -1,10 +1,13 @@
-import React, { useRef, useState } from 'react';
+import React, { useId, useRef, useState } from 'react';
 import { AudioOutlined, PaperClipOutlined, SendOutlined, StopOutlined } from '@ant-design/icons';
 import { Button, Input, Space } from 'antd';
 import type { TextAreaRef } from 'antd/es/input/TextArea';
 import { appendDictation, useSpeechDictation } from '../../hooks/useSpeechDictation';
 import { useRecordedDictation } from '../../hooks/useRecordedDictation';
 import { useAssistantTranslation } from '../../i18n/useAssistantTranslation';
+
+/** Cible tactile minimale (44 px) pour les boutons ronds de la zone de saisie. */
+const TOUCH_TARGET = { minWidth: 44, height: 44 } as const;
 
 export interface CopilotComposerProps {
   value: string;
@@ -41,6 +44,10 @@ export const CopilotComposer: React.FC<CopilotComposerProps> = ({
 }) => {
   const { language, t } = useAssistantTranslation();
   const fileInput = useRef<HTMLInputElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const hintId = useId();
+  // Après un envoi, le bouton qui avait le focus disparaît : on rend le focus à la saisie.
+  const refocusInput = () => window.setTimeout(() => rootRef.current?.querySelector('textarea')?.focus(), 0);
   const [fileError, setFileError] = useState('');
   function addFiles(selection: FileList | null) {
     if (!selection?.length) return;
@@ -74,6 +81,7 @@ export const CopilotComposer: React.FC<CopilotComposerProps> = ({
 
   return (
     <div
+      ref={rootRef}
       style={{
         border: '1px solid var(--border-subtle, #d9d9d9)',
         borderRadius: 'var(--radius-lg, 12px)',
@@ -100,6 +108,7 @@ export const CopilotComposer: React.FC<CopilotComposerProps> = ({
         autoSize={{ minRows: 1, maxRows }}
         placeholder={dictation.listening ? t('Parlez, je vous écoute…') : t('Écrivez votre message…')}
         aria-label={t('Votre message')}
+        aria-describedby={hintId}
         style={{ resize: 'none', padding: 'var(--space-1) 0' }}
       />
       {onFilesChange && (
@@ -138,6 +147,17 @@ export const CopilotComposer: React.FC<CopilotComposerProps> = ({
       )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
+          {/* Aide discrète, lue avec le champ (aria-describedby) ; masquée pendant la dictée. */}
+          <span
+            id={hintId}
+            style={{
+              color: 'var(--text-secondary, #8c8c8c)',
+              fontSize: 'var(--text-xs, 12px)',
+              display: listening || recorded.phase === 'processing' || dictationError ? 'none' : undefined
+            }}
+          >
+            {t('Entrée pour envoyer, Maj+Entrée pour un saut de ligne')}
+          </span>
           {listening && (
             <span role="status" style={{ color: 'var(--color-danger, #cf1322)', fontSize: 'var(--text-sm, 13px)' }}>
               {t('Écoute en cours…')}
@@ -155,6 +175,7 @@ export const CopilotComposer: React.FC<CopilotComposerProps> = ({
             type="text"
             shape="circle"
             icon={<PaperClipOutlined aria-hidden />}
+            style={TOUCH_TARGET}
             onClick={() => fileInput.current?.click()}
             disabled={streaming || files.length >= 5}
             aria-label={t('Joindre des fichiers')}
@@ -167,6 +188,7 @@ export const CopilotComposer: React.FC<CopilotComposerProps> = ({
             danger={listening}
             shape="circle"
             icon={<AudioOutlined />}
+            style={TOUCH_TARGET}
             onClick={dictation.supported ? dictation.toggle : () => void recorded.toggle()}
             disabled={streaming || (recordingBusy && !listening)}
             aria-pressed={listening}
@@ -175,15 +197,27 @@ export const CopilotComposer: React.FC<CopilotComposerProps> = ({
           />
         )}
         {streaming ? (
-          <Button shape="circle" icon={<StopOutlined />} onClick={onStop} aria-label={t('Arrêter la réponse')} />
+          <Button
+            shape="circle"
+            icon={<StopOutlined />}
+            onClick={onStop}
+            aria-label={t('Arrêter la réponse')}
+            title={t('Arrêter la réponse')}
+            style={TOUCH_TARGET}
+          />
         ) : (
           <Button
             type="primary"
             shape="circle"
             icon={<SendOutlined />}
             disabled={recordingBusy || (!value.trim() && files.length === 0)}
-            onClick={() => onSubmit(value)}
+            onClick={() => {
+              onSubmit(value);
+              refocusInput();
+            }}
             aria-label={t('Envoyer')}
+            title={t('Envoyer')}
+            style={TOUCH_TARGET}
           />
         )}
       </div>

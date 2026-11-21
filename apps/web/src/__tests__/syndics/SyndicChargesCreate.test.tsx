@@ -135,7 +135,7 @@ describe('SyndicCharges — création d’un appel de charges (BUG-008)', () => 
     window.addEventListener('unhandledrejection', unhandled);
     try {
       const dialog = await openCreateModal();
-      fireEvent.click(within(dialog).getByRole('button', { name: 'Créer' }));
+      fireEvent.click(within(dialog).getByRole('button', { name: "Créer l'appel de charges" }));
 
       expect(await within(dialog).findByText('La date est obligatoire')).toBeTruthy();
       expect(createChargeCall).not.toHaveBeenCalled();
@@ -228,7 +228,7 @@ describe('SyndicCharges — mode de répartition (menu lot 2)', () => {
     await fillRequired(dialog);
     await waitFor(() => expect(within(dialog).getAllByText(/100\s000/).length).toBeGreaterThan(0));
 
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Créer' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: "Créer l'appel de charges" }));
     await waitFor(() =>
       expect(createChargeCall).toHaveBeenCalledWith(
         'tenant-1',
@@ -250,7 +250,7 @@ describe('SyndicCharges — mode de répartition (menu lot 2)', () => {
     expect(within(dialog).getAllByText(/55\s000/).length).toBeGreaterThan(0);
 
     await fillRequired(dialog);
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Créer' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: "Créer l'appel de charges" }));
     await waitFor(() => expect(createChargeCall).toHaveBeenCalledTimes(1));
     const payload = createChargeCall.mock.calls[0][2];
     expect(payload.allocationMethod).toBe('BY_LOT_TYPE');
@@ -278,7 +278,7 @@ describe('SyndicCharges — mode de répartition (menu lot 2)', () => {
     expect(link?.getAttribute('href')).toBe('/tenant/tenant-1/syndics/syndic-1');
 
     await fillRequired(dialog);
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Créer' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: "Créer l'appel de charges" }));
     await new Promise(resolve => setTimeout(resolve, 50));
     expect(createChargeCall).not.toHaveBeenCalled();
   });
@@ -291,8 +291,54 @@ describe('SyndicCharges — mode de répartition (menu lot 2)', () => {
 
     expect(await within(dialog).findByText(/barème par type de lot est indisponible/)).toBeTruthy();
     await fillRequired(dialog);
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Créer' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: "Créer l'appel de charges" }));
     await new Promise(resolve => setTimeout(resolve, 50));
     expect(createChargeCall).not.toHaveBeenCalled();
   });
 });
+
+describe('SyndicCharges — récapitulatif avant création', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getSyndicate.mockResolvedValue({ id: 'syndic-1', tenantId: 'tenant-1', name: 'Residence Test', status: 'ACTIVE' });
+    listSyndicateLots.mockResolvedValue([
+      { id: 'lot-1', syndicateId: 'syndic-1', lotNumber: 'A-01', lotType: 'APARTMENT', generalShares: 100 },
+      { id: 'lot-2', syndicateId: 'syndic-1', lotNumber: 'A-02', lotType: 'APARTMENT', generalShares: 300 }
+    ]);
+    listChargeCalls.mockResolvedValue({
+      items: [],
+      summary: { totalCount: 0, totalAmount: 0, pendingCount: 0, overdueCount: 0 }
+    });
+  });
+
+  it('structure la saisie en trois sections nommées', async () => {
+    const dialog = await openCreateModal();
+    expect(within(dialog).getByRole('region', { name: 'Général' })).toBeTruthy();
+    expect(within(dialog).getByRole('region', { name: 'Montant et répartition' })).toBeTruthy();
+    expect(within(dialog).getByRole('region', { name: 'Échéance et récurrence' })).toBeTruthy();
+  });
+
+  it("n'affiche aucun récapitulatif tant que le montant n'est pas saisi", async () => {
+    const dialog = await openCreateModal();
+    expect(within(dialog).queryByRole('status', { name: 'Récapitulatif avant création' })).toBeNull();
+  });
+
+  it('tous les lots : le récapitulatif donne le total, le nombre de lots et le montant moyen', async () => {
+    const dialog = await openCreateModal();
+    fireEvent.mouseDown(within(dialog).getByLabelText('Cible'));
+    fireEvent.click(await screen.findByTitle('Tous les lots'));
+    fireEvent.change(await within(dialog).findByLabelText('Montant total à répartir'), {
+      target: { value: '400000' }
+    });
+
+    const recap = await within(dialog).findByRole('status', { name: 'Récapitulatif avant création' });
+    expect(within(recap).getByText('Lots concernés').nextSibling?.textContent).toBe('2');
+    expect(within(recap).getByText('Montant total').nextSibling?.textContent).toMatch(/400\s000/);
+    expect(within(recap).getByText('Montant moyen par lot').nextSibling?.textContent).toMatch(/200\s000/);
+  });
+});
+
+// Les écrans « charges » et « budgets » basculent en cartes sous 992 px : ici on teste la disposition tableau.
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));

@@ -16,6 +16,8 @@ import {
 import { DeleteOutlined, PlusOutlined, UploadOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { formatMoney } from '../../primitives';
+import { useBreakpoint } from '../../../hooks/useBreakpoint';
+import { montantSaisiProps } from '../../../utils/montant-saisi';
 import {
   CreateManagerDeclarationInput,
   ReceivingNumberAdmin,
@@ -92,6 +94,7 @@ export const DeclareForThirdPartyModal: React.FC<DeclareForThirdPartyModalProps>
   onCreated
 }) => {
   const { message } = App.useApp();
+  const { isMobile } = useBreakpoint();
   const fm = useFormFieldModes('syndic.paiement-declare-gestionnaire');
   const [form] = Form.useForm<FormValues>();
   const formErrorRef = useRef<HTMLDivElement>(null);
@@ -273,8 +276,8 @@ export const DeclareForThirdPartyModal: React.FC<DeclareForThirdPartyModalProps>
       confirmLoading={submitting}
       cancelButtonProps={{ disabled: submitting }}
       mask={{ closable: false }}
-      width={720}
-      style={{ top: 24, maxWidth: 'calc(100vw - 16px)' }}
+      width={isMobile ? '100%' : 720}
+      style={isMobile ? { top: 0, maxWidth: '100vw', paddingBottom: 0 } : { top: 24, maxWidth: 'calc(100vw - 16px)' }}
       forceRender
     >
       {usable === false && (
@@ -394,7 +397,13 @@ export const DeclareForThirdPartyModal: React.FC<DeclareForThirdPartyModalProps>
                         ]}
                         style={{ flex: '1 1 160px', marginBottom: 12 }}
                       >
-                        <InputNumber<number> min={1} precision={0} style={{ width: '100%' }} inputMode="numeric" />
+                        <InputNumber
+                          {...montantSaisiProps}
+                          min={1}
+                          precision={0}
+                          style={{ width: '100%' }}
+                          inputMode="numeric"
+                        />
                       </Form.Item>
                     </div>
                     {fm.isVisible('lines[].chargeCallIds') && (

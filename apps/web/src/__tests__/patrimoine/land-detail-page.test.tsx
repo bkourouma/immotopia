@@ -211,7 +211,7 @@ describe('<LandRegularizationDetailPage>', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Terminer le dossier' }));
     const dialogue = await screen.findByRole('dialog');
-    await user.click(within(dialogue).getByRole('button', { name: 'Confirmer' }));
+    await user.click(within(dialogue).getByRole('button', { name: 'Terminer le dossier' }));
 
     expect(await screen.findByText('Toutes les étapes obligatoires doivent être terminées.')).toBeInTheDocument();
   });
@@ -224,7 +224,7 @@ describe('<LandRegularizationDetailPage>', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Rouvrir le dossier' }));
     const dialogue = await screen.findByRole('dialog');
-    const confirmer = within(dialogue).getByRole('button', { name: 'Confirmer' });
+    const confirmer = within(dialogue).getByRole('button', { name: 'Rouvrir le dossier' });
     expect(confirmer).toBeDisabled();
 
     await saisir(within(dialogue).getByLabelText('Motif (obligatoire)'), 'Nouvelle pièce exigée');

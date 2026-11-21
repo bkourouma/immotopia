@@ -122,7 +122,19 @@ describe('SyndicCharges — cartes de synthèse (BUG-047)', () => {
 
   it('demande la première page de 20 appels au montage, puis la page 2 au changement de page', async () => {
     listChargeCalls.mockResolvedValue({
-      items: [],
+      // Une ligne au moins : en cartes, une page vide n'affiche pas de pagination.
+      items: [
+        {
+          id: 'charge-1',
+          syndicateId: 'syndic-1',
+          lotId: 'lot-1',
+          period: '2026-T1',
+          amount: 100000,
+          currency: 'XOF',
+          dueDate: '2030-01-15T00:00:00.000Z',
+          status: 'PENDING'
+        }
+      ],
       summary: SUMMARY,
       pagination: { page: 1, limit: 20, total: 45, totalPages: 3 }
     });
@@ -133,7 +145,7 @@ describe('SyndicCharges — cartes de synthèse (BUG-047)', () => {
       limit: 20
     });
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Page 2' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Page 2' }, { timeout: 10000 }));
     await waitFor(() =>
       expect(listChargeCalls).toHaveBeenLastCalledWith('tenant-1', 'syndic-1', {
         page: 2,

@@ -1,20 +1,21 @@
 import React from 'react';
-import { Card, Row, Col, Typography, Spin, Alert, Tag, Space, Button } from 'antd';
+import { Row, Col, Typography, Tag, Space, Button } from 'antd';
 import { DollarOutlined, CalendarOutlined, SyncOutlined } from '@ant-design/icons';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { ownerPortalService } from '../../services/ownerPortalService';
 import type { OwnerPortalPagination } from '../../services/ownerPortalService';
 import { StatCard } from '../../components/OwnerPortal/StatCard';
-import { Table } from '../../components/primitives';
+import { DataCard, DataView, PageHeader, SkeletonStats } from '../../components/primitives';
 import { useListSearch } from '../../hooks/useListSearch';
 import { STALE_TIME } from '../../lib/query-keys';
 import { collectAllPages } from '../../utils/table-export/collect';
 import { useOwnerPropertyOptions } from './useOwnerPropertyOptions';
+import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
 
 import { formatFcfa } from '../../i18n/format';
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 interface InstallmentListItem {
   id: string;
@@ -115,7 +116,7 @@ export default function Installments() {
   const total = data?.pagination?.total ?? installments.length;
 
   // Pas de tri d'en-tête : l'API ne trie pas et le tri antd ne porterait que sur la page reçue.
-  const columns = [
+  const columns: ColumnsType<InstallmentListItem> = [
     {
       title: t('Propriété'),
       dataIndex: 'propertyAddress',
@@ -175,36 +176,74 @@ export default function Installments() {
     }
   ];
 
-  if (isPending && !data) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <Spin size="large" tip={t('Chargement des échéances...')} />
-      </div>
-    );
-  }
-
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      {/* Page Header */}
-      <div className="it-toolbar">
-        <div>
-          <Title level={2}>{t('Échéances')}</Title>
-          <Text type="secondary">{t('Suivi des échéances de paiement')}</Text>
-        </div>
-        <Button
-          icon={<SyncOutlined />}
-          onClick={() => refetch()}
-          loading={isFetching}
-          aria-label={t('Rafraîchir les échéances')}
-        >
-          {t('Actualiser')}
-        </Button>
-      </div>
+      <PageHeader
+        title={t('Échéances')}
+        subtitle={t('Suivi des échéances de paiement')}
+        extra={
+          <Button
+            icon={<SyncOutlined />}
+            onClick={() => refetch()}
+            loading={isFetching}
+            aria-label={t('Rafraîchir les échéances')}
+          >
+            {t('Actualiser')}
+          </Button>
+        }
+      />
 
-      {/* Summary Cards (T096) : calculées par le serveur sur toutes les lignes filtrées */}
+      {/* Ce que le proprietaire cherche d'abord : ce qui reste a encaisser et ce qui est en retard.
+          Les compteurs tiennent a deux par ligne sur telephone. */}
+      {isPending && !data && <SkeletonStats rows={4} aria-label={t('Chargement des échéances')} />}
       {data?.summary && (
         <Row gutter={[16, 16]}>
-          <Col xs={24} sm={12} lg={6}>
+          <Col xs={24} sm={12}>
+            <StatCard
+              helpId="portails.proprietaire.echeances.montants"
+              title={t('Montant dû')}
+              value={formatCurrency(data.summary.dueAmount)}
+              icon={<DollarOutlined style={{ color: '#faad14' }} />}
+              valueStyle={{ fontSize: 18, color: '#faad14' }}
+            />
+          </Col>
+          <Col xs={24} sm={12}>
+            <StatCard
+              title={t('Montant total')}
+              value={formatCurrency(data.summary.totalAmount)}
+              icon={<DollarOutlined style={{ color: '#722ed1' }} />}
+              valueStyle={{ fontSize: 18 }}
+            />
+          </Col>
+        </Row>
+      )}
+      {data?.summary && (
+        <Row gutter={[16, 16]}>
+          <Col xs={12} lg={6}>
+            <StatCard
+              title={t('En retard')}
+              value={data.summary.overdue.toString()}
+              icon={<CalendarOutlined style={{ color: '#ff4d4f' }} />}
+              valueStyle={{ fontSize: 18, color: '#ff4d4f' }}
+            />
+          </Col>
+          <Col xs={12} lg={6}>
+            <StatCard
+              title={t('À payer')}
+              value={data.summary.due.toString()}
+              icon={<CalendarOutlined style={{ color: '#1890ff' }} />}
+              valueStyle={{ fontSize: 18, color: '#1890ff' }}
+            />
+          </Col>
+          <Col xs={12} lg={6}>
+            <StatCard
+              title={t('Payées')}
+              value={data.summary.paid.toString()}
+              icon={<CalendarOutlined style={{ color: '#52c41a' }} />}
+              valueStyle={{ fontSize: 18, color: '#52c41a' }}
+            />
+          </Col>
+          <Col xs={12} lg={6}>
             <StatCard
               helpId="portails.proprietaire.echeances.indicateurs"
               title={t('Total')}
@@ -213,88 +252,52 @@ export default function Installments() {
               valueStyle={{ fontSize: 18 }}
             />
           </Col>
-          <Col xs={24} sm={12} lg={6}>
-            <StatCard
-              title={t('À payer')}
-              value={data.summary.due.toString()}
-              icon={<CalendarOutlined style={{ color: '#1890ff' }} />}
-              valueStyle={{ fontSize: 18, color: '#1890ff' }}
-            />
-          </Col>
-          <Col xs={24} sm={12} lg={6}>
-            <StatCard
-              title={t('En retard')}
-              value={data.summary.overdue.toString()}
-              icon={<CalendarOutlined style={{ color: '#ff4d4f' }} />}
-              valueStyle={{ fontSize: 18, color: '#ff4d4f' }}
-            />
-          </Col>
-          <Col xs={24} sm={12} lg={6}>
-            <StatCard
-              title={t('Payées')}
-              value={data.summary.paid.toString()}
-              icon={<CalendarOutlined style={{ color: '#52c41a' }} />}
-              valueStyle={{ fontSize: 18, color: '#52c41a' }}
-            />
-          </Col>
         </Row>
       )}
 
-      {/* Amount Summary Cards */}
-      {data?.summary && (
-        <Row gutter={[16, 16]}>
-          <Col xs={24} sm={12}>
-            <StatCard
-              helpId="portails.proprietaire.echeances.montants"
-              title={t('Montant total')}
-              value={formatCurrency(data.summary.totalAmount)}
-              icon={<DollarOutlined style={{ color: '#722ed1' }} />}
-              valueStyle={{ fontSize: 18 }}
-            />
-          </Col>
-          <Col xs={24} sm={12}>
-            <StatCard
-              title={t('Montant dû')}
-              value={formatCurrency(data.summary.dueAmount)}
-              icon={<DollarOutlined style={{ color: '#faad14' }} />}
-              valueStyle={{ fontSize: 18, color: '#faad14' }}
-            />
-          </Col>
-        </Row>
-      )}
-
-      {/* Installments Table (T097) */}
-      <Card title={t('Liste des échéances')}>
-        {error && (
-          <Alert
-            message={t('Erreur')}
-            description={error}
-            type="error"
-            showIcon
-            style={{ marginBottom: 'var(--space-4)' }}
-          />
-        )}
-        <Table
-          helpId="portails.proprietaire.echeances.tableau"
-          aria-label={t('Liste des échéances')}
-          search={search.searchProps}
-          exportFilename={t('Liste des échéances')}
-          exportFetchAll={() =>
+      {/* Liste : tableau sur grand ecran, cartes sur telephone. */}
+      <DataView<InstallmentListItem>
+        helpId="portails.proprietaire.echeances.tableau"
+        aria-label={t('Liste des échéances')}
+        {...search.dataViewProps}
+        search={search.searchProps}
+        items={installments}
+        total={total}
+        loading={isPending}
+        isReloading={isFetching && !isPending}
+        error={error}
+        errorCause={queryError}
+        onRetry={() => void refetch()}
+        emptyDescription={t('Aucune échéance trouvée')}
+        export={{
+          filename: t('Liste des échéances'),
+          fetchAll: () =>
             collectAllPages<InstallmentListItem>(async (page, limit) => {
               const response = await ownerPortalService.getInstallments({ ...search.filterParams, page, limit });
               const result = response.data?.data as InstallmentsData | undefined;
               return { items: result?.installments ?? [], total: result?.pagination?.total ?? 0 };
             })
-          }
-          scroll={{ x: 'max-content' }}
-          columns={columns}
-          dataSource={installments}
-          rowKey="id"
-          loading={isFetching}
-          pagination={search.tablePagination(total)}
-          locale={search.isFiltered ? undefined : { emptyText: t('Aucune échéance trouvée') }}
-        />
-      </Card>
+        }}
+        columns={columns}
+        rowKey={row => row.id}
+        renderCard={row => (
+          <DataCard
+            title={row.propertyAddress}
+            subtitle={[row.tenantName, row.period].filter(Boolean).join(' · ')}
+            status={getStatusTag(row.status)}
+            highlight={formatCurrency(row.amount)}
+            fields={[
+              { label: t("Date d'échéance"), value: dayjs(row.dueDate).format('DD/MM/YYYY') },
+              ...(Number(row.paidAmount || 0) > 0
+                ? [{ label: t('Déjà payé'), value: formatCurrency(Number(row.paidAmount)) }]
+                : []),
+              ...(Number(row.penaltyAmount || 0) > 0
+                ? [{ label: t('Pénalité'), value: formatCurrency(Number(row.penaltyAmount)) }]
+                : [])
+            ]}
+          />
+        )}
+      />
     </Space>
   );
 }

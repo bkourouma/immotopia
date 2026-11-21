@@ -146,7 +146,7 @@ describe('SyndicBudgets — création avec plusieurs postes (M4)', () => {
       expect((totalRow.textContent || '').replace(/\D/g, '')).toBe('400000');
     }, T);
 
-    fireEvent.click(screen.getByRole('button', { name: /Créer budget/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Créer le budget/ }));
 
     await waitFor(() => expect(createBudget).toHaveBeenCalledTimes(1), T);
     const [tenantId, syndicId, payload] = createBudget.mock.calls[0];
@@ -206,7 +206,7 @@ describe('SyndicBudgets — création avec plusieurs postes (M4)', () => {
       fireEvent.change(await screen.findByLabelText('Libellé', {}, T), { target: { value: 'Budget 2027' } });
       await fillPoste(0, 'Entretien', 'Nettoyage', amount);
 
-      fireEvent.click(screen.getByRole('button', { name: /Créer budget/ }));
+      fireEvent.click(screen.getByRole('button', { name: /Créer le budget/ }));
 
       expect(await screen.findByText('Montant supérieur à 0 obligatoire', {}, T)).toBeTruthy();
       expect(createBudget).not.toHaveBeenCalled();
@@ -245,3 +245,8 @@ describe('SyndicBudgets — budget clôturé (lecture seule)', () => {
     expect(names).toEqual(['Close', 'Exporter le tableau']);
   }, 30000);
 });
+
+// Les écrans « charges » et « budgets » basculent en cartes sous 992 px : ici on teste la disposition tableau.
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));

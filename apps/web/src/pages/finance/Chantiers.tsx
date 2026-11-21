@@ -344,6 +344,7 @@ export const Chantiers: React.FC = () => {
             <label htmlFor="chantier-nom">{t('Nom du chantier')}</label> <MarqueObligatoire />
             <Input
               id="chantier-nom"
+              autoFocus
               aria-required
               status={essaiEnvoi && !nom.trim() ? 'error' : undefined}
               value={nom}

@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, App, Button, Card, Empty, Input, Modal, Select, Space, Tag, Typography } from 'antd';
+import { App, Button, Card, Empty, Input, Modal, Select, Space, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { CheckCircleOutlined } from '@ant-design/icons';
 import { PropertyVisit, PropertyVisitGoal, PropertyVisitStatus } from '../../types/property-types';
-import { Table } from '../primitives';
+import { StateBlock, Table, useConfirmAction } from '../primitives';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { useLocalListSearch } from '../../utils/list-search';
 import type { SearchCriterion } from '../../utils/list-search';
 import { getPropertyVisits, updateVisitStatus, completePropertyVisit } from '../../services/property-service';
@@ -92,6 +93,8 @@ const ACCESSEURS = {
 
 export const PropertyVisitsList: React.FC<PropertyVisitsListProps> = ({ propertyId, tenantId, refreshKey }) => {
   const { message } = App.useApp();
+  const confirm = useConfirmAction();
+  const { isMobile } = useBreakpoint();
   const [visits, setVisits] = useState<PropertyVisit[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -168,6 +171,33 @@ export const PropertyVisitsList: React.FC<PropertyVisitsListProps> = ({ property
     }
   };
 
+  /** Annuler une visite ou la déclarer manquée la retire de la clôture : on le confirme, en nommant la visite. */
+  const requestStatus = (visit: PropertyVisit, status: PropertyVisitStatus) => {
+    if (busyId) return;
+    if (status !== PropertyVisitStatus.CANCELED && status !== PropertyVisitStatus.NO_SHOW) {
+      void changeStatus(visit, status);
+      return;
+    }
+    const quand = new Date(visit.scheduledAt).toLocaleString(activeLocale(), {
+      dateStyle: 'medium',
+      timeStyle: 'short'
+    });
+    const contact = visit.contact ? `${visit.contact.firstName} ${visit.contact.lastName}` : t('sans contact');
+    const annulation = status === PropertyVisitStatus.CANCELED;
+    confirm({
+      title: annulation
+        ? t('Annuler la visite du {{date}} ({{contact}}) ?', { date: quand, contact })
+        : t('Marquer la visite du {{date}} ({{contact}}) comme manquée ?', { date: quand, contact }),
+      description: annulation
+        ? t("La visite sort de l'agenda et ne pourra plus être clôturée.")
+        : t("Le contact ne s'est pas présenté : la visite ne pourra plus être clôturée."),
+      okText: annulation ? t('Annuler la visite') : t('Marquer comme manquée'),
+      cancelText: t('Garder la visite'),
+      danger: annulation,
+      onConfirm: () => changeStatus(visit, status)
+    });
+  };
+
   const openClosing = (visit: PropertyVisit) => {
     setClosing(visit);
     // La note de planification sert de base au compte-rendu.
@@ -216,13 +246,12 @@ export const PropertyVisitsList: React.FC<PropertyVisitsListProps> = ({ property
           <Tag color={STATUS_COLORS[v.status]}>{visitStatusLabel(v.status)}</Tag>
         ) : (
           <Select
-            size="small"
-            style={{ minWidth: 130 }}
+            style={{ minWidth: 150, minHeight: 'var(--touch-target-min, 44px)' }}
             value={v.status}
             loading={busyId === v.id}
             disabled={busyId === v.id}
             aria-label={t('Statut de la visite')}
-            onChange={(status: PropertyVisitStatus) => changeStatus(v, status)}
+            onChange={(status: PropertyVisitStatus) => requestStatus(v, status)}
             options={MANUAL_STATUSES.map(s => ({ value: s, label: visitStatusLabel(s) }))}
           />
         )
@@ -239,7 +268,12 @@ export const PropertyVisitsList: React.FC<PropertyVisitsListProps> = ({ property
       align: 'end',
       render: (_: unknown, v) =>
         v.status === PropertyVisitStatus.DONE || v.status === PropertyVisitStatus.CANCELED ? null : (
-          <Button size="small" icon={<CheckCircleOutlined />} onClick={() => openClosing(v)}>
+          <Button
+            icon={<CheckCircleOutlined />}
+            style={{ minHeight: 'var(--touch-target-min, 44px)' }}
+            disabled={busyId === v.id}
+            onClick={() => openClosing(v)}
+          >
             {t('Clôturer')}
           </Button>
         )
@@ -248,27 +282,45 @@ export const PropertyVisitsList: React.FC<PropertyVisitsListProps> = ({ property
 
   return (
     <Card title={<HelpSectionTitle title={t('Visites du bien')} helpId="commercial.biens.detail.visites" />}>
-      {error && <Alert type="error" showIcon message={error} style={{ marginBottom: 16 }} />}
-      <Table<PropertyVisit>
-        helpId="commercial.biens.detail.visites.tableau"
-        {...local.tableProps}
-        exportFetchAll={local.exportAll}
-        exportFilename={t('Visites du bien')}
-        aria-label={t('Visites du bien')}
-        rowKey="id"
-        size="small"
-        loading={loading}
-        columns={columns}
-        scroll={{ x: 'max-content' }}
-        // Sous critère, la Table affiche seule son bloc « Aucun résultat ».
-        locale={
-          local.isFiltered
-            ? undefined
-            : {
-                emptyText: <Empty description={t('Aucune visite pour ce bien')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
-              }
-        }
-      />
+      {error && visits.length === 0 ? (
+        <StateBlock
+          variant="error"
+          title={t('Impossible de charger les visites')}
+          description={error}
+          actions={[{ label: t('Réessayer'), onClick: () => void load(), primary: true }]}
+        />
+      ) : (
+        <Table<PropertyVisit>
+          helpId="commercial.biens.detail.visites.tableau"
+          {...local.tableProps}
+          exportFetchAll={local.exportAll}
+          exportFilename={t('Visites du bien')}
+          aria-label={t('Visites du bien')}
+          rowKey="id"
+          size="small"
+          loading={loading}
+          columns={columns}
+          scroll={{ x: 'max-content' }}
+          // Sous critère, la Table affiche seule son bloc « Aucun résultat ».
+          locale={
+            local.isFiltered
+              ? undefined
+              : {
+                  emptyText: (
+                    <Empty description={t('Aucune visite pour ce bien')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                  )
+                }
+          }
+        />
+      )}
+      {error && visits.length > 0 && (
+        <StateBlock
+          variant="error"
+          title={t('Impossible de charger les visites')}
+          description={error}
+          actions={[{ label: t('Réessayer'), onClick: () => void load(), primary: true }]}
+        />
+      )}
       <Modal
         open={closing !== null}
         title={t('Clôturer la visite')}
@@ -277,6 +329,9 @@ export const PropertyVisitsList: React.FC<PropertyVisitsListProps> = ({ property
         confirmLoading={closing !== null && busyId === closing.id}
         onOk={confirmClosing}
         onCancel={() => setClosing(null)}
+        // Plein écran sous 768 px, comme les autres formulaires de la fiche.
+        width={isMobile ? '100%' : 520}
+        style={isMobile ? { top: 0, maxWidth: '100vw', margin: 0, paddingBottom: 0 } : undefined}
       >
         <Space direction="vertical" style={{ width: '100%' }}>
           <Text>{t('Compte-rendu de la visite (optionnel)')}</Text>

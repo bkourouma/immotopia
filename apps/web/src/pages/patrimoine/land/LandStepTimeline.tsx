@@ -1,9 +1,10 @@
 import React from 'react';
 import { Button, Space, Tag, Timeline, Typography } from 'antd';
+import { StatusTag } from '../../../components/primitives';
 import { PaperClipOutlined } from '@ant-design/icons';
 import { documentTypeLabel } from '../../../components/patrimoine/patrimoine-labels';
 import { t } from '../../../i18n/t';
-import { formatLandDate, formatXof, stepStatusColor, stepStatusLabel } from './land-labels';
+import { formatLandDate, formatXof, stepStatusLabel, stepStatusTone } from './land-labels';
 import type { LandStep } from './land-types';
 
 const { Text } = Typography;
@@ -28,8 +29,8 @@ export const LandStepTimeline: React.FC<LandStepTimelineProps> = ({ steps, onOpe
               {step.order}. {step.label}
             </Text>
             {!step.required && <Tag>{t('Facultative')}</Tag>}
-            <Tag color={stepStatusColor(step.status)}>{stepStatusLabel(step.status)}</Tag>
-            {step.isOverdue && <Tag color="error">{t('En retard')}</Tag>}
+            <StatusTag status={step.status} tone={stepStatusTone(step.status)} label={stepStatusLabel(step.status)} />
+            {step.isOverdue && <StatusTag status="OVERDUE" tone="danger" label={t('En retard')} />}
           </Space>
           <Text type="secondary">
             {t('Échéance : {{date}}', { date: formatLandDate(step.dueDate) })}
@@ -47,7 +48,6 @@ export const LandStepTimeline: React.FC<LandStepTimelineProps> = ({ steps, onOpe
           </Text>
           <div>
             <Button
-              size="small"
               onClick={() => onOpenStep(step.id)}
               aria-label={t("Ouvrir l'étape {{label}}", { label: step.label })}
             >
