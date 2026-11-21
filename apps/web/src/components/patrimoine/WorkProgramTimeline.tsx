@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card, Empty, Space, Tag, Timeline, Typography } from 'antd';
+import { Card, Space, Tag, Timeline, Typography } from 'antd';
 import type { WorkProgram } from '../../types/patrimoine-types';
 import { t } from '../../i18n/t';
 
@@ -35,24 +35,26 @@ export const WorkProgramTimeline: React.FC<Props> = ({ items }) => {
   return (
     <Card title={t('Programme de travaux')}>
       {sorted.length === 0 ? (
-        <Empty description={t('Aucun programme de travaux')} />
+        <Text type="secondary">{t('Aucun programme de travaux')}</Text>
       ) : (
-        <Timeline
-          items={sorted.map(item => ({
-            color: statusColor(item.status),
-            children: (
-              <Space direction="vertical" size={2}>
-                <Text strong>{item.title}</Text>
-                {item.propertyLabel ? <Text type="secondary">{item.propertyLabel}</Text> : null}
-                <Text type="secondary">
-                  {new Date(item.plannedDate).toLocaleDateString(activeLocale())} -{' '}
-                  {Number(item.estimatedCost).toLocaleString(activeLocale())} {item.currency}
-                </Text>
-                <Tag color={statusColor(item.status)}>{statusLabel(item.status)}</Tag>
-              </Space>
-            )
-          }))}
-        />
+        <div role="group" aria-label={t('Frise des programmes de travaux')}>
+          <Timeline
+            items={sorted.map(item => ({
+              color: statusColor(item.status),
+              children: (
+                <Space direction="vertical" size={2}>
+                  <Text strong>{item.title}</Text>
+                  {item.propertyLabel ? <Text type="secondary">{item.propertyLabel}</Text> : null}
+                  <Text type="secondary">
+                    {new Date(item.plannedDate).toLocaleDateString(activeLocale())} -{' '}
+                    {Number(item.estimatedCost).toLocaleString(activeLocale())} {item.currency}
+                  </Text>
+                  <Tag color={statusColor(item.status)}>{statusLabel(item.status)}</Tag>
+                </Space>
+              )
+            }))}
+          />
+        </div>
       )}
     </Card>
   );

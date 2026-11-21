@@ -143,7 +143,7 @@ describe('PropertyPatrimoineTab — recette F1', () => {
     const carte = titre.closest('.ant-card') as HTMLElement;
     await waitFor(() => expect(fetchProfile).toHaveBeenCalledTimes(1));
     await userEvent.click(await within(carte).findByRole('button', { name: 'Supprimer' }));
-    await userEvent.click(await screen.findByRole('button', { name: /ok/i }));
+    await userEvent.click((await screen.findAllByRole('button', { name: 'Supprimer' })).at(-1) as HTMLElement);
 
     await waitFor(() => expect(patrimoineService.deleteValuation).toHaveBeenCalled());
     await waitFor(() => expect(fetchProfile).toHaveBeenCalledTimes(2));
@@ -159,7 +159,7 @@ describe('PropertyPatrimoineTab — recette F1', () => {
     // Le rendement n'est pas demandé tant que la synthèse n'est pas affichée.
     expect(patrimoineService.getPropertyYield).not.toHaveBeenCalled();
     await userEvent.click(await within(carte).findByRole('button', { name: 'Supprimer' }));
-    await userEvent.click(await screen.findByRole('button', { name: /ok/i }));
+    await userEvent.click((await screen.findAllByRole('button', { name: 'Supprimer' })).at(-1) as HTMLElement);
     await waitFor(() => expect(patrimoineService.deleteValuation).toHaveBeenCalled());
     await waitFor(() => expect(patrimoineService.listValuations).toHaveBeenCalledTimes(2));
     expect(patrimoineService.getPropertyYield).not.toHaveBeenCalled();

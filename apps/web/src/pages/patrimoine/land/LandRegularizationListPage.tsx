@@ -6,7 +6,7 @@ import { PlusOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../../hooks/useAuth';
 import { queryKey, STALE_TIME } from '../../../lib/query-keys';
-import { DataCard, DataView, PageHeader, StateBlock } from '../../../components/primitives';
+import { DataCard, DataView, PageHeader, StateBlock, StatusTag } from '../../../components/primitives';
 import { normalizeText, useLocalListSearch } from '../../../utils/list-search';
 import { getProperty } from '../../../services/property-service';
 import { t } from '../../../i18n/t';
@@ -17,9 +17,9 @@ import { listLandRegularizations } from './land-regularization-service';
 import {
   formatLandDate,
   formatXof,
-  regularizationStatusColor,
   regularizationStatusLabel,
-  regularizationStatusOptions
+  regularizationStatusOptions,
+  regularizationStatusTone
 } from './land-labels';
 import type { LandRegularizationSummary } from './land-types';
 
@@ -156,7 +156,11 @@ export const LandRegularizationListPage: React.FC = () => {
       title: t('Statut'),
       key: 'statut',
       render: (_, dossier) => (
-        <Tag color={regularizationStatusColor(dossier.status)}>{regularizationStatusLabel(dossier.status)}</Tag>
+        <StatusTag
+          status={dossier.status}
+          tone={regularizationStatusTone(dossier.status)}
+          label={regularizationStatusLabel(dossier.status)}
+        />
       )
     },
     {
@@ -218,7 +222,11 @@ export const LandRegularizationListPage: React.FC = () => {
             subtitle={dossier.trackLabel}
             status={
               <>
-                <Tag color={regularizationStatusColor(dossier.status)}>{regularizationStatusLabel(dossier.status)}</Tag>
+                <StatusTag
+                  status={dossier.status}
+                  tone={regularizationStatusTone(dossier.status)}
+                  label={regularizationStatusLabel(dossier.status)}
+                />
                 {dossier.validationStatus === 'A_VALIDER' && (
                   <Tooltip title={t('À valider par un juriste local')}>
                     <Tag color="warning">{t('À valider')}</Tag>

@@ -11,6 +11,7 @@ import {
   MAX_OPERATIONS,
   OPERATION_TYPES,
   buildOperation,
+  invalidOperationFields,
   operationErrors,
   operationFieldLabel,
   operationSummary,
@@ -31,6 +32,9 @@ const AddForm: React.FC<{
   const [invalid, setInvalid] = useState(false);
   const set = (key: string) => (value: string) => setValues(current => ({ ...current, [key]: value }));
   const v = (key: string) => values[key] ?? '';
+  // Après une tentative refusée, chaque champ à corriger est signalé à son niveau et se met à jour en direct.
+  const fieldErrors = invalid ? invalidOperationFields(type, values) : {};
+  const err = (key: string): string | undefined => fieldErrors[key];
   const submit = () => {
     const operation = buildOperation(type, values);
     if (!operation) {
@@ -62,13 +66,19 @@ const AddForm: React.FC<{
         options={OPERATION_TYPES.map(key => ({ value: key, label: operationTypeLabel(key) }))}
       />
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
-        <OperationFields type={type} v={v} set={set} horizon={horizon} assets={assets} debts={debts} />
+        <OperationFields type={type} v={v} set={set} err={err} horizon={horizon} assets={assets} debts={debts} />
       </div>
       {invalid && (
-        <Alert type="error" showIcon title={t('Renseignez les champs obligatoires avec des valeurs valides.')} />
+        <Alert
+          type="error"
+          showIcon
+          role="alert"
+          title={t('Renseignez les champs obligatoires avec des valeurs valides.')}
+          description={t('Les champs à corriger sont signalés en rouge.')}
+        />
       )}
       <div>
-        <Button htmlType="submit" disabled={full}>
+        <Button htmlType="submit" disabled={full} style={{ minHeight: 40 }}>
           {t("Ajouter l'opération")}
         </Button>
         {full && (
@@ -122,7 +132,12 @@ export const SimulationPanel: React.FC<{
           {operations.map((operation, index) => (
             <li key={index} style={{ marginBottom: 'var(--space-2)' }}>
               <span>{operationSummary(operation, { asset: assetName, loan: loanName })}</span>{' '}
-              <Button size="small" type="link" onClick={() => onChange(operations.filter((_, i) => i !== index))}>
+              <Button
+                size="small"
+                type="link"
+                style={{ minHeight: 40 }}
+                onClick={() => onChange(operations.filter((_, i) => i !== index))}
+              >
                 {t('Retirer')}
               </Button>
               {errors?.byIndex.get(index)?.map(entry => (
@@ -151,7 +166,7 @@ export const SimulationPanel: React.FC<{
           {t('Les opérations ont changé : relancez la simulation pour mettre à jour les résultats.')}
         </Typography.Paragraph>
       )}
-      <Button type="primary" onClick={onRun} loading={running} disabled={!canRun}>
+      <Button type="primary" onClick={onRun} loading={running} disabled={!canRun} style={{ minHeight: 40 }}>
         {t('Lancer la simulation')}
       </Button>
     </Card>

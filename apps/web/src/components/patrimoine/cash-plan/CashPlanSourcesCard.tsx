@@ -72,7 +72,8 @@ const TaxDueDateForm: React.FC<{
           <select
             id="cash-plan-tax-month"
             className="ant-input"
-            style={{ minWidth: 150, height: 32 }}
+            style={{ minWidth: 150, height: 40 }}
+            aria-invalid={invalid ? true : undefined}
             value={monthValue ?? ''}
             onChange={event => setMonthValue(event.target.value ? Number(event.target.value) : null)}
           >
@@ -93,11 +94,13 @@ const TaxDueDateForm: React.FC<{
             min={1}
             max={31}
             precision={0}
+            size="large"
+            aria-invalid={invalid ? true : undefined}
             value={dayValue}
             onChange={value => setDayValue(typeof value === 'number' ? value : null)}
           />
         </div>
-        <Button type="primary" htmlType="submit" loading={saving}>
+        <Button type="primary" htmlType="submit" loading={saving} style={{ minHeight: 40 }}>
           {t("Enregistrer la date d'exigibilité")}
         </Button>
       </Space>

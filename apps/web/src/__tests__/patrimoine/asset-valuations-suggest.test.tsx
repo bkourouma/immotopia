@@ -144,7 +144,9 @@ describe('suggestion de valeur', () => {
     await user.click(within(panneau).getByRole('button', { name: 'Modifier' }));
 
     const dialogue = await screen.findByRole('dialog');
-    expect(within(dialogue).getByLabelText('Valeur estimée')).toHaveValue('3500000');
+    // Le montant s'affiche avec séparateur de milliers : même valeur, mise en forme lisible.
+    const champ = within(dialogue).getByLabelText('Valeur estimée') as HTMLInputElement;
+    expect(champ.value.replace(/\D/g, '')).toBe('3500000');
     expect(createAssetValuation).not.toHaveBeenCalled();
   });
 
@@ -294,7 +296,8 @@ describe('expertise et source', () => {
     });
     monter();
 
-    await user.click(await screen.findByRole('button', { name: /Ajouter une valeur/ }));
+    // Liste vide : le bouton de l'en-tête et l'action de l'état vide ouvrent le même formulaire.
+    await user.click((await screen.findAllByRole('button', { name: /Ajouter une valeur/ }))[0]);
     const dialogue = await screen.findByRole('dialog');
     await user.type(within(dialogue).getByLabelText('Valeur estimée'), '5000000');
     await user.click(within(dialogue).getByLabelText('Méthode'));

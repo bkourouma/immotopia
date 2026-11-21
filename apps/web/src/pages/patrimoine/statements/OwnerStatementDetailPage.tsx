@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Alert, App, Button, Card, Descriptions, Space, Tag, Typography } from 'antd';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import { Alert, App, Button, Card, Descriptions, Space, Tag } from 'antd';
 import { getOwnerStatementById, recomputeOwnerStatement } from '../../../services/patrimoine-service';
 import type { OwnerStatement } from '../../../types/patrimoine-types';
 import { useAuth } from '../../../hooks/useAuth';
-import { MoneyValue, Table } from '../../../components/primitives';
+import { MoneyValue, PageHeader, StateBlock, StatusTag, Table } from '../../../components/primitives';
 import { OwnerStatementSecureLinks } from '../../../components/patrimoine/OwnerStatementSecureLinks';
 import {
   isLegacyStatement,
@@ -16,8 +16,6 @@ import { t } from '../../../i18n/t';
 import { statementApiErrorMessage } from './statement-errors';
 
 import { activeLocale } from '../../../i18n/format';
-const { Title } = Typography;
-
 function statementItemTypeLabel(type: OwnerStatement['items'][number]['type']): string {
   if (type === 'RENT_COLLECTED') return t('Loyer encaissé');
   if (type === 'EXPENSE_DEDUCTED') return t('Dépense déduite');
@@ -46,7 +44,6 @@ function rateLabel(rate: number | string | null): string {
 export const OwnerStatementDetailPage: React.FC = () => {
   const { message } = App.useApp();
   const { tenantId, id } = useParams<{ tenantId: string; id: string }>();
-  const navigate = useNavigate();
   const { tenantMembership } = useAuth();
   const effectiveTenantId = tenantId || tenantMembership?.tenantId;
 
@@ -55,22 +52,23 @@ export const OwnerStatementDetailPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [statement, setStatement] = useState<OwnerStatement | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!effectiveTenantId || !id) return;
-    const run = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const data = await getOwnerStatementById(effectiveTenantId, id);
-        setStatement(data);
-      } catch (e: any) {
-        setError(statementApiErrorMessage(e, t('Erreur de chargement du détail du relevé')));
-      } finally {
-        setLoading(false);
-      }
-    };
-    void run();
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await getOwnerStatementById(effectiveTenantId, id);
+      setStatement(data);
+    } catch (e: any) {
+      setError(statementApiErrorMessage(e, t('Erreur de chargement du détail du relevé')));
+    } finally {
+      setLoading(false);
+    }
   }, [effectiveTenantId, id]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   const handleRecompute = async () => {
     if (!effectiveTenantId || !statement) return;
@@ -90,13 +88,19 @@ export const OwnerStatementDetailPage: React.FC = () => {
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      <Space wrap>
-        <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/patrimoine/statements`)}>{t('Retour')}</Button>
-        <Title level={3} style={{ margin: 0 }}>
-          {t('Détail du relevé')}
-        </Title>
-      </Space>
-      {error ? <Alert type="error" showIcon message={error} /> : null}
+      <PageHeader
+        title={t('Détail du relevé')}
+        subtitle={statement ? `${ownerLabel(statement)} · ${statement.period}` : undefined}
+        breadcrumbs={[
+          { label: t('Relevés de gérance'), to: `/tenant/${effectiveTenantId}/patrimoine/statements` },
+          { label: t('Détail du relevé') }
+        ]}
+      />
+      {error && !statement ? (
+        <Card>
+          <StateBlock variant="error" title={error} onRetry={() => void load()} />
+        </Card>
+      ) : null}
 
       {statement && legacy ? (
         <Alert
@@ -143,111 +147,115 @@ export const OwnerStatementDetailPage: React.FC = () => {
         />
       ) : null}
 
-      <Card loading={loading}>
-        {statement ? (
-          <Descriptions bordered column={{ xs: 1, sm: 2 }}>
-            <Descriptions.Item label={t('Période')}>{statement.period}</Descriptions.Item>
-            <Descriptions.Item label={t('Statut')}>
-              <Space size={4} wrap>
-                <Tag>{statementStatusLabel(statement.status)}</Tag>
-                {legacy ? <Tag color="warning">{t('Ancien calcul')}</Tag> : null}
-              </Space>
-            </Descriptions.Item>
-            <Descriptions.Item label={t('Propriétaire')} span="filled">
-              {ownerLabel(statement)}
-            </Descriptions.Item>
+      {error && !statement ? null : (
+        <>
+          <Card loading={loading}>
+            {statement ? (
+              <Descriptions bordered column={{ xs: 1, sm: 2 }}>
+                <Descriptions.Item label={t('Période')}>{statement.period}</Descriptions.Item>
+                <Descriptions.Item label={t('Statut')}>
+                  <Space size={4} wrap>
+                    <StatusTag status={statement.status} label={statementStatusLabel(statement.status)} />
+                    {legacy ? <StatusTag status="LEGACY" tone="warning" label={t('Ancien calcul')} /> : null}
+                  </Space>
+                </Descriptions.Item>
+                <Descriptions.Item label={t('Propriétaire')} span="filled">
+                  {ownerLabel(statement)}
+                </Descriptions.Item>
 
-            {legacy ? (
-              <>
-                <Descriptions.Item label={t('Loyers (loyer du contrat)')}>
-                  <MoneyValue value={statement.totalRevenue} />
-                </Descriptions.Item>
-                <Descriptions.Item label={t('Dépenses')}>
-                  <MoneyValue value={statement.totalExpenses} />
-                </Descriptions.Item>
-              </>
-            ) : (
-              <>
-                <Descriptions.Item label={t('Loyers appelés')}>
-                  <MoneyValue value={statement.totalRentDue} />
-                </Descriptions.Item>
-                <Descriptions.Item label={t('Loyers encaissés')}>
-                  <MoneyValue value={statement.totalRevenue} />
-                </Descriptions.Item>
-                <Descriptions.Item label={t('Restant dû par les locataires')} span="filled">
-                  <MoneyValue value={statement.totalArrears} />
-                </Descriptions.Item>
-                <Descriptions.Item
-                  label={
-                    statement.managementFeeRate !== null
-                      ? t('Honoraires de gestion ({{rate}})', { rate: rateLabel(statement.managementFeeRate) })
-                      : t('Honoraires de gestion')
-                  }
-                >
-                  <MoneyValue value={statement.totalManagementFees} />
-                </Descriptions.Item>
-                <Descriptions.Item
-                  label={
-                    statement.vatRate !== null
-                      ? t('TVA sur honoraires ({{rate}})', { rate: rateLabel(statement.vatRate) })
-                      : t('TVA sur honoraires')
-                  }
-                >
-                  <MoneyValue value={statement.totalManagementFeesVat} />
-                </Descriptions.Item>
-                <Descriptions.Item label={t('Dépenses')} span="filled">
-                  <MoneyValue value={statement.totalExpenses} />
-                </Descriptions.Item>
-                <Descriptions.Item label={t('Retenue à la source')}>
-                  <MoneyValue value={totalWithholdingTax(statement)} />
-                </Descriptions.Item>
-                <Descriptions.Item label={t('Dépôt de garantie conservé')}>
-                  <MoneyValue value={totalDepositRetained(statement)} />
-                </Descriptions.Item>
-              </>
-            )}
+                {legacy ? (
+                  <>
+                    <Descriptions.Item label={t('Loyers (loyer du contrat)')}>
+                      <MoneyValue value={statement.totalRevenue} />
+                    </Descriptions.Item>
+                    <Descriptions.Item label={t('Dépenses')}>
+                      <MoneyValue value={statement.totalExpenses} />
+                    </Descriptions.Item>
+                  </>
+                ) : (
+                  <>
+                    <Descriptions.Item label={t('Loyers appelés')}>
+                      <MoneyValue value={statement.totalRentDue} />
+                    </Descriptions.Item>
+                    <Descriptions.Item label={t('Loyers encaissés')}>
+                      <MoneyValue value={statement.totalRevenue} />
+                    </Descriptions.Item>
+                    <Descriptions.Item label={t('Restant dû par les locataires')} span="filled">
+                      <MoneyValue value={statement.totalArrears} />
+                    </Descriptions.Item>
+                    <Descriptions.Item
+                      label={
+                        statement.managementFeeRate !== null
+                          ? t('Honoraires de gestion ({{rate}})', { rate: rateLabel(statement.managementFeeRate) })
+                          : t('Honoraires de gestion')
+                      }
+                    >
+                      <MoneyValue value={statement.totalManagementFees} />
+                    </Descriptions.Item>
+                    <Descriptions.Item
+                      label={
+                        statement.vatRate !== null
+                          ? t('TVA sur honoraires ({{rate}})', { rate: rateLabel(statement.vatRate) })
+                          : t('TVA sur honoraires')
+                      }
+                    >
+                      <MoneyValue value={statement.totalManagementFeesVat} />
+                    </Descriptions.Item>
+                    <Descriptions.Item label={t('Dépenses')} span="filled">
+                      <MoneyValue value={statement.totalExpenses} />
+                    </Descriptions.Item>
+                    <Descriptions.Item label={t('Retenue à la source')}>
+                      <MoneyValue value={totalWithholdingTax(statement)} />
+                    </Descriptions.Item>
+                    <Descriptions.Item label={t('Dépôt de garantie conservé')}>
+                      <MoneyValue value={totalDepositRetained(statement)} />
+                    </Descriptions.Item>
+                  </>
+                )}
 
-            <Descriptions.Item label={t('Net à reverser')}>
-              <strong>
-                <MoneyValue value={statement.netAmount} signed />
-              </strong>
-            </Descriptions.Item>
-            <Descriptions.Item label={t('Envoyé le')}>
-              {statement.sentAt ? new Date(statement.sentAt).toLocaleString(activeLocale()) : '-'}
-            </Descriptions.Item>
-          </Descriptions>
-        ) : null}
-      </Card>
+                <Descriptions.Item label={t('Net à reverser')}>
+                  <strong>
+                    <MoneyValue value={statement.netAmount} signed />
+                  </strong>
+                </Descriptions.Item>
+                <Descriptions.Item label={t('Envoyé le')}>
+                  {statement.sentAt ? new Date(statement.sentAt).toLocaleString(activeLocale()) : '-'}
+                </Descriptions.Item>
+              </Descriptions>
+            ) : null}
+          </Card>
 
-      <Card title={t('Lignes du relevé')} loading={loading}>
-        <Table
-          helpId="patrimoine.releve.lignes"
-          exportFilename={t('Lignes du relevé')}
-          scroll={{ x: 'max-content' }}
-          rowKey="id"
-          dataSource={statement?.items ?? []}
-          pagination={false}
-          columns={[
-            {
-              title: t('Bien'),
-              key: 'property',
-              render: (_: unknown, record: OwnerStatement['items'][number]) => propertyLabel(record)
-            },
-            { title: t('Libellé'), dataIndex: 'label' },
-            {
-              title: t('Type'),
-              dataIndex: 'type',
-              render: (value: OwnerStatement['items'][number]['type']) => <Tag>{statementItemTypeLabel(value)}</Tag>
-            },
-            {
-              title: t('Montant'),
-              dataIndex: 'amount',
-              align: 'end' as const,
-              render: (value: number) => <MoneyValue value={value} />
-            }
-          ]}
-        />
-      </Card>
+          <Card title={t('Lignes du relevé')} loading={loading}>
+            <Table
+              helpId="patrimoine.releve.lignes"
+              exportFilename={t('Lignes du relevé')}
+              scroll={{ x: 'max-content' }}
+              rowKey="id"
+              dataSource={statement?.items ?? []}
+              pagination={false}
+              columns={[
+                {
+                  title: t('Bien'),
+                  key: 'property',
+                  render: (_: unknown, record: OwnerStatement['items'][number]) => propertyLabel(record)
+                },
+                { title: t('Libellé'), dataIndex: 'label' },
+                {
+                  title: t('Type'),
+                  dataIndex: 'type',
+                  render: (value: OwnerStatement['items'][number]['type']) => <Tag>{statementItemTypeLabel(value)}</Tag>
+                },
+                {
+                  title: t('Montant'),
+                  dataIndex: 'amount',
+                  align: 'end' as const,
+                  render: (value: number) => <MoneyValue value={value} />
+                }
+              ]}
+            />
+          </Card>
+        </>
+      )}
 
       {statement && effectiveTenantId ? (
         <OwnerStatementSecureLinks tenantId={effectiveTenantId} statementId={statement.id} />

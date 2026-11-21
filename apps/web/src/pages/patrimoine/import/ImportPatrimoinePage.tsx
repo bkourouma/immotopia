@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { Steps, Typography } from 'antd';
-import { PageHeader, StateBlock } from '../../../components/primitives';
+import { Typography } from 'antd';
+import { PageHeader, StateBlock, StepRail } from '../../../components/primitives';
 import { DESCRIPTEURS_PATRIMOINE } from '../../../lib/importation/natures-patrimoine';
 import { EtapeFichier, EtapeNature } from './EtapeNatureFichier';
 import { EtapeColonnes } from './EtapeColonnes';
@@ -32,6 +32,18 @@ export const ImportPatrimoinePage: React.FC = () => {
     titreRef.current?.focus();
   }, [etape]);
 
+  // Un import en cours (fichier lu, pas encore importé) : le navigateur demande confirmation avant de quitter la page.
+  const importEnCours = etape >= 2 && etape <= 4;
+  useEffect(() => {
+    if (!importEnCours) return undefined;
+    const avertir = (evenement: BeforeUnloadEvent) => {
+      evenement.preventDefault();
+      evenement.returnValue = '';
+    };
+    window.addEventListener('beforeunload', avertir);
+    return () => window.removeEventListener('beforeunload', avertir);
+  }, [importEnCours]);
+
   if (!tenantId) {
     return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
   }
@@ -46,12 +58,9 @@ export const ImportPatrimoinePage: React.FC = () => {
         subtitle={t('Reprendre votre parc depuis Excel ou CSV : les erreurs sont détectées avant toute écriture.')}
       />
       <div {...helpAnchor('import-etapes')}>
-        <Steps
-          current={etape}
-          size="small"
-          style={{ marginBlockEnd: 'var(--space-6)' }}
-          items={titres.map(title => ({ title }))}
-        />
+        <div style={{ marginBlockEnd: 'var(--space-6)' }}>
+          <StepRail items={titres.map(title => ({ title }))} current={etape} furthest={etape} />
+        </div>
       </div>
       <div
         {...helpAnchor('import-etape-courante')}

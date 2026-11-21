@@ -1,6 +1,7 @@
 import React from 'react';
-import { Alert, Button, Card, Popconfirm, Space, Tag } from 'antd';
-import { MoneyValue, Table } from '../../primitives';
+import { Button, Card, Space, Tag } from 'antd';
+import { ConfirmAction, MoneyValue, Table } from '../../primitives';
+import { SectionEmpty, SectionError, SUPPRESSION_DEFINITIVE } from './section-parts';
 import type { ExpenseCategory, ExpenseRecurrence, PropertyExpense } from '../../../types/patrimoine-types';
 import { t } from '../../../i18n/t';
 import { activeLocale } from '../../../i18n/format';
@@ -51,6 +52,8 @@ const ACCESSEURS = {
 interface Props {
   expenses: PropertyExpense[];
   error?: string;
+  /** Relance le chargement de la rubrique (bouton « Réessayer » de l'état d'erreur). */
+  onRetry?: () => void;
   busyActionId: string | null;
   onAdd: () => void;
   onEdit: (item: PropertyExpense) => void;
@@ -58,7 +61,15 @@ interface Props {
 }
 
 /** Rubrique « Dépenses » : tableau de gestion, recherche locale `dep.*`, pages de 10. */
-export const ExpensesSection: React.FC<Props> = ({ expenses, error, busyActionId, onAdd, onEdit, onDelete }) => {
+export const ExpensesSection: React.FC<Props> = ({
+  expenses,
+  error,
+  onRetry,
+  busyActionId,
+  onAdd,
+  onEdit,
+  onDelete
+}) => {
   const criteres: SearchCriterion[] = [
     { key: 'q', type: 'text', label: t('Rechercher'), placeholder: t('Libellé, notes, fournisseur, catégorie…') },
     { key: 'categorie', type: 'multiSelect', label: t('Catégorie'), primary: true, options: OPTIONS_CATEGORIE },
@@ -86,7 +97,7 @@ export const ExpensesSection: React.FC<Props> = ({ expenses, error, busyActionId
       }
     >
       {error ? (
-        <Alert type="error" showIcon message={error} />
+        <SectionError title={t('Impossible de charger les dépenses')} detail={error} onRetry={onRetry} />
       ) : (
         <Table<PropertyExpense>
           helpId="patrimoine.bien.depenses"
@@ -95,7 +106,15 @@ export const ExpensesSection: React.FC<Props> = ({ expenses, error, busyActionId
           exportFetchAll={local.exportAll}
           scroll={{ x: 'max-content' }}
           rowKey="id"
-          locale={local.isFiltered ? undefined : { emptyText: t('Aucune dépense pour ce bien.') }}
+          locale={{
+            emptyText: local.isFiltered ? undefined : (
+              <SectionEmpty
+                title={t('Aucune dépense pour ce bien.')}
+                addLabel={t('Ajouter une dépense')}
+                onAdd={onAdd}
+              />
+            )
+          }}
           columns={[
             {
               title: t('Date'),
@@ -124,15 +143,21 @@ export const ExpensesSection: React.FC<Props> = ({ expenses, error, busyActionId
               title: t('Actions'),
               key: 'actions',
               render: (_: unknown, record: PropertyExpense) => (
-                <Space>
+                <Space wrap>
                   <Button size="small" onClick={() => onEdit(record)}>
                     {t('Modifier')}
                   </Button>
-                  <Popconfirm title={t('Supprimer cette dépense ?')} onConfirm={() => onDelete(record.id)}>
+                  <ConfirmAction
+                    danger
+                    okText={t('Supprimer')}
+                    title={t('Supprimer la dépense « {{libelle}} » ?', { libelle: record.label })}
+                    description={SUPPRESSION_DEFINITIVE()}
+                    onConfirm={() => onDelete(record.id)}
+                  >
                     <Button size="small" danger loading={busyActionId === `expense-${record.id}`}>
                       {t('Supprimer')}
                     </Button>
-                  </Popconfirm>
+                  </ConfirmAction>
                 </Space>
               )
             }

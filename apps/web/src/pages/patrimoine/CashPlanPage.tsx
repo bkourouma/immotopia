@@ -4,6 +4,7 @@ import { Alert, App, InputNumber, Segmented, Skeleton, Space, Typography } from 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { getCashPlan, updateCashPlanSettings } from '../../services/cash-plan-service';
 import { PropertySearchSelect } from '../../components/patrimoine/PropertySearchSelect';
+import { moneyInputProps } from '../../components/patrimoine/actifs/form-helpers';
 import { useAuth } from '../../hooks/useAuth';
 import { entityKeyPrefix, queryKey, STALE_TIME } from '../../lib/query-keys';
 import { PageHeader, StateBlock, formatMoney } from '../../components/primitives';
@@ -95,7 +96,7 @@ export const CashPlanPage: React.FC = () => {
         subtitle={t('Entrées et sorties attendues sur les prochains mois')}
       />
 
-      <Space wrap align="end" size="large" style={{ marginBottom: 16 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 16, marginBottom: 16 }}>
         <div>
           <div id="cash-plan-horizon-label">{t('Horizon')}</div>
           <Segmented<12 | 24>
@@ -110,18 +111,28 @@ export const CashPlanPage: React.FC = () => {
         </div>
         <div>
           <label htmlFor="cash-plan-opening-balance" style={{ display: 'block' }}>
-            {t('Solde de départ (XOF)')}
+            {t('Solde de départ')}
           </label>
           <InputNumber
             id="cash-plan-opening-balance"
-            style={{ width: 200 }}
+            style={{ width: 220, maxWidth: '100%' }}
             precision={0}
+            min={0}
+            inputMode="numeric"
+            aria-describedby="cash-plan-opening-balance-help"
+            {...moneyInputProps('FCFA')}
             value={balanceInput}
             placeholder={t('Non renseigné')}
             onChange={value => setBalanceInput(typeof value === 'number' ? value : null)}
             onBlur={applyBalance}
             onPressEnter={applyBalance}
           />
+          <div
+            id="cash-plan-opening-balance-help"
+            style={{ fontSize: 'var(--font-size-sm)', opacity: 0.7, maxWidth: 240 }}
+          >
+            {t('Votre trésorerie actuelle ; le cumul part de ce montant.')}
+          </div>
         </div>
         <div>
           <label htmlFor="cash-plan-property" style={{ display: 'block' }}>
@@ -130,13 +141,13 @@ export const CashPlanPage: React.FC = () => {
           <PropertySearchSelect
             id="cash-plan-property"
             tenantId={agence}
-            style={{ minWidth: 240 }}
+            style={{ minWidth: 240, maxWidth: '100%' }}
             placeholder={t('Tous les biens')}
             value={propertyId}
             onChange={setPropertyId}
           />
         </div>
-      </Space>
+      </div>
 
       {planQuery.isPending ? (
         <Skeleton active paragraph={{ rows: 8 }} aria-label={t('Chargement du plan de trésorerie')} />
@@ -174,6 +185,11 @@ export const CashPlanPage: React.FC = () => {
               variant="empty"
               title={t('Aucun bien dans le périmètre du plan')}
               description={t("Aucun bien de l'agence ne peut entrer dans le plan avec ces filtres.")}
+              actions={
+                propertyId
+                  ? [{ label: t('Voir tous les biens'), onClick: () => setPropertyId(undefined), primary: true }]
+                  : undefined
+              }
             />
           ) : (
             <>

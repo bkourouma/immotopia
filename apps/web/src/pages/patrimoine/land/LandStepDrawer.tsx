@@ -9,12 +9,14 @@ import {
   Drawer,
   Input,
   InputNumber,
-  Popconfirm,
   Select,
   Space,
   Tag,
   Typography
 } from 'antd';
+import { ConfirmAction, StatusTag } from '../../../components/primitives';
+import { moneyInputProps } from '../../../components/patrimoine/actifs/form-helpers';
+import { useBreakpoint } from '../../../hooks/useBreakpoint';
 import { DownloadOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -29,7 +31,7 @@ import { t } from '../../../i18n/t';
 import { HelpSectionTitle } from '../../../help';
 import { landErrorMessage } from './land-errors';
 import { changeLandStepStatus, deleteLandStep, updateLandStep } from './land-regularization-service';
-import { formatLandDate, stepStatusColor, stepStatusLabel, stepTransitionLabel, toDateInput } from './land-labels';
+import { formatLandDate, stepStatusLabel, stepStatusTone, stepTransitionLabel, toDateInput } from './land-labels';
 import type { LandRegularizationDetail, LandStep, LandStepStatus } from './land-types';
 
 const { Text } = Typography;
@@ -62,6 +64,7 @@ export const LandStepDrawer: React.FC<LandStepDrawerProps> = ({
   onChanged
 }) => {
   const { message } = App.useApp();
+  const { isMobile } = useBreakpoint();
   const [reason, setReason] = useState('');
   const [label, setLabel] = useState('');
   const [required, setRequired] = useState(true);
@@ -196,9 +199,9 @@ export const LandStepDrawer: React.FC<LandStepDrawerProps> = ({
     <Drawer
       open
       onClose={onClose}
-      width={520}
+      width={isMobile ? '100%' : 520}
       title={<HelpSectionTitle title={step.label} helpId="patrimoine.terrain.etape" />}
-      extra={<Tag color={stepStatusColor(step.status)}>{stepStatusLabel(step.status)}</Tag>}
+      extra={<StatusTag status={step.status} tone={stepStatusTone(step.status)} label={stepStatusLabel(step.status)} />}
     >
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         {errorMessage && <Alert type="error" showIcon title={errorMessage} />}
@@ -289,6 +292,8 @@ export const LandStepDrawer: React.FC<LandStepDrawerProps> = ({
             max={999999999999}
             precision={0}
             style={{ width: '100%' }}
+            inputMode="numeric"
+            {...moneyInputProps('XOF')}
             value={cost}
             disabled={!editable}
             onChange={value => setCost(typeof value === 'number' ? value : null)}
@@ -377,16 +382,17 @@ export const LandStepDrawer: React.FC<LandStepDrawerProps> = ({
         {editable && custom && step.status === 'A_FAIRE' && (
           <>
             <Divider style={{ margin: 0 }} />
-            <Popconfirm
-              title={t('Supprimer cette étape ?')}
+            <ConfirmAction
+              danger
+              title={t("Supprimer l'étape « {{label}} » ?", { label: step.label })}
+              description={t('Cette suppression est définitive.')}
               okText={t('Supprimer')}
-              cancelText={t('Annuler')}
               onConfirm={remove}
             >
               <Button danger disabled={busy}>
                 {t("Supprimer l'étape")}
               </Button>
-            </Popconfirm>
+            </ConfirmAction>
           </>
         )}
       </Space>

@@ -54,6 +54,7 @@ const RatioTitle: React.FC<{ label: string; definition: string }> = ({ label, de
           tabIndex={0}
           aria-label={t('Définition : {{ratio}}', { ratio: label })}
           aria-describedby={id}
+          style={{ padding: 8, margin: -8 }}
         />
       </Tooltip>
       <span id={id} style={VISUELLEMENT_MASQUE}>

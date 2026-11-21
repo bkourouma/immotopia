@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Select, Spin } from 'antd';
 import { listProperties } from '../../services/property-service';
 import { t } from '../../i18n/t';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 
 /**
  * Sélecteur de bien à recherche côté serveur : fonctionne pour une agence de
@@ -47,6 +48,8 @@ export const PropertySearchSelect: React.FC<PropertySearchSelectProps> = ({
   const [options, setOptions] = useState<Option[]>([]);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<Option | undefined>(undefined);
+  const [failed, setFailed] = useState(false);
+  const { isMobile } = useBreakpoint();
 
   const search = useRef('');
   const page = useRef(0);
@@ -65,6 +68,7 @@ export const PropertySearchSelect: React.FC<PropertySearchSelectProps> = ({
       const mine = ++sequence.current;
       loadingRef.current = true;
       setLoading(true);
+      setFailed(false);
       try {
         const result = await listProperties(
           tenantId,
@@ -82,6 +86,7 @@ export const PropertySearchSelect: React.FC<PropertySearchSelectProps> = ({
         });
       } catch {
         if (mine !== sequence.current) return;
+        setFailed(true);
         if (nextPage === 1) setOptions([]);
       } finally {
         if (mine === sequence.current) {
@@ -102,6 +107,7 @@ export const PropertySearchSelect: React.FC<PropertySearchSelectProps> = ({
     setOptions([]);
     setSelected(undefined);
     setLoading(false);
+    setFailed(false);
     void load(1);
     return () => {
       sequence.current += 1;
@@ -136,13 +142,16 @@ export const PropertySearchSelect: React.FC<PropertySearchSelectProps> = ({
       aria-label={ariaLabel}
       showSearch
       allowClear
+      size={isMobile ? 'large' : undefined}
       filterOption={false}
       style={style}
       placeholder={placeholder}
       value={value}
       options={shown}
       loading={loading}
-      notFoundContent={loading ? <Spin size="small" /> : t('Aucun bien')}
+      notFoundContent={
+        loading ? <Spin size="small" /> : failed ? t('Impossible de charger les biens.') : t('Aucun bien')
+      }
       onSearch={handleSearch}
       onPopupScroll={handleScroll}
       onClear={() => {

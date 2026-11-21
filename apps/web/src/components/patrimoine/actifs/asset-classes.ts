@@ -211,6 +211,8 @@ export interface AssetFieldSpec {
   patternMessage?: string;
   maxLength?: number;
   help?: string;
+  /** Montant : affiché avec séparateur de milliers et devise de l'actif. */
+  money?: boolean;
   /** Borne basse exclue (ex. un multiple strictement positif). */
   exclusiveMin?: boolean;
   /** Avertissement (non bloquant) selon la valeur saisie. */
@@ -258,8 +260,15 @@ export function assetClassFields(assetClass: AssetClass): AssetFieldSpec[] {
         { name: 'country', label: t('Pays'), type: 'text', required: true },
         { name: 'ownershipPercent', label: t('Pourcentage détenu'), type: 'percent', required: true, min: 0, max: 100 },
         { name: 'sector', label: t("Secteur d'activité"), type: 'text', required: false },
-        { name: 'companyValue', label: t("Valeur de l'entreprise"), type: 'number', required: false, min: 0 },
-        { name: 'netIncome', label: t('Résultat net'), type: 'number', required: false, min: 0 },
+        {
+          name: 'companyValue',
+          label: t("Valeur de l'entreprise"),
+          type: 'number',
+          required: false,
+          min: 0,
+          money: true
+        },
+        { name: 'netIncome', label: t('Résultat net'), type: 'number', required: false, min: 0, money: true },
         {
           name: 'earningsMultiple',
           label: t('Multiple de résultat'),
@@ -276,8 +285,16 @@ export function assetClassFields(assetClass: AssetClass): AssetFieldSpec[] {
         { name: 'designation', label: t('Désignation'), type: 'text', required: true },
         { name: 'quantity', label: t('Quantité'), type: 'number', required: true, min: 0 },
         { name: 'unit', label: t('Unité'), type: 'text', required: true },
-        { name: 'unitCost', label: t('Coût unitaire'), type: 'number', required: true, min: 0 },
-        { name: 'writeDownPercent', label: t('Décote (%)'), type: 'percent', required: false, min: 0, max: 100 }
+        { name: 'unitCost', label: t('Coût unitaire'), type: 'number', required: true, min: 0, money: true },
+        {
+          name: 'writeDownPercent',
+          label: t('Décote (%)'),
+          type: 'percent',
+          required: false,
+          min: 0,
+          max: 100,
+          help: t('Part de la valeur retirée pour les articles abîmés ou difficiles à vendre.')
+        }
       ];
     case 'VEHICLE_EQUIPMENT':
       return [
@@ -308,7 +325,8 @@ export function assetClassFields(assetClass: AssetClass): AssetFieldSpec[] {
           type: 'percent',
           required: false,
           min: 0,
-          max: 100
+          max: 100,
+          help: t("Part de la valeur d'achat qui reste à la fin de la durée d'utilité.")
         },
         {
           name: 'depreciationMethod',
@@ -353,19 +371,20 @@ export function assetClassFields(assetClass: AssetClass): AssetFieldSpec[] {
           min: 0,
           max: 100
         },
-        { name: 'principal', label: t('Capital'), type: 'number', required: false, min: 0 }
+        { name: 'principal', label: t('Capital'), type: 'number', required: false, min: 0, money: true }
       ];
     case 'RECEIVABLE':
       return [
         { name: 'debtor', label: t('Débiteur'), type: 'text', required: true },
-        { name: 'principal', label: t('Capital'), type: 'number', required: false, min: 0 },
+        { name: 'principal', label: t('Capital'), type: 'number', required: false, min: 0, money: true },
         {
           name: 'collectibilityPercent',
           label: t('Recouvrabilité (%)'),
           type: 'percent',
           required: false,
           min: 0,
-          max: 100
+          max: 100,
+          help: t('Part de la créance que vous pensez récupérer.')
         },
         { name: 'dueDate', label: t('Échéance'), type: 'date', required: false },
         { name: 'ratePercent', label: t('Taux (%)'), type: 'percent', required: false, min: 0, max: 100 }
@@ -382,7 +401,7 @@ export function assetClassFields(assetClass: AssetClass): AssetFieldSpec[] {
         { name: 'crop', label: t('Culture ou espèce'), type: 'text', required: false },
         { name: 'areaHectares', label: t('Surface (hectares)'), type: 'number', required: false, min: 0 },
         { name: 'headcount', label: t('Effectif'), type: 'integer', required: false, min: 0 },
-        { name: 'unitValue', label: t('Valeur unitaire'), type: 'number', required: false, min: 0 }
+        { name: 'unitValue', label: t('Valeur unitaire'), type: 'number', required: false, min: 0, money: true }
       ];
     case 'MOVABLE':
       return [

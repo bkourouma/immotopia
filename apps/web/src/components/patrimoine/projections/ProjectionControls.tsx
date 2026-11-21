@@ -26,6 +26,8 @@ export const ProjectionControls: React.FC<{
         min={1}
         max={MAX_HORIZON}
         step={1}
+        unit={t('ans')}
+        hint={t('De 1 à 30 ans')}
         error={horizonInvalid ? t('Indiquez un horizon de 1 à 30 ans') : undefined}
       />
       <SelectField

@@ -11,15 +11,30 @@ interface FormProps {
   v: (key: string) => string;
   set: (key: string) => (value: string) => void;
   horizon: number;
+  /** Message d'erreur du champ, s'il y en a un. */
+  err: (key: string) => string | undefined;
 }
 
 const YearField: React.FC<FormProps & { name?: string; label?: string }> = ({
   v,
   set,
   horizon,
+  err,
   name = 'year',
   label = t('Année')
-}) => <NumField id={`op-${name}`} label={label} value={v(name)} onChange={set(name)} min={1} max={horizon} step={1} />;
+}) => (
+  <NumField
+    id={`op-${name}`}
+    label={label}
+    value={v(name)}
+    onChange={set(name)}
+    min={1}
+    max={horizon}
+    step={1}
+    hint={t('Entre 1 et {{max}}', { max: horizon })}
+    error={err(name)}
+  />
+);
 
 /** Actifs qu'une vente peut viser : actifs en cours, valorisés, hors compte de trésorerie (`CASH`). */
 export function sellableAssets(assets: AssetDto[]): AssetDto[] {
@@ -27,7 +42,7 @@ export function sellableAssets(assets: AssetDto[]): AssetDto[] {
 }
 
 const SellForm: React.FC<FormProps & { assets: AssetDto[] }> = props => {
-  const { v, set, assets } = props;
+  const { v, set, err, assets } = props;
   const chosen = assets.find(a => a.id === v('assetId'));
   return (
     <>
@@ -38,6 +53,7 @@ const SellForm: React.FC<FormProps & { assets: AssetDto[] }> = props => {
           value={v('assetId')}
           onChange={set('assetId')}
           placeholder={t('Choisir un actif')}
+          error={err('assetId')}
           options={sellableAssets(assets).map(a => ({ value: a.id, label: a.name }))}
         />
         {chosen && chosen.outstandingDebtXof > 0 && (
@@ -51,6 +67,8 @@ const SellForm: React.FC<FormProps & { assets: AssetDto[] }> = props => {
       <YearField {...props} />
       <NumField
         id="op-salePrice"
+        money
+        error={err('salePrice')}
         label={t('Prix de vente (facultatif)')}
         value={v('salePrice')}
         onChange={set('salePrice')}
@@ -63,13 +81,15 @@ const SellForm: React.FC<FormProps & { assets: AssetDto[] }> = props => {
         onChange={set('feesPercent')}
         min={0}
         max={100}
+        unit="%"
+        error={err('feesPercent')}
       />
     </>
   );
 };
 
 const BuyForm: React.FC<FormProps> = props => {
-  const { v, set } = props;
+  const { v, set, err } = props;
   return (
     <>
       <SelectField
@@ -78,15 +98,37 @@ const BuyForm: React.FC<FormProps> = props => {
         value={v('assetClass')}
         onChange={set('assetClass')}
         placeholder={t('Choisir une classe')}
+        error={err('assetClass')}
         options={assetClassOptions()}
       />
       <div style={{ flex: '1 1 200px', minWidth: 160 }}>
         <label htmlFor="op-name" style={{ display: 'block', marginBottom: 4 }}>
           {t("Nom de l'actif")}
         </label>
-        <Input id="op-name" maxLength={200} value={v('name')} onChange={event => set('name')(event.target.value)} />
+        <Input
+          id="op-name"
+          maxLength={200}
+          value={v('name')}
+          status={err('name') ? 'error' : undefined}
+          aria-invalid={err('name') ? true : undefined}
+          aria-describedby={err('name') ? 'op-name-error' : undefined}
+          onChange={event => set('name')(event.target.value)}
+        />
+        {err('name') && (
+          <div id="op-name-error" role="alert" style={{ color: 'var(--color-error, #cf1322)' }}>
+            {err('name')}
+          </div>
+        )}
       </div>
-      <NumField id="op-price" label={t('Prix')} value={v('price')} onChange={set('price')} min={0} />
+      <NumField
+        id="op-price"
+        money
+        error={err('price')}
+        label={t('Prix')}
+        value={v('price')}
+        onChange={set('price')}
+        min={0}
+      />
       <YearField {...props} />
       <NumField
         id="op-growthPercent"
@@ -95,16 +137,26 @@ const BuyForm: React.FC<FormProps> = props => {
         onChange={set('growthPercent')}
         min={-50}
         max={100}
+        unit="%"
+        error={err('growthPercent')}
       />
     </>
   );
 };
 
 const LoanForm: React.FC<FormProps> = props => {
-  const { v, set } = props;
+  const { v, set, err } = props;
   return (
     <>
-      <NumField id="op-amount" label={t('Montant emprunté')} value={v('amount')} onChange={set('amount')} min={0} />
+      <NumField
+        id="op-amount"
+        money
+        error={err('amount')}
+        label={t('Montant emprunté')}
+        value={v('amount')}
+        onChange={set('amount')}
+        min={0}
+      />
       <NumField
         id="op-annualRatePercent"
         label={t('Taux annuel (%)')}
@@ -112,6 +164,9 @@ const LoanForm: React.FC<FormProps> = props => {
         onChange={set('annualRatePercent')}
         min={0}
         max={100}
+        unit="%"
+        hint={t('Taux d’intérêt par an, en pourcentage')}
+        error={err('annualRatePercent')}
       />
       <NumField
         id="op-termYears"
@@ -121,6 +176,8 @@ const LoanForm: React.FC<FormProps> = props => {
         min={1}
         max={30}
         step={1}
+        unit={t('ans')}
+        error={err('termYears')}
       />
       <YearField {...props} />
     </>
@@ -128,7 +185,7 @@ const LoanForm: React.FC<FormProps> = props => {
 };
 
 const PrepayForm: React.FC<FormProps & { debts: DebtDto[] }> = props => {
-  const { v, set, debts } = props;
+  const { v, set, err, debts } = props;
   return (
     <>
       <SelectField
@@ -137,19 +194,36 @@ const PrepayForm: React.FC<FormProps & { debts: DebtDto[] }> = props => {
         value={v('loanId')}
         onChange={set('loanId')}
         placeholder={t('Choisir une dette')}
+        error={err('loanId')}
         options={debts.filter(d => d.status === 'ACTIVE').map(d => ({ value: d.id, label: d.lender }))}
       />
-      <NumField id="op-amount" label={t('Montant remboursé')} value={v('amount')} onChange={set('amount')} min={0} />
+      <NumField
+        id="op-amount"
+        money
+        error={err('amount')}
+        label={t('Montant remboursé')}
+        value={v('amount')}
+        onChange={set('amount')}
+        min={0}
+      />
       <YearField {...props} />
     </>
   );
 };
 
 const SavingForm: React.FC<FormProps> = props => {
-  const { v, set } = props;
+  const { v, set, err } = props;
   return (
     <>
-      <NumField id="op-amount" label={t('Montant par mois')} value={v('amount')} onChange={set('amount')} min={0} />
+      <NumField
+        id="op-amount"
+        money
+        error={err('amount')}
+        label={t('Montant par mois')}
+        value={v('amount')}
+        onChange={set('amount')}
+        min={0}
+      />
       <YearField {...props} name="fromYear" label={t("De l'année")} />
       <YearField {...props} name="toYear" label={t("À l'année (facultatif)")} />
     </>

@@ -11,6 +11,10 @@ import {
   sendOwnerMonthlyReport
 } from '../../services/patrimoine-service';
 
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));
+
 /** `vi.mock` couvre chaque export du service utilisé par la section. */
 vi.mock('../../services/patrimoine-service', () => ({
   createOwnerStatementSecureLink: vi.fn(),
@@ -117,7 +121,7 @@ describe('OwnerStatementSecureLinks', () => {
     renderSection();
     await screen.findByText('7');
     await userEvent.click(screen.getByRole('button', { name: 'Révoquer' }));
-    const confirm = await screen.findByText('Révoquer ce lien ?');
+    const confirm = await screen.findByText('Révoquer le lien créé le', { exact: false });
     expect(mockRevoke).not.toHaveBeenCalled();
     const popover = confirm.closest('.ant-popover') as HTMLElement;
     await userEvent.click(within(popover).getByRole('button', { name: 'Révoquer' }));

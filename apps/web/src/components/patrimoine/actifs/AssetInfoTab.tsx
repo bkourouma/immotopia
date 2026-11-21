@@ -7,6 +7,8 @@ import { t } from '../../../i18n/t';
 import { assetClassFields, assetClassLabel, assetStatusLabel, type AssetFieldSpec } from './asset-classes';
 import { apiErrorMessage, formatAmount, formatDay, todayIso } from './asset-format';
 import { HelpSectionTitle } from '../../../help';
+import { useBreakpoint } from '../../../hooks/useBreakpoint';
+import { submitOnEnter } from './form-helpers';
 
 function detailValue(spec: AssetFieldSpec, value: unknown): React.ReactNode {
   if (value === undefined || value === null || value === '') return '—';
@@ -57,13 +59,18 @@ const DisposeModal: React.FC<{
     >
       <p>{t("L'actif sortira de la valeur nette à la date de cession ; son historique est conservé.")}</p>
       {errorMessage && <Alert type="error" showIcon title={errorMessage} style={{ marginBottom: 'var(--space-3)' }} />}
-      <Form form={form} layout="vertical" initialValues={{ disposedAt: todayIso() }}>
+      <Form
+        form={form}
+        layout="vertical"
+        initialValues={{ disposedAt: todayIso() }}
+        onKeyDown={submitOnEnter(handleOk, submitting)}
+      >
         <Form.Item
           name="disposedAt"
           label={t('Date de cession')}
           rules={[{ required: true, message: t('Champ obligatoire') }]}
         >
-          <Input type="date" />
+          <Input type="date" autoFocus />
         </Form.Item>
       </Form>
     </Modal>
@@ -80,6 +87,7 @@ export const AssetInfoTab: React.FC<{ tenantId: string; asset: AssetDto; onEdit:
   const queryClient = useQueryClient();
   const [disposeOpen, setDisposeOpen] = useState(false);
   const active = asset.status === 'ACTIVE';
+  const { isMobile } = useBreakpoint();
 
   const refresh = async () => {
     await Promise.all([
@@ -106,21 +114,23 @@ export const AssetInfoTab: React.FC<{ tenantId: string; asset: AssetDto; onEdit:
     }
   };
 
+  const actions = active && (
+    <Space wrap>
+      <Button onClick={onEdit}>{t('Modifier')}</Button>
+      <Button onClick={() => setDisposeOpen(true)}>{t('Marquer comme cédé')}</Button>
+      <ConfirmAction title={t('Archiver {{nom}} ?', { nom: asset.name })} onConfirm={handleArchive}>
+        <Button danger>{t('Archiver')}</Button>
+      </ConfirmAction>
+    </Space>
+  );
+
   return (
     <Card
       title={<HelpSectionTitle title={t('Informations')} helpId="patrimoine.actif.informations" />}
-      extra={
-        active && (
-          <Space wrap>
-            <Button onClick={onEdit}>{t('Modifier')}</Button>
-            <Button onClick={() => setDisposeOpen(true)}>{t('Marquer comme cédé')}</Button>
-            <ConfirmAction title={t('Archiver {{nom}} ?', { nom: asset.name })} onConfirm={handleArchive}>
-              <Button danger>{t('Archiver')}</Button>
-            </ConfirmAction>
-          </Space>
-        )
-      }
+      // Sur téléphone, les trois actions passent sous le titre au lieu de l'écraser.
+      extra={isMobile ? undefined : actions}
     >
+      {isMobile && actions && <div style={{ marginBottom: 'var(--space-3)' }}>{actions}</div>}
       <Descriptions column={{ xs: 1, md: 2 }} bordered size="small">
         <Descriptions.Item label={t('Classe')}>{assetClassLabel(asset.assetClass)}</Descriptions.Item>
         <Descriptions.Item label={t('Statut')}>{assetStatusLabel(asset.status)}</Descriptions.Item>

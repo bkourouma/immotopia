@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { App, Card, Select, Space, Tag, Typography } from 'antd';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -38,7 +38,6 @@ const CURRENT_YEAR = new Date().getFullYear();
  */
 export const HoldingEntityDetailPage: React.FC = () => {
   const { tenantId, entityId } = useParams<{ tenantId: string; entityId: string }>();
-  const navigate = useNavigate();
   const { tenantMembership } = useAuth();
   const { message } = App.useApp();
   const queryClient = useQueryClient();
@@ -88,7 +87,7 @@ export const HoldingEntityDetailPage: React.FC = () => {
       <StateBlock
         variant="error"
         description={t('Impossible de charger cette entité.')}
-        actions={[{ label: t('Réessayer'), onClick: () => detailQuery.refetch(), primary: true }]}
+        onRetry={() => detailQuery.refetch()}
       />
     );
   }
@@ -144,9 +143,9 @@ export const HoldingEntityDetailPage: React.FC = () => {
           <Text>
             {t('Entité mère')} :{' '}
             {entity.parentEntity ? (
-              <a onClick={() => navigate(`/tenant/${agence}/patrimoine/entities/${entity.parentEntity!.id}`)}>
+              <Link to={`/tenant/${agence}/patrimoine/entities/${entity.parentEntity.id}`}>
                 {entity.parentEntity.name}
-              </a>
+              </Link>
             ) : (
               '—'
             )}
@@ -157,9 +156,9 @@ export const HoldingEntityDetailPage: React.FC = () => {
           ) : (
             <Space wrap>
               {entity.children.map(child => (
-                <a key={child.id} onClick={() => navigate(`/tenant/${agence}/patrimoine/entities/${child.id}`)}>
+                <Link key={child.id} to={`/tenant/${agence}/patrimoine/entities/${child.id}`}>
                   <Tag>{child.name}</Tag>
-                </a>
+                </Link>
               ))}
             </Space>
           )}
@@ -202,7 +201,7 @@ export const HoldingEntityDetailPage: React.FC = () => {
           <StateBlock
             variant="error"
             description={t('Impossible de charger la consolidation.')}
-            actions={[{ label: t('Réessayer'), onClick: () => consolidationQuery.refetch(), primary: true }]}
+            onRetry={() => consolidationQuery.refetch()}
           />
         ) : consolidationQuery.data ? (
           <EntityConsolidationCard data={consolidationQuery.data} />
@@ -228,7 +227,7 @@ export const HoldingEntityDetailPage: React.FC = () => {
           <StateBlock
             variant="error"
             description={t("Impossible de charger l'estimation fiscale.")}
-            actions={[{ label: t('Réessayer'), onClick: () => taxEstimateQuery.refetch(), primary: true }]}
+            onRetry={() => taxEstimateQuery.refetch()}
           />
         ) : taxEstimateQuery.data ? (
           <div>

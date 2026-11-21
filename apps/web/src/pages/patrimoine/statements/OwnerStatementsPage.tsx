@@ -1,7 +1,7 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
-import { App, Alert, Button, Card, Space, Tag, Typography } from 'antd';
+import { App, Alert, Button, Card, Space } from 'antd';
 import { OwnerStatementGenerator } from '../../../components/patrimoine/OwnerStatementGenerator';
 import {
   createOwnerStatement,
@@ -10,7 +10,7 @@ import {
   sendOwnerStatement
 } from '../../../services/patrimoine-service';
 import { isLegacyStatement, statementStatusLabel } from '../../../components/patrimoine/owner-statement-helpers';
-import { MoneyValue, Table } from '../../../components/primitives';
+import { MoneyValue, PageHeader, StateBlock, StatusTag, Table } from '../../../components/primitives';
 import { listContacts } from '../../../services/crm-service';
 import type { OwnerStatement } from '../../../types/patrimoine-types';
 import { useOwnerStatementsList } from './useOwnerStatementsList';
@@ -18,8 +18,6 @@ import { useAuth } from '../../../hooks/useAuth';
 import { useOwnAssetsOnly } from '../../../hooks/useMenuAccess';
 import { t } from '../../../i18n/t';
 import { statementApiErrorMessage } from './statement-errors';
-
-const { Title, Text } = Typography;
 
 function sendReasonLabel(reason?: string): string {
   if (reason === 'NO_EMAIL') {
@@ -214,14 +212,23 @@ export const OwnerStatementsPage: React.FC = () => {
   return (
     <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        <div>
-          <Title level={2} style={{ marginBottom: 0 }}>
-            {t('Relevés de gérance')}
-          </Title>
-          <Text type="secondary">{t('Génération, suivi et envoi des relevés propriétaires')}</Text>
-        </div>
+        <PageHeader
+          title={t('Relevés de gérance')}
+          subtitle={t('Génération, suivi et envoi des relevés propriétaires')}
+        />
 
-        {listError || ownerError ? <Alert type="error" showIcon message={listError || ownerError} /> : null}
+        {ownerError ? (
+          <Alert
+            type="error"
+            showIcon
+            message={ownerError}
+            action={
+              <Button size="small" onClick={() => void ownersQuery.refetch()}>
+                {t('Réessayer')}
+              </Button>
+            }
+          />
+        ) : null}
         {legacyCount > 0 ? (
           <Alert
             type="warning"
@@ -254,7 +261,9 @@ export const OwnerStatementsPage: React.FC = () => {
         />
 
         <Card title={t('Historique des relevés')}>
-          {!listError ? (
+          {listError ? (
+            <StateBlock variant="error" title={listError} onRetry={() => void list.refetch()} />
+          ) : (
             <Table
               key={effectiveTenantId}
               helpId="patrimoine.releves.historique"
@@ -314,8 +323,10 @@ export const OwnerStatementsPage: React.FC = () => {
                       : statementStatusLabel(record.status),
                   render: (status: OwnerStatement['status'], record: OwnerStatement) => (
                     <Space size={4} wrap>
-                      <Tag>{statementStatusLabel(status)}</Tag>
-                      {isLegacyStatement(record) ? <Tag color="warning">{t('Ancien calcul')}</Tag> : null}
+                      <StatusTag status={status} label={statementStatusLabel(status)} />
+                      {isLegacyStatement(record) ? (
+                        <StatusTag status="LEGACY" tone="warning" label={t('Ancien calcul')} />
+                      ) : null}
                     </Space>
                   )
                 },
@@ -325,7 +336,7 @@ export const OwnerStatementsPage: React.FC = () => {
                   render: (_: unknown, record: OwnerStatement) => {
                     const legacy = isLegacyStatement(record);
                     return (
-                      <Space>
+                      <Space wrap>
                         <Button
                           onClick={() => navigate(`/tenant/${effectiveTenantId}/patrimoine/statements/${record.id}`)}
                         >
@@ -351,7 +362,7 @@ export const OwnerStatementsPage: React.FC = () => {
                 }
               ]}
             />
-          ) : null}
+          )}
         </Card>
       </Space>
     </>

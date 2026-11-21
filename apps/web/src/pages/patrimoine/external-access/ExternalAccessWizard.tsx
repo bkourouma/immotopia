@@ -7,7 +7,6 @@ import {
   Button,
   Checkbox,
   DatePicker,
-  Empty,
   Form,
   Input,
   InputNumber,
@@ -15,9 +14,11 @@ import {
   Radio,
   Select,
   Space,
-  Steps,
   Typography
 } from 'antd';
+import { StateBlock, StepRail } from '../../../components/primitives';
+import { useBreakpoint } from '../../../hooks/useBreakpoint';
+import { dateFormat } from '../../../i18n/format';
 import {
   createExternalAccessGrant,
   listExternalAccessPropertyDocuments,
@@ -165,6 +166,7 @@ const RecipientStep: React.FC<StepProps & { editing: boolean; emailChanged: bool
     </Form.Item>
     <Form.Item label={t('Nom du bénéficiaire')} required>
       <Input
+        autoFocus
         aria-label={t('Nom du bénéficiaire')}
         value={state.recipientName}
         maxLength={120}
@@ -216,7 +218,16 @@ const ScopeStep: React.FC<StepProps & { editing: boolean }> = ({ state, patch, o
       </Form.Item>
       <Form.Item label={t('Biens partagés')}>
         {visibleProperties.length === 0 ? (
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('Aucun bien disponible.')} />
+          <StateBlock
+            variant="empty"
+            title={t('Aucun bien disponible.')}
+            description=" "
+            actions={
+              state.ownerClientId && !editing
+                ? [{ label: t('Tous les propriétaires'), onClick: () => patch({ ownerClientId: undefined }) }]
+                : []
+            }
+          />
         ) : (
           <>
             <Checkbox
@@ -313,7 +324,10 @@ const DocumentsPicker: React.FC<{
               </div>
             ) : result?.error ? (
               <div>
-                <Text type="danger">{t('Documents indisponibles pour ce bien.')}</Text>
+                <Text type="danger">{t('Documents indisponibles pour ce bien.')}</Text>{' '}
+                <Button type="link" onClick={() => void result.refetch()}>
+                  {t('Réessayer')}
+                </Button>
               </div>
             ) : documents.length === 0 ? (
               <div>
@@ -404,6 +418,8 @@ const DurationStep: React.FC<StepProps & { editing: boolean }> = ({ state, patch
         <DatePicker
           aria-label={t('Date de fin de l’accès')}
           value={state.expiresDate}
+          format={dateFormat('short')}
+          style={{ width: '100%', maxWidth: 240 }}
           allowClear={false}
           disabledDate={date => date.isBefore(dayjs(), 'day')}
           onChange={expiresDate => patch({ expiresDate })}
@@ -512,6 +528,7 @@ export const ExternalAccessWizard: React.FC<WizardProps> = ({
   onUpdated
 }) => {
   const { message } = App.useApp();
+  const { isMobile, isDesktop } = useBreakpoint();
   const editing = Boolean(grant);
   const [state, setState] = useState<FormState>(() => initialState(options, grant));
   const [step, setStep] = useState(0);
@@ -555,7 +572,7 @@ export const ExternalAccessWizard: React.FC<WizardProps> = ({
   return (
     <Modal
       open
-      width={680}
+      width={isMobile ? 'calc(100vw - 16px)' : 680}
       title={
         <HelpSectionTitle
           title={editing ? t('Modifier l’accès partagé') : t('Nouvel accès partagé')}
@@ -566,7 +583,7 @@ export const ExternalAccessWizard: React.FC<WizardProps> = ({
       mask={{ closable: false }}
       destroyOnHidden
       footer={
-        <Space>
+        <Space wrap style={{ justifyContent: 'flex-end' }}>
           <Button onClick={onClose}>{t('Annuler')}</Button>
           {step > 0 ? <Button onClick={() => setStep(step - 1)}>{t('Retour')}</Button> : null}
           {isLast ? (
@@ -598,7 +615,21 @@ export const ExternalAccessWizard: React.FC<WizardProps> = ({
         {step === 2 ? <HelpButton helpId="patrimoine.acces-tiers.rubriques" /> : null}
         {step === 3 ? <HelpButton helpId="patrimoine.acces-tiers.duree" /> : null}
       </div>
-      <Steps size="small" current={step} items={stepTitles.map(title => ({ title }))} style={{ marginBlockEnd: 24 }} />
+      <div style={{ marginBlockEnd: 24 }}>
+        <StepRail
+          items={stepTitles.map(title => ({ title }))}
+          current={step}
+          // Seul le retour vers une étape déjà validée est permis : « Suivant » valide avant d'avancer.
+          onChange={index => {
+            if (index < step) setStep(index);
+          }}
+        />
+      </div>
+      {!isDesktop ? (
+        <Text strong style={{ display: 'block', marginBlockEnd: 12 }}>
+          {stepTitles[step]}
+        </Text>
+      ) : null}
       {step === 0 ? (
         <RecipientStep state={state} patch={patch} options={options} editing={editing} emailChanged={emailChanged} />
       ) : null}

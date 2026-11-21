@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Form, Input, Modal, Select } from 'antd';
+import { Alert, Form, Input, Modal, Select } from 'antd';
 import type {
   CreateHoldingEntityInput,
   FiscalCountry,
@@ -16,6 +16,7 @@ export type EditableHoldingEntity = HoldingEntitySummary & {
 import { fiscalCountryOptions, fiscalOwnerKindOptions, legalFormOptions } from './tax-labels';
 import { listContacts } from '../../../services/crm-service';
 import { t } from '../../../i18n/t';
+import { useBreakpoint } from '../../../hooks/useBreakpoint';
 import { apiErrorMessage } from '../patrimoine-labels';
 import { HelpSectionTitle } from '../../../help';
 
@@ -56,6 +57,7 @@ export const HoldingEntityFormModal: React.FC<HoldingEntityFormModalProps> = ({
   onSubmit
 }) => {
   const [form] = Form.useForm<FormValues>();
+  const { isMobile } = useBreakpoint();
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [contactOptions, setContactOptions] = useState<Array<{ value: string; label: string }>>([]);
@@ -147,12 +149,11 @@ export const HoldingEntityFormModal: React.FC<HoldingEntityFormModalProps> = ({
       confirmLoading={submitting}
       okText={entity ? t('Enregistrer') : t('Créer')}
       cancelText={t('Annuler')}
+      width={isMobile ? 'calc(100vw - 16px)' : 520}
       destroyOnClose
     >
       {errorMessage && (
-        <div role="alert" style={{ color: 'var(--color-error-text)', marginBottom: 'var(--space-3)' }}>
-          {errorMessage}
-        </div>
+        <Alert type="error" showIcon title={errorMessage} role="alert" style={{ marginBottom: 'var(--space-3)' }} />
       )}
       <Form form={form} layout="vertical" requiredMark="optional">
         <Form.Item
@@ -160,7 +161,7 @@ export const HoldingEntityFormModal: React.FC<HoldingEntityFormModalProps> = ({
           label={t('Nom')}
           rules={[{ required: true, whitespace: true, message: t("Le nom de l'entité est requis") }]}
         >
-          <Input maxLength={160} />
+          <Input maxLength={160} autoFocus />
         </Form.Item>
         <Form.Item name="legalForm" label={t('Forme juridique')} rules={[{ required: true }]}>
           <Select options={legalFormOptions()} />

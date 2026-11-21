@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Alert, App, Button, Card, Input, Modal, Progress, Space, Statistic, Tag, Typography } from 'antd';
+import { Alert, App, Button, Card, Input, Modal, Progress, Space, Statistic, Typography } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../hooks/useAuth';
@@ -8,7 +8,7 @@ import { queryKey, STALE_TIME } from '../../../lib/query-keys';
 import { httpStatusOf, landErrorMessage } from './land-errors';
 import { PatrimoineForbidden } from '../../../components/patrimoine/PatrimoineForbidden';
 import { LandValidationAlert } from './LandValidationAlert';
-import { PageHeader, SkeletonDetail, StateBlock } from '../../../components/primitives';
+import { PageHeader, SkeletonDetail, StateBlock, StatusTag } from '../../../components/primitives';
 import { t } from '../../../i18n/t';
 import { HelpSectionTitle } from '../../../help';
 import { LandStepDrawer } from './LandStepDrawer';
@@ -19,7 +19,7 @@ import {
   getLandRegularization,
   updateLandRegularization
 } from './land-regularization-service';
-import { formatLandDate, formatXof, regularizationStatusColor, regularizationStatusLabel } from './land-labels';
+import { formatLandDate, formatXof, regularizationStatusLabel, regularizationStatusTone } from './land-labels';
 import type { LandRegularizationDetail, LandRegularizationStatus } from './land-types';
 
 const { Text } = Typography;
@@ -89,7 +89,7 @@ export const LandRegularizationDetailPage: React.FC = () => {
       <StateBlock
         variant="error"
         title={t('Impossible de charger ce dossier de régularisation.')}
-        actions={[{ label: t('Réessayer'), onClick: () => refetch() }]}
+        onRetry={() => refetch()}
       />
     );
   }
@@ -169,7 +169,11 @@ export const LandRegularizationDetailPage: React.FC = () => {
         ]}
         subtitle={
           <Space size="small" wrap>
-            <Tag color={regularizationStatusColor(dossier.status)}>{regularizationStatusLabel(dossier.status)}</Tag>
+            <StatusTag
+              status={dossier.status}
+              tone={regularizationStatusTone(dossier.status)}
+              label={regularizationStatusLabel(dossier.status)}
+            />
             <span>{dossier.trackLabel}</span>
             <Link to={`/tenant/${agence}/properties/${dossier.propertyId}`}>{t('Voir la fiche du bien')}</Link>
           </Space>
@@ -267,10 +271,13 @@ export const LandRegularizationDetailPage: React.FC = () => {
         title={modalTitle}
         onCancel={closeStatusModal}
         onOk={submitStatus}
-        okText={t('Confirmer')}
+        okText={modalTitle}
         cancelText={t('Annuler')}
         confirmLoading={busy}
-        okButtonProps={{ disabled: Boolean(statusAction?.reasonRequired) && reason.trim() === '' }}
+        okButtonProps={{
+          danger: statusAction?.target === 'ABANDONNEE',
+          disabled: Boolean(statusAction?.reasonRequired) && reason.trim() === ''
+        }}
         destroyOnHidden
       >
         {actionError && <Alert type="error" showIcon title={actionError} style={{ marginBottom: 12 }} />}
@@ -279,6 +286,7 @@ export const LandRegularizationDetailPage: React.FC = () => {
         </label>
         <TextArea
           id="motif-dossier"
+          autoFocus
           rows={3}
           maxLength={500}
           value={reason}
