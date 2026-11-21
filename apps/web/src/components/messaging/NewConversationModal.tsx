@@ -117,6 +117,7 @@ export function NewConversationModal({
         value={query}
         onChange={event => setQuery(event.target.value)}
         placeholder={t('Rechercher une personne')}
+        aria-label={t('Rechercher une personne')}
         allowClear
         style={{ marginBlockEnd: 8 }}
       />
@@ -138,12 +139,19 @@ export function NewConversationModal({
           )}
         </div>
       </Spin>
+      {/* Pourquoi le bouton est grisé : dit en clair, et annoncé quand la sélection change. */}
+      <div role="status" style={{ marginBlockStart: 8, fontSize: 13, opacity: 0.75 }}>
+        {selected.length === 0
+          ? t('Cochez au moins une personne pour continuer.')
+          : t('{{count}} personne(s) sélectionnée(s)', { count: selected.length })}
+      </div>
       {mode === 'create' && selected.length > 1 ? (
         <Input
           value={title}
           onChange={event => setTitle(event.target.value)}
           maxLength={120}
           placeholder={t('Titre du groupe (facultatif)')}
+          aria-label={t('Titre du groupe (facultatif)')}
           style={{ marginBlockStart: 12 }}
         />
       ) : null}

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { App, Button, Space, Spin, Typography, Upload } from 'antd';
 import { DeleteOutlined, UploadOutlined } from '@ant-design/icons';
+import { ConfirmAction } from '../primitives';
 import { validateBrandingImageFile } from '../../services/document-branding-service';
 import { downscaleImageFile } from '../../utils/downscale-image';
 import { t } from '../../i18n/t';
@@ -145,16 +146,19 @@ export const BrandingImageField: React.FC<BrandingImageFieldProps> = ({
             </Button>
           </Upload>
           {hasImage ? (
-            <Button
+            // Retirer un logo, une signature ou un cachet les enlève de tous les documents générés : on nomme l'image.
+            <ConfirmAction
               danger
-              size="small"
-              icon={<DeleteOutlined />}
-              loading={removing}
+              title={t('Retirer « {{label}} » ?', { label })}
+              description={t('Les prochains documents générés n’afficheront plus cette image.')}
+              okText={t('Retirer')}
+              onConfirm={handleRemove}
               disabled={disabled}
-              onClick={() => void handleRemove()}
             >
-              {t('Retirer')}
-            </Button>
+              <Button danger size="small" icon={<DeleteOutlined />} loading={removing} disabled={disabled}>
+                {t('Retirer')}
+              </Button>
+            </ConfirmAction>
           ) : null}
         </Space>
         <Text type="secondary" style={{ fontSize: 'var(--font-size-caption, 12px)' }}>

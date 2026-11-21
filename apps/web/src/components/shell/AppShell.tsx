@@ -293,6 +293,19 @@ export const AppShell: React.FC = () => {
       featureAccess={featureAccess}
       copilotAvailable={showCopilot && Boolean(copilotStatus?.enabled) && !assistantPage}
     >
+      {/* Lien d'évitement : premier élément atteint au clavier. */}
+      <a
+        href="#main"
+        className="it-skip-link"
+        onClick={event => {
+          event.preventDefault();
+          const main = document.getElementById('main');
+          main?.focus();
+          main?.scrollIntoView?.();
+        }}
+      >
+        {t('Aller au contenu principal')}
+      </a>
       <Layout style={{ minHeight: '100vh', background: 'var(--surface-page)' }}>
         {(showSidebar || showRail) && nav && (
           <AppNavigation persona={nav} context={navContext} variant={showRail ? 'rail' : 'sidebar'} />
@@ -335,6 +348,8 @@ export const AppShell: React.FC = () => {
           <Layout.Content
             id="main"
             role="main"
+            // Cible focalisable par programme du lien d'évitement.
+            tabIndex={-1}
             style={{
               padding: 'var(--page-padding)',
               // Réserve la hauteur de la barre d'onglets, sinon le dernier

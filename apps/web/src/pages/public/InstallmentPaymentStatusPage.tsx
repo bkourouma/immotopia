@@ -8,6 +8,7 @@ import type { InstallmentPaymentStatusDto } from '../../types/installment-paymen
 import { MoneyValue } from '../../components/primitives';
 import { activeLocale } from '../../i18n/format';
 import { t } from '../../i18n/t';
+import { PublicLinkProblem, PublicLoading } from './PublicLinkState';
 
 /** Intervalle entre deux lectures du statut tant que le paiement est en cours. */
 export const STATUS_POLL_INTERVAL_MS = 3000;
@@ -175,18 +176,10 @@ export const InstallmentPaymentStatusPage: React.FC = () => {
   return (
     <div style={{ minHeight: '100vh', padding: '24px 16px', background: 'var(--color-bg-layout, #f5f5f5)' }}>
       <div style={{ maxWidth: 560, marginInline: 'auto' }} role="status" aria-live="polite">
-        {view.kind === 'loading' ? (
-          <div style={{ textAlign: 'center', padding: 64 }}>
-            <Spin size="large" aria-label={t('Vérification du paiement')} />
-          </div>
-        ) : null}
-        {view.kind === 'invalid' ? <Result status="warning" title={t('Lien invalide ou expiré')} /> : null}
-        {view.kind === 'rate_limited' ? (
-          <Result status="warning" title={t('Trop de tentatives, réessayez dans quelques minutes.')} />
-        ) : null}
-        {view.kind === 'unavailable' ? (
-          <Result status="warning" title={t('Service momentanément indisponible, réessayez dans quelques minutes.')} />
-        ) : null}
+        {view.kind === 'loading' ? <PublicLoading label={t('Vérification du paiement')} /> : null}
+        {view.kind === 'invalid' ? <PublicLinkProblem kind="invalid" /> : null}
+        {view.kind === 'rate_limited' ? <PublicLinkProblem kind="rate_limited" /> : null}
+        {view.kind === 'unavailable' ? <PublicLinkProblem kind="unavailable" /> : null}
         {payment?.status === 'SUCCESS' ? (
           <Result status="success" title={t('Paiement reçu')} subTitle={t('Merci, votre loyer est réglé.')}>
             <PaymentSummary payment={payment} />

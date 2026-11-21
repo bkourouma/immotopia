@@ -205,6 +205,25 @@ describe('BrandingImageField', () => {
     await screen.findByAltText('Logo');
     await user.click(screen.getByRole('button', { name: /Retirer/ }));
 
+    // La confirmation nomme l'image et rien n'est retiré avant le second clic.
+    expect(await screen.findByText('Retirer « Logo » ?')).toBeTruthy();
+    expect(onRemove).not.toHaveBeenCalled();
+
+    const boutons = await screen.findAllByRole('button', { name: /^Retirer$/ });
+    await user.click(boutons[boutons.length - 1]);
+
     await waitFor(() => expect(onRemove).toHaveBeenCalledTimes(1));
+  });
+
+  it('ne retire rien quand on annule la confirmation', async () => {
+    const user = userEvent.setup();
+    const onRemove = vi.fn().mockResolvedValue(undefined);
+    renderField({ hasImage: true, onRemove });
+
+    await screen.findByAltText('Logo');
+    await user.click(screen.getByRole('button', { name: /Retirer/ }));
+    await user.click(await screen.findByRole('button', { name: 'Annuler' }));
+
+    expect(onRemove).not.toHaveBeenCalled();
   });
 });

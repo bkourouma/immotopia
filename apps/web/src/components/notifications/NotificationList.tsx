@@ -66,6 +66,8 @@ export const NotificationList: React.FC<NotificationListProps> = ({
                       key="read"
                       type="text"
                       size="small"
+                      // 44 px : plancher tactile.
+                      style={{ minWidth: 44, minHeight: 44 }}
                       icon={<CheckOutlined />}
                       aria-label={t('Marquer comme lue')}
                       onClick={() => onMarkRead(item)}

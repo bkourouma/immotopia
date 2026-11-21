@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Alert, Button, Card, Pagination, Space, Typography } from 'antd';
+import { Alert, App, Button, Card, Pagination, Space, Typography } from 'antd';
 import {
   listMyNotifications,
   markAllRead,
@@ -26,6 +26,7 @@ export interface NotificationsPageProps {
 /** Centre de notifications : liste complète paginée, filtre « non lues », « tout marquer comme lu ». */
 export const NotificationsPage: React.FC<NotificationsPageProps> = ({ scope: scopeProp }) => {
   const navigate = useNavigate();
+  const { message: toast } = App.useApp();
   const agencyScope = useNotificationScope();
   const scope = scopeProp ?? agencyScope;
   const [items, setItems] = useState<NotificationItem[]>([]);
@@ -83,6 +84,7 @@ export const NotificationsPage: React.FC<NotificationsPageProps> = ({ scope: sco
     try {
       await markAllRead(scope);
       await load();
+      toast.success(t('Toutes les notifications sont marquées comme lues.'));
     } catch {
       setError(t("Les notifications n'ont pas pu être marquées comme lues."));
     }
@@ -106,11 +108,28 @@ export const NotificationsPage: React.FC<NotificationsPageProps> = ({ scope: sco
             <HelpButton helpId="communication.messagerie.notifications.liste" size="small" />
             <Button onClick={() => void handleMarkAll()}>{t('Tout marquer comme lu')}</Button>
           </div>
-          {error && <Alert type="error" showIcon message={error} />}
+          {error && (
+            <Alert
+              type="error"
+              showIcon
+              message={error}
+              action={
+                <Button size="small" onClick={() => void load()}>
+                  {t('Réessayer')}
+                </Button>
+              }
+            />
+          )}
           <NotificationList
             items={items}
             loading={loading}
-            emptyText={search.isFiltered ? t('Aucune notification ne correspond aux critères.') : undefined}
+            emptyText={
+              search.isFiltered
+                ? search.values.unreadOnly
+                  ? t('Vous êtes à jour : aucune notification non lue.')
+                  : t('Aucune notification ne correspond aux critères.')
+                : undefined
+            }
             onMarkRead={item => void handleMarkRead(item)}
             onOpen={item => void handleOpen(item)}
           />

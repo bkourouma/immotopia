@@ -98,19 +98,27 @@ export function ActionProposalCard({
         </div>
       ) : null}
       {state === 'pending' || confirming ? (
-        <Space style={{ marginBlockStart: 12 }} wrap>
-          <Button
-            type="primary"
-            loading={confirming}
-            disabled={!actionable}
-            onClick={() => onConfirm(proposal.proposalId)}
-          >
-            {t('Confirmer et générer')}
-          </Button>
-          <Button disabled={!actionable} onClick={() => onCancel(proposal.proposalId)}>
-            {t('Annuler')}
-          </Button>
-        </Space>
+        <>
+          {actionable ? (
+            <p style={{ marginBlockStart: 12, marginBlockEnd: 0 }}>
+              {t('Rien n’est généré tant que vous n’avez pas confirmé.')}
+            </p>
+          ) : null}
+          <Space style={{ marginBlockStart: 8 }} wrap>
+            <Button
+              type="primary"
+              style={{ minHeight: 44 }}
+              loading={confirming}
+              disabled={!actionable}
+              onClick={() => onConfirm(proposal.proposalId)}
+            >
+              {t('Confirmer et générer')}
+            </Button>
+            <Button style={{ minHeight: 44 }} disabled={!actionable} onClick={() => onCancel(proposal.proposalId)}>
+              {t('Annuler')}
+            </Button>
+          </Space>
+        </>
       ) : null}
     </Card>
   );

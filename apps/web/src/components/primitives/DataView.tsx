@@ -473,7 +473,10 @@ export function DataView<T>(props: DataViewProps<T>) {
           Sur une liste vide, rien : le bloc d'état vide parle déjà. Sur une
           liste non paginée non plus — voir `paginated`. */}
       {paginated && total > 0 && (
-        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 'var(--space-5)' }}>
+        <nav
+          aria-label={t('Pagination')}
+          style={{ display: 'flex', justifyContent: 'center', marginTop: 'var(--space-5)' }}
+        >
           <Pagination
             current={page}
             pageSize={pageSize}
@@ -489,8 +492,19 @@ export function DataView<T>(props: DataViewProps<T>) {
                 : undefined
             }
             responsive
+            // Les pastilles de page d'AntD 6 sont des <a> sans href : ni rôle, ni nom, ni page
+            // courante pour un lecteur d'écran. On les nomme ; le clic remonte à l'<li> d'AntD.
+            itemRender={(pageNumber, type, element) =>
+              type === 'page' && React.isValidElement(element)
+                ? React.cloneElement(element as React.ReactElement<Record<string, unknown>>, {
+                    role: 'button',
+                    'aria-label': t('Page {{page}}', { page: pageNumber }),
+                    'aria-current': pageNumber === page ? 'page' : undefined
+                  })
+                : element
+            }
           />
-        </div>
+        </nav>
       )}
     </div>
   );

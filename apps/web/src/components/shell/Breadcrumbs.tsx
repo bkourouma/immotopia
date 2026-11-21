@@ -131,7 +131,7 @@ export const Breadcrumbs: React.FC = () => {
         size="small"
         icon={<LeftOutlined />}
         onClick={() => (parent.to ? navigate(parent.to) : navigate(-1))}
-        style={{ paddingInline: 0, color: 'var(--text-secondary)' }}
+        style={{ paddingInline: 0, minHeight: 44, maxWidth: '100%', color: 'var(--text-secondary)' }}
       >
         {t('Retour à {{label}}', { label: parent.label })}
       </Button>
@@ -142,7 +142,7 @@ export const Breadcrumbs: React.FC = () => {
     <nav aria-label={t("Fil d'Ariane")}>
       <Breadcrumb
         items={crumbs.map(c => ({
-          title: c.to ? <Link to={c.to}>{c.label}</Link> : c.label
+          title: c.to ? <Link to={c.to}>{c.label}</Link> : <span aria-current="page">{c.label}</span>
         }))}
       />
     </nav>

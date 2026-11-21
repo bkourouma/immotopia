@@ -127,6 +127,38 @@ export const AcceptInvitePage: React.FC = () => {
     }
   };
 
+  // Lien sans jeton : un formulaire inutilisable serait une impasse. On l'explique et on
+  // renvoie vers la connexion (l'invitation se redemande à la personne qui l'a envoyée).
+  if (!searchParams.get('token')) {
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 24,
+          background: 'var(--surface-page)'
+        }}
+      >
+        <Card style={{ maxWidth: 520, width: '100%' }}>
+          <Result
+            status="warning"
+            title={t("Lien d'invitation incomplet")}
+            subTitle={t(
+              "Ce lien d'invitation est incomplet ou a expiré. Ouvrez-le de nouveau depuis votre e-mail, ou demandez une nouvelle invitation à la personne qui vous l'a envoyée."
+            )}
+            extra={
+              <Button type="primary" onClick={() => navigate('/login')}>
+                {t('Retour à la connexion')}
+              </Button>
+            }
+          />
+        </Card>
+      </div>
+    );
+  }
+
   if (anotherAccount) {
     return (
       <div
@@ -136,7 +168,7 @@ export const AcceptInvitePage: React.FC = () => {
           alignItems: 'center',
           justifyContent: 'center',
           padding: 24,
-          background: '#f0f2f5'
+          background: 'var(--surface-page)'
         }}
       >
         <Card style={{ maxWidth: 520, width: '100%' }}>
@@ -164,7 +196,7 @@ export const AcceptInvitePage: React.FC = () => {
           alignItems: 'center',
           justifyContent: 'center',
           padding: 24,
-          background: '#f0f2f5'
+          background: 'var(--surface-page)'
         }}
       >
         <Card style={{ maxWidth: 520, width: '100%' }}>
@@ -194,7 +226,7 @@ export const AcceptInvitePage: React.FC = () => {
           alignItems: 'center',
           justifyContent: 'center',
           padding: 24,
-          background: '#f0f2f5'
+          background: 'var(--surface-page)'
         }}
       >
         <Card style={{ maxWidth: 520, width: '100%' }}>
@@ -245,6 +277,7 @@ export const AcceptInvitePage: React.FC = () => {
           layout="vertical"
           onFinish={handleSubmit}
           onValuesChange={() => setGeneralError('')}
+          scrollToFirstError={{ focus: true }}
           initialValues={{ fullName: '', password: '', confirmPassword: '' }}
         >
           {generalError && (
@@ -264,7 +297,13 @@ export const AcceptInvitePage: React.FC = () => {
               label={t('Nom complet')}
               rules={[{ required: true, message: t('Le nom complet est requis.') }]}
             >
-              <Input size="large" prefix={<UserOutlined />} placeholder={t('Jean Dupont')} autoComplete="name" />
+              <Input
+                size="large"
+                prefix={<UserOutlined />}
+                placeholder={t('Jean Dupont')}
+                autoComplete="name"
+                autoFocus
+              />
             </Form.Item>
           )}
 
@@ -302,7 +341,7 @@ export const AcceptInvitePage: React.FC = () => {
                       showInfo={false}
                       size={[100, 8]}
                     />
-                    <Text type="secondary" style={{ fontSize: 12 }}>
+                    <Text type="secondary" style={{ fontSize: 12 }} role="status">
                       {t('Force du mot de passe:')} {passwordStrength.label}
                     </Text>
                   </Space>

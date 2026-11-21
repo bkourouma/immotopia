@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { getMe } from '../services/auth-service';
 import { t } from '../i18n/t';
 
@@ -67,13 +67,17 @@ export const AuthCallback: React.FC = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8 text-center">
+      <div
+        className="max-w-md w-full space-y-8 text-center"
+        role={status === 'error' ? 'alert' : 'status'}
+        aria-live={status === 'error' ? 'assertive' : 'polite'}
+      >
         {status === 'loading' && (
           <>
             <div className="flex justify-center">
               <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div>
             </div>
-            <h2 className="mt-6 text-3xl font-extrabold text-gray-900">{message}</h2>
+            <h1 className="mt-6 text-3xl font-extrabold text-gray-900">{message}</h1>
           </>
         )}
 
@@ -89,7 +93,7 @@ export const AuthCallback: React.FC = () => {
                 />
               </svg>
             </div>
-            <h2 className="mt-6 text-3xl font-extrabold text-green-600">{message}</h2>
+            <h1 className="mt-6 text-3xl font-extrabold text-green-600">{message}</h1>
           </>
         )}
 
@@ -105,7 +109,14 @@ export const AuthCallback: React.FC = () => {
                 />
               </svg>
             </div>
-            <h2 className="mt-6 text-3xl font-extrabold text-red-600">{message}</h2>
+            <h1 className="mt-6 text-3xl font-extrabold text-red-600">{message}</h1>
+            {/* La redirection automatique dure 3 s : on ne force pas à l'attendre. */}
+            <p className="text-sm text-gray-600">
+              {t('Vous allez être redirigé vers la connexion.')}{' '}
+              <Link to="/login" className="font-medium text-primary underline">
+                {t('Retour à la connexion')}
+              </Link>
+            </p>
           </>
         )}
       </div>
