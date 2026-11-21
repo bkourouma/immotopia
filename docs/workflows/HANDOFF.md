@@ -17,6 +17,14 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 
 Modèle de section : voir le bloc « Modèle de section » plus bas.
 
+## Ergonomie UI/UX de toute l'application — 2026-11-21
+
+**État** — Branche `orch/2026-11-21-ux` (6 lots fusionnés + commit i18n/wiki `1212ac31`), PR https://github.com/bkourouma/immotopia/pull/235 ouverte vers `main`, CI à suivre. Rien fusionné ni déployé au moment de l'écriture. Aucune fonctionnalité, règle métier ni API modifiée.
+
+**Reste** — Suivre la CI de la PR et corriger les échecs ; la suite web complète n'a pas été lancée d'un seul tenant en local. Contrôle visuel en navigateur (375 px) non fait. Relecture humaine des traductions arabes. Une dizaine de `<Pagination>` bruts sans pager nommé restent (CoOwnerPortal/Meetings, crm/Activities, crm/Contacts, NotificationsPage, OwnerPortal Documents/Properties, HoldingEntitiesPage, tenant TicketList, TeamPerformanceTable, MyDeclarationsList).
+
+**Pièges** — Les chefs de lot calent (watchdog 600 s) dès qu'un run vitest multi-dossiers dure : lancer les suites en arrière-plan avec sortie redirigée, un seul runner à la fois. Le push de gros diffs échoue parfois (« connection reset ») : réessayer avec `-c http.postBuffer=524288000 -c http.version=HTTP/1.1`. `i18n:check` échoue s'il reste des `*.orphans.json`. Worktrees des lots sous `D:/APP/Immobillier-worktrees/ux21-*` avec jonctions `node_modules` : retirer les jonctions (rmdir) AVANT `git worktree remove`.
+
 ## feat/integration-copro-20261118 — 2026-11-18
 
 **État :** intégration terminée, tests web verts (8 fichiers corrigés, voir ci-dessous) ; tests serveur à confirmer. Branche depuis `origin/main` `1a8caaa6`, avant pull request (fusion par l'utilisateur) puis validation staging. Rien n'est déployé.
