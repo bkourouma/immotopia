@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, Button, Card, Empty, Select, Space, Spin } from 'antd';
+import { Button, Card, Select, Space } from 'antd';
 import { DownloadOutlined, PlusOutlined } from '@ant-design/icons';
 import {
   deleteMaintenanceLogEntry,
@@ -12,6 +12,7 @@ import { saveBlob } from '../../utils/save-blob';
 import { feedback } from '../../lib/feedback';
 import { t } from '../../i18n/t';
 import { HelpSectionTitle } from '../../help';
+import { StateBlock } from '../primitives';
 import { MaintenanceLogFormModal } from './MaintenanceLogFormModal';
 import { MaintenanceLogTimeline } from './MaintenanceLogTimeline';
 import { LOG_CATEGORY_VALUES, logCategoryLabel, options } from './insurance-labels';
@@ -98,20 +99,25 @@ export const PropertyMaintenanceLogTab: React.FC<Props> = ({ propertyId, tenantI
       }
     >
       {loading ? (
-        <Spin />
+        <StateBlock variant="loading" />
       ) : error ? (
-        <Alert
-          type="error"
-          showIcon
-          message={error}
-          action={
-            <Button size="small" onClick={() => void load()}>
-              {t('Réessayer')}
-            </Button>
+        <StateBlock variant="error" title={error} onRetry={() => void load()} />
+      ) : entries.length === 0 ? (
+        <StateBlock
+          variant="empty"
+          title={t('Aucune intervention enregistrée.')}
+          actions={
+            canEdit
+              ? [
+                  {
+                    label: t('Ajouter une intervention'),
+                    onClick: () => setModal({ open: true, entry: null }),
+                    primary: true
+                  }
+                ]
+              : []
           }
         />
-      ) : entries.length === 0 ? (
-        <Empty description={t('Aucune intervention enregistrée.')} />
       ) : (
         <MaintenanceLogTimeline
           entries={entries}

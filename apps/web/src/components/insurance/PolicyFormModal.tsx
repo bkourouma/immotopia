@@ -122,7 +122,7 @@ export const PolicyFormModal: React.FC<Props> = ({ open, tenantId, propertyId, p
     >
       <Form form={form} layout="vertical" onFinish={submit}>
         <Form.Item name="insurer" label={t('Assureur')} rules={[{ required: true, message: t('Champ requis') }]}>
-          <Input />
+          <Input autoFocus />
         </Form.Item>
         <Form.Item
           name="policyNumber"

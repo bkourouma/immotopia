@@ -67,7 +67,8 @@ export function ImportCsvModal({ open, onClose, onImport }: ImportCsvModalProps)
       onOk={handleOk}
       onCancel={handleClose}
       confirmLoading={loading}
-      okText={t('Importer')}
+      okText={t('Importer les abonnés')}
+      okButtonProps={{ disabled: !file }}
       destroyOnClose
     >
       <p style={{ marginBottom: 16 }}>

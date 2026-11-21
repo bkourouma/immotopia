@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Alert, Button, Card, Empty, Space, Spin } from 'antd';
+import { Alert, Button, Card, Space } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { deleteInsurancePolicy } from '../../services/insurance-service';
 import type { InsurancePolicyDto } from '../../types/insurance-types';
@@ -7,6 +7,7 @@ import { apiErrorMessage } from '../patrimoine/patrimoine-labels';
 import { feedback } from '../../lib/feedback';
 import { t } from '../../i18n/t';
 import { HelpSectionTitle } from '../../help';
+import { StateBlock } from '../primitives';
 import { ClaimDetailDrawer } from './ClaimDetailDrawer';
 import { ClaimFormModal } from './ClaimFormModal';
 import { ClaimList } from './ClaimList';
@@ -57,14 +58,14 @@ export const PropertyInsuranceTab: React.FC<Props> = ({ propertyId, tenantId, ca
     }
   };
 
-  if (loading) return <Spin />;
+  if (loading) return <StateBlock variant="loading" />;
   const retry = (
     <Button size="small" onClick={() => void load()}>
       {t('Réessayer')}
     </Button>
   );
   // Rien de chargé : l'alerte seule. Des données déjà là : l'alerte s'ajoute, le reste reste visible.
-  if (error && !loaded) return <Alert type="error" showIcon message={error} action={retry} />;
+  if (error && !loaded) return <StateBlock variant="error" title={error} onRetry={() => void load()} />;
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -80,7 +81,22 @@ export const PropertyInsuranceTab: React.FC<Props> = ({ propertyId, tenantId, ca
         }
       >
         {policies.length === 0 ? (
-          <Empty description={t("Aucune police d'assurance pour ce bien.")} />
+          <StateBlock
+            variant="empty"
+            title={t("Aucune police d'assurance pour ce bien.")}
+            description={canEdit ? t('Ajoutez la première police pour pouvoir déclarer des sinistres.') : undefined}
+            actions={
+              canEdit
+                ? [
+                    {
+                      label: t('Ajouter une police'),
+                      onClick: () => setPolicyModal({ open: true, policy: null }),
+                      primary: true
+                    }
+                  ]
+                : []
+            }
+          />
         ) : (
           <PolicyList
             policies={policies}
@@ -108,7 +124,16 @@ export const PropertyInsuranceTab: React.FC<Props> = ({ propertyId, tenantId, ca
         }
       >
         {claims.length === 0 ? (
-          <Empty description={t('Aucun sinistre déclaré pour ce bien.')} />
+          <StateBlock
+            variant="empty"
+            title={t('Aucun sinistre déclaré pour ce bien.')}
+            description={canEdit && policies.length === 0 ? t("Ajoutez d'abord une police.") : undefined}
+            actions={
+              canEdit && policies.length > 0
+                ? [{ label: t('Déclarer un sinistre'), onClick: () => setClaimModalOpen(true), primary: true }]
+                : []
+            }
+          />
         ) : (
           <ClaimList claims={claims} onOpen={setOpenClaimId} />
         )}

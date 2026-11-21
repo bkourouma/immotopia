@@ -124,7 +124,7 @@ export const MaintenanceLogFormModal: React.FC<Props> = ({ open, tenantId, prope
     >
       <Form form={form} layout="vertical" onFinish={submit}>
         <Form.Item name="category" label={t('Catégorie')} rules={required}>
-          <Select options={options(LOG_CATEGORY_VALUES, logCategoryLabel)} />
+          <Select autoFocus options={options(LOG_CATEGORY_VALUES, logCategoryLabel)} />
         </Form.Item>
         <Form.Item name="performedAt" label={t("Date de l'intervention")} rules={required}>
           <Input type="date" />
