@@ -17,8 +17,6 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 
 Modèle de section : voir le bloc « Modèle de section » plus bas.
 
-<<<<<<< HEAD
-
 ## Revue Syndic et Gestion locative — 2026-11-20
 
 **Branche :** `orch/2026-11-20-revue-syndic-locatif`, base `origin/main` `25e340fe` ; dernier commit : voir `git log` de la branche. Pull request https://github.com/bkourouma/immotopia/pull/234 (fusion par l'utilisateur).
