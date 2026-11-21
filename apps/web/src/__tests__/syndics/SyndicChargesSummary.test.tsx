@@ -145,7 +145,7 @@ describe('SyndicCharges — cartes de synthèse (BUG-047)', () => {
       limit: 20
     });
 
-    fireEvent.click(await screen.findByTitle('2'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Page 2' }, { timeout: 10000 }));
     await waitFor(() =>
       expect(listChargeCalls).toHaveBeenLastCalledWith('tenant-1', 'syndic-1', {
         page: 2,
