@@ -39,6 +39,9 @@ export const CopilotThread: React.FC<CopilotThreadProps> = ({
   const scrollRef = useRef<HTMLDivElement>(null);
   const streaming = chat.status === 'streaming';
   const suggestions = getCopilotSuggestions(pathname, status.tools, t);
+  const last = chat.messages[chat.messages.length - 1];
+  // Tant que l'assistant n'a rien écrit, on le dit : sinon l'écran semble figé.
+  const thinking = streaming && !(last?.role === 'assistant' && last.text.trim());
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -58,9 +61,18 @@ export const CopilotThread: React.FC<CopilotThreadProps> = ({
         {chat.messages.length === 0 && (
           <div>
             <p>{getCopilotWelcome(status.tools, t)}</p>
+            {suggestions.length > 0 && (
+              <p style={{ color: 'var(--text-secondary, #8c8c8c)', marginBlockEnd: 8 }}>
+                {t('Touchez une question pour commencer, ou écrivez la vôtre.')}
+              </p>
+            )}
             <Space wrap>
               {suggestions.map(s => (
-                <Button key={s.id} size="small" onClick={() => onSuggestion(s.text)}>
+                <Button
+                  key={s.id}
+                  onClick={() => onSuggestion(s.text)}
+                  style={{ minHeight: 44, height: 'auto', whiteSpace: 'normal', textAlign: 'start' }}
+                >
                   {s.text}
                 </Button>
               ))}
@@ -81,7 +93,12 @@ export const CopilotThread: React.FC<CopilotThreadProps> = ({
           onRefusePlan={chat.refuseWritePlan}
           onOpenArtifact={onOpenArtifact}
         />
-        {chat.error && <Alert type="error" showIcon message={chat.error.message} style={{ marginTop: 12 }} />}
+        {thinking && (
+          <p role="status" style={{ color: 'var(--text-secondary, #8c8c8c)', marginBlockStart: 12 }}>
+            {t('ImmoCopilot réfléchit…')}
+          </p>
+        )}
+        {chat.error && <Alert type="error" showIcon message={chat.error.message} style={{ marginBlockStart: 12 }} />}
       </div>
     </div>
   );

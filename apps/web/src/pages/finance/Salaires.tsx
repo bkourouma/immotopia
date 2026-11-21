@@ -255,6 +255,8 @@ export const Salaires: React.FC = () => {
                 gelé, `CreateEmployeeTx`). Rien d'autre à ouvrir ici. */}
             <Input
               id="salarie-nom"
+              autoFocus
+              onPressEnter={() => !creationEnCours && validerCreation()}
               value={nomComplet}
               onChange={event => setNomComplet(event.target.value)}
               placeholder={t('Ex. Ibrahima Koffi')}

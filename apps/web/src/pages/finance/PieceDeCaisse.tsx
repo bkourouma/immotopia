@@ -178,8 +178,15 @@ export const PieceDeCaisse: React.FC = () => {
   };
 
   const emettre = async () => {
-    if (!siteId || !costCategoryId || !beneficiaire.trim() || !montant || montant <= 0 || !motif.trim()) {
-      message.error(t('Renseignez le chantier, le poste, le bénéficiaire, un montant positif et le motif.'));
+    const manquants = [
+      !siteId && t('le chantier'),
+      !costCategoryId && t('le poste de dépense'),
+      !beneficiaire.trim() && t('le bénéficiaire'),
+      (!montant || montant <= 0) && t('un montant supérieur à 0'),
+      !motif.trim() && t('le motif')
+    ].filter(Boolean);
+    if (!siteId || !costCategoryId || !montant || montant <= 0 || manquants.length > 0) {
+      message.error(t('À renseigner avant d’émettre : {{champs}}.', { champs: manquants.join(', ') }));
       return;
     }
     setEmissionEnCours(true);
@@ -543,6 +550,7 @@ export const PieceDeCaisse: React.FC = () => {
           <label htmlFor="motif-annulation-piece">{t("Motif de l'annulation")}</label>
           <Input.TextArea
             id="motif-annulation-piece"
+            autoFocus
             rows={3}
             value={motifAnnulation}
             onChange={event => setMotifAnnulation(event.target.value)}

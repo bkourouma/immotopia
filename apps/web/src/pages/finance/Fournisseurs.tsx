@@ -227,7 +227,7 @@ export const Fournisseurs: React.FC = () => {
         open={ouvert}
         onCancel={fermer}
         onOk={soumettre}
-        okText={t('Créer')}
+        okText={t('Créer le fournisseur')}
         cancelText={t('Annuler')}
         confirmLoading={enregistrement}
         destroyOnHidden
@@ -238,7 +238,7 @@ export const Fournisseurs: React.FC = () => {
             label={t('Raison sociale')}
             rules={[{ required: true, message: t('La raison sociale est obligatoire.') }]}
           >
-            <Input placeholder={t('Ex. Matériaux du Bandama SARL')} />
+            <Input autoFocus onPressEnter={soumettre} placeholder={t('Ex. Matériaux du Bandama SARL')} />
           </Form.Item>
           <Form.Item
             name="kind"

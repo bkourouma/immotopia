@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { Card, Typography, Descriptions, Avatar, Space, Tag, Spin, Divider, Select } from 'antd';
 import { UserOutlined, MailOutlined, SafetyCertificateOutlined, GlobalOutlined } from '@ant-design/icons';
 import { useAuth } from '../../hooks/useAuth';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { t } from '../../i18n/t';
 import { HelpSectionTitle } from '../../help';
 import { useLanguage } from '../../i18n/useLanguage';
@@ -15,6 +16,7 @@ export const ProfilePage: React.FC = () => {
   const { user, isAuthenticated, isLoading } = useAuth();
   const { language, setLanguage, isSwitching } = useLanguage();
   const navigate = useNavigate();
+  const { isDesktop } = useBreakpoint();
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -50,13 +52,16 @@ export const ProfilePage: React.FC = () => {
 
       <Card>
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
+          {/* `wrap` : sur un petit écran, le nom passe sous l'avatar au lieu de déborder. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
             <Avatar src={user.avatarUrl} size={80} icon={<UserOutlined />} style={{ backgroundColor: '#1890ff' }} />
-            <div>
+            <div style={{ minWidth: 0 }}>
               <Title level={4} style={{ margin: 0 }}>
                 {user.fullName || t('Utilisateur')}
               </Title>
-              <Text type="secondary">{user.email}</Text>
+              <Text type="secondary" style={{ wordBreak: 'break-all' }}>
+                {user.email}
+              </Text>
               <div style={{ marginTop: 8 }}>
                 <Tag color={user.globalRole === 'SUPER_ADMIN' ? 'purple' : 'blue'}>
                   {user.globalRole === 'SUPER_ADMIN' ? t('Administrateur') : t('Utilisateur')}
@@ -139,7 +144,19 @@ export const ProfilePage: React.FC = () => {
           <Divider />
 
           <div>
-            <Link to="/forgot-password">{t('Changer le mot de passe')}</Link>
+            <Title level={5} style={{ marginTop: 0 }}>
+              {t('Mot de passe')}
+            </Title>
+            <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
+              {t('Pour le changer, vous passez par la page de réinitialisation.')}
+            </Text>
+            {/* Cible tactile d'au moins 44 px sous 992 px. */}
+            <Link
+              to="/forgot-password"
+              style={isDesktop ? undefined : { display: 'inline-flex', alignItems: 'center', minHeight: 44 }}
+            >
+              {t('Changer le mot de passe')}
+            </Link>
           </div>
         </Space>
       </Card>

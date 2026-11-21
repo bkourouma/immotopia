@@ -222,6 +222,13 @@ describe('DataView — pagination serveur', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Page 2' }));
     expect(onPageChange).toHaveBeenCalledWith(2, 20);
   });
+
+  it('nomme les pages et marque la page courante pour les lecteurs d’écran', () => {
+    view({ total: 60 });
+    expect(screen.getByRole('navigation', { name: 'Pagination' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Page 1' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('button', { name: 'Page 2' })).not.toHaveAttribute('aria-current');
+  });
 });
 
 describe('DataCard', () => {
@@ -245,6 +252,16 @@ describe('DataCard', () => {
     card.focus();
     await userEvent.keyboard('{Enter}');
     expect(onOpen).toHaveBeenCalledOnce();
+  });
+
+  it('n’ouvre pas le détail quand Entrée est pressée sur un bouton de la carte', async () => {
+    const onOpen = vi.fn();
+    const onPay = vi.fn();
+    render(<DataCard title="Villa Angre" onOpen={onOpen} primaryAction={{ label: 'Encaisser', onClick: onPay }} />);
+    screen.getByRole('button', { name: 'Encaisser' }).focus();
+    await userEvent.keyboard('{Enter}');
+    expect(onPay).toHaveBeenCalledOnce();
+    expect(onOpen).not.toHaveBeenCalled();
   });
 
   it('n’ouvre pas le détail quand on actionne un bouton de la carte', async () => {

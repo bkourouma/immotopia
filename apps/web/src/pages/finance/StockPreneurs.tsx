@@ -192,7 +192,7 @@ const CorrectionPreneur: React.FC<CorrectionProps> = ({ tenantId, taker, people,
           { min: 2, max: 120, message: t('Le nom compte de 2 à 120 caractères.') }
         ]}
       >
-        <Input maxLength={120} autoComplete="off" />
+        <Input autoFocus maxLength={120} autoComplete="off" />
       </Form.Item>
       <Form.Item name="teamOrCompany" label={t('Équipe ou entreprise')} rules={[{ max: 120 }]}>
         <Input maxLength={120} autoComplete="off" />

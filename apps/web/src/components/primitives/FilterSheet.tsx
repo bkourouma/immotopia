@@ -67,7 +67,7 @@ export const FilterSheet: React.FC<FilterSheetProps> = ({ children, activeCount,
   return (
     <>
       <Badge count={activeCount} offset={[-4, 4]}>
-        <Button icon={<FilterOutlined />} onClick={() => setOpen(true)} block>
+        <Button icon={<FilterOutlined />} onClick={() => setOpen(true)} block style={{ minHeight: 44 }}>
           {/* Le libellé dit l'état, pas seulement l'action : « Filtrer » seul
               ne laisse pas deviner qu'un filtre est déjà posé. */}
           {activeCount > 0 ? t('Filtres ({{activeCount}})', { activeCount: activeCount }) : t('Filtrer')}
@@ -86,13 +86,13 @@ export const FilterSheet: React.FC<FilterSheetProps> = ({ children, activeCount,
         footer={
           <Space style={{ width: '100%', justifyContent: 'space-between' }}>
             {onClear ? (
-              <Button type="text" onClick={onClear} disabled={activeCount === 0}>
+              <Button type="text" onClick={onClear} disabled={activeCount === 0} style={{ minHeight: 44 }}>
                 {t('Effacer')}
               </Button>
             ) : (
               <span />
             )}
-            <Button type="primary" onClick={() => setOpen(false)}>
+            <Button type="primary" onClick={() => setOpen(false)} style={{ minHeight: 44 }}>
               {t('Voir les résultats')}
             </Button>
           </Space>

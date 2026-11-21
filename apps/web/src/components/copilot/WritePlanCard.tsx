@@ -338,13 +338,14 @@ export function WritePlanCard({
           <Space style={{ marginBlockStart: 12 }} wrap>
             <Button
               type="primary"
+              style={{ minHeight: 44 }}
               loading={state === 'approving'}
               disabled={!actionable || !wordOk}
               onClick={() => onApprove(plan.proposalId, word !== null ? typed : undefined)}
             >
               {t('Approuver et exécuter')}
             </Button>
-            <Button disabled={!actionable} onClick={() => onRefuse(plan.proposalId)}>
+            <Button style={{ minHeight: 44 }} disabled={!actionable} onClick={() => onRefuse(plan.proposalId)}>
               {t('Refuser')}
             </Button>
           </Space>
